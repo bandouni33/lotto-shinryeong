@@ -1,0 +1,208 @@
+/* 모바일 우선 — 세로 레이아웃, 터치 친화적, 가로 스크롤 방지 */
+:root {
+    --max-width: 420px;
+    --ball-size: 40px;
+    --accent: #6c3ce0;
+    --accent-dark: #5429c4;
+    --surface: #f7f5ff;
+    --card: #ffffff;
+    --text: #1f1a2e;
+    --muted: #6b6780;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+}
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stAppViewContainer"] > section {
+    background: linear-gradient(180deg, #f3eeff 0%, #faf8ff 40%, #ffffff 100%) !important;
+    overflow-x: hidden !important;
+}
+
+.block-container {
+    max-width: var(--max-width) !important;
+    width: 100% !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 1.25rem !important;
+    padding-bottom: 2rem !important;
+    overflow-x: hidden !important;
+}
+
+[data-testid="stVerticalBlock"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+#MainMenu, footer, header[data-testid="stHeader"] {
+    visibility: hidden;
+}
+
+.mobile-title {
+    text-align: center;
+    margin: 0 0 0.25rem 0;
+    font-size: 1.65rem;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.02em;
+}
+
+.mobile-subtitle {
+    text-align: center;
+    margin: 0 0 1.25rem 0;
+    font-size: 0.92rem;
+    color: var(--muted);
+}
+
+.tier-panel {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 0.85rem 1rem;
+    box-shadow: 0 8px 24px rgba(108, 60, 224, 0.08);
+    margin-bottom: 1rem;
+}
+
+.tier-panel label {
+    font-weight: 700 !important;
+    color: var(--text) !important;
+}
+
+div[data-testid="stRadio"] > div {
+    gap: 0.5rem !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+}
+
+div[data-testid="stRadio"] label {
+    flex: 1 1 50% !important;
+    min-height: 48px !important;
+    padding: 0.55rem 0.5rem !important;
+    border-radius: 12px !important;
+    background: var(--surface) !important;
+    text-align: center !important;
+    justify-content: center !important;
+}
+
+div.stButton > button[kind="primary"] {
+    width: 100% !important;
+    min-height: 58px !important;
+    border-radius: 16px !important;
+    font-size: 1.08rem !important;
+    font-weight: 800 !important;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%) !important;
+    border: none !important;
+    box-shadow: 0 10px 24px rgba(108, 60, 224, 0.28) !important;
+}
+
+div.stButton > button[kind="primary"]:active {
+    transform: scale(0.98);
+}
+
+.filter-badge-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: center;
+    margin: 0.75rem 0 1rem 0;
+}
+
+.filter-badge {
+    display: inline-block;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    background: #ece7ff;
+    color: #4f3aa8;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.last-draw-box {
+    text-align: center;
+    background: var(--card);
+    border-radius: 14px;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 6px 18px rgba(31, 26, 46, 0.06);
+    font-size: 0.88rem;
+    color: var(--muted);
+}
+
+.results-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.combo-card {
+    background: var(--card);
+    border-radius: 18px;
+    padding: 0.95rem 0.85rem 0.8rem;
+    box-shadow: 0 8px 22px rgba(31, 26, 46, 0.08);
+}
+
+.combo-header {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--muted);
+    margin-bottom: 0.55rem;
+}
+
+.ball-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+@media (max-width: 360px) {
+    :root {
+        --ball-size: 36px;
+    }
+
+    .mobile-title {
+        font-size: 1.45rem !important;
+    }
+}
+
+.lotto-ball {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--ball-size);
+    height: var(--ball-size);
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.95rem;
+    box-shadow: inset 0 -3px 6px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.12);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.combo-meta {
+    margin-top: 0.65rem;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 2rem 1rem;
+    background: var(--card);
+    border-radius: 16px;
+    font-size: 0.92rem;
+}
+
+@media (min-width: 768px) {
+    .block-container {
+        max-width: 480px !important;
+    }
+}

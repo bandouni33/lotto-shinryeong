@@ -1,0 +1,423 @@
+import streamlit as st
+import streamlit.components.v1 as components
+import base64
+import os
+import pandas as pd
+
+# 🚨 [여기에 추가!] 관리자 모드가 켜지면 대시보드 파일로 즉시 강제 점프!
+if st.session_state.get("go_to_admin", False):
+    st.session_state.go_to_admin = False # 깃발 내리기
+    st.switch_page("admin_dashboard.py")  # 👈 이 한 줄이 핵심 치트키입니다.
+
+# ==========================================
+# 1. 페이지 초기 설정 및 상태 관리
+# ==========================================
+st.set_page_config(page_title="로또야 놀자", layout="centered", initial_sidebar_state="collapsed")
+
+current_page = st.query_params.get("page", "main")
+
+def get_image_base64(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
+
+icon_base64 = get_image_base64("K-013.jpg")
+
+
+# ==========================================
+# 📺 화면 1: 메인 페이지 (Main View)
+# ==========================================
+if current_page == "main":
+    st.markdown("""
+    <style>
+        .stApp { background-color: #1a1a2e; color: white; }
+        .block-container { padding-top: 5px !important; padding-bottom: 0px !important; padding-left: 10px !important; padding-right: 10px !important; }
+        section[data-testid="stSidebar"] { display: none; }
+        header[data-testid="stHeader"] { display: none; }
+
+        div[data-columns="true"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            gap: 6px !important;
+            width: 100% !important;
+        }
+        div[data-testid="stColumn"] { padding: 0px !important; margin: 0px !important; }
+        div[data-testid="stColumn"]:nth-child(1) { flex: 78 !important; min-width: 0px !important; }
+        div[data-testid="stColumn"]:nth-child(2) { flex: 22 !important; min-width: 0px !important; }
+
+        div[data-testid="stPopover"] { width: 100% !important; }
+        div[data-testid="stPopover"] > div {
+            background-color: #16213e !important; color: white !important;
+            border: 1px solid #f9a825 !important; border-radius: 12px !important;
+        }
+        button[data-testid="stBaseButton-secondary"] {
+            background-color: #ffffff !important; color: #444444 !important; border: 1px solid #cccccc !important;
+            border-radius: 10px !important; font-size: 16px !important; font-weight: bold !important;
+            padding: 0px !important; width: 100% !important; height: 48px !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important; display: flex !important;
+            align-items: center !important; justify-content: center !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 상단 로고
+    st.markdown(f"""
+    <div style="text-align:center; padding: 0px 0px 10px 0px; margin-top: -5px;">
+        <img src="data:image/jpeg;base64,{icon_base64}" style="width:60px; height:60px; border-radius:50%; border:3px solid #ffb300; box-shadow: 0 0 12px #ffb300;">
+    </div>
+    """, unsafe_allow_html=True)
+
+# 엑셀 파일에서 데이터 읽기 (xlsb 형식 지원)
+    try:
+        # engine='pyxlsb'가 설치되어 있어야 합니다. 없다면: pip install pyxlsb
+        df = pd.read_excel("로또최근당첨내역.xlsb", engine='pyxlsb', header=None)
+        
+        # K-187.jpg의 5행 데이터는 인덱스 4입니다.
+        row = df.iloc[4, 1:10].tolist() 
+        
+        draw_no = str(row[0]) + "회" # 회차 (B5)
+        numbers = sorted([int(x) for x in row[1:7]]) # 번호 (C5:H5)
+        bonus = int(row[8]) # 보너스 (J5)
+    except Exception as e:
+        st.error(f"데이터 로드 실패: {e}")
+        draw_no = "오류"
+        numbers = [0, 0, 0, 0, 0, 0]
+        bonus = 0
+
+    # 최근 당첨번호 (레이아웃 유지)
+    col1, col2 = st.columns([78, 22])
+    with col1:
+        # 볼 색상 결정 함수
+        def get_ball_color(n):
+            if n <= 10: return "#f9a825"
+            if n <= 20: return "#1976d2"
+            if n <= 30: return "#e53935"
+            if n <= 40: return "#757575"
+            return "#388e3c"
+
+        balls_html = "".join([f'<div style="background:{get_ball_color(n)};width:20px;height:20px;border-radius:50%;text-align:center;line-height:20px;color:white;font-weight:bold;font-size:11px;">{n}</div>' for n in numbers])
+        
+        st.markdown(f"""
+        <div style="background:#16213e; border-radius:12px; padding:6px 12px; border: 1px solid #2a2a4a; height: 48px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
+            <div style="color:#ffb300; font-size:12px; font-weight:bold; margin-bottom:2px; line-height:1;">🌀 최근 당첨번호 <span style="color:#fff; margin-left:5px;">{draw_no}</span></div>
+            <div style="display:flex; gap:4px; align-items:center;">
+                {balls_html}
+                <span style="color:#aaa;font-weight:bold;font-size:11px;line-height:1;">+</span>
+                <div style="background:{get_ball_color(bonus)};width:20px;height:20px;border-radius:50%;text-align:center;line-height:20px;color:white;font-weight:bold;font-size:11px;">{bonus}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        with st.popover("➡️"):
+            st.markdown(f"### 🌀 {draw_no} 상세 현황")
+            st.write("1등: 11명 (각 24.5억)")
+            st.write("2등: 78명 (각 5,763만)")
+            st.write("3등: 2,941명 (각 152만)")
+
+    st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+
+    # 역대 최고 당첨금
+    col3, col4 = st.columns([78, 22])
+    with col3:
+        st.markdown("""
+        <div style="background:#16213e; border-radius:12px; padding:6px 12px; border: 1px solid #2a2a4a; height: 48px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
+            <div style="color:#aaa; font-size:12px; font-weight:bold; margin-bottom:2px; line-height:1;">🏆 역대 최고 일탈 금액</div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div style="background:#e53935;width:18px;height:18px;border-radius:50%;text-align:center;line-height:18px;color:white;font-weight:bold;font-size:11px;">1</div>
+                <span style="color:#fff; font-weight:bold; font-size:18px; letter-spacing:-0.5px; line-height:1;">407억 원</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col4:
+        with st.popover("➡️"):
+            st.markdown("### 🏆 역대 당첨금 TOP 5")
+            st.write("1위: 407억 (1회)")
+            st.write("2위: 369억 (51회)")
+            st.write("3위: 346억 (100회)")
+
+    # 하단 메뉴 그리드
+    st.markdown("""
+    <style>
+    .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .menu-box { background: #16213e; border-radius: 14px; padding: 14px 10px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.4); cursor: pointer; }
+    .menu-box:active { transform: scale(0.96); }
+    .menu-icon { font-size: 26px; margin-bottom: 4px; }
+    .menu-title { color: white; font-weight: bold; font-size: 14px; margin-bottom: 2px; }
+    .menu-sub { color: #aaa; font-size: 11px; }
+    .gold { border: 2px solid #ffb300; }
+    .blue { border: 2px solid #1e88e5; }
+    .green { border: 2px solid #43a047; }
+    .purple { border: 2px solid #8e24aa; }
+    </style>
+
+    <div class="menu-grid">
+        <a href="?page=thunder" target="_self" style="text-decoration:none; display:block;">
+            <div class="menu-box gold">
+                <div class="menu-icon">⚡</div>
+                <div class="menu-title">번개조합</div>
+                <div class="menu-sub">빠른 조합</div>
+            </div>
+        </a>
+        <a href="?page=advanced" target="_self" style="text-decoration:none; display:block;">
+            <div class="menu-box blue">
+                <div class="menu-icon">🤖</div>
+                <div class="menu-title">고급필터</div>
+                <div class="menu-sub">AI 추천</div>
+            </div>
+        </a>
+        <div class="menu-box green">
+            <div class="menu-icon">🔍</div>
+            <div class="menu-title">번호검색</div>
+            <div class="menu-sub">당첨확인</div>
+        </div>
+        <div class="menu-box purple">
+            <div class="menu-icon">👑</div>
+            <div class="menu-title">프리미엄</div>
+            <div class="menu-sub">구독하기</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ==========================================
+# ⚡ 화면 2: 번개조합 상세 페이지 (Thunder View)
+# ==========================================
+elif current_page == "thunder":
+    
+    st.markdown("""
+    <style>
+        .stApp { background-color: #1a1a2e; color: white; }
+        .block-container { padding: 10px !important; max-width: 600px; }
+        section[data-testid="stSidebar"], header[data-testid="stHeader"] { display: none; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col_back, col_title = st.columns([3, 7])
+    with col_back:
+        if st.button("⬅️ 메인으로", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+    with col_title:
+        st.markdown("<h3 style='color:#ffb300; margin:0; padding-top:2px;'>⚡ 번개조합</h3>", unsafe_allow_html=True)
+
+    # 기능이 완벽 연동된 OMR 엔진 HTML
+    thunder_ui_html = """
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        * { box-sizing: border-box; font-family: 'Pretendard', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background-color: #1a1a2e; color: white; }
+        .thunder-container { display: flex; gap: 12px; padding: 10px; background: #16213e; border-radius: 16px; margin-top:10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        .left-panel { flex: 3; display: flex; flex-direction: column; gap: 10px; }
+        .mode-btn { background: #2a2a4a; color: white; border: 2px solid transparent; border-radius: 8px; padding: 12px 0; font-size: 13px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .mode-btn:active { transform: scale(0.95); }
+        .mode-btn.active-del { background: #444; border-color: #888; color: #fff; }
+        .mode-btn.active-fix { background: #ff9800; border-color: #ffe0b2; color: #fff; }
+        .mode-btn.active-luck { background: #e040fb; border-color: #f8bbd0; color: #fff; }
+        .start-area { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+        .combo-select { background: #0f3460; color: white; border: 1px solid #444; border-radius: 8px; padding: 8px; font-size: 14px; outline: none; text-align: center; }
+        .start-btn { background: #00e5ff; color: #000; border: none; border-radius: 8px; padding: 14px 0; font-size: 15px; font-weight: 900; cursor: pointer; box-shadow: 0 0 10px #00e5ff88; transition: transform 0.1s; }
+        .start-btn:active { transform: scale(0.95); }
+        .right-panel { flex: 7; background: #fdfdfd; border-radius: 12px; padding: 8px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; align-content: start; }
+        .num-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: #d32f2f; border: 1px solid #ffcdd2; border-radius: 6px; background: transparent; cursor: pointer; user-select: none; transition: background 0.2s, color 0.2s; }
+        .num-cell.state-del { background: #9e9e9e !important; color: white !important; border-color: #9e9e9e; text-decoration: line-through; }
+        .num-cell.state-fix { background: #ffb300 !important; color: white !important; border-color: #ffb300; }
+        .num-cell.state-luck { background: #f48fb1 !important; color: white !important; border-color: #f48fb1; }
+        .result-container { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; min-height: 300px; }
+        @keyframes mysticRise { 0% { opacity: 0; transform: translateY(30px) scale(0.9); filter: blur(4px); } 50% { opacity: 0.8; filter: blur(0px); } 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0px); } }
+        .result-row { background: #16213e; border: 1px solid #333; border-radius: 12px; padding: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; opacity: 0; }
+        .result-row.show { animation: mysticRise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .ball { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); box-shadow: inset -2px -2px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.4); }
+        .b-yel { background: #f9a825; } .b-blu { background: #1976d2; } .b-red { background: #e53935; } .b-gry { background: #757575; } .b-grn { background: #388e3c; }
+        .action-btns { display: flex; gap: 10px; margin-top: 10px; opacity: 0; transition: opacity 1s; }
+        .action-btns.show { opacity: 1; }
+        .action-btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: white; font-size: 14px; }
+        .action-btn:active { transform: scale(0.95); }
+    </style>
+    </head>
+    <body>
+    <div class="thunder-container">
+        <div class="left-panel">
+            <div class="mode-btn" id="btn-del" onclick="setMode('del')">삭 제 수</div>
+            <div class="mode-btn" id="btn-fix" onclick="setMode('fix')">고 정 수</div>
+            <div class="mode-btn" id="btn-luck" onclick="fetchLucky()">행 운 수</div>
+            <div class="start-area">
+                <select class="combo-select" id="combo-count">
+                    <option value="1">1게임</option>
+                    <option value="3">3게임</option>
+                    <option value="5" selected>5게임</option>
+                    <option value="10">10게임</option>
+                </select>
+                <button class="start-btn" onclick="startCombination()">조합시작</button>
+            </div>
+        </div>
+        <div class="right-panel" id="num-grid"></div>
+    </div>
+    <div class="result-container" id="results-area"></div>
+    
+    <div class="action-btns" id="action-btns">
+        <button class="action-btn" style="background:#5e35b1;" onclick="shareCombinations()">공유하기</button>
+        <button class="action-btn" style="background:#00897b;" onclick="saveCombinations()">저장하기</button>
+    </div>
+
+    <script>
+        let currentMode = ''; let states = {};
+        let currentGeneratedCombos = []; 
+
+        function vibrate(ms) { if(navigator.vibrate) navigator.vibrate(ms); }
+        const grid = document.getElementById('num-grid');
+        for(let i=1; i<=45; i++) {
+            let cell = document.createElement('div'); cell.className = 'num-cell'; cell.innerText = i;
+            cell.onclick = () => onNumberClick(i, cell); grid.appendChild(cell);
+        }
+        function setMode(mode) {
+            vibrate(30); currentMode = (currentMode === mode) ? '' : mode;
+            document.getElementById('btn-del').className = 'mode-btn' + (currentMode === 'del' ? ' active-del' : '');
+            document.getElementById('btn-fix').className = 'mode-btn' + (currentMode === 'fix' ? ' active-fix' : '');
+        }
+        function fetchLucky() {
+            vibrate([30, 50, 30]); currentMode = ''; setMode('');
+            for(let key in states) { if(states[key] === 'luck') delete states[key]; }
+            let l1 = Math.floor(Math.random()*45)+1; let l2; do { l2 = Math.floor(Math.random()*45)+1; } while(l1 === l2);
+            states[l1] = 'luck'; states[l2] = 'luck'; renderGrid();
+        }
+        function onNumberClick(num, cell) {
+            if(!currentMode) return; vibrate(15);
+            if(states[num] === currentMode) delete states[num]; else states[num] = currentMode;
+            renderGrid();
+        }
+        function renderGrid() {
+            let cells = grid.children;
+            for(let i=0; i<45; i++) {
+                let num = i + 1; cells[i].className = 'num-cell';
+                if(states[num]) cells[i].classList.add('state-' + states[num]);
+            }
+        }
+        function getBallClass(n) {
+            if(n <= 10) return 'b-yel'; if(n <= 20) return 'b-blu'; if(n <= 30) return 'b-red'; if(n <= 40) return 'b-gry'; return 'b-grn';
+        }
+
+        function startCombination() {
+            vibrate([50, 50, 50]);
+            let count = parseInt(document.getElementById('combo-count').value);
+            let resultArea = document.getElementById('results-area');
+            let actionBtns = document.getElementById('action-btns');
+            
+            resultArea.innerHTML = ''; 
+            actionBtns.classList.remove('show');
+            currentGeneratedCombos = [];
+            
+            let fixedNums = []; let excludedNums = [];
+            for(let key in states) {
+                if(states[key] === 'fix' || states[key] === 'luck') fixedNums.push(parseInt(key));
+                if(states[key] === 'del') excludedNums.push(parseInt(key));
+            }
+            let pool = [];
+            for(let i=1; i<=45; i++) { if(!excludedNums.includes(i) && !fixedNums.includes(i)) pool.push(i); }
+            
+            for(let i = 0; i < count; i++) {
+                setTimeout(() => {
+                    let currentCombo = [...fixedNums]; let tempPool = [...pool];
+                    while(currentCombo.length < 6 && tempPool.length > 0) {
+                        let rIdx = Math.floor(Math.random() * tempPool.length);
+                        currentCombo.push(tempPool.splice(rIdx, 1)[0]);
+                    }
+                    currentCombo.sort((a,b) => a-b);
+                    
+                    currentGeneratedCombos.push(currentCombo);
+
+                    let row = document.createElement('div'); row.className = 'result-row';
+                    let html = `<div style="color:#aaa; font-size:12px; font-weight:bold; width:20px;">${i+1}</div>`;
+                    currentCombo.forEach(num => { html += `<div class="ball ${getBallClass(num)}">${num}</div>`; });
+                    row.innerHTML = html; resultArea.appendChild(row);
+                    requestAnimationFrame(() => { row.classList.add('show'); vibrate(20); });
+                    if(i === count - 1) { setTimeout(() => actionBtns.classList.add('show'), 800); }
+                }, i * 1000);
+            }
+        }
+
+        function shareCombinations() {
+            if (currentGeneratedCombos.length === 0) return;
+            vibrate(30);
+
+            let shareText = "[로또야 놀자 - 번개조합 결과]\\n";
+            currentGeneratedCombos.forEach((combo, idx) => {
+                shareText += `${idx + 1}게임: ${combo.join(", ")}\\n`;
+            });
+
+            if (navigator.share) {
+                navigator.share({
+                    title: '로또야 놀자 번개조합',
+                    text: shareText
+                }).catch(err => console.log('공유 취소됨'));
+            } else {
+                navigator.clipboard.writeText(shareText).then(() => {
+                    alert("번호가 클립보드에 복사되었습니다! 원하시는 채팅창에 붙여넣기(Ctrl+V) 하세요.");
+                }).catch(err => {
+                    alert("공유하기 기능을 지원하지 않는 브라우저입니다.");
+                });
+            }
+        }
+
+        function saveCombinations() {
+            if (currentGeneratedCombos.length === 0) return;
+            vibrate(30);
+
+            let defaultName = "로또_번개조합_" + new Date().toISOString().slice(0,10);
+            let filename = prompt("어떤 이름으로 저장하시겠습니까?", defaultName);
+            
+            if (filename === null) return;
+            if (filename.trim() === "") filename = defaultName;
+
+            let csvContent = "게임,번호1,번호2,번호3,번호4,번호5,번호6\\n";
+            currentGeneratedCombos.forEach((combo, idx) => {
+                csvContent += `${idx + 1}게임,${combo.join(",")}\\n`;
+            });
+
+            let blob = new Blob(["\\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            let link = document.createElement("a");
+            let url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename + ".csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+    </body>
+    </html>
+    """
+    components.html(thunder_ui_html, height=750)
+
+# ==========================================
+# 🤖 화면 3: 고급필터 상세 페이지 (Advanced Filter View)
+# ==========================================
+elif current_page == "advanced":
+    if os.path.exists("admin_filter.py"):
+        with open("admin_filter.py", "r", encoding="utf-8") as f:
+            exec(f.read())
+    else:
+        st.error("admin_filter.py 파일을 찾을 수 없습니다. 파일이 같은 폴더에 있는지 확인해주세요.")
+
+# ==========================================================
+# 👑 메인 화면 맨 아래 관리자 스위치
+# ==========================================================
+st.markdown("---")
+with st.expander("🛠️ 시스템 관리자 메뉴"):
+    if st.session_state.get("is_admin", False):
+        if st.button("🔒 관리자 모드 끄기", key="admin_btn_off"):
+            st.session_state.is_admin = False
+            st.rerun()
+    else:
+        if st.button("👑 관리자 모드 켜기", key="admin_btn_on"):
+            st.session_state.is_admin = True
+            st.session_state.go_to_admin = True # 💡 나 대시보드로 갈래! 하고 깃발 들기
+            st.rerun()

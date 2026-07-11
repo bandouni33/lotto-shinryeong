@@ -1,0 +1,26 @@
+[theme]
+primaryColor = "#6C3CE0"
+backgroundColor = "#FAF8FF"
+secondaryBackgroundColor = "#F3EEFF"
+textColor = "#1F1A2E"
+font = "sans serif"
+
+[server]
+# 외부(모바일) 접속 허용 — localhost만 쓸 때는 127.0.0.1 로 변경 가능
+address = "0.0.0.0"
+port = 8501
+headless = true
+enableCORS = true
+enableXsrfProtection = true
+maxUploadSize = 5
+
+[browser]
+gatherUsageStats = false
+# ★ 외부 IP로 접속할 때 WebSocket 주소 (하얀 화면 방지)
+# run_server.ps1 실행 시 --browser.serverAddress 로 덮어씀
+serverAddress = "210.99.230.83"
+serverPort = 8501
+
+[client]
+showErrorDetails = true
+toolbarMode = "minimal"

@@ -1,0 +1,18 @@
+import streamlit as st
+
+st.set_page_config(page_title="로또야 놀자", layout="wide", initial_sidebar_state="collapsed")
+
+if "is_admin" not in st.session_state:
+    st.session_state.is_admin = False
+
+# 방 등록
+user_view = st.Page("user_page.py", title="로또 번호 조합", icon="🎰")
+admin_view = st.Page("admin_dashboard.py", title="운영자 대시보드", icon="⚙️")
+
+# 권한에 따라 메뉴 구성
+if st.session_state.is_admin:
+    pg = st.navigation([user_view, admin_view])
+else:
+    pg = st.navigation([user_view])
+
+pg.run()

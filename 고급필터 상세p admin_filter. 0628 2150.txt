@@ -1,0 +1,134 @@
+import streamlit as st
+
+# ==========================================================
+# 🚀 1. 레이아웃 강제 확장 및 VIP 프리미엄 CSS 주입
+# ==========================================================
+st.markdown("""
+<style>
+    /* 1. 태평양 같던 좌우 여백 강제 제거 (화면의 95%까지 시원하게 확장) */
+    .block-container {
+        max-width: 95% !important;
+        padding-top: 1rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    
+    /* 2. 각 패턴 박스의 고급스러운 디자인 (그림자, 라운드, 배경색) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 12px !important;
+        background-color: #FFFFFF; /* 깔끔한 화이트 배경 */
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04); /* 은은한 입체 그림자 */
+        padding: 20px !important;
+        transition: all 0.3s ease; /* 마우스 오버 시 부드러운 전환 효과 */
+    }
+    
+    /* 마우스 올렸을 때 박스가 살짝 뜨는 듯한 호버(Hover) 효과 */
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.15);
+        border-color: #93C5FD !important;
+        transform: translateY(-2px);
+    }
+
+    /* 3. 패턴 제목 가독성 및 디자인 조화 */
+    .premium-title {
+        font-size: 17px;
+        font-weight: 800;
+        color: #1E293B;
+        margin-bottom: 18px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #F1F5F9;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* 4. 체크박스 찌그러짐 완벽 방지 */
+    div[data-testid="stCheckbox"] {
+        display: flex;
+        justify-content: center; /* 체크박스 중앙 정렬 */
+    }
+    div[data-testid="stCheckbox"] label {
+        gap: 5px; /* 체크박스와 글씨 사이 여백 최적화 */
+    }
+    div[data-testid="stCheckbox"] label p {
+        font-size: 14px !important;
+        font-weight: 600;
+        color: #475569;
+        white-space: nowrap !important; /* 글씨가 절대 밑으로 떨어지지 않음 */
+    }
+    
+    /* 5. 다크모드 사용자를 위한 자동 색상 반전 (가독성 보호) */
+    @media (prefers-color-scheme: dark) {
+        div[data-testid="stVerticalBlockBorderWrapper"] { background-color: #1E293B; border-color: #334155 !important; }
+        .premium-title { color: #F8FAFC; border-bottom-color: #334155; }
+        div[data-testid="stCheckbox"] label p { color: #CBD5E1; }
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================================
+# 👑 2. 최상단 가이드 (심플하고 세련되게)
+# ==========================================================
+with st.expander("📌 로또 분석가를 위한 고급 패턴 활용 가이드 (클릭하여 열기)"):
+    st.info("""
+    **💡 프리미엄 필터 대시보드**
+    넓어진 화면을 통해 각 패턴을 한눈에 조망하고, 직관적으로 체크박스를 제어하여 최적의 분석 조합을 완성하십시오.
+    """)
+
+st.markdown("<h3 style='color: #334155; font-weight: 800; margin-bottom: 20px;'>📊 프리미엄 패턴 분석 세팅</h3>", unsafe_allow_html=True)
+
+# ==========================================================
+# ⚙️ 3. 완벽 정렬 3단 대시보드 로직 (가로줄 단위 렌더링)
+# ==========================================================
+def draw_premium_pattern(title, options, icon="🔹"):
+    with st.container(border=True):
+        st.markdown(f'<div class="premium-title"><span>{icon}</span> <span>{title}</span></div>', unsafe_allow_html=True)
+        cols = st.columns(len(options))
+        for i, opt in enumerate(options):
+            cols[i].checkbox(opt, key=f"{title}_{opt}")
+
+# [1번째 줄]
+r1_c1, r1_c2, r1_c3 = st.columns(3)
+with r1_c1: draw_premium_pattern("홀짝 비율", ["6:0", "5:1", "4:2", "3:3", "2:4", "1:5", "0:6"], "☯️")
+with r1_c2: draw_premium_pattern("쌍둥이수", ["0", "1", "2", "3", "4"], "👯")
+with r1_c3: draw_premium_pattern("가로패턴", ["0", "1", "2", "3", "4", "5", "6"], "➡️")
+
+# [2번째 줄]
+r2_c1, r2_c2, r2_c3 = st.columns(3)
+with r2_c1: draw_premium_pattern("저고 비율", ["6:0", "5:1", "4:2", "3:3", "2:4", "1:5", "0:6"], "📉")
+with r2_c2: draw_premium_pattern("쌍끝수", ["0개", "1개", "2개", "3개"], "🎯")
+with r2_c3: draw_premium_pattern("세로패턴", ["0", "1", "2", "3", "4", "5", "6"], "⬇️")
+
+# [3번째 줄]
+r3_c1, r3_c2, r3_c3 = st.columns(3)
+with r3_c1: draw_premium_pattern("이월수", ["0", "1", "2", "3", "4", "5", "6"], "🔄")
+with r3_c2: draw_premium_pattern("연속번호", ["없음", "2연번", "3연번", "4연번"], "🔗")
+with r3_c3: draw_premium_pattern("볼 색상 수", ["1", "2", "3", "4", "모든"], "🎨")
+
+# [4번째 줄] - 하단 세팅 구간 최적화
+r4_c1, r4_c2, r4_c3 = st.columns(3)
+with r4_c1: 
+    draw_premium_pattern("이웃수", ["0", "1", "2", "3", "4"], "👥")
+
+with r4_c2:
+    with st.container(border=True):
+        st.markdown('<div class="premium-title"><span>🎯</span> <span>시작/끝번호 핫존</span></div>', unsafe_allow_html=True)
+        cc1, cc2 = st.columns(2)
+        cc1.number_input("시작번호(1~23)", min_value=1, max_value=23, value=1)
+        cc2.number_input("끝번호(28~45)", min_value=28, max_value=45, value=45)
+
+with r4_c3:
+    with st.container(border=True):
+        st.markdown('<div class="premium-title"><span>⚖️</span> <span>총합/홀수합 핫존</span></div>', unsafe_allow_html=True)
+        cc3, cc4 = st.columns(2)
+        cc3.number_input("당첨번호 총합(70~)", min_value=70, max_value=205, value=100)
+        cc4.number_input("홀수합(15~35)", min_value=15, max_value=35, value=25)
+
+st.markdown("---")
+
+# ==========================================================
+# 💾 4. 커스텀 데이터 연동
+# ==========================================================
+st.markdown("<h3 style='color: #334155; font-weight: 800; margin-bottom: 20px;'>🛠️ 나만의 패턴 데이터 덮어쓰기</h3>", unsafe_allow_html=True)
+st.file_uploader("엑셀 형태의 패턴 설정 파일(.xlsx)을 업로드하여 시스템에 즉시 반영하세요.", type=["xlsx"])

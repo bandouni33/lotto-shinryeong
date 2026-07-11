@@ -1,0 +1,37 @@
+import streamlit as st
+import pandas as pd
+# ... (기존 import들) ...
+
+# 1. 고급 필터 화면을 만드는 함수 (이게 대시보드입니다)
+def show_admin_page():
+    st.title("⚙️ 나만의 고급 필터 설정")
+    # 전문가용 데이터 에디터 (여기서 10줄, 30줄 등 설정 가능)
+    user_data = pd.DataFrame({
+        "그룹명": ["소수", "자연수", "3배수", "홀짝", "끝수 저고"],
+        "최소": [0, 0, 0, 0, 0],
+        "최대": [4, 4, 4, 4, 4]
+    })
+    edited_df = st.data_editor(user_data, use_container_width=True)
+    
+    if st.button("💾 저장"):
+        st.success("저장 완료!")
+    if st.button("⬅️ 메인으로"):
+        st.query_params["page"] = "main"
+        st.rerun()
+
+# 2. 페이지 분기 로직 (여기가 핵심입니다)
+current_page = st.query_params.get("page", "main")
+
+if current_page == "main":
+    # ... (기존 메인 화면 코드들) ...
+    # '자동조합' 버튼 클릭 시 페이지를 admin으로 바꿈
+    if st.button("🤖 자동조합(고급필터)"):
+        st.query_params["page"] = "admin"
+        st.rerun()
+
+elif current_page == "admin":
+    # 위에서 만든 함수를 그냥 실행만 하면 됩니다.
+    show_admin_page()
+
+elif current_page == "thunder":
+    # ... (기존 번개조합 코드) ...
