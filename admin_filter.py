@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import os
 import pickle
@@ -15,94 +14,55 @@ FILTER_SAVE_FILE = "user_saved_filters.pkl"
 COMBO_STEP1_FILE = "user_step1_combinations.csv"   
 COMBO_SAVE_FILE = "user_saved_combinations.csv"     
 
-DEVICE_ID_STORAGE_KEY = "lotto_device_id"
-DEVICE_ID_PATTERN = re.compile(
-    r"^dev_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE,
-)
+USERS_DATA_ROOT = "data/users"
+PREMIUM_SETTINGS_FILENAME = "premium_settings.pkl"
 
 if 'trigger_step1' not in st.session_state: st.session_state['trigger_step1'] = False
 if 'trigger_step2' not in st.session_state: st.session_state['trigger_step2'] = False
 
 
-def _sync_device_identity() -> None:
-    """localStorage device_id → history.replaceState → query_params → session_state."""
-    if st.session_state.get("identity_ready") and st.session_state.get("device_id"):
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _is_valid_email(email: str) -> bool:
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
+
+
+def get_user_data_dir(email: str | None = None) -> str:
+    """data/users/{이메일}/ 폴더 경로 반환 및 생성."""
+    user_email = _normalize_email(email or st.session_state.get("user_email", ""))
+    user_dir = os.path.join(USERS_DATA_ROOT, user_email)
+    os.makedirs(user_dir, exist_ok=True)
+    return user_dir
+
+
+def get_user_premium_settings_path(email: str | None = None) -> str:
+    """data/users/{이메일}/premium_settings.pkl 경로 반환."""
+    return os.path.join(get_user_data_dir(email), PREMIUM_SETTINGS_FILENAME)
+
+
+def _prompt_user_email() -> None:
+    """session_state에 이메일이 없으면 최상단에서 1회 입력받음."""
+    if st.session_state.get("user_email"):
         return
 
-    qp_device_id = st.query_params.get("device_id")
-    if isinstance(qp_device_id, list):
-        qp_device_id = qp_device_id[0] if qp_device_id else None
-
-    if qp_device_id and DEVICE_ID_PATTERN.match(str(qp_device_id)):
-        qp_device_id = str(qp_device_id)
-        prev_device_id = st.session_state.get("device_id")
-        st.session_state["device_id"] = qp_device_id
-        st.session_state["identity_ready"] = True
-        st.session_state.pop("_device_id_sync_attempts", None)
-        if prev_device_id != qp_device_id:
-            st.rerun()
-        return
-
-    st.session_state["identity_ready"] = False
-    components.html(
-        f"""
-        <script>
-        (function() {{
-            const STORAGE_KEY = "{DEVICE_ID_STORAGE_KEY}";
-            const DEV_ID_RE = /^dev_[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}$/i;
-
-            function createDeviceId() {{
-                if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {{
-                    return "dev_" + crypto.randomUUID();
-                }}
-                const s4 = function() {{
-                    return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
-                }};
-                return "dev_" + [s4() + s4(), s4(), s4(), s4(), s4() + s4() + s4()].join("-");
-            }}
-
-            function resolveDeviceId() {{
-                let deviceId = localStorage.getItem(STORAGE_KEY);
-                if (!deviceId || !DEV_ID_RE.test(deviceId)) {{
-                    deviceId = createDeviceId();
-                    localStorage.setItem(STORAGE_KEY, deviceId);
-                }}
-                return deviceId;
-            }}
-
-            const deviceId = resolveDeviceId();
-            console.log("[로또신령] device_id:", deviceId);
-
-            try {{
-                const win = window.parent;
-                const url = new URL(win.location.href);
-                if (url.searchParams.get("device_id") === deviceId) return;
-
-                url.searchParams.set("device_id", deviceId);
-                if (!url.searchParams.get("page")) {{
-                    url.searchParams.set("page", "advanced");
-                }}
-                win.history.replaceState({{}}, "", url.toString());
-            }} catch (e) {{
-                console.error("[로또신령] device_id URL sync failed:", e);
-            }}
-        }})();
-        </script>
-        """,
-        height=0,
+    email_input = st.text_input(
+        "설정을 저장/불러오려면 이메일을 입력하세요 (인증 없음, 식별용)",
+        key="user_email_input",
     )
+    if st.button("이메일 확인", key="user_email_submit"):
+        email = _normalize_email(email_input or "")
+        if _is_valid_email(email):
+            st.session_state["user_email"] = email
+            get_user_data_dir(email)
+            st.rerun()
+        else:
+            st.warning("올바른 이메일 형식을 입력해주세요.")
+    st.stop()
 
-    sync_attempts = st.session_state.get("_device_id_sync_attempts", 0)
-    if sync_attempts < 2:
-        st.session_state["_device_id_sync_attempts"] = sync_attempts + 1
-        st.rerun()
 
-
-_sync_device_identity()
-
-st.sidebar.write("DEBUG device_id:", st.session_state.get("device_id"))
-st.sidebar.write("DEBUG identity_ready:", st.session_state.get("identity_ready"))
+_prompt_user_email()
 
 def load_recent_win_numbers():
     possible_paths = ["lotto-app/로또최근당첨내역.xlsb", "로또최근당첨내역.xlsb", "lotto-app/로또최근당첨내역.xlsx", "로또최근당첨내역.xlsx"]
