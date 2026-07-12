@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import os
 import pickle
@@ -14,8 +15,94 @@ FILTER_SAVE_FILE = "user_saved_filters.pkl"
 COMBO_STEP1_FILE = "user_step1_combinations.csv"   
 COMBO_SAVE_FILE = "user_saved_combinations.csv"     
 
+DEVICE_ID_STORAGE_KEY = "lotto_device_id"
+DEVICE_ID_PATTERN = re.compile(
+    r"^dev_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
 if 'trigger_step1' not in st.session_state: st.session_state['trigger_step1'] = False
 if 'trigger_step2' not in st.session_state: st.session_state['trigger_step2'] = False
+
+
+def _sync_device_identity() -> None:
+    """localStorage device_id → history.replaceState → query_params → session_state."""
+    if st.session_state.get("identity_ready") and st.session_state.get("device_id"):
+        return
+
+    qp_device_id = st.query_params.get("device_id")
+    if isinstance(qp_device_id, list):
+        qp_device_id = qp_device_id[0] if qp_device_id else None
+
+    if qp_device_id and DEVICE_ID_PATTERN.match(str(qp_device_id)):
+        qp_device_id = str(qp_device_id)
+        prev_device_id = st.session_state.get("device_id")
+        st.session_state["device_id"] = qp_device_id
+        st.session_state["identity_ready"] = True
+        st.session_state.pop("_device_id_sync_attempts", None)
+        if prev_device_id != qp_device_id:
+            st.rerun()
+        return
+
+    st.session_state["identity_ready"] = False
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            const STORAGE_KEY = "{DEVICE_ID_STORAGE_KEY}";
+            const DEV_ID_RE = /^dev_[0-9a-f]{{8}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{4}}-[0-9a-f]{{12}}$/i;
+
+            function createDeviceId() {{
+                if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {{
+                    return "dev_" + crypto.randomUUID();
+                }}
+                const s4 = function() {{
+                    return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+                }};
+                return "dev_" + [s4() + s4(), s4(), s4(), s4(), s4() + s4() + s4()].join("-");
+            }}
+
+            function resolveDeviceId() {{
+                let deviceId = localStorage.getItem(STORAGE_KEY);
+                if (!deviceId || !DEV_ID_RE.test(deviceId)) {{
+                    deviceId = createDeviceId();
+                    localStorage.setItem(STORAGE_KEY, deviceId);
+                }}
+                return deviceId;
+            }}
+
+            const deviceId = resolveDeviceId();
+            console.log("[로또신령] device_id:", deviceId);
+
+            try {{
+                const win = window.parent;
+                const url = new URL(win.location.href);
+                if (url.searchParams.get("device_id") === deviceId) return;
+
+                url.searchParams.set("device_id", deviceId);
+                if (!url.searchParams.get("page")) {{
+                    url.searchParams.set("page", "advanced");
+                }}
+                win.history.replaceState({{}}, "", url.toString());
+            }} catch (e) {{
+                console.error("[로또신령] device_id URL sync failed:", e);
+            }}
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+    sync_attempts = st.session_state.get("_device_id_sync_attempts", 0)
+    if sync_attempts < 2:
+        st.session_state["_device_id_sync_attempts"] = sync_attempts + 1
+        st.rerun()
+
+
+_sync_device_identity()
+
+st.sidebar.write("DEBUG device_id:", st.session_state.get("device_id"))
+st.sidebar.write("DEBUG identity_ready:", st.session_state.get("identity_ready"))
 
 def load_recent_win_numbers():
     possible_paths = ["lotto-app/로또최근당첨내역.xlsb", "로또최근당첨내역.xlsb", "lotto-app/로또최근당첨내역.xlsx", "로또최근당첨내역.xlsx"]
