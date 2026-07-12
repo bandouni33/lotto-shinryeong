@@ -20,7 +20,7 @@ if st.session_state.get("is_admin", False):
 # ==========================================
 # 1. 페이지 초기 설정 및 상태 관리
 # ==========================================
-st.set_page_config(page_title="로또야 놀자", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="로또신령", page_icon="K-325.jpg", layout="centered", initial_sidebar_state="collapsed")
 
 current_page = st.query_params.get("page", "main")
 

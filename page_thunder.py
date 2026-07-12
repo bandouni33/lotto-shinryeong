@@ -4,6 +4,14 @@ from birthday_db import get_user_birthdays
 from lucky_numbers import calculate_all_lucky_numbers
 import json
 
+# ── 번개조합 선택 색상 단일 정의 (삭제수/고정수/행운수) ──
+# 이 3가지 색상은 반드시 여기서만 정의합니다. 다른 파일·CSS 블록에 중복 정의하지 마세요.
+# 레이아웃·진동·통계 등 다른 작업을 할 때도 이 값을 임의로 변경하지 마세요.
+THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
+THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
+THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
+
+
 def render(admin_lucky=None):
     # ─── 데이터 로드 및 행운수 계산 ───
     if admin_lucky is None:
@@ -39,7 +47,8 @@ def render(admin_lucky=None):
             background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
             border: none !important;
             border-radius: 12px !important;
-            font-weight: bold !important;
+            color: #0F172A !important;
+            font-weight: 800 !important;
             transition: transform 0.12s ease, box-shadow 0.12s ease !important;
             box-shadow:
                 0 4px 0 #94a3b8,
@@ -66,7 +75,7 @@ def render(admin_lucky=None):
 
     ncol1, ncol2 = st.columns(2)
     with ncol1:
-        if st.button("⬅️", key="th_nav_home", use_container_width=True):
+        if st.button("⬅️ 홈", key="th_nav_home", use_container_width=True):
             st.query_params.clear()
             st.rerun()
     with ncol2:
@@ -87,7 +96,7 @@ def render(admin_lucky=None):
         doc.querySelectorAll('div[data-testid="stButton"] button').forEach(function(btn) {
             if (btn.dataset.thVibrateBound) return;
             const label = (btn.innerText || '').trim();
-            if (label === '⬅️' || label.indexOf('생일/행운수 관리') !== -1) {
+            if (label.indexOf('홈') !== -1 || label.indexOf('생일/행운수 관리') !== -1) {
                 btn.dataset.thVibrateBound = '1';
                 btn.addEventListener('click', safeVibrate, { passive: true });
             }
@@ -105,7 +114,12 @@ def render(admin_lucky=None):
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
         <style>
             * {{ font-family: 'Noto Sans KR', sans-serif; box-sizing: border-box; }}
-            body {{ background-color: #0F172A; color: white; margin: 0; padding: 10px; overflow-x: hidden; }}
+            :root {{
+                --th-delete: {THUNDER_COLOR_DELETE};
+                --th-fixed: {THUNDER_COLOR_FIXED};
+                --th-lucky: {THUNDER_COLOR_LUCKY};
+            }}
+            body {{ background-color: #0F172A; color: #F8FAFC; margin: 0; padding: 10px; overflow-x: hidden; }}
             
             .nav-container {{ display: flex; gap: 10px; margin-bottom: 20px; }}
             .nav-btn {{
@@ -127,7 +141,7 @@ def render(admin_lucky=None):
             }}
             .tab {{
                 flex: 1; padding: 12px; text-align: center; border-radius: 8px;
-                cursor: pointer; font-weight: bold; font-size: 15px;
+                cursor: pointer; font-weight: 900; font-size: 15px;
                 transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease;
                 box-shadow:
                     0 3px 0 rgba(0, 0, 0, 0.25),
@@ -136,15 +150,17 @@ def render(admin_lucky=None):
             }}
             .tab.active {{
                 background: linear-gradient(180deg, #c084fc 0%, #A855F7 55%, #9333ea 100%);
-                color: white;
+                color: #FFFFFF;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
                 box-shadow:
                     0 4px 0 #6b21a8,
                     0 7px 14px rgba(168, 85, 247, 0.45),
                     inset 0 1px 0 rgba(255, 255, 255, 0.25);
             }}
             .tab:not(.active) {{
-                color: #94A3B8;
+                color: #F1F5F9;
                 background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
             }}
             .tab:not(.active):hover {{
                 box-shadow:
@@ -166,7 +182,7 @@ def render(admin_lucky=None):
             .num-cell {{
                 aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
                 background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%);
-                color: #1E293B; border-radius: 8px; font-weight: bold;
+                color: #0F172A; border-radius: 8px; font-weight: 900;
                 cursor: pointer; font-size: 14px; border: 2px solid transparent;
                 transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease;
                 box-shadow:
@@ -181,36 +197,40 @@ def render(admin_lucky=None):
                     inset 0 1px 0 rgba(255, 255, 255, 0.6);
             }}
             .num-cell:active {{ transform: scale(0.97); }}
+            /* 선택 색상: :root 변수만 사용 (Python 상수 THUNDER_COLOR_* 와 동기화) */
             .num-cell.selected-delete {{
-                background: linear-gradient(180deg, #64748b 0%, #475569 100%);
-                color: white; border-color: #94A3B8;
+                background: var(--th-delete);
+                color: #FFFFFF; border-color: var(--th-delete);
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
                 box-shadow:
                     0 3px 0 #334155,
                     0 5px 10px rgba(0, 0, 0, 0.28),
                     inset 0 1px 0 rgba(255, 255, 255, 0.2);
             }}
             .num-cell.selected-fixed {{
-                background: linear-gradient(180deg, #60a5fa 0%, #3B82F6 100%);
-                color: white; border-color: #60A5FA;
+                background: var(--th-fixed);
+                color: #FFFFFF; border-color: var(--th-fixed);
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
                 box-shadow:
-                    0 3px 0 #1d4ed8,
-                    0 5px 10px rgba(59, 130, 246, 0.35),
+                    0 3px 0 #c2410c,
+                    0 5px 10px rgba(255, 152, 0, 0.35),
                     inset 0 1px 0 rgba(255, 255, 255, 0.25);
             }}
             .num-cell.selected-lucky {{
-                background: linear-gradient(180deg, #e879f9 0%, #D946EF 100%);
-                color: white; border-color: #F0ABFC;
+                background: var(--th-lucky);
+                color: #831843; border-color: var(--th-lucky);
+                text-shadow: 0 1px 1px rgba(255, 255, 255, 0.45);
                 box-shadow:
-                    0 3px 0 #a21caf,
-                    0 5px 10px rgba(217, 70, 239, 0.35),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+                    0 3px 0 #c026d3,
+                    0 5px 10px rgba(240, 171, 252, 0.45),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.35);
             }}
             
             .control-panel {{ display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; margin-top: 20px; }}
             .select-game {{
                 background: linear-gradient(180deg, #334155 0%, #1E293B 100%);
-                color: white; border: 2px solid #334155;
-                padding: 12px; border-radius: 12px; font-weight: bold; outline: none;
+                color: #F8FAFC; border: 2px solid #334155;
+                padding: 12px; border-radius: 12px; font-weight: 900; outline: none;
                 transition: box-shadow 0.12s ease, transform 0.12s ease;
                 box-shadow:
                     0 4px 0 #0b1220,
@@ -236,7 +256,8 @@ def render(admin_lucky=None):
             .action-btn:active {{ transform: scale(0.97); }}
             .btn-start {{
                 background: linear-gradient(180deg, #22d3ee 0%, #06B6D4 55%, #0891b2 100%);
-                color: white;
+                color: #FFFFFF;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
                 box-shadow:
                     0 4px 0 #0e7490,
                     0 7px 14px rgba(6, 182, 212, 0.4),
@@ -244,7 +265,8 @@ def render(admin_lucky=None):
             }}
             .btn-save {{
                 background: linear-gradient(180deg, #65a30d 0%, #3F6212 55%, #365314 100%);
-                color: white;
+                color: #FFFFFF;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
                 box-shadow:
                     0 4px 0 #1a2e05,
                     0 7px 14px rgba(63, 98, 18, 0.4),
@@ -253,18 +275,96 @@ def render(admin_lucky=None):
             
             .result-area {{ margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }}
             .result-row {{
-                background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+                background: linear-gradient(145deg, #0A0A0F 0%, #050508 55%, #0D0D1A 100%);
                 padding: 15px; border-radius: 12px;
+                border: 1px solid #1A1A2E;
                 display: flex; justify-content: center; gap: 8px;
                 box-shadow:
-                    0 4px 0 #cbd5e1,
-                    0 7px 14px rgba(0, 0, 0, 0.18),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+                    0 4px 0 #000000,
+                    0 7px 16px rgba(0, 0, 0, 0.55),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.04);
             }}
+            .result-row.reveal {{
+                opacity: 0;
+                will-change: transform, opacity;
+                animation: resultRowReveal 1s cubic-bezier(0.34, 1.45, 0.64, 1) forwards;
+            }}
+            /* 메인화면(user_page) 로또볼 3D 스타일 재사용 */
             .ball {{
                 width: 35px; height: 35px; border-radius: 50%; display: flex;
                 align-items: center; justify-content: center; color: white;
-                font-weight: bold; font-size: 14px; text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+                font-weight: 900; font-size: 15px;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+                box-shadow:
+                    2px 3px 5px rgba(0,0,0,0.5),
+                    inset -3px -3px 5px rgba(0,0,0,0.4),
+                    inset 2px 2px 4px rgba(255,255,255,0.6);
+            }}
+            .result-row.reveal .ball {{
+                will-change: box-shadow, filter;
+                animation: ballGlowReveal 1.1s ease-out forwards;
+            }}
+            .result-row.reveal .ball:nth-child(1) {{ animation-delay: 0.04s; }}
+            .result-row.reveal .ball:nth-child(2) {{ animation-delay: 0.08s; }}
+            .result-row.reveal .ball:nth-child(3) {{ animation-delay: 0.12s; }}
+            .result-row.reveal .ball:nth-child(4) {{ animation-delay: 0.16s; }}
+            .result-row.reveal .ball:nth-child(5) {{ animation-delay: 0.20s; }}
+            .result-row.reveal .ball:nth-child(6) {{ animation-delay: 0.24s; }}
+
+            @keyframes resultRowReveal {{
+                0% {{
+                    opacity: 0;
+                    transform: translateY(42px);
+                }}
+                45% {{
+                    opacity: 0.75;
+                    transform: translateY(-7px);
+                }}
+                62% {{
+                    opacity: 1;
+                    transform: translateY(4px);
+                }}
+                78% {{
+                    transform: translateY(-3px);
+                }}
+                90% {{
+                    transform: translateY(1px);
+                }}
+                100% {{
+                    opacity: 1;
+                    transform: translateY(0);
+                }}
+            }}
+            @keyframes ballGlowReveal {{
+                0% {{
+                    filter: brightness(0.65);
+                    box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+                }}
+                28% {{
+                    filter: brightness(1.2);
+                    box-shadow:
+                        0 0 14px 5px rgba(255, 255, 255, 0.75),
+                        0 0 26px 10px rgba(168, 85, 247, 0.42);
+                }}
+                55% {{
+                    filter: brightness(1.08);
+                    box-shadow:
+                        0 0 18px 7px rgba(255, 255, 255, 0.9),
+                        0 0 32px 12px rgba(192, 132, 252, 0.55);
+                }}
+                78% {{
+                    filter: brightness(1.02);
+                    box-shadow:
+                        0 0 10px 3px rgba(255, 255, 255, 0.45),
+                        0 0 18px 6px rgba(168, 85, 247, 0.22);
+                }}
+                100% {{
+                    filter: brightness(1);
+                    box-shadow:
+                        2px 3px 5px rgba(0,0,0,0.5),
+                        inset -3px -3px 5px rgba(0,0,0,0.4),
+                        inset 2px 2px 4px rgba(255,255,255,0.6);
+                }}
             }}
         </style>
     </head>
@@ -497,21 +597,22 @@ def render(admin_lucky=None):
                 }}
             }}
 
-            function getBallColor(n) {{
-                if (n <= 10) return '#fbc400';
-                if (n <= 20) return '#69c8f2';
-                if (n <= 30) return '#ff7272';
-                if (n <= 40) return '#aaa';
-                return '#b0d840';
+            /* 메인화면 user_page get_ball_style() / orbit-ball radial-gradient 재사용 */
+            function getBallBackground(n) {{
+                if (n <= 10) return 'radial-gradient(circle at 35% 35%, #ffeb3b, #f9a825, #f57f17)';
+                if (n <= 20) return 'radial-gradient(circle at 35% 35%, #4fc3f7, #1976d2, #0d47a1)';
+                if (n <= 30) return 'radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c)';
+                if (n <= 40) return 'radial-gradient(circle at 35% 35%, #bdbdbd, #757575, #424242)';
+                return 'radial-gradient(circle at 35% 35%, #81c784, #388e3c, #1b5e20)';
             }}
 
             function renderGame(nums) {{
                 const row = document.createElement('div');
-                row.className = 'result-row';
+                row.className = 'result-row reveal';
                 nums.forEach(n => {{
                     const ball = document.createElement('div');
                     ball.className = 'ball';
-                    ball.style.backgroundColor = getBallColor(n);
+                    ball.style.background = getBallBackground(n);
                     ball.innerText = n;
                     row.appendChild(ball);
                 }});

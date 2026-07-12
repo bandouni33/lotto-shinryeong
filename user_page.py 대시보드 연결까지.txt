@@ -12,7 +12,7 @@ if st.session_state.get("go_to_admin", False):
 # ==========================================
 # 1. 페이지 초기 설정 및 상태 관리
 # ==========================================
-st.set_page_config(page_title="로또야 놀자", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="로또신령", layout="centered", initial_sidebar_state="collapsed")
 
 current_page = st.query_params.get("page", "main")
 
@@ -346,14 +346,14 @@ elif current_page == "thunder":
             if (currentGeneratedCombos.length === 0) return;
             vibrate(30);
 
-            let shareText = "[로또야 놀자 - 번개조합 결과]\\n";
+            let shareText = "[로또신령 - 번개조합 결과]\\n";
             currentGeneratedCombos.forEach((combo, idx) => {
                 shareText += `${idx + 1}게임: ${combo.join(", ")}\\n`;
             });
 
             if (navigator.share) {
                 navigator.share({
-                    title: '로또야 놀자 번개조합',
+                    title: '로또신령 번개조합',
                     text: shareText
                 }).catch(err => console.log('공유 취소됨'));
             } else {

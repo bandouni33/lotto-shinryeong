@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.set_page_config(page_title="로또야 놀자", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="로또신령", page_icon="K-325.jpg", layout="wide", initial_sidebar_state="collapsed")
 
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
