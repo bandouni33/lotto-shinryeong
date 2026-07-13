@@ -11,6 +11,15 @@ COL_NUM_START = 3
 COL_NUM_END = 9
 COL_AC = 11
 
+PATTERN_DEFAULT_N = 20
+DECADE_BANDS = (
+    ("1번대", 1, 9),
+    ("10번대", 10, 19),
+    ("20번대", 20, 29),
+    ("30번대", 30, 39),
+    ("40번대", 40, 45),
+)
+
 
 def load_lotto_data(filepath: str = DATA_FILE) -> pd.DataFrame:
     df = pd.read_excel(filepath, engine="pyxlsb", header=None)
@@ -89,12 +98,128 @@ def calc_carryover_in_last_n(data: pd.DataFrame, n: int = 5) -> dict:
     return {"count": count, "checked": limit, "details": details}
 
 
+def _pattern_draw_limit(data: pd.DataFrame, n: int) -> int:
+    return min(n, len(data))
+
+
+def calc_odd_even_pattern(data: pd.DataFrame, n: int = PATTERN_DEFAULT_N) -> dict:
+    """최근 N회 각 회차의 홀/짝 개수 조합 빈도."""
+    limit = _pattern_draw_limit(data, n)
+    combo_counts: Counter[tuple[int, int]] = Counter()
+    for i in range(limit):
+        nums = _draw_numbers(data.iloc[i])
+        odds = sum(1 for x in nums if x % 2 == 1)
+        evens = len(nums) - odds
+        combo_counts[(odds, evens)] += 1
+    top_combo, top_count = combo_counts.most_common(1)[0]
+    return {
+        "checked": limit,
+        "top_odds": top_combo[0],
+        "top_evens": top_combo[1],
+        "top_count": top_count,
+        "distribution": dict(combo_counts),
+    }
+
+
+def calc_low_high_pattern(data: pd.DataFrame, n: int = PATTERN_DEFAULT_N) -> dict:
+    """최근 N회 각 회차의 저(1~22)/고(23~45) 개수 조합 빈도."""
+    limit = _pattern_draw_limit(data, n)
+    combo_counts: Counter[tuple[int, int]] = Counter()
+    for i in range(limit):
+        nums = _draw_numbers(data.iloc[i])
+        low = sum(1 for x in nums if 1 <= x <= 22)
+        high = len(nums) - low
+        combo_counts[(low, high)] += 1
+    top_combo, top_count = combo_counts.most_common(1)[0]
+    return {
+        "checked": limit,
+        "top_low": top_combo[0],
+        "top_high": top_combo[1],
+        "top_count": top_count,
+        "distribution": dict(combo_counts),
+    }
+
+
+def _count_in_band(nums: list[int], lo: int, hi: int) -> int:
+    return sum(1 for x in nums if lo <= x <= hi)
+
+
+def calc_decade_pattern(data: pd.DataFrame, n: int = PATTERN_DEFAULT_N) -> dict:
+    """
+    10단위 구간(1~9, 10~19, 20~29, 30~39, 40~45) 분포.
+    최신 회차부터 연속 0출현(전멸)이 2회 이상인 구간만 경고로 반환.
+    """
+    limit = _pattern_draw_limit(data, n)
+    per_draw: list[dict[str, int]] = []
+    band_totals: Counter[str] = Counter()
+
+    for i in range(limit):
+        nums = _draw_numbers(data.iloc[i])
+        row_counts: dict[str, int] = {}
+        for band_name, lo, hi in DECADE_BANDS:
+            count = _count_in_band(nums, lo, hi)
+            row_counts[band_name] = count
+            band_totals[band_name] += count
+        per_draw.append(row_counts)
+
+    warnings = []
+    for band_name, lo, hi in DECADE_BANDS:
+        streak = 0
+        for row_counts in per_draw:
+            if row_counts[band_name] == 0:
+                streak += 1
+            else:
+                break
+        if streak >= 2:
+            warnings.append(
+                {
+                    "band": band_name,
+                    "range": f"{lo}~{hi}",
+                    "streak": streak,
+                }
+            )
+
+    return {
+        "checked": limit,
+        "warnings": warnings,
+        "band_totals": dict(band_totals),
+    }
+
+
+def calc_last_digit_pattern(data: pd.DataFrame, n: int = PATTERN_DEFAULT_N) -> dict:
+    """최근 N회 당첨번호 일의 자리(0~9) 출현 빈도."""
+    limit = _pattern_draw_limit(data, n)
+    digit_counts: Counter[int] = Counter()
+    for i in range(limit):
+        nums = _draw_numbers(data.iloc[i])
+        for num in nums:
+            digit_counts[num % 10] += 1
+    top_digit, top_count = digit_counts.most_common(1)[0]
+    return {
+        "checked": limit,
+        "top_digit": top_digit,
+        "top_count": top_count,
+        "distribution": dict(digit_counts),
+    }
+
+
+def compute_pattern_stats(data: pd.DataFrame, n: int = PATTERN_DEFAULT_N) -> dict:
+    return {
+        "basis_n": n,
+        "odd_even": calc_odd_even_pattern(data, n),
+        "low_high": calc_low_high_pattern(data, n),
+        "decade": calc_decade_pattern(data, n),
+        "last_digit": calc_last_digit_pattern(data, n),
+    }
+
+
 def compute_all_stats(filepath: str = DATA_FILE) -> dict:
     data = load_lotto_data(filepath)
     latest = get_latest_draw_stats(data)
     hot = calc_hot_numbers(data, 10)
     cold = calc_cold_numbers(data, 15)
     carry = calc_carryover_in_last_n(data, 5)
+    pattern = compute_pattern_stats(data, PATTERN_DEFAULT_N)
     first_draw = int(float(data.iloc[-1][COL_DRAW]))
     last_draw = latest["draw_no"]
     return {
@@ -105,4 +230,5 @@ def compute_all_stats(filepath: str = DATA_FILE) -> dict:
         "cold": cold,
         "cold_basis_n": 15,
         "carry": carry,
+        "pattern": pattern,
     }

@@ -653,37 +653,86 @@ elif current_page == "stats":
         </div>
         """, unsafe_allow_html=True)
 
-    # ⚠️ TODO: 아래 Tab3 항목들은 실데이터 미연동 상태 (목업 문구)
-    # lotto_stats.py에 계산 함수 추가 필요
-    # 우선순위: 다음 작업 세션에서 처리
-    # --- TAB 3: 패턴 분석 ---
+    # --- TAB 3: 패턴 분석 (lotto_stats.py 실데이터) ---
     with tab3:
-        st.markdown("""
+        if stats is not None:
+            pattern = stats["pattern"]
+            pat_n = pattern["basis_n"]
+            oe = pattern["odd_even"]
+            lh = pattern["low_high"]
+            dec = pattern["decade"]
+            ld = pattern["last_digit"]
+
+            odd_even_text = (
+                f'현재 누적 트렌드 ➡️ <span style="color:#ffb300;">'
+                f'홀 {oe["top_odds"]} : 짝 {oe["top_evens"]}</span> '
+                f'(최근 {oe["checked"]}회 중 {oe["top_count"]}회)'
+            )
+            low_high_text = (
+                f'현재 누적 트렌드 ➡️ <span style="color:#ffb300;">'
+                f'저 {lh["top_low"]} : 고 {lh["top_high"]}</span> '
+                f'(최근 {lh["checked"]}회 중 {lh["top_count"]}회)'
+            )
+
+            if dec["warnings"]:
+                decade_lines = []
+                for w in dec["warnings"]:
+                    decade_lines.append(
+                        f'⚠️ <span style="color:#e53935;">{w["band"]} 구간({w["range"]})</span> '
+                        f'{w["streak"]}주 연속 전멸 현상 발생'
+                    )
+                decade_text = "<br/>".join(decade_lines)
+            else:
+                totals = dec["band_totals"]
+                summary_parts = [
+                    f'{name} {totals[name]}회'
+                    for name, _, _ in (
+                        ("1번대", 1, 9),
+                        ("10번대", 10, 19),
+                        ("20번대", 20, 29),
+                        ("30번대", 30, 39),
+                        ("40번대", 40, 45),
+                    )
+                ]
+                decade_text = (
+                    f'최근 {dec["checked"]}회 각 구간 출현: '
+                    f'<span style="color:#4fc3f7;">{" · ".join(summary_parts)}</span>'
+                )
+
+            last_digit_text = (
+                f'최근 동끝수 <span style="color:#4fc3f7;">[ {ld["top_digit"]} ]</span> '
+                f'({ld["top_count"]}회 출현, 최근 {ld["checked"]}회 기준)'
+            )
+        else:
+            pat_n = 0
+            odd_even_text = low_high_text = decade_text = last_digit_text = "데이터 로딩 오류"
+
+        st.markdown(f"""
         <div class="stat-card">
-            <div class="stat-title">7. 홀짝 비율</div>
+            <div class="stat-title">7. 홀짝 비율 <span class="tag">최근 {pat_n}회</span></div>
             <div class="stat-value">
-                현재 누적 트렌드 ➡️ <span style="color:#ffb300;">홀 3 : 짝 3</span> (가장 안정적)
+                {odd_even_text}
             </div>
         </div>
         
         <div class="stat-card">
-            <div class="stat-title">8. 고저 비율 (1~22 vs 23~45)</div>
+            <div class="stat-title">8. 고저 비율 (1~22 vs 23~45) <span class="tag">최근 {pat_n}회</span></div>
             <div class="stat-value">
-                현재 누적 트렌드 ➡️ <span style="color:#ffb300;">저 2 : 고 4</span>
+                {low_high_text}
             </div>
         </div>
         
         <div class="stat-card">
-            <div class="stat-title">9. 번호대별 분포 현상</div>
+            <div class="stat-title">9. 번호대별 분포 현상 <span class="tag">최근 {pat_n}회</span></div>
             <div class="stat-value">
-                ⚠️ <span style="color:#e53935;">30번대 구간</span> 2주 연속 전멸 현상 발생
+                {decade_text}
             </div>
         </div>
         
         <div class="stat-card">
-            <div class="stat-title">10. 끝수 (일의 자리) 출현</div>
+            <div class="stat-title">10. 끝수 (일의 자리) 출현 <span class="tag">최근 {pat_n}회</span></div>
             <div class="stat-value">
-                최근 동끝수 <span style="color:#4fc3f7;">[ 4 ]</span> (14, 24, 34) 패턴 강세
+                {last_digit_text}
             </div>
         </div>
         """, unsafe_allow_html=True)
