@@ -96,8 +96,8 @@ st.markdown("""
 <style>
     /* ── Trading Desk Dark Palette ── */
     :root {
-        --af-bg-deep: #0D0D1A;
-        --af-bg-mid: #1A1A2E;
+        --af-bg-deep: #050508;
+        --af-bg-mid: #0A0A0F;
         --af-bg-card: #141428;
         --af-bg-card-alt: #1c1c38;
         --af-text: #E2E8F0;
@@ -115,14 +115,29 @@ st.markdown("""
     }
 
     .stApp, [data-testid="stAppViewContainer"], .main {
-        background: linear-gradient(165deg, var(--af-bg-deep) 0%, var(--af-bg-mid) 45%, #0f0f22 100%) !important;
+        background: linear-gradient(165deg, #050508 0%, #0A0A0F 50%, #07070C 100%) !important;
         color: var(--af-text) !important;
     }
 
     .block-container {
         max-width: 95% !important;
-        padding-top: 1.5rem !important;
-        padding-bottom: 3rem !important;
+        padding-top: 1.1rem !important;
+        padding-bottom: 2.1rem !important;
+    }
+
+    /* ── Layout density (column / block gaps) ── */
+    div[data-testid="stVerticalBlock"] {
+        gap: 0.45rem !important;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        gap: 0.55rem !important;
+        align-items: stretch !important;
+    }
+    div[data-testid="column"] {
+        gap: 0.35rem !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        margin-bottom: 0.15rem !important;
     }
 
     /* ── Page titles ── */
@@ -143,8 +158,8 @@ st.markdown("""
         color: #F1F5F9 !important;
         font-weight: 800 !important;
         font-size: 1.25rem !important;
-        margin: 1rem 0 0.75rem 0 !important;
-        padding-bottom: 0.5rem !important;
+        margin: 0.7rem 0 0.5rem 0 !important;
+        padding-bottom: 0.35rem !important;
         border-bottom: 1px solid rgba(139, 92, 246, 0.35) !important;
         text-shadow: 0 0 18px rgba(99, 102, 241, 0.25);
     }
@@ -152,8 +167,8 @@ st.markdown("""
     /* ── Card containers ── */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background: linear-gradient(145deg, var(--af-bg-card) 0%, var(--af-bg-card-alt) 55%, #12122a 100%) !important;
-        border-radius: 14px !important;
-        padding: 16px 18px !important;
+        border-radius: 12px !important;
+        padding: 12px 14px !important;
         border: 1px solid rgba(100, 116, 139, 0.25) !important;
         box-shadow:
             0 8px 24px rgba(0, 0, 0, 0.45),
@@ -211,8 +226,8 @@ st.markdown("""
         font-size: 18px !important;
         font-weight: 900 !important;
         color: #FFFFFF !important;
-        margin-bottom: 14px !important;
-        padding-bottom: 8px !important;
+        margin-bottom: 10px !important;
+        padding-bottom: 6px !important;
         border-bottom: none !important;
         position: relative;
         letter-spacing: -0.01em;
@@ -281,24 +296,28 @@ st.markdown("""
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
     }
     .af-table-label {
-        margin-top: 8px;
+        margin-top: 5px;
         font-size: 16px;
         color: #FFFFFF !important;
         font-weight: 700;
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
     }
 
-    /* ── Custom capsule checkboxes ── */
+    /* ── Checkbox: Streamlit Base Web Checkmark only (native input stays hidden) ── */
     div[data-testid="stCheckbox"] {
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
-    div[data-testid="stCheckbox"] label {
+    div[data-testid="stCheckbox"] label,
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"] {
         display: inline-flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
         align-items: center !important;
-        justify-content: center !important;
+        justify-content: flex-start !important;
         gap: 8px !important;
-        min-width: 100%;
-        padding: 8px 12px !important;
+        min-width: 0 !important;
+        width: 100% !important;
+        padding: 6px 10px !important;
         border-radius: 999px !important;
         background: rgba(15, 15, 30, 0.85) !important;
         border: 1px solid rgba(100, 116, 139, 0.35) !important;
@@ -309,22 +328,15 @@ st.markdown("""
         transition: all 0.18s ease !important;
         box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35) !important;
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 0, 0, 1) !important;
+        white-space: nowrap !important;
     }
-    div[data-testid="stCheckbox"] label::before {
-        content: '';
-        flex-shrink: 0;
-        width: 20px;
-        height: 20px;
-        border: 2px solid rgba(255, 255, 255, 0.85);
-        border-radius: 5px;
-        background: rgba(0, 0, 0, 0.35);
-        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
-    }
-    div[data-testid="stCheckbox"] label:hover {
+    div[data-testid="stCheckbox"] label:hover,
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"]:hover {
         border-color: rgba(6, 182, 212, 0.55) !important;
         color: #FFFFFF !important;
     }
-    div[data-testid="stCheckbox"] label:has(input:checked) {
+    div[data-testid="stCheckbox"] label:has(input:checked),
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"]:has(input:checked) {
         background: linear-gradient(135deg, rgba(6, 182, 212, 0.25) 0%, rgba(139, 92, 246, 0.28) 100%) !important;
         border-color: rgba(139, 92, 246, 0.65) !important;
         color: #FFFFFF !important;
@@ -333,33 +345,59 @@ st.markdown("""
             inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 1) !important;
     }
-    div[data-testid="stCheckbox"] label:has(input:checked)::before {
-        content: '✓';
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 15px;
-        font-weight: 900;
-        line-height: 1;
-        color: #FFFFFF;
-        background: linear-gradient(135deg, #6366F1, #8B5CF6);
-        border-color: #C4B5FD;
-        box-shadow: 0 0 10px rgba(139, 92, 246, 0.55);
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+
+    /* Streamlit Checkmark span: clear square box + filled check state */
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"] > span:first-of-type {
+        flex-shrink: 0 !important;
+        width: 22px !important;
+        height: 22px !important;
+        min-width: 22px !important;
+        min-height: 22px !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        border: 2px solid rgba(255, 255, 255, 0.92) !important;
+        border-radius: 5px !important;
+        background-color: rgba(8, 8, 16, 0.75) !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
+        background-size: 13px 10px !important;
+        box-shadow:
+            inset 0 2px 4px rgba(0, 0, 0, 0.45),
+            0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+        transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease !important;
     }
-    div[data-testid="stCheckbox"] input[type="checkbox"] {
-        position: absolute !important;
-        opacity: 0 !important;
-        width: 0 !important;
-        height: 0 !important;
-        pointer-events: none !important;
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"]:not(:has(input:checked)) > span:first-of-type {
+        background-image: none !important;
     }
-    div[data-testid="stCheckbox"] label span,
-    div[data-testid="stCheckbox"] label p {
-        margin-left: 0 !important;
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"]:hover > span:first-of-type {
+        border-color: #67E8F9 !important;
+        box-shadow:
+            inset 0 2px 4px rgba(0, 0, 0, 0.45),
+            0 0 8px rgba(103, 232, 249, 0.25) !important;
+    }
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"]:has(input:checked) > span:first-of-type {
+        border: 2px solid #C4B5FD !important;
+        background-color: #8B5CF6 !important;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.2 L6.8 11.5 L12.5 4.5' stroke='%23FFFFFF' stroke-width='1.35' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+        background-size: 12px 12px !important;
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.25),
+            0 0 10px rgba(139, 92, 246, 0.55) !important;
+    }
+
+    /* Option label text only (not the Checkmark span) */
+    div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"],
+    div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {
+        margin: 0 !important;
+        padding: 0 !important;
         color: #FFFFFF !important;
         font-size: 17px !important;
         font-weight: 700 !important;
+        line-height: 1.2 !important;
+        white-space: nowrap !important;
+        word-break: keep-all !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 0, 0, 1) !important;
     }
 
@@ -447,7 +485,7 @@ st.markdown("""
     /* ── Divider ── */
     hr {
         border-color: rgba(100, 116, 139, 0.25) !important;
-        margin: 1.5rem 0 !important;
+        margin: 1rem 0 !important;
     }
 
     /* ── File uploader ── */
