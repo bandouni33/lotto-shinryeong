@@ -653,6 +653,9 @@ elif current_page == "stats":
         </div>
         """, unsafe_allow_html=True)
 
+    # ⚠️ TODO: 아래 Tab3 항목들은 실데이터 미연동 상태 (목업 문구)
+    # lotto_stats.py에 계산 함수 추가 필요
+    # 우선순위: 다음 작업 세션에서 처리
     # --- TAB 3: 패턴 분석 ---
     with tab3:
         st.markdown("""
@@ -695,11 +698,12 @@ elif current_page == "stats":
 
 
 # ==========================================================
-# 👑 메인 화면 맨 아래 관리자 스위치 (관리자만 표시)
+# 👑 메인 화면 맨 아래 관리자 메뉴
 # ==========================================================
-if st.session_state.get("is_admin", False):
+if current_page == "main":
     st.markdown("---")
     with st.expander("🛠️ 시스템 관리자 메뉴"):
-        if st.button("🔒 관리자 모드 끄기", key="admin_btn_off"):
-            st.session_state.is_admin = False
+        if st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
+            st.session_state.is_admin = True
+            st.session_state.go_to_admin = True
             st.rerun()
