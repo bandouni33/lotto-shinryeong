@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from birthday_db import get_user_birthdays
 from lucky_numbers import calculate_all_lucky_numbers
+from lotto_stats import get_thunder_filter_config
 import json
 
 # ── 번개조합 선택 색상 단일 정의 (삭제수/고정수/행운수) ──
@@ -27,6 +28,7 @@ def render(admin_lucky=None):
 
     js_lucky_array = str(family_lucky)
     js_admin_lucky_array = json.dumps(list(reversed(admin_lucky)))
+    js_filter_config = json.dumps(get_thunder_filter_config())
     has_birthdays = bool(birthdays)
 
     # ─── 커스텀 CSS ───
@@ -398,6 +400,7 @@ def render(admin_lucky=None):
             let luckyNumbers = new Set();
             const registeredFamilyLucky = {js_lucky_array};
             const adminLuckyOrdered = {js_admin_lucky_array};
+            const thunderFilter = {js_filter_config};
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
             let currentResults = [];
@@ -501,52 +504,155 @@ def render(admin_lucky=None):
                 initGrid();
             }}
 
-            function generateCombination() {{
-                safeVibrate();
-                function pickLuckyCount() {{
-                    const r = Math.random();
-                    if (r < 0.30) return 0;
-                    if (r < 0.65) return 1;
-                    if (r < 0.90) return 2;
-                    return 3;
-                }}
+            function pickLuckyCount() {{
+                const r = Math.random();
+                if (r < 0.30) return 0;
+                if (r < 0.65) return 1;
+                if (r < 0.90) return 2;
+                return 3;
+            }}
 
-                function pickAdminCount() {{
-                    const r = Math.random();
-                    if (r < 0.40) return 0;
-                    if (r < 0.80) return 1;
-                    return 2;
-                }}
+            function pickAdminCount() {{
+                const r = Math.random();
+                if (r < 0.40) return 0;
+                if (r < 0.80) return 1;
+                return 2;
+            }}
 
-                function pickWeightedFromOrdered(count, orderedList, poolSet, alreadyInGame) {{
-                    const picked = [];
-                    let remaining = orderedList.filter(
-                        n => poolSet.has(n) && !alreadyInGame.has(n)
+            function pickWeightedFromOrdered(count, orderedList, poolSet, alreadyInGame) {{
+                const picked = [];
+                let remaining = orderedList.filter(
+                    n => poolSet.has(n) && !alreadyInGame.has(n)
+                );
+
+                for (let p = 0; p < count && remaining.length > 0; p++) {{
+                    const weights = remaining.map(
+                        n => orderedList.length - orderedList.indexOf(n)
                     );
+                    const total = weights.reduce((a, b) => a + b, 0);
+                    let r = Math.random() * total;
+                    let cum = 0;
+                    let chosenIdx = 0;
 
-                    for (let p = 0; p < count && remaining.length > 0; p++) {{
-                        const weights = remaining.map(
-                            n => orderedList.length - orderedList.indexOf(n)
-                        );
-                        const total = weights.reduce((a, b) => a + b, 0);
-                        let r = Math.random() * total;
-                        let cum = 0;
-                        let chosenIdx = 0;
-
-                        for (let i = 0; i < remaining.length; i++) {{
-                            cum += weights[i];
-                            if (r < cum) {{
-                                chosenIdx = i;
-                                break;
-                            }}
+                    for (let i = 0; i < remaining.length; i++) {{
+                        cum += weights[i];
+                        if (r < cum) {{
+                            chosenIdx = i;
+                            break;
                         }}
-
-                        picked.push(remaining[chosenIdx]);
-                        remaining.splice(chosenIdx, 1);
                     }}
 
-                    return picked;
+                    picked.push(remaining[chosenIdx]);
+                    remaining.splice(chosenIdx, 1);
                 }}
+
+                return picked;
+            }}
+
+            function longestConsecutiveRun(nums) {{
+                if (nums.length === 0) return 0;
+                const sorted = [...nums].sort((a, b) => a - b);
+                let best = 1;
+                let cur = 1;
+                for (let i = 1; i < sorted.length; i++) {{
+                    if (sorted[i] === sorted[i - 1] + 1) {{
+                        cur += 1;
+                        best = Math.max(best, cur);
+                    }} else {{
+                        cur = 1;
+                    }}
+                }}
+                return best;
+            }}
+
+            function maxDecadeCount(nums) {{
+                const bands = [
+                    [1, 9], [10, 19], [20, 29], [30, 39], [40, 45]
+                ];
+                let best = 0;
+                for (const [lo, hi] of bands) {{
+                    const c = nums.filter(n => n >= lo && n <= hi).length;
+                    best = Math.max(best, c);
+                }}
+                return best;
+            }}
+
+            function maxLastDigitCount(nums) {{
+                const counts = {{}};
+                nums.forEach(n => {{
+                    const d = n % 10;
+                    counts[d] = (counts[d] || 0) + 1;
+                }});
+                return Math.max(0, ...Object.values(counts));
+            }}
+
+            function violatesNaturalFilter(nums) {{
+                const t = thunderFilter.thresholds;
+                if (longestConsecutiveRun(nums) >= t.max_consecutive_run) return true;
+                if (maxDecadeCount(nums) >= t.max_decade_count) return true;
+                if (maxLastDigitCount(nums) >= t.max_last_digit_count) return true;
+                return false;
+            }}
+
+            function fillRandomSlots(fixedArr, availablePool) {{
+                let game = fixedArr.slice();
+                const gameSet = new Set(game);
+                const pool = availablePool.filter(n => !selectedFixed.has(n));
+                const poolSet = new Set(pool);
+
+                let luckyCandidates = pool.filter(n => luckyNumbers.has(n));
+                let targetLucky = pickLuckyCount();
+                targetLucky = Math.min(targetLucky, luckyCandidates.length, 6 - game.length);
+                luckyCandidates.sort(() => Math.random() - 0.5);
+                const pickedLucky = luckyCandidates.slice(0, targetLucky);
+                game = game.concat(pickedLucky);
+                pickedLucky.forEach(n => gameSet.add(n));
+
+                let targetAdmin = pickAdminCount();
+                targetAdmin = Math.min(targetAdmin, 6 - game.length);
+                const pickedAdmin = pickWeightedFromOrdered(
+                    targetAdmin, adminLuckyOrdered, poolSet, gameSet
+                );
+                game = game.concat(pickedAdmin);
+                pickedAdmin.forEach(n => gameSet.add(n));
+
+                let remainingPool = pool.filter(n => !gameSet.has(n));
+                remainingPool.sort(() => Math.random() - 0.5);
+                while (game.length < 6 && remainingPool.length > 0) {{
+                    game.push(remainingPool.shift());
+                }}
+                return game;
+            }}
+
+            function buildOneGame(availablePool) {{
+                const fixedArr = Array.from(selectedFixed);
+                const fixedExempt = violatesNaturalFilter(fixedArr);
+                const maxRetries = thunderFilter.thresholds.max_retries;
+                let game = fixedArr.slice();
+                let attempts = 0;
+                let gaveUp = false;
+
+                if (fixedArr.length >= 6) {{
+                    return {{ game: fixedArr.slice().sort((a, b) => a - b), attempts: 0, gaveUp: false }};
+                }}
+
+                do {{
+                    game = fillRandomSlots(fixedArr, availablePool);
+                    attempts += 1;
+                    if (fixedExempt) break;
+                    if (!violatesNaturalFilter(game)) break;
+                }} while (attempts < maxRetries);
+
+                if (!fixedExempt && violatesNaturalFilter(game) && attempts >= maxRetries) {{
+                    gaveUp = true;
+                }}
+
+                game.sort((a, b) => a - b);
+                return {{ game, attempts, gaveUp }};
+            }}
+
+            function generateCombination() {{
+                safeVibrate();
 
                 const count = parseInt(document.getElementById('gameCount').value);
                 const available = [];
@@ -560,39 +666,9 @@ def render(admin_lucky=None):
 
                 for (let g = 0; g < count; g++) {{
                     setTimeout(() => {{
-                        let game = Array.from(selectedFixed);
-                        const gameSet = new Set(game);
-                        let pool = available.filter(n => !selectedFixed.has(n));
-                        const poolSet = new Set(pool);
-
-                        let luckyCandidates = pool.filter(n => luckyNumbers.has(n));
-
-                        let targetLucky = pickLuckyCount();
-                        targetLucky = Math.min(targetLucky, luckyCandidates.length, 6 - game.length);
-
-                        luckyCandidates.sort(() => Math.random() - 0.5);
-                        let pickedLucky = luckyCandidates.slice(0, targetLucky);
-                        game = game.concat(pickedLucky);
-                        pickedLucky.forEach(n => gameSet.add(n));
-
-                        let targetAdmin = pickAdminCount();
-                        targetAdmin = Math.min(targetAdmin, 6 - game.length);
-                        let pickedAdmin = pickWeightedFromOrdered(
-                            targetAdmin, adminLuckyOrdered, poolSet, gameSet
-                        );
-                        game = game.concat(pickedAdmin);
-                        pickedAdmin.forEach(n => gameSet.add(n));
-
-                        let remainingPool = pool.filter(n => !gameSet.has(n));
-                        remainingPool.sort(() => Math.random() - 0.5);
-
-                        while (game.length < 6 && remainingPool.length > 0) {{
-                            game.push(remainingPool.shift());
-                        }}
-
-                        game.sort((a, b) => a - b);
-                        currentResults.push(game);
-                        renderGame(game);
+                        const built = buildOneGame(available);
+                        currentResults.push(built.game);
+                        renderGame(built.game);
                     }}, g * 2000);
                 }}
             }}

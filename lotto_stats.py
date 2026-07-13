@@ -232,3 +232,91 @@ def compute_all_stats(filepath: str = DATA_FILE) -> dict:
         "carry": carry,
         "pattern": pattern,
     }
+
+
+# ── 번개조합 자연스러움 필터 (역대 당첨 데이터 기반) ──
+THUNDER_FILTER_MAX_CONSECUTIVE = 4   # 3연번까지 허용, 4연번+ 재추첨 (역대 ~0.49%)
+THUNDER_FILTER_MAX_DECADE = 4        # 동일 10단위 4개+ 재추첨 (역대 ~5.76%)
+THUNDER_FILTER_MAX_LAST_DIGIT = 3    # 동일 끝수 3개+ 재추첨 (역대 ~8.28%)
+THUNDER_FILTER_MAX_RETRIES = 100
+
+
+def _longest_consecutive_run(nums: list[int]) -> int:
+    if not nums:
+        return 0
+    sorted_nums = sorted(nums)
+    best = cur = 1
+    for i in range(1, len(sorted_nums)):
+        if sorted_nums[i] == sorted_nums[i - 1] + 1:
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 1
+    return best
+
+
+def _max_decade_count(nums: list[int]) -> int:
+    best = 0
+    for _, lo, hi in DECADE_BANDS:
+        best = max(best, sum(1 for x in nums if lo <= x <= hi))
+    return best
+
+
+def _max_last_digit_count(nums: list[int]) -> int:
+    if not nums:
+        return 0
+    return max(Counter(x % 10 for x in nums).values())
+
+
+def analyze_thunder_filter_rates(filepath: str = DATA_FILE) -> dict:
+    """역대 당첨번호 기준 부자연스러운 패턴 발생률 및 필터 임계값."""
+    data = load_lotto_data(filepath)
+    total = len(data)
+    cons = {3: 0, 4: 0, 5: 0}
+    band4 = band5 = 0
+    digit3 = digit4 = 0
+
+    for i in range(total):
+        nums = _draw_numbers(data.iloc[i])
+        run = _longest_consecutive_run(nums)
+        if run >= 3:
+            cons[3] += 1
+        if run >= 4:
+            cons[4] += 1
+        if run >= 5:
+            cons[5] += 1
+        mb = _max_decade_count(nums)
+        if mb >= 4:
+            band4 += 1
+        if mb >= 5:
+            band5 += 1
+        md = _max_last_digit_count(nums)
+        if md >= 3:
+            digit3 += 1
+        if md >= 4:
+            digit4 += 1
+
+    pct = lambda n: round(100 * n / total, 3) if total else 0.0
+    return {
+        "total_draws": total,
+        "thresholds": {
+            "max_consecutive_run": THUNDER_FILTER_MAX_CONSECUTIVE,
+            "max_decade_count": THUNDER_FILTER_MAX_DECADE,
+            "max_last_digit_count": THUNDER_FILTER_MAX_LAST_DIGIT,
+            "max_retries": THUNDER_FILTER_MAX_RETRIES,
+        },
+        "historical_rates": {
+            "consecutive_ge_3": pct(cons[3]),
+            "consecutive_ge_4": pct(cons[4]),
+            "consecutive_ge_5": pct(cons[5]),
+            "decade_ge_4": pct(band4),
+            "decade_ge_5": pct(band5),
+            "last_digit_ge_3": pct(digit3),
+            "last_digit_ge_4": pct(digit4),
+        },
+    }
+
+
+def get_thunder_filter_config(filepath: str = DATA_FILE) -> dict:
+    """page_thunder.py JS 필터에 전달할 설정."""
+    return analyze_thunder_filter_rates(filepath)
