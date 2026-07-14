@@ -435,7 +435,7 @@ st.markdown("""
         background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 45%, #A855F7 100%) !important;
         color: #FFFFFF !important;
         font-weight: 800 !important;
-        font-size: 16px !important;
+        font-size: 24px !important;
         border: 1px solid rgba(167, 139, 250, 0.5) !important;
         border-radius: 12px !important;
         padding: 0.75rem 1.25rem !important;
@@ -480,6 +480,19 @@ st.markdown("""
     }
     div[data-testid="stNotificationContentInfo"] {
         color: #93C5FD !important;
+    }
+    /* 1단계 패턴 통과 조합 info — font-size only */
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stButton"] > button[kind="primary"]) + div[data-testid="stVerticalBlock"] div[data-testid="stAlert"] p {
+        font-size: 29px !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        text-shadow: 0 0 4px rgba(255, 255, 255, 0.3) !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stButton"] > button[kind="primary"]) + div[data-testid="stVerticalBlock"] div[data-testid="stAlert"] strong {
+        font-size: 29px !important;
+        color: #8EEAFF !important;
+        font-weight: 800 !important;
+        text-shadow: 0 0 6px rgba(142, 234, 255, 0.35) !important;
     }
 
     /* ── Divider ── */
