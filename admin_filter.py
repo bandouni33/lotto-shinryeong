@@ -181,30 +181,63 @@ st.markdown("""
     /* 개발중 placeholder 카드 (1·2열 하단) */
     div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.af-placeholder-card) {
-        background: linear-gradient(165deg, rgba(30, 58, 95, 0.72) 0%, rgba(22, 45, 72, 0.78) 52%, rgba(18, 36, 58, 0.82) 100%) !important;
-        border: 2px solid rgba(96, 165, 250, 0.38) !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        background: linear-gradient(165deg, #152238 0%, #122033 52%, #0f1a2b 100%) !important;
+        border: 2px solid rgba(96, 165, 250, 0.48) !important;
         border-radius: 10px !important;
-        min-height: 110px !important;
+        padding: 16px 18px !important;
+        margin-bottom: 0 !important;
+        min-height: 126px !important;
+        display: flex !important;
+        flex-direction: column !important;
         box-shadow:
             0 6px 22px rgba(0, 0, 0, 0.62),
-            0 0 0 1px rgba(96, 165, 250, 0.14),
-            inset 0 1px 0 rgba(147, 197, 253, 0.08) !important;
+            0 0 0 1px rgba(96, 165, 250, 0.16),
+            0 0 18px rgba(59, 130, 246, 0.12),
+            inset 0 1px 0 rgba(147, 197, 253, 0.1) !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.af-placeholder-card)
+        > div[data-testid="stVerticalBlock"] {
+        box-sizing: border-box !important;
+        flex: 1 1 auto !important;
+        width: 100% !important;
+        min-height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 0 !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.af-placeholder-card)
+        [data-testid="stMarkdownContainer"]:has(.af-placeholder-card) {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
     }
     .af-placeholder-card { display: none !important; }
     .af-placeholder-body {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 78px;
-        width: 100%;
-        text-align: center;
+        box-sizing: border-box !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 1 1 auto !important;
+        width: 100% !important;
+        min-height: 92px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        text-align: center !important;
     }
     .af-placeholder-body span {
-        color: rgba(186, 230, 253, 0.88);
+        color: rgba(186, 230, 253, 0.92);
         font-size: 17px;
         font-weight: 700;
         letter-spacing: 0.03em;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65), 0 0 12px rgba(59, 130, 246, 0.25);
     }
     /* 카드 내 7열 체크박스 행: 옵션 텍스트가 잘리지 않도록 */
     div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stHorizontalBlock"] {
