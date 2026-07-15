@@ -178,6 +178,34 @@ st.markdown("""
         padding-top: 20px !important;
         padding-bottom: 20px !important;
     }
+    /* 개발중 placeholder 카드 (1·2열 하단) */
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.af-placeholder-card) {
+        background: linear-gradient(165deg, rgba(30, 58, 95, 0.72) 0%, rgba(22, 45, 72, 0.78) 52%, rgba(18, 36, 58, 0.82) 100%) !important;
+        border: 2px solid rgba(96, 165, 250, 0.38) !important;
+        border-radius: 10px !important;
+        min-height: 110px !important;
+        box-shadow:
+            0 6px 22px rgba(0, 0, 0, 0.62),
+            0 0 0 1px rgba(96, 165, 250, 0.14),
+            inset 0 1px 0 rgba(147, 197, 253, 0.08) !important;
+    }
+    .af-placeholder-card { display: none !important; }
+    .af-placeholder-body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 78px;
+        width: 100%;
+        text-align: center;
+    }
+    .af-placeholder-body span {
+        color: rgba(186, 230, 253, 0.88);
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+    }
     /* 카드 내 7열 체크박스 행: 옵션 텍스트가 잘리지 않도록 */
     div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stHorizontalBlock"] {
         overflow: visible !important;
@@ -648,17 +676,26 @@ def draw_premium_pattern(col, title, tooltip, options, icon, accent="cyan"):
         for i, opt in enumerate(options):
             cc[i].checkbox(opt, value=True, key=f"{title}_{opt}")
 
+def draw_placeholder_card(col):
+    with col.container(border=True):
+        st.markdown('<div class="premium-card-marker af-placeholder-card"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="af-placeholder-body"><span>🔒 개발중</span></div>', unsafe_allow_html=True)
+
 # ── 1열: 홀짝, 저고, 이월, 이웃 ──
 draw_premium_pattern(col1, "홀짝 비율", "당첨번호 6개의 홀수와 짝수 출현 비율입니다.", ["6:0", "5:1", "4:2", "3:3", "2:4", "1:5", "0:6"], "☯️", "cyan")
 draw_premium_pattern(col1, "저고 비율", "1~22(저) 번호와 23~45(고) 번호의 출현 비율입니다.", ["6:0", "5:1", "4:2", "3:3", "2:4", "1:5", "0:6"], "📉", "blue")
 draw_premium_pattern(col1, "이월수", "직전 회차 당첨번호가 이번에 다시 등장하는 개수입니다.", ["0", "1", "2", "3", "4", "5", "6"], "🔄", "purple")
 draw_premium_pattern(col1, "이웃수", "직전 회차 당첨번호와 1차이 나는 번호들의 출현 개수입니다.", ["0", "1", "2", "3", "4"], "👥", "rose")
+draw_placeholder_card(col1)
+draw_placeholder_card(col1)
 
 # ── 2열: 쌍둥이, 쌍끝, 연속, 볼색상 ──
 draw_premium_pattern(col2, "쌍둥이수", "11, 22, 33, 44 처럼 똑같은 숫자가 겹치는 번호의 개수입니다.", ["0", "1", "2", "3", "4"], "👯", "violet")
 draw_premium_pattern(col2, "쌍끝수", "1의 자리가 동일한 번호들의 출현 쌍 개수입니다. (예: 12, 32)", ["0개", "1개", "2개", "3개"], "🎯", "teal")
 draw_premium_pattern(col2, "연속번호", "1, 2, 3 처럼 연속되어 나타나는 번호의 개수입니다.", ["없음", "2연번", "3연번", "4연번"], "🔗", "amber")
 draw_premium_pattern(col2, "볼 색상 수", "당첨번호 6개를 구성하는 볼 색깔의 종류 수입니다.", ["1", "2", "3", "4", "모든"], "🎨", "emerald")
+draw_placeholder_card(col2)
+draw_placeholder_card(col2)
 
 # ── 3열: 소자배, 10단위, 핫존, 총합 ──
 with col3:
