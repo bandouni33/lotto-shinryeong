@@ -148,12 +148,14 @@ st.markdown("""
     div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
         gap: 0.55rem !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"] {
+    div[data-testid="stVerticalBlockBorderWrapper"],
+    div[data-testid="column"]:has(.premium-card-marker) > div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"]:has(.premium-card-marker) {
         overflow: visible !important;
     }
-    /* ── 패턴 3열 그리드: K-493 스타일 개별 카드 박스 ── */
+    /* ── 패턴 3열 그리드: K-493 스타일 개별 카드 박스 (stVerticalBlock) ── */
     div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
-        div[data-testid="stVerticalBlockBorderWrapper"] {
+        div[data-testid="column"]:not(:has(.af-col3-stack)) > div[data-testid="stVerticalBlock"]
+        > div[data-testid="stVerticalBlock"]:has(.premium-card-marker):not(:has(.af-placeholder-card)) {
         background: linear-gradient(165deg, #181832 0%, #141428 52%, #10101f 100%) !important;
         border: 2px solid rgba(203, 213, 225, 0.28) !important;
         border-radius: 10px !important;
@@ -169,14 +171,51 @@ st.markdown("""
         div[data-testid="column"]:not(:has(.af-col3-stack)) > div[data-testid="stVerticalBlock"] {
         gap: 14px !important;
     }
-    /* 3열: 카드 간격 확대 → 1·2열 전체 높이와 균형 */
+    /* 3열: 카드 간격 + 개별 카드 박스 (stVerticalBlock + container key) */
     div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"] {
-        gap: 3.1rem !important;
+        gap: 14px !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack)
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding-top: 20px !important;
-        padding-bottom: 20px !important;
+    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+        > div[data-testid="stVerticalBlock"]:has(.premium-card-marker),
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_soja"],
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_decade"],
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_hotzone"],
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_total"] {
+        box-sizing: border-box !important;
+        width: 100% !important;
+        background: linear-gradient(165deg, #181832 0%, #141428 52%, #10101f 100%) !important;
+        border: 2px solid rgba(203, 213, 225, 0.28) !important;
+        border-radius: 10px !important;
+        padding: 16px 18px !important;
+        margin-bottom: 0 !important;
+        box-shadow:
+            0 6px 22px rgba(0, 0, 0, 0.62),
+            0 0 0 1px rgba(255, 255, 255, 0.06),
+            inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
+    }
+    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+        > div[data-testid="stVerticalBlock"]:has(.accent-teal),
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_soja"] {
+        border: 2px solid rgba(20, 184, 166, 0.62) !important;
+        box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(20,184,166,0.18), 0 0 24px rgba(20,184,166,0.12) !important;
+    }
+    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+        > div[data-testid="stVerticalBlock"]:has(.accent-violet),
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_decade"] {
+        border: 2px solid rgba(139, 92, 246, 0.62) !important;
+        box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(139,92,246,0.18), 0 0 24px rgba(139,92,246,0.12) !important;
+    }
+    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+        > div[data-testid="stVerticalBlock"]:has(.accent-amber),
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_hotzone"] {
+        border: 2px solid rgba(245, 158, 11, 0.62) !important;
+        box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(245,158,11,0.18), 0 0 24px rgba(245,158,11,0.12) !important;
+    }
+    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+        > div[data-testid="stVerticalBlock"]:has(.accent-indigo),
+    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_total"] {
+        border: 2px solid rgba(99, 102, 241, 0.62) !important;
+        box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(99,102,241,0.18), 0 0 24px rgba(99,102,241,0.12) !important;
     }
     /* 개발중 placeholder 카드 (1·2열 하단) */
     div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
@@ -733,7 +772,7 @@ draw_placeholder_card(col2)
 # ── 3열: 소자배, 10단위, 핫존, 총합 ──
 with col3:
     st.markdown('<div class="af-col3-stack" aria-hidden="true"></div>', unsafe_allow_html=True)
-    with st.container(border=True):
+    with st.container(border=True, key="af_col3_soja"):
         st.markdown('<div class="premium-card-marker accent-teal"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-teal">🔢 소자배 패턴 <span class="tooltip-icon" title="소수: 2,3,5,7,11,13,17,19,23,29,31,37,41,43&#10;자연수(합성수): 1,4,8,10,14,16,20,22,25,26,28,32,34,35,38,40,44&#10;3배수: 3,6,9,12,15,18,21,24,27,30,33,36,39,42,45">❓</span></div>', unsafe_allow_html=True)
 
@@ -748,7 +787,7 @@ with col3:
             row_cols[1].number_input(f"{key_prefix}최소", 0, 6, 0, key=f"{key_prefix}_min", label_visibility="collapsed")
             row_cols[2].number_input(f"{key_prefix}최대", 0, 6, 6, key=f"{key_prefix}_max", label_visibility="collapsed")
 
-    with st.container(border=True):
+    with st.container(border=True, key="af_col3_decade"):
         st.markdown('<div class="premium-card-marker accent-violet"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-violet">📏 10단위 출현 패턴 <span class="tooltip-icon" title="각 번호대별로 출현할 수 있는 최소/최대 공의 개수를 지정합니다.">❓</span></div>', unsafe_allow_html=True)
 
@@ -763,14 +802,14 @@ with col3:
             row_cols[1].number_input(f"{key_prefix}최소", 0, 6, 0, key=f"{key_prefix}_min", label_visibility="collapsed")
             row_cols[2].number_input(f"{key_prefix}최대", 0, 6, 6, key=f"{key_prefix}_max", label_visibility="collapsed")
 
-    with st.container(border=True):
+    with st.container(border=True, key="af_col3_hotzone"):
         st.markdown('<div class="premium-card-marker accent-amber"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-amber">🚀 시작/끝번호 핫존 <span class="tooltip-icon" title="첫 번째 공과 마지막 공의 번호 범위입니다.">❓</span></div>', unsafe_allow_html=True)
         rc1, rc2 = st.columns(2)
         rc1.number_input("시작(1~23)", 1, 23, 1, key="시작번호")
         rc2.number_input("끝(28~45)", 28, 45, 45, key="끝번호")
 
-    with st.container(border=True):
+    with st.container(border=True, key="af_col3_total"):
         st.markdown('<div class="premium-card-marker accent-indigo"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-indigo">⚖️ 당첨번호 총합 <span class="tooltip-icon" title="당첨번호 6개를 모두 더한 값의 허용 범위입니다.">❓</span></div>', unsafe_allow_html=True)
         rc3, rc4 = st.columns(2)
