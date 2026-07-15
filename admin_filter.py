@@ -693,21 +693,63 @@ st.markdown("""
     div[data-testid="stNotificationContentInfo"] {
         color: #93C5FD !important;
     }
-    /* 1단계 패턴 통과 조합 info — font-size only */
-    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stButton"] > button[kind="primary"]) + div[data-testid="stVerticalBlock"] div[data-testid="stAlert"] p {
-        font-size: 29px !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-        text-shadow: 0 0 4px rgba(255, 255, 255, 0.3) !important;
+    /* 1단계 실행 버튼 — 폭 45%, 왼쪽 정렬 (af-results-zone 하단 전용) */
+    .af-step1-run-wrap { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-run-wrap) div[data-testid="stButton"]:has(button[data-testid="stBaseButton-primary"]) {
+        width: 45% !important;
+        max-width: 45% !important;
     }
-    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stButton"] > button[kind="primary"]) + div[data-testid="stVerticalBlock"] div[data-testid="stAlert"] strong {
-        font-size: 29px !important;
-        color: #8EEAFF !important;
-        font-weight: 800 !important;
-        text-shadow: 0 0 6px rgba(142, 234, 255, 0.35) !important;
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-run-wrap) button[data-testid="stBaseButton-primary"] {
+        width: 100% !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
     }
 
-    /* ── Divider ── */
+    /* 1단계 패턴 통과 조합 info — 가독성 (흰색 통일, 큰 글씨) */
+    .af-step1-info-marker { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-info-marker)
+        div[data-testid="stElementContainer"]:has(.af-step1-info-marker)
+        + div[data-testid="stElementContainer"] div[data-testid="stAlert"] {
+        background: rgba(20, 28, 48, 0.95) !important;
+        border: 1px solid rgba(148, 163, 184, 0.35) !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-info-marker)
+        div[data-testid="stElementContainer"]:has(.af-step1-info-marker)
+        + div[data-testid="stElementContainer"] div[data-testid="stAlert"] p,
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-info-marker)
+        div[data-testid="stElementContainer"]:has(.af-step1-info-marker)
+        + div[data-testid="stElementContainer"] div[data-testid="stAlert"] strong,
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-info-marker)
+        div[data-testid="stElementContainer"]:has(.af-step1-info-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stNotificationContentInfo"] {
+        font-size: 32px !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65) !important;
+    }
+
+    /* 2단계 필터 편집 안내 info — 가독성 */
+    .af-filter-tip-marker { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stVerticalBlock"]:has(.af-filter-tip-marker)
+        div[data-testid="stElementContainer"]:has(.af-filter-tip-marker)
+        + div[data-testid="stElementContainer"] div[data-testid="stAlert"] {
+        background: rgba(20, 28, 48, 0.95) !important;
+        border: 1px solid rgba(148, 163, 184, 0.35) !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.af-filter-tip-marker)
+        div[data-testid="stElementContainer"]:has(.af-filter-tip-marker)
+        + div[data-testid="stElementContainer"] div[data-testid="stAlert"] p,
+    div[data-testid="stVerticalBlock"]:has(.af-filter-tip-marker)
+        div[data-testid="stElementContainer"]:has(.af-filter-tip-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stNotificationContentInfo"] {
+        font-size: 20px !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65) !important;
+        line-height: 1.45 !important;
+    }
+
+    /* ── Secondary buttons ── */
     hr {
         border-color: rgba(100, 116, 139, 0.25) !important;
         margin: 1rem 0 !important;
@@ -880,11 +922,13 @@ def _filter_column_config(df):
 # ── 하단 결과표 영역 (상단 3열 패턴 설정과 분리) ──
 st.markdown('<div class="af-results-zone" aria-hidden="true"></div>', unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
+st.markdown('<div class="af-step1-run-wrap" aria-hidden="true"></div>', unsafe_allow_html=True)
 if st.button("⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실행", use_container_width=True, type="primary"):
     st.session_state['trigger_step1'] = True
 
 if os.path.exists(COMBO_STEP1_FILE) and not st.session_state['trigger_step1']:
     df_step1_check = pd.read_csv(COMBO_STEP1_FILE)
+    st.markdown('<div class="af-step1-info-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
     st.info(f"📋 1단계 패턴 통과 조합: **{len(df_step1_check):,}**개")
     if len(df_step1_check) > 0:
         st.data_editor(
@@ -915,6 +959,7 @@ if uploaded_file:
         # '해당숫자' 칸이 비어있는 행은 제외
         df_filter = df_filter.dropna(subset=["해당숫자"])
         
+        st.markdown('<div class="af-filter-tip-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
         st.info("💡 아래 표의 셀을 더블클릭하여 '해당숫자', '최소', '최대' 값을 직접 수정할 수 있습니다.")
         
         # 1. 화면에서 직접 엑셀 데이터를 수정할 수 있는 에디터 (edited_df로 저장)
