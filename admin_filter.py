@@ -723,11 +723,38 @@ st.markdown("""
         color: var(--af-text-muted) !important;
     }
 
-    /* ── Dataframe / editor ── */
+    /* ── Dataframe / editor (전역 기본) ── */
     [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
         border: 1px solid rgba(100, 116, 139, 0.25);
         border-radius: 10px;
         overflow: hidden;
+    }
+
+    .af-results-zone { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    /* admin_dashboard style_dataframe — 하단 결과표 전용 (상단 3열 레이아웃 미적용) */
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataEditor"],
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataFrame"] {
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
+        max-width: max-content !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataEditor"] [role="gridcell"],
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataEditor"] td,
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataFrame"] td {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        border-color: #334155 !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        padding: 6px 10px !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataEditor"] [role="columnheader"],
+    div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataFrame"] th {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        border-color: #334155 !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
     }
 
     label[data-testid="stWidgetLabel"] p {
@@ -817,6 +844,41 @@ with col3:
         rc4.number_input("최대 총합", 70, 205, 205, key="최대총합")
 
 
+# admin_dashboard.py style_dataframe 재사용
+def style_dataframe(df):
+    return df.style.set_properties(**{
+        'background-color': '#1E293B',
+        'color': '#F8FAFC',
+        'border-color': '#334155',
+        'font-weight': '500',
+        'font-size': '14px'
+    })
+
+
+def _combo_column_config(df):
+    cfg = {}
+    for col in df.columns:
+        name = str(col)
+        if name.startswith("번호"):
+            cfg[col] = st.column_config.NumberColumn(name, width="small", format="%d")
+    return cfg
+
+
+def _filter_column_config(df):
+    cfg = {}
+    for col in df.columns:
+        name = str(col)
+        if name in ("최소", "최대"):
+            cfg[col] = st.column_config.NumberColumn(name, width="small", format="%d")
+        elif name == "해당숫자":
+            cfg[col] = st.column_config.TextColumn(name, width="large")
+        else:
+            cfg[col] = st.column_config.TextColumn(name, width="medium")
+    return cfg
+
+
+# ── 하단 결과표 영역 (상단 3열 패턴 설정과 분리) ──
+st.markdown('<div class="af-results-zone" aria-hidden="true"></div>', unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 if st.button("⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실행", use_container_width=True, type="primary"):
     st.session_state['trigger_step1'] = True
@@ -824,7 +886,14 @@ if st.button("⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실�
 if os.path.exists(COMBO_STEP1_FILE) and not st.session_state['trigger_step1']:
     df_step1_check = pd.read_csv(COMBO_STEP1_FILE)
     st.info(f"📋 1단계 패턴 통과 조합: **{len(df_step1_check):,}**개")
-    if len(df_step1_check) > 0: st.dataframe(df_step1_check.head(15), use_container_width=True, hide_index=True)
+    if len(df_step1_check) > 0:
+        st.data_editor(
+            df_step1_check.head(15),
+            column_config=_combo_column_config(df_step1_check),
+            use_container_width=False,
+            hide_index=True,
+            key="af_step1_combo_editor",
+        )
 
 # ==========================================================
 # ==========================================================
@@ -849,7 +918,13 @@ if uploaded_file:
         st.info("💡 아래 표의 셀을 더블클릭하여 '해당숫자', '최소', '최대' 값을 직접 수정할 수 있습니다.")
         
         # 1. 화면에서 직접 엑셀 데이터를 수정할 수 있는 에디터 (edited_df로 저장)
-        edited_df = st.data_editor(df_filter, use_container_width=True, num_rows="dynamic")
+        edited_df = st.data_editor(
+            df_filter,
+            column_config=_filter_column_config(df_filter),
+            use_container_width=False,
+            num_rows="dynamic",
+            key="af_k295_filter_editor",
+        )
         
         if st.button("🚀 2단계: 1단계 결과물에 고급필터 적용하기"):
             try:
@@ -871,7 +946,13 @@ if uploaded_file:
                 # 결과 출력 및 다운로드 버튼 생성
                 if len(final_df) > 0:
                     st.success(f"🎉 최종 조합 {len(final_df):,}개 추출 완료!")
-                    st.dataframe(final_df)
+                    st.data_editor(
+                        final_df,
+                        column_config=_combo_column_config(final_df),
+                        use_container_width=False,
+                        hide_index=True,
+                        key="af_final_combo_editor",
+                    )
                     
                     # 시스템 내부용 백업 저장
                     final_df.to_csv("user_final_combinations.csv", index=False)
