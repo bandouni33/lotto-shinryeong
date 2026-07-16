@@ -773,6 +773,16 @@ st.markdown("""
     }
 
     .af-results-zone { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+
+    /* 하단 영역 그룹 — 화면 중앙 정렬 (75% 폭, 상단 3열 미적용) */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] {
+        box-sizing: border-box !important;
+        max-width: 75% !important;
+        width: 100% !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
     /* admin_dashboard style_dataframe — 하단 결과표 전용 (상단 3열 레이아웃 미적용) */
     div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataEditor"],
     div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataFrame"] {
@@ -920,103 +930,104 @@ def _filter_column_config(df):
 
 
 # ── 하단 결과표 영역 (상단 3열 패턴 설정과 분리) ──
-st.markdown('<div class="af-results-zone" aria-hidden="true"></div>', unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown('<div class="af-step1-run-wrap" aria-hidden="true"></div>', unsafe_allow_html=True)
-if st.button("⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실행", use_container_width=True, type="primary"):
-    st.session_state['trigger_step1'] = True
+with st.container(key="af_bottom_center"):
+    st.markdown('<div class="af-results-zone" aria-hidden="true"></div>', unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="af-step1-run-wrap" aria-hidden="true"></div>', unsafe_allow_html=True)
+    if st.button("⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실행", use_container_width=True, type="primary"):
+        st.session_state['trigger_step1'] = True
 
-if os.path.exists(COMBO_STEP1_FILE) and not st.session_state['trigger_step1']:
-    df_step1_check = pd.read_csv(COMBO_STEP1_FILE)
-    st.markdown('<div class="af-step1-info-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
-    st.info(f"📋 1단계 패턴 통과 조합: **{len(df_step1_check):,}**개")
-    if len(df_step1_check) > 0:
-        st.data_editor(
-            df_step1_check.head(15),
-            column_config=_combo_column_config(df_step1_check),
-            use_container_width=False,
-            hide_index=True,
-            key="af_step1_combo_editor",
-        )
+    if os.path.exists(COMBO_STEP1_FILE) and not st.session_state['trigger_step1']:
+        df_step1_check = pd.read_csv(COMBO_STEP1_FILE)
+        st.markdown('<div class="af-step1-info-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+        st.info(f"📋 1단계 패턴 통과 조합: **{len(df_step1_check):,}**개")
+        if len(df_step1_check) > 0:
+            st.data_editor(
+                df_step1_check.head(15),
+                column_config=_combo_column_config(df_step1_check),
+                use_container_width=False,
+                hide_index=True,
+                key="af_step1_combo_editor",
+            )
 
-# ==========================================================
-# ==========================================================
-st.markdown("---")
-st.markdown("<h3 class='af-section-title'>🛠️ 나만의 고급필터 (2단계 전용)</h3>", unsafe_allow_html=True)
+    # ==========================================================
+    # ==========================================================
+    st.markdown("---")
+    st.markdown("<h3 class='af-section-title'>🛠️ 나만의 고급필터 (2단계 전용)</h3>", unsafe_allow_html=True)
 
-# K-295 엑셀 양식 업로드
-uploaded_file = st.file_uploader("K-295 엑셀 파일 업로드", type=["xlsx"])
+    # K-295 엑셀 양식 업로드
+    uploaded_file = st.file_uploader("K-295 엑셀 파일 업로드", type=["xlsx"])
 
-if uploaded_file:
-    try:
-        # 지정 영역 J5:L1000 데이터 로드
-        df_raw = pd.read_excel(uploaded_file, header=None, usecols="H:L", skiprows=4)
-        
-        # 위치 기반(.iloc)으로 1번째(H), 3번째(J), 4번째(K), 5번째(L) 열만 강제 추출
-        df_filter = df_raw.iloc[:, [0, 2, 3, 4]].copy() 
-        df_filter.columns = ["패턴이름", "해당숫자", "최소", "최대"]
-        
-        # '해당숫자' 칸이 비어있는 행은 제외
-        df_filter = df_filter.dropna(subset=["해당숫자"])
-        
-        st.markdown('<div class="af-filter-tip-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
-        st.info("💡 아래 표의 셀을 더블클릭하여 '해당숫자', '최소', '최대' 값을 직접 수정할 수 있습니다.")
-        
-        # 1. 화면에서 직접 엑셀 데이터를 수정할 수 있는 에디터 (edited_df로 저장)
-        edited_df = st.data_editor(
-            df_filter,
-            column_config=_filter_column_config(df_filter),
-            use_container_width=False,
-            num_rows="dynamic",
-            key="af_k295_filter_editor",
-        )
-        
-        if st.button("🚀 2단계: 1단계 결과물에 고급필터 적용하기"):
-            try:
-                # 1단계 결과 파일 로드
-                step1_df = pd.read_csv("user_step1_combinations.csv") 
-                step1_df = step1_df.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
-                
-                # 엑셀 필터 데이터 규칙 배열로 추출 (수정된 edited_df 반영)
-                rules = []
-                for _, row in edited_df.iterrows():
-                    clean_str = str(row['해당숫자']).replace(',', ' ')
-                    nums = set(map(int, clean_str.split()))
-                    rules.append({'targets': nums, 'min': int(row['최소']), 'max': int(row['최대'])})
-                
-                # 2단계 전용 엔진 실행
-                with st.spinner("2단계 고급필터 연산 중..."):
-                    final_df = lotto_engine.run_step2_filtering(step1_df, rules)
-                
-                # 결과 출력 및 다운로드 버튼 생성
-                if len(final_df) > 0:
-                    st.success(f"🎉 최종 조합 {len(final_df):,}개 추출 완료!")
-                    st.data_editor(
-                        final_df,
-                        column_config=_combo_column_config(final_df),
-                        use_container_width=False,
-                        hide_index=True,
-                        key="af_final_combo_editor",
-                    )
+    if uploaded_file:
+        try:
+            # 지정 영역 J5:L1000 데이터 로드
+            df_raw = pd.read_excel(uploaded_file, header=None, usecols="H:L", skiprows=4)
+            
+            # 위치 기반(.iloc)으로 1번째(H), 3번째(J), 4번째(K), 5번째(L) 열만 강제 추출
+            df_filter = df_raw.iloc[:, [0, 2, 3, 4]].copy() 
+            df_filter.columns = ["패턴이름", "해당숫자", "최소", "최대"]
+            
+            # '해당숫자' 칸이 비어있는 행은 제외
+            df_filter = df_filter.dropna(subset=["해당숫자"])
+            
+            st.markdown('<div class="af-filter-tip-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+            st.info("💡 아래 표의 셀을 더블클릭하여 '해당숫자', '최소', '최대' 값을 직접 수정할 수 있습니다.")
+            
+            # 1. 화면에서 직접 엑셀 데이터를 수정할 수 있는 에디터 (edited_df로 저장)
+            edited_df = st.data_editor(
+                df_filter,
+                column_config=_filter_column_config(df_filter),
+                use_container_width=False,
+                num_rows="dynamic",
+                key="af_k295_filter_editor",
+            )
+            
+            if st.button("🚀 2단계: 1단계 결과물에 고급필터 적용하기"):
+                try:
+                    # 1단계 결과 파일 로드
+                    step1_df = pd.read_csv("user_step1_combinations.csv") 
+                    step1_df = step1_df.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
                     
-                    # 시스템 내부용 백업 저장
-                    final_df.to_csv("user_final_combinations.csv", index=False)
+                    # 엑셀 필터 데이터 규칙 배열로 추출 (수정된 edited_df 반영)
+                    rules = []
+                    for _, row in edited_df.iterrows():
+                        clean_str = str(row['해당숫자']).replace(',', ' ')
+                        nums = set(map(int, clean_str.split()))
+                        rules.append({'targets': nums, 'min': int(row['최소']), 'max': int(row['최대'])})
                     
-                    # 2. 사용자가 직접 이름/위치를 지정해 다운로드할 수 있는 버튼
-                    csv_data = final_df.to_csv(index=False, encoding='utf-8-sig')
+                    # 2단계 전용 엔진 실행
+                    with st.spinner("2단계 고급필터 연산 중..."):
+                        final_df = lotto_engine.run_step2_filtering(step1_df, rules)
                     
-                    st.markdown("### 💾 결과물 저장하기")
-                    st.download_button(
-                        label="📥 최종 조합 결과 PC에 저장하기 (CSV)",
-                        data=csv_data,
-                        file_name="최종_고급필터_조합.csv", # 기본으로 뜰 파일명
-                        mime="text/csv",
-                    )
-                else:
-                    st.warning("⚠️ 산출된 조합이 0개입니다. 엑셀의 최소/최대 조건들이 서로 충돌하지 않는지 확인해주세요.")
+                    # 결과 출력 및 다운로드 버튼 생성
+                    if len(final_df) > 0:
+                        st.success(f"🎉 최종 조합 {len(final_df):,}개 추출 완료!")
+                        st.data_editor(
+                            final_df,
+                            column_config=_combo_column_config(final_df),
+                            use_container_width=False,
+                            hide_index=True,
+                            key="af_final_combo_editor",
+                        )
+                        
+                        # 시스템 내부용 백업 저장
+                        final_df.to_csv("user_final_combinations.csv", index=False)
+                        
+                        # 2. 사용자가 직접 이름/위치를 지정해 다운로드할 수 있는 버튼
+                        csv_data = final_df.to_csv(index=False, encoding='utf-8-sig')
+                        
+                        st.markdown("### 💾 결과물 저장하기")
+                        st.download_button(
+                            label="📥 최종 조합 결과 PC에 저장하기 (CSV)",
+                            data=csv_data,
+                            file_name="최종_고급필터_조합.csv", # 기본으로 뜰 파일명
+                            mime="text/csv",
+                        )
+                    else:
+                        st.warning("⚠️ 산출된 조합이 0개입니다. 엑셀의 최소/최대 조건들이 서로 충돌하지 않는지 확인해주세요.")
+                        
+                except FileNotFoundError:
+                    st.error("🚨 1단계 결과 파일('user_step1_combinations.csv')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
                     
-            except FileNotFoundError:
-                st.error("🚨 1단계 결과 파일('user_step1_combinations.csv')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
-                
-    except Exception as e:
-        st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
+        except Exception as e:
+            st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
