@@ -16,9 +16,84 @@ COMBO_SAVE_FILE = "user_saved_combinations.csv"
 
 USERS_DATA_ROOT = "data/users"
 PREMIUM_SETTINGS_FILENAME = "premium_settings.pkl"
+ADVANCED_FILTER_FILENAME = "saved_advanced_filter.csv"
 
 if 'trigger_step1' not in st.session_state: st.session_state['trigger_step1'] = False
 if 'trigger_step2' not in st.session_state: st.session_state['trigger_step2'] = False
+if 'settings_saved' not in st.session_state: st.session_state['settings_saved'] = False
+if 'saved_settings' not in st.session_state: st.session_state['saved_settings'] = None
+
+_PREMIUM_CHECKBOX_PATTERNS = [
+    ("홀짝 비율", ["6:0", "5:1", "4:2", "3:3", "2:4", "1:5", "0:6"]),
+    ("저고 비율", ["6:0", "5:1", "4:2", "3:3", "2:4", "1:5", "0:6"]),
+    ("이월수", ["0", "1", "2", "3", "4", "5", "6"]),
+    ("이웃수", ["0", "1", "2", "3", "4"]),
+    ("쌍둥이수", ["0", "1", "2", "3", "4"]),
+    ("쌍끝수", ["0개", "1개", "2개", "3개"]),
+    ("연속번호", ["없음", "2연번", "3연번", "4연번"]),
+    ("볼 색상 수", ["1", "2", "3", "4", "모든"]),
+]
+_PREMIUM_RANGE_PREFIXES = ["1_9", "10_19", "20_29", "30_39", "40_45"]
+
+
+def _collect_premium_settings() -> dict:
+    """화면 위젯(session_state)에서 프리미엄 패턴 세팅 스냅샷 수집."""
+    settings = {}
+    for title, options in _PREMIUM_CHECKBOX_PATTERNS:
+        settings[title] = [
+            opt for opt in options if st.session_state.get(f"{title}_{opt}", False)
+        ]
+    settings["소수"] = (
+        st.session_state.get("소수_min", 0),
+        st.session_state.get("소수_max", 6),
+    )
+    settings["자연수"] = (
+        st.session_state.get("자연수_min", 0),
+        st.session_state.get("자연수_max", 6),
+    )
+    settings["3배수"] = (
+        st.session_state.get("3배수_min", 0),
+        st.session_state.get("3배수_max", 6),
+    )
+    for prefix in _PREMIUM_RANGE_PREFIXES:
+        settings[prefix] = (
+            st.session_state.get(f"{prefix}_min", 0),
+            st.session_state.get(f"{prefix}_max", 6),
+        )
+    settings["시작번호"] = st.session_state.get("시작번호", 1)
+    settings["끝번호"] = st.session_state.get("끝번호", 45)
+    settings["최소총합"] = st.session_state.get("최소총합", 70)
+    settings["최대총합"] = st.session_state.get("최대총합", 205)
+    return settings
+
+
+def _sync_settings_saved_state() -> None:
+    """저장 후 값이 바뀌면 저장 상태 무효화."""
+    if not st.session_state.get("settings_saved"):
+        return
+    if st.session_state.get("saved_settings") != _collect_premium_settings():
+        st.session_state["settings_saved"] = False
+
+
+def _run_step1_with_saved_settings() -> None:
+    """저장된 세팅값으로 1단계 프리미엄 패턴 전수 연산 실행."""
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    def _progress(current: int, total: int) -> None:
+        ratio = current / total if total else 0
+        progress_bar.progress(min(ratio, 1.0))
+        status_text.text(f"1단계 연산 중... {current:,} / {total:,}")
+
+    results = run_filtering_engine(
+        {},
+        premium_settings=st.session_state.saved_settings,
+        progress_callback=_progress,
+    )
+    df_out = pd.DataFrame(results, columns=[f"번호{i + 1}" for i in range(6)])
+    df_out.to_csv(COMBO_STEP1_FILE, index=False)
+    progress_bar.empty()
+    status_text.success(f"✅ 1단계 완료 — 패턴 통과 조합 {len(df_out):,}개")
 
 
 def _normalize_email(email: str) -> str:
@@ -40,6 +115,122 @@ def get_user_data_dir(email: str | None = None) -> str:
 def get_user_premium_settings_path(email: str | None = None) -> str:
     """data/users/{이메일}/premium_settings.pkl 경로 반환."""
     return os.path.join(get_user_data_dir(email), PREMIUM_SETTINGS_FILENAME)
+
+
+def _load_premium_settings_from_disk() -> dict | None:
+    """디스크에 저장된 프리미엄 세팅 불러오기."""
+    path = get_user_premium_settings_path()
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+        if isinstance(payload, dict) and payload.get("saved_settings"):
+            return payload
+    except Exception:
+        return None
+    return None
+
+
+def _save_premium_settings_to_disk(settings: dict) -> None:
+    """프리미엄 세팅을 사용자별 pkl 파일에 영구 저장."""
+    path = get_user_premium_settings_path()
+    payload = {
+        "saved_settings": settings,
+        "settings_saved": True,
+    }
+    with open(path, "wb") as f:
+        pickle.dump(payload, f)
+
+
+def _apply_premium_settings_to_session(settings: dict) -> None:
+    """저장된 스냅샷을 위젯 session_state 키에 반영 (렌더 전 호출)."""
+    if not settings:
+        return
+    for title, options in _PREMIUM_CHECKBOX_PATTERNS:
+        selected = set(settings.get(title, []))
+        for opt in options:
+            st.session_state[f"{title}_{opt}"] = opt in selected
+    for key in ("소수", "자연수", "3배수"):
+        pair = settings.get(key, (0, 6))
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            st.session_state[f"{key}_min"] = int(pair[0])
+            st.session_state[f"{key}_max"] = int(pair[1])
+    for prefix in _PREMIUM_RANGE_PREFIXES:
+        pair = settings.get(prefix, (0, 6))
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            st.session_state[f"{prefix}_min"] = int(pair[0])
+            st.session_state[f"{prefix}_max"] = int(pair[1])
+    for key in ("시작번호", "끝번호", "최소총합", "최대총합"):
+        if key in settings:
+            st.session_state[key] = int(settings[key])
+
+
+def _hydrate_premium_settings_from_disk() -> None:
+    """페이지 로드 시 디스크 세팅 → session_state + UI 위젯 동기화."""
+    if st.session_state.get("_premium_settings_hydrated"):
+        return
+    payload = _load_premium_settings_from_disk()
+    if payload and payload.get("settings_saved") and payload.get("saved_settings"):
+        settings = payload["saved_settings"]
+        _apply_premium_settings_to_session(settings)
+        st.session_state.saved_settings = settings
+        st.session_state.settings_saved = True
+    st.session_state["_premium_settings_hydrated"] = True
+
+
+def get_advanced_filter_cache_path(email: str | None = None) -> str:
+    """data/users/{이메일}/saved_advanced_filter.csv 경로 반환."""
+    return os.path.join(get_user_data_dir(email), ADVANCED_FILTER_FILENAME)
+
+
+def _parse_k295_excel(uploaded_file) -> pd.DataFrame:
+    """K-295 엑셀 양식에서 고급필터 규칙 데이터프레임 추출."""
+    df_raw = pd.read_excel(uploaded_file, header=None, usecols="H:L", skiprows=4)
+    df_filter = df_raw.iloc[:, [0, 2, 3, 4]].copy()
+    df_filter.columns = ["패턴이름", "해당숫자", "최소", "최대"]
+    df_filter = df_filter.dropna(subset=["해당숫자"])
+    df_filter["패턴이름"] = df_filter["패턴이름"].astype(str)
+    df_filter["해당숫자"] = df_filter["해당숫자"].astype(str)
+    df_filter["최소"] = pd.to_numeric(df_filter["최소"], errors="coerce").fillna(0).astype(int)
+    df_filter["최대"] = pd.to_numeric(df_filter["최대"], errors="coerce").fillna(0).astype(int)
+    return df_filter.reset_index(drop=True)
+
+
+def _load_advanced_filter_from_disk() -> pd.DataFrame | None:
+    """디스크에 저장된 고급필터 규칙 불러오기."""
+    path = get_advanced_filter_cache_path()
+    if not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path, encoding="utf-8-sig")
+        expected = ["패턴이름", "해당숫자", "최소", "최대"]
+        if list(df.columns) != expected:
+            df.columns = expected[: len(df.columns)]
+        df = df.dropna(subset=["해당숫자"])
+        df["패턴이름"] = df["패턴이름"].astype(str)
+        df["해당숫자"] = df["해당숫자"].astype(str)
+        df["최소"] = pd.to_numeric(df["최소"], errors="coerce").fillna(0).astype(int)
+        df["최대"] = pd.to_numeric(df["최대"], errors="coerce").fillna(0).astype(int)
+        return df.reset_index(drop=True)
+    except Exception:
+        return None
+
+
+def _save_advanced_filter_to_disk(df: pd.DataFrame) -> None:
+    """고급필터 규칙을 사용자별 CSV 캐시에 영구 저장."""
+    path = get_advanced_filter_cache_path()
+    df.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def _hydrate_advanced_filter_from_disk() -> None:
+    """페이지 로드 시 디스크 고급필터 → session_state 복구."""
+    if st.session_state.get("_advanced_filter_hydrated"):
+        return
+    cached = _load_advanced_filter_from_disk()
+    if cached is not None and not cached.empty:
+        st.session_state["af_advanced_filter_df"] = cached
+    st.session_state["_advanced_filter_hydrated"] = True
 
 
 def _prompt_user_email() -> None:
@@ -693,13 +884,13 @@ st.markdown("""
     div[data-testid="stNotificationContentInfo"] {
         color: #93C5FD !important;
     }
-    /* 1단계 실행 버튼 — 폭 45%, 왼쪽 정렬 (af-results-zone 하단 전용) */
+    /* 1단계 실행 버튼 — af_bottom_center 내부 100% 폭, 텍스트 왼쪽 정렬 */
     .af-step1-run-wrap { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
-    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-run-wrap) div[data-testid="stButton"]:has(button[data-testid="stBaseButton-primary"]) {
-        width: 45% !important;
-        max-width: 45% !important;
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-step1-run-wrap) div[data-testid="stButton"]:has(button[data-testid="stBaseButton-primary"]) {
+        width: 100% !important;
+        max-width: 100% !important;
     }
-    div[data-testid="stVerticalBlock"]:has(.af-results-zone):has(.af-step1-run-wrap) button[data-testid="stBaseButton-primary"] {
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-step1-run-wrap) button[data-testid="stBaseButton-primary"] {
         width: 100% !important;
         justify-content: flex-start !important;
         text-align: left !important;
@@ -783,7 +974,36 @@ st.markdown("""
         margin-right: auto !important;
     }
 
-    /* admin_dashboard style_dataframe — 하단 결과표 전용 (상단 3열 레이아웃 미적용) */
+    /* af_bottom_center 내부 박스형 요소 폭 100% 통일 (결과표/데이터에디터 제외) */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stElementContainer"] {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stButton"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stAlert"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] section {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stButton"] > button {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stElementContainer"]:has(.af-step1-info-marker)
+        + div[data-testid="stElementContainer"] div[data-testid="stAlert"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stElementContainer"]:has(.af-filter-tip-marker)
+        + div[data-testid="stElementContainer"] div[data-testid="stAlert"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* admin_dashboard style_dataframe — 하단 결과표 전용 (상단 3열 레이아웃 미적용, 테이블만 내용폭) */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataEditor"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataFrame"],
     div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataEditor"],
     div[data-testid="stVerticalBlock"]:has(.af-results-zone) [data-testid="stDataFrame"] {
         border: 1px solid #334155 !important;
@@ -812,16 +1032,195 @@ st.markdown("""
     label[data-testid="stWidgetLabel"] p {
         color: var(--af-text-muted) !important;
     }
+
+    /* ── 세팅완료 저장 버튼 전용 (key=save_settings_btn, 기존 CSS 미변경·추가만) ── */
+    .af-save-settings-btn-marker { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"],
+    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[kind="secondary"] {
+        width: 100% !important;
+        background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 52%, #1d4ed8 100%) !important;
+        color: #FFFFFF !important;
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        border: 1px solid rgba(125, 211, 252, 0.78) !important;
+        border-radius: 10px !important;
+        padding: 0.7rem 1.15rem !important;
+        box-shadow:
+            0 0 20px rgba(14, 165, 233, 0.38),
+            0 4px 16px rgba(37, 99, 235, 0.32),
+            inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55) !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    }
+    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover,
+    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[kind="secondary"]:hover {
+        transform: translateY(-1px) !important;
+        color: #FFFFFF !important;
+        border-color: rgba(186, 230, 253, 0.95) !important;
+        box-shadow:
+            0 0 28px rgba(56, 189, 248, 0.48),
+            0 6px 18px rgba(37, 99, 235, 0.38),
+            inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
+    }
+
+    /* 1단계 완료 success 박스 가독성 — af_bottom_center 전용 (추가만) */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stAlert"]:has([data-testid="stNotificationContentSuccess"]),
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stAlert"]:has([data-testid="stNotificationContentSuccess"]) p,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stAlert"]:has([data-testid="stNotificationContentSuccess"]) span,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stNotificationContentSuccess"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stNotificationContentSuccess"] * {
+        color: #FFFFFF !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+    }
+
+    /* af_bottom_center 결과표 — 헤더·셀 중앙 정렬 (추가만) */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataEditor"] [role="columnheader"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataEditor"] [role="gridcell"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataEditor"] td,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataFrame"] th,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataFrame"] td,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stTable"] th,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stTable"] td {
+        text-align: center !important;
+        justify-content: center !important;
+    }
+
+    /* 1단계 연산 대기 warning 박스 — af_bottom_center 전용 (추가만) */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stAlert"]:has([data-testid="stNotificationContentWarning"]) *,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stNotificationContentWarning"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stNotificationContentWarning"] * {
+        color: #FFFFFF !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        z-index: 999 !important;
+    }
+
+    /* Streamlit rerun 깜빡임/어두워짐 억제 (추가만) */
+    .stApp,
+    .stApp [data-testid="stAppViewContainer"],
+    .stApp [data-testid="stAppViewContainer"] > section,
+    .stApp .main,
+    .stApp .main .block-container {
+        opacity: 1 !important;
+        filter: none !important;
+        transition: none !important;
+    }
+    .stApp[data-testscript-state="running"] [data-testid="stAppViewContainer"],
+    .stApp[data-testscript-state="running"] .main .block-container {
+        opacity: 1 !important;
+        filter: none !important;
+    }
+    div[data-testid="stStatusWidget"] {
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
+
+    /* K-295 고급필터 표 — 제목행 강조·글씨 확대 (af-k295-filter-table-marker 전용, 추가만) */
+    .af-k295-filter-table-marker { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataEditor"] [role="columnheader"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataEditor"] th,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stTable"] th,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataFrame"] th {
+        font-weight: 800 !important;
+        font-size: 16px !important;
+        color: #FFFFFF !important;
+        text-align: center !important;
+        justify-content: center !important;
+    }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataEditor"] [role="gridcell"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataEditor"] td,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stTable"] td,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataFrame"] td {
+        font-size: 15px !important;
+        text-align: center !important;
+        justify-content: center !important;
+    }
+
+    /* K-502/K-538 — 프리미엄 3열 그리드 열 간격·구분선 (상단 패턴 영역 전용, 추가만) */
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) {
+        gap: 1.75rem !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) > div[data-testid="column"] {
+        padding: 0 10px !important;
+        box-sizing: border-box !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) > div[data-testid="column"]:last-child {
+        border-right: none !important;
+    }
+
+    /* K-503 — 3열 카드 세로 간격 확대 (1·2열 높이 균형, 추가만) */
+    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"] {
+        gap: 22px !important;
+    }
+
+    /* K-538 — 프리미엄 3열 그리드 폰트 가독성 (상단 패턴 영역 전용, 추가만) */
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) .premium-title {
+        font-size: 19px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) div[data-testid="stCheckbox"] label,
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"],
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {
+        font-size: 18px !important;
+    }
+    div[data-testid="column"]:has(.af-col3-stack) .af-table-header {
+        font-size: 16px !important;
+    }
+    div[data-testid="column"]:has(.af-col3-stack) .af-table-label {
+        font-size: 17px !important;
+    }
+
+    /* K-558 — Streamlit 네이티브 border=True 카드 그리드 강제 오버라이드 (추가만) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 4px !important;
+        border: 2px solid rgba(255, 255, 255, 0.15) !important;
+        background: linear-gradient(135deg, #171730 0%, #0f0f1c 100%) !important;
+        padding: 2px !important;
+        margin-bottom: 16px !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        border: none !important;
+        padding: 16px !important;
+    }
+    div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
+        gap: 16px !important;
+    }
+    div[data-testid="column"]:nth-child(1) div[data-testid="stVerticalBlockBorderWrapper"]:nth-last-child(-n+2),
+    div[data-testid="column"]:nth-child(2) div[data-testid="stVerticalBlockBorderWrapper"]:nth-last-child(-n+2) {
+        border: 2px dashed rgba(52, 152, 219, 0.4) !important;
+        min-height: 120px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    div[data-testid="stMarkdownContainer"] p strong,
+    div[data-testid="stMarkdownContainer"] h3 {
+        font-size: 19px !important;
+        font-weight: 700 !important;
+        color: #FFFFFF !important;
+    }
+    div[data-testid="stCheckbox"] label span {
+        font-size: 18px !important;
+        font-weight: 600 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h2 class='af-page-title'>📊 <span>프리미엄 패턴 분석 세팅</span></h2>", unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns(3)
+_hydrate_premium_settings_from_disk()
+_hydrate_advanced_filter_from_disk()
+
+col1, col2, col3 = st.columns(3, gap="large")
 
 def draw_premium_pattern(col, title, tooltip, options, icon, accent="cyan"):
     with col.container(border=True):
-        st.markdown(f'<div class="premium-card-marker accent-{accent}"></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="premium-title accent-{accent}">{icon} {title} <span class="tooltip-icon" title="{tooltip}">❓</span></div>', unsafe_allow_html=True)
         cc = st.columns(len(options))
         for i, opt in enumerate(options):
@@ -829,7 +1228,6 @@ def draw_premium_pattern(col, title, tooltip, options, icon, accent="cyan"):
 
 def draw_placeholder_card(col):
     with col.container(border=True):
-        st.markdown('<div class="premium-card-marker af-placeholder-card"></div>', unsafe_allow_html=True)
         st.markdown('<div class="af-placeholder-body"><span>🔒 개발중</span></div>', unsafe_allow_html=True)
 
 # ── 1열: 홀짝, 저고, 이월, 이웃 ──
@@ -852,7 +1250,6 @@ draw_placeholder_card(col2)
 with col3:
     st.markdown('<div class="af-col3-stack" aria-hidden="true"></div>', unsafe_allow_html=True)
     with st.container(border=True, key="af_col3_soja"):
-        st.markdown('<div class="premium-card-marker accent-teal"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-teal">🔢 소자배 패턴 <span class="tooltip-icon" title="소수: 2,3,5,7,11,13,17,19,23,29,31,37,41,43&#10;자연수(합성수): 1,4,8,10,14,16,20,22,25,26,28,32,34,35,38,40,44&#10;3배수: 3,6,9,12,15,18,21,24,27,30,33,36,39,42,45">❓</span></div>', unsafe_allow_html=True)
 
         header_cols = st.columns([2, 0.55, 0.55], gap="small")
@@ -867,7 +1264,6 @@ with col3:
             row_cols[2].number_input(f"{key_prefix}최대", 0, 6, 6, key=f"{key_prefix}_max", label_visibility="collapsed")
 
     with st.container(border=True, key="af_col3_decade"):
-        st.markdown('<div class="premium-card-marker accent-violet"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-violet">📏 10단위 출현 패턴 <span class="tooltip-icon" title="각 번호대별로 출현할 수 있는 최소/최대 공의 개수를 지정합니다.">❓</span></div>', unsafe_allow_html=True)
 
         header_cols = st.columns([2, 0.55, 0.55], gap="small")
@@ -882,19 +1278,67 @@ with col3:
             row_cols[2].number_input(f"{key_prefix}최대", 0, 6, 6, key=f"{key_prefix}_max", label_visibility="collapsed")
 
     with st.container(border=True, key="af_col3_hotzone"):
-        st.markdown('<div class="premium-card-marker accent-amber"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-amber">🚀 시작/끝번호 핫존 <span class="tooltip-icon" title="첫 번째 공과 마지막 공의 번호 범위입니다.">❓</span></div>', unsafe_allow_html=True)
         rc1, rc2 = st.columns(2)
         rc1.number_input("시작(1~23)", 1, 23, 1, key="시작번호")
         rc2.number_input("끝(28~45)", 28, 45, 45, key="끝번호")
 
     with st.container(border=True, key="af_col3_total"):
-        st.markdown('<div class="premium-card-marker accent-indigo"></div>', unsafe_allow_html=True)
         st.markdown('<div class="premium-title accent-indigo">⚖️ 당첨번호 총합 <span class="tooltip-icon" title="당첨번호 6개를 모두 더한 값의 허용 범위입니다.">❓</span></div>', unsafe_allow_html=True)
         rc3, rc4 = st.columns(2)
         rc3.number_input("최소 총합", 70, 205, 70, key="최소총합")
         rc4.number_input("최대 총합", 70, 205, 205, key="최대총합")
 
+_sync_settings_saved_state()
+
+st.markdown("""
+<style>
+    /* 세팅완료 저장 버튼 — late inject (stElementContainer 형제 DOM, save_settings_btn 전용) */
+    div[data-testid="stElementContainer"]:has(.af-save-settings-btn-marker) + div[data-testid="stElementContainer"] div[data-testid="stButton"] {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    div[data-testid="stElementContainer"]:has(.af-save-settings-btn-marker) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button,
+    div[data-testid="stElementContainer"]:has(.af-save-settings-btn-marker) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"],
+    div[data-testid="stElementContainer"]:has(.af-save-settings-btn-marker) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button[kind="secondary"] {
+        width: 100% !important;
+        background: linear-gradient(90deg, #0ea5e9, #2563eb, #1d4ed8) !important;
+        color: #FFFFFF !important;
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        border: 1px solid rgba(125, 211, 252, 0.78) !important;
+        border-radius: 10px !important;
+        padding: 0.7rem 1.15rem !important;
+        box-shadow:
+            0 0 20px rgba(14, 165, 233, 0.42) !important,
+            0 4px 16px rgba(37, 99, 235, 0.34) !important,
+            inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55) !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    }
+    div[data-testid="stElementContainer"]:has(.af-save-settings-btn-marker) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:hover,
+    div[data-testid="stElementContainer"]:has(.af-save-settings-btn-marker) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover,
+    div[data-testid="stElementContainer"]:has(.af-save-settings-btn-marker) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button[kind="secondary"]:hover {
+        transform: translateY(-1px) !important;
+        color: #FFFFFF !important;
+        border-color: rgba(186, 230, 253, 0.95) !important;
+        box-shadow:
+            0 0 28px rgba(56, 189, 248, 0.52) !important,
+            0 6px 18px rgba(37, 99, 235, 0.4) !important,
+            inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+_save_left, _save_mid, _save_right = st.columns([0.125, 0.75, 0.125])
+with _save_mid:
+    st.markdown('<div class="af-save-settings-btn-marker"></div>', unsafe_allow_html=True)
+    if st.button("세팅완료 저장", use_container_width=True, key="save_settings_btn"):
+        snapshot = _collect_premium_settings()
+        st.session_state.saved_settings = snapshot
+        st.session_state.settings_saved = True
+        _save_premium_settings_to_disk(snapshot)
+        st.rerun()
 
 # admin_dashboard.py style_dataframe 재사용
 def style_dataframe(df):
@@ -907,12 +1351,23 @@ def style_dataframe(df):
     })
 
 
+def _normalize_combo_df(df: pd.DataFrame) -> pd.DataFrame:
+    """결과표 컬럼명을 번호1~번호6 기본 텍스트로 정제."""
+    out = df.copy()
+    out.columns = [f"번호{i + 1}" for i in range(len(out.columns))]
+    return out
+
+
 def _combo_column_config(df):
     cfg = {}
-    for col in df.columns:
-        name = str(col)
-        if name.startswith("번호"):
-            cfg[col] = st.column_config.NumberColumn(name, width="small", format="%d")
+    for i, col in enumerate(df.columns):
+        label = f"번호{i + 1}" if str(col).strip().startswith("번호") else str(col).strip()
+        cfg[col] = st.column_config.NumberColumn(
+            label,
+            width="small",
+            format="%d",
+            alignment="center",
+        )
     return cfg
 
 
@@ -921,24 +1376,61 @@ def _filter_column_config(df):
     for col in df.columns:
         name = str(col)
         if name in ("최소", "최대"):
-            cfg[col] = st.column_config.NumberColumn(name, width="small", format="%d")
+            cfg[col] = st.column_config.NumberColumn(
+                name, width="small", format="%d", alignment="center", disabled=False
+            )
+        elif name == "패턴이름":
+            cfg[col] = st.column_config.TextColumn(
+                name, width="medium", alignment="center", disabled=False
+            )
         elif name == "해당숫자":
-            cfg[col] = st.column_config.TextColumn(name, width="large")
+            cfg[col] = st.column_config.TextColumn(
+                name, width="large", alignment="center", disabled=False
+            )
         else:
-            cfg[col] = st.column_config.TextColumn(name, width="medium")
+            cfg[col] = st.column_config.TextColumn(
+                name, width="medium", alignment="center", disabled=False
+            )
     return cfg
-
 
 # ── 하단 결과표 영역 (상단 3열 패턴 설정과 분리) ──
 with st.container(key="af_bottom_center"):
     st.markdown('<div class="af-results-zone" aria-hidden="true"></div>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="af-step1-run-wrap" aria-hidden="true"></div>', unsafe_allow_html=True)
+    if not st.session_state.get("settings_saved"):
+        warning_html = """
+        <div style="
+            background-color: rgba(255, 171, 0, 0.15);
+            border: 1px solid rgba(255, 171, 0, 0.4);
+            padding: 15px;
+            border-radius: 8px;
+            color: #FFFFFF !important;
+            font-size: 16px !important;
+            font-weight: 700 !important;
+            text-align: center;
+            margin-bottom: 15px;
+        ">
+            ⏸️ 패턴 세팅 후 상단 [세팅완료 저장]을 눌러야 1단계 연산이 가능합니다.
+        </div>
+        """
+        st.markdown(warning_html, unsafe_allow_html=True)
     if st.button("⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실행", use_container_width=True, type="primary"):
-        st.session_state['trigger_step1'] = True
+        if not st.session_state.get("settings_saved"):
+            st.warning("⚠️ 세팅이 저장되지 않았거나 저장 후 값이 변경되었습니다. [세팅완료 저장]을 다시 눌러주세요.")
+        else:
+            st.session_state["trigger_step1"] = True
 
-    if os.path.exists(COMBO_STEP1_FILE) and not st.session_state['trigger_step1']:
-        df_step1_check = pd.read_csv(COMBO_STEP1_FILE)
+    if st.session_state.get("trigger_step1") and st.session_state.get("settings_saved"):
+        try:
+            _run_step1_with_saved_settings()
+        except Exception as e:
+            st.error(f"1단계 연산 중 오류가 발생했습니다: {e}")
+        finally:
+            st.session_state["trigger_step1"] = False
+
+    if os.path.exists(COMBO_STEP1_FILE) and not st.session_state.get("trigger_step1"):
+        df_step1_check = _normalize_combo_df(pd.read_csv(COMBO_STEP1_FILE))
         st.markdown('<div class="af-step1-info-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
         st.info(f"📋 1단계 패턴 통과 조합: **{len(df_step1_check):,}**개")
         if len(df_step1_check) > 0:
@@ -958,76 +1450,107 @@ with st.container(key="af_bottom_center"):
     # K-295 엑셀 양식 업로드
     uploaded_file = st.file_uploader("K-295 엑셀 파일 업로드", type=["xlsx"])
 
-    if uploaded_file:
-        try:
-            # 지정 영역 J5:L1000 데이터 로드
-            df_raw = pd.read_excel(uploaded_file, header=None, usecols="H:L", skiprows=4)
-            
-            # 위치 기반(.iloc)으로 1번째(H), 3번째(J), 4번째(K), 5번째(L) 열만 강제 추출
-            df_filter = df_raw.iloc[:, [0, 2, 3, 4]].copy() 
-            df_filter.columns = ["패턴이름", "해당숫자", "최소", "최대"]
-            
-            # '해당숫자' 칸이 비어있는 행은 제외
-            df_filter = df_filter.dropna(subset=["해당숫자"])
-            
-            st.markdown('<div class="af-filter-tip-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
-            st.info("💡 아래 표의 셀을 더블클릭하여 '해당숫자', '최소', '최대' 값을 직접 수정할 수 있습니다.")
-            
-            # 1. 화면에서 직접 엑셀 데이터를 수정할 수 있는 에디터 (edited_df로 저장)
-            edited_df = st.data_editor(
-                df_filter,
-                column_config=_filter_column_config(df_filter),
-                use_container_width=False,
-                num_rows="dynamic",
-                key="af_k295_filter_editor",
-            )
-            
-            if st.button("🚀 2단계: 1단계 결과물에 고급필터 적용하기"):
+    df_filter = None
+
+    if uploaded_file is not None:
+        upload_key = (uploaded_file.name, uploaded_file.size)
+        if st.session_state.get("_af_upload_key") != upload_key:
+            try:
+                df_filter = _parse_k295_excel(uploaded_file)
+                _save_advanced_filter_to_disk(df_filter)
+                st.session_state["af_advanced_filter_df"] = df_filter
+                st.session_state["_af_upload_key"] = upload_key
+                if "af_k295_filter_editor" in st.session_state:
+                    del st.session_state["af_k295_filter_editor"]
+            except Exception as e:
+                st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
+        else:
+            df_filter = st.session_state.get("af_advanced_filter_df")
+    else:
+        st.session_state.pop("_af_upload_key", None)
+        df_filter = st.session_state.get("af_advanced_filter_df")
+        if df_filter is None:
+            df_filter = _load_advanced_filter_from_disk()
+            if df_filter is not None:
+                st.session_state["af_advanced_filter_df"] = df_filter
+
+    if df_filter is not None and not df_filter.empty:
+        st.markdown('<div class="af-filter-tip-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+        st.info("💡 아래 표의 셀을 더블클릭하여 '패턴이름', '해당숫자', '최소', '최대' 값을 직접 수정할 수 있습니다.")
+
+        st.markdown('<div class="af-k295-filter-table-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+        edited_df = st.data_editor(
+            df_filter,
+            column_config=_filter_column_config(df_filter),
+            use_container_width=False,
+            num_rows="dynamic",
+            hide_index=True,
+            key="af_k295_filter_editor",
+        )
+        _save_advanced_filter_to_disk(edited_df)
+        st.session_state["af_advanced_filter_df"] = edited_df
+
+        if st.button("🚀 2단계: 1단계 결과물에 고급필터 적용하기"):
+            if not st.session_state.get("settings_saved"):
+                st.warning("⚠️ 세팅이 저장되지 않았거나 저장 후 값이 변경되었습니다. [세팅완료 저장]을 다시 눌러주세요.")
+            else:
                 try:
-                    # 1단계 결과 파일 로드
-                    step1_df = pd.read_csv("user_step1_combinations.csv") 
-                    step1_df = step1_df.apply(pd.to_numeric, errors='coerce').fillna(0).astype(int)
-                    
-                    # 엑셀 필터 데이터 규칙 배열로 추출 (수정된 edited_df 반영)
+                    if not os.path.exists(COMBO_STEP1_FILE):
+                        raise FileNotFoundError(COMBO_STEP1_FILE)
+
+                    # 1단계 필터링 통과 조합만 입력으로 사용 (전체 풀 사용 금지)
+                    step1_df = _normalize_combo_df(pd.read_csv(COMBO_STEP1_FILE))
+                    step1_df = step1_df.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
+
                     rules = []
                     for _, row in edited_df.iterrows():
-                        clean_str = str(row['해당숫자']).replace(',', ' ')
+                        clean_str = str(row["해당숫자"]).replace(",", " ")
                         nums = set(map(int, clean_str.split()))
-                        rules.append({'targets': nums, 'min': int(row['최소']), 'max': int(row['최대'])})
-                    
-                    # 2단계 전용 엔진 실행
+                        rules.append({"targets": nums, "min": int(row["최소"]), "max": int(row["최대"])})
+
                     with st.spinner("2단계 고급필터 연산 중..."):
                         final_df = lotto_engine.run_step2_filtering(step1_df, rules)
-                    
-                    # 결과 출력 및 다운로드 버튼 생성
+
                     if len(final_df) > 0:
-                        st.success(f"🎉 최종 조합 {len(final_df):,}개 추출 완료!")
+                        final_count = len(final_df)
+                        success_html = f"""
+                        <div style="
+                            background-color: rgba(46, 204, 113, 0.15);
+                            border: 1px solid rgba(46, 204, 113, 0.4);
+                            padding: 15px;
+                            border-radius: 8px;
+                            color: #FFFFFF !important;
+                            font-size: 18px !important;
+                            font-weight: 700 !important;
+                            text-align: center;
+                            margin-top: 15px;
+                            margin-bottom: 15px;
+                        ">
+                            🎉 최종 조합 {final_count:,}개 추출 완료!
+                        </div>
+                        """
+                        st.markdown(success_html, unsafe_allow_html=True)
                         st.data_editor(
-                            final_df,
+                            _normalize_combo_df(final_df),
                             column_config=_combo_column_config(final_df),
                             use_container_width=False,
                             hide_index=True,
                             key="af_final_combo_editor",
                         )
-                        
-                        # 시스템 내부용 백업 저장
+
                         final_df.to_csv("user_final_combinations.csv", index=False)
-                        
-                        # 2. 사용자가 직접 이름/위치를 지정해 다운로드할 수 있는 버튼
-                        csv_data = final_df.to_csv(index=False, encoding='utf-8-sig')
-                        
+
+                        csv_data = final_df.to_csv(index=False, encoding="utf-8-sig")
+
                         st.markdown("### 💾 결과물 저장하기")
                         st.download_button(
                             label="📥 최종 조합 결과 PC에 저장하기 (CSV)",
                             data=csv_data,
-                            file_name="최종_고급필터_조합.csv", # 기본으로 뜰 파일명
+                            file_name="최종_고급필터_조합.csv",
                             mime="text/csv",
                         )
                     else:
                         st.warning("⚠️ 산출된 조합이 0개입니다. 엑셀의 최소/최대 조건들이 서로 충돌하지 않는지 확인해주세요.")
-                        
+
                 except FileNotFoundError:
-                    st.error("🚨 1단계 결과 파일('user_step1_combinations.csv')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
-                    
-        except Exception as e:
-            st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
+                    st.error(f"🚨 1단계 결과 파일('{COMBO_STEP1_FILE}')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
