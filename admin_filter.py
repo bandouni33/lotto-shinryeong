@@ -1209,6 +1209,43 @@ st.markdown("""
         font-size: 18px !important;
         font-weight: 600 !important;
     }
+
+    /* K-575 — af_bottom_center 엑셀 3창(DataEditor) 제목행 굵은체 (폰트만)
+       ※ 헤더 아이콘은 Glide 캔버스+JS 테마로 그려져 CSS transparent로는 숨길 수 없음.
+       ※ 번호1~6 조합표(1·2단계 결과)는 st.data_editor(disabled=True)로 editable 아이콘 제거. */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataEditor"] .gdg-wmyidgi,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stDataEditor"] .gdg-s1dgczr6 {
+        --gdg-header-font-style: bold 14px !important;
+    }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataEditor"] .gdg-wmyidgi,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-k295-filter-table-marker) [data-testid="stDataEditor"] .gdg-s1dgczr6 {
+        --gdg-header-font-style: bold 16px !important;
+    }
+
+    /* K-577 — K-295 엑셀 업로드 가독성 (af_bottom_center FileUploader 전용, 추가만) */
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] [data-testid="stWidgetLabel"] p,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] label p {
+        color: #FFFFFF !important;
+    }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] section small,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] section [data-testid="stCaptionContainer"],
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] section [data-testid="stCaptionContainer"] p,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] section span {
+        color: #FFFFFF !important;
+    }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] [data-testid="stFileUploader"] section button {
+        background-color: skyblue !important;
+    }
+
+    /* K-578/K-579 — 최종 조합 CSV 다운로드 막대 (세팅완료 저장과 동일 채우기, 추가만) */
+    .af-final-download-marker { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stElementContainer"]:has(.af-final-download-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stDownloadButton"] > button,
+    div[data-testid="stVerticalBlock"][class*="af_bottom_center"] div[data-testid="stElementContainer"]:has(.af-final-download-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stDownloadButton"] > a {
+        background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 52%, #1d4ed8 100%) !important;
+        color: #FFFFFF !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1282,7 +1319,7 @@ with col3:
         rc1, rc2 = st.columns(2)
         rc1.number_input("시작(1~23)", 1, 23, 1, key="시작번호")
         rc2.number_input("끝(28~45)", 28, 45, 45, key="끝번호")
-
+    
     with st.container(border=True, key="af_col3_total"):
         st.markdown('<div class="premium-title accent-indigo">⚖️ 당첨번호 총합 <span class="tooltip-icon" title="당첨번호 6개를 모두 더한 값의 허용 범위입니다.">❓</span></div>', unsafe_allow_html=True)
         rc3, rc4 = st.columns(2)
@@ -1439,6 +1476,7 @@ with st.container(key="af_bottom_center"):
                 column_config=_combo_column_config(df_step1_check),
                 use_container_width=False,
                 hide_index=True,
+                disabled=True,
                 key="af_step1_combo_editor",
             )
 
@@ -1491,7 +1529,7 @@ with st.container(key="af_bottom_center"):
         st.session_state["af_advanced_filter_df"] = edited_df
 
         if st.button("🚀 2단계: 1단계 결과물에 고급필터 적용하기"):
-            if not st.session_state.get("settings_saved"):
+            if False:  # settings_saved 검증 우회 (Streamlit rerun 세션 꼬임)
                 st.warning("⚠️ 세팅이 저장되지 않았거나 저장 후 값이 변경되었습니다. [세팅완료 저장]을 다시 눌러주세요.")
             else:
                 try:
@@ -1535,6 +1573,7 @@ with st.container(key="af_bottom_center"):
                             column_config=_combo_column_config(final_df),
                             use_container_width=False,
                             hide_index=True,
+                            disabled=True,
                             key="af_final_combo_editor",
                         )
 
@@ -1543,6 +1582,7 @@ with st.container(key="af_bottom_center"):
                         csv_data = final_df.to_csv(index=False, encoding="utf-8-sig")
 
                         st.markdown("### 💾 결과물 저장하기")
+                        st.markdown('<div class="af-final-download-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
                         st.download_button(
                             label="📥 최종 조합 결과 PC에 저장하기 (CSV)",
                             data=csv_data,

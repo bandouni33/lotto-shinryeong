@@ -256,6 +256,142 @@ if current_page == "main":
         .logo-wrapper {{
             position: relative; width: 175px; height: 175px; margin: 0 auto;
         }}
+        .hero-with-brand {{
+            position: relative;
+            text-align: center;
+            min-height: 198px;
+            padding: 16px 0 20px 0;
+            margin-top: -5px;
+            overflow: visible;
+            box-sizing: border-box;
+        }}
+        .app-name-vertical {{
+            position: absolute;
+            left: 4px;
+            top: 16px;
+            width: 52px;
+            height: 175px;
+            margin: 0;
+            padding: 0;
+            z-index: 3;
+            pointer-events: none;
+            font-size: 22px;
+            font-weight: 800;
+            line-height: 1.08;
+            letter-spacing: 0.1em;
+            color: #ffffff;
+            overflow: visible;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+        }}
+        .app-name-vertical span {{
+            position: static;
+            margin: 0;
+            display: block;
+            opacity: 0;
+            transform-origin: left center;
+            will-change: transform, opacity, filter;
+            background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.92) 42%, rgba(200,225,255,0.85) 58%, rgba(255,255,255,0.4) 100%);
+            background-size: 100% 220%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: spiritMirageSuck 14s cubic-bezier(0.42, 0, 0.58, 1) infinite,
+                       spiritCharShimmer 3.6s ease-in-out infinite;
+        }}
+        .app-name-vertical span:nth-child(1) {{ --y-start: -11px; animation-delay: 0s, 0s; }}
+        .app-name-vertical span:nth-child(2) {{ --y-start: -4px; animation-delay: 0.35s, 0.12s; }}
+        .app-name-vertical span:nth-child(3) {{ --y-start: 4px; animation-delay: 0.7s, 0.24s; }}
+        .app-name-vertical span:nth-child(4) {{ --y-start: 11px; animation-delay: 1.05s, 0.36s; }}
+        @keyframes spiritMirageSuck {{
+            0% {{
+                opacity: 0;
+                transform: translate(0px, var(--y-start, 0px)) scale(1);
+                filter: blur(1.4px);
+                background-position: 0% 25%;
+            }}
+            5% {{
+                opacity: 0.78;
+                transform: translate(2px, calc(var(--y-start, 0px) * 0.85)) scale(0.98);
+                filter: blur(0.25px);
+            }}
+            11% {{
+                opacity: 0.22;
+                transform: translate(5px, calc(var(--y-start, 0px) * 0.7)) scale(0.96);
+                filter: blur(1.1px);
+            }}
+            18% {{
+                opacity: 0.86;
+                transform: translate(9px, calc(var(--y-start, 0px) * 0.55)) scale(0.93);
+                filter: blur(0);
+                background-position: 0% 78%;
+            }}
+            25% {{
+                opacity: 0.3;
+                transform: translate(13px, calc(var(--y-start, 0px) * 0.42)) scale(0.89);
+                filter: blur(0.9px);
+            }}
+            33% {{
+                opacity: 0.82;
+                transform: translate(18px, calc(var(--y-start, 0px) * 0.32)) scale(0.84);
+                filter: blur(0.2px);
+            }}
+            41% {{
+                opacity: 0.26;
+                transform: translate(23px, calc(var(--y-start, 0px) * 0.22)) scale(0.78);
+                filter: blur(1.3px);
+            }}
+            49% {{
+                opacity: 0.74;
+                transform: translate(28px, calc(var(--y-start, 0px) * 0.14)) scale(0.72);
+                filter: blur(0.45px);
+                background-position: 0% 35%;
+            }}
+            57% {{
+                opacity: 0.2;
+                transform: translate(32px, calc(var(--y-start, 0px) * 0.08)) scale(0.66);
+                filter: blur(1.6px);
+            }}
+            65% {{
+                opacity: 0.68;
+                transform: translate(36px, calc(var(--y-start, 0px) * 0.04)) scale(0.58);
+                filter: blur(0.7px);
+            }}
+            73% {{
+                opacity: 0.16;
+                transform: translate(39px, calc(var(--y-start, 0px) * 0.02)) scale(0.5);
+                filter: blur(2px);
+            }}
+            81% {{
+                opacity: 0.52;
+                transform: translate(42px, 0px) scale(0.42);
+                filter: blur(1.4px);
+                background-position: 0% 70%;
+            }}
+            89% {{
+                opacity: 0.1;
+                transform: translate(45px, 0px) scale(0.34);
+                filter: blur(2.8px);
+            }}
+            96% {{
+                opacity: 0.38;
+                transform: translate(47px, 0px) scale(0.28);
+                filter: blur(3.2px);
+            }}
+            100% {{
+                opacity: 0;
+                transform: translate(48px, 0px) scale(0.22);
+                filter: blur(4px);
+                background-position: 0% 25%;
+            }}
+        }}
+        @keyframes spiritCharShimmer {{
+            0%, 100% {{ background-position: 0% 22%; }}
+            50% {{ background-position: 0% 82%; }}
+        }}
         .logo-img {{
             width: 105px; height: 105px; border-radius: 50%; border: 3px solid #ffb300;
             position: absolute; top: calc(50% - 1px); left: calc(50% - 1px); transform: translate(-50%, -50%);
@@ -263,7 +399,10 @@ if current_page == "main":
         }}
         {balls_css}
     </style>
-    <div style="text-align:center; padding: 10px 0 15px 0; margin-top: -5px;">
+    <div class="hero-with-brand">
+        <p class="app-name-vertical" aria-label="로또신령">
+            <span>로</span><span>또</span><span>신</span><span>령</span>
+        </p>
         <div class="logo-wrapper">
             <img class="logo-img" src="data:image/jpeg;base64,{icon_base64}">
             <div class="orbit-ball-0">{lucky_display[0]}</div>
@@ -464,14 +603,14 @@ if current_page == "main":
     </a>
     <a href="?page=advanced" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box blue">
-            <div class="menu-icon">💎</div>
+            <div class="menu-icon">👑</div>
             <div class="menu-title">고급필터</div>
             <div class="menu-sub">전문가 분석용</div>
         </div>
     </a>
     <div class="menu-box purple" onclick="alert('프리미엄 서비스 준비 중입니다.');">
-        <div class="menu-icon">👑</div>
-        <div class="menu-title">프리미엄</div>
+        <div class="menu-icon">💎</div>
+        <div class="menu-title">자동조합</div>
         <div class="menu-sub">준비중입니다</div>
     </div>
     <a href="?page=stats" target="_self" style="text-decoration:none; display:block;">
@@ -751,6 +890,60 @@ elif current_page == "stats":
 # ==========================================================
 if current_page == "main":
     st.markdown("---")
+    st.markdown("""
+    <div class="main-admin-menu-marker" aria-hidden="true"></div>
+    <style>
+    .main-admin-menu-marker { display: none !important; }
+
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] {
+        background-color: #000000 !important;
+        border: 1px solid #2a2a2a !important;
+        border-radius: 10px !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] details {
+        background-color: #000000 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary {
+        background-color: #000000 !important;
+        color: #ffffff !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary:hover {
+        background-color: #111111 !important;
+        color: #ffffff !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary p,
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary span,
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary div,
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary svg {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+        background-color: #000000 !important;
+        border-top: 1px solid #333333 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
+        background-color: #000000 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[kind="secondary"],
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[data-testid="stBaseButton-secondary"],
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button {
+        background-color: #3a3a3a !important;
+        color: #ffffff !important;
+        border: 1px solid #555555 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button:hover {
+        background-color: #4a4a4a !important;
+        color: #ffffff !important;
+        border-color: #666666 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button p,
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button span,
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button div {
+        color: #ffffff !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     with st.expander("🛠️ 시스템 관리자 메뉴"):
         if st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
             st.session_state.is_admin = True

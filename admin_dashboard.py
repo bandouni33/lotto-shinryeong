@@ -76,6 +76,54 @@ st.markdown("""
     div[data-testid="stTabs"] button[aria-selected="true"] p {
         color: #00E676 !important;
     }
+
+    /* K-589 — 엑셀 다운로드: 파일명 SKY / 배포 다운로드 ORANGE (추가만) */
+    .admin-export-filename-marker,
+    .admin-export-download-marker { display: none !important; }
+
+    div[data-testid="stVerticalBlock"]:has(.admin-export-filename-marker) div[data-testid="stTextInput"] input {
+        background-color: #87CEEB !important;
+        color: #102030 !important;
+        border: 2px solid #5BB5D9 !important;
+        font-weight: 700 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.admin-export-filename-marker) div[data-testid="stTextInput"] label,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-filename-marker) div[data-testid="stTextInput"] label p {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
+
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) div[data-testid="stElementContainer"]:has(.admin-export-download-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stDownloadButton"] > button,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) div[data-testid="stElementContainer"]:has(.admin-export-download-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stDownloadButton"] > a,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > button,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > a {
+        background: linear-gradient(135deg, #FFB74D 0%, #FF9800 52%, #F57C00 100%) !important;
+        background-color: #FF9800 !important;
+        background-image: none !important;
+        color: #FFFFFF !important;
+        border: 2px solid #EF6C00 !important;
+        font-weight: 700 !important;
+        box-shadow: none !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) div[data-testid="stElementContainer"]:has(.admin-export-download-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stDownloadButton"] > button:hover,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) div[data-testid="stElementContainer"]:has(.admin-export-download-marker)
+        + div[data-testid="stElementContainer"] [data-testid="stDownloadButton"] > a:hover,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > button:hover,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > a:hover {
+        background: linear-gradient(135deg, #FFCC80 0%, #FB8C00 52%, #EF6C00 100%) !important;
+        background-color: #FB8C00 !important;
+        color: #FFFFFF !important;
+        border-color: #E65100 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > button p,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > a p,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > button span,
+    div[data-testid="stVerticalBlock"]:has(.admin-export-download-marker) [data-testid="stDownloadButton"] > a span {
+        color: #FFFFFF !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -190,7 +238,10 @@ elif st.session_state.admin_view == "filter_manage":
         # ==========================================
         if st.button("⚡ 4종 필터 기반 조합 연산 실행 (엔진 정밀 필터링)", type="primary"):
             with st.spinner("🚀 8,145,060 조합 전수 검사 엔진 가동 중..."):
-                final_data = run_filtering_engine(saved_filters)
+                final_data = run_filtering_engine(
+                    saved_filters,
+                    apply_premium_patterns=False,
+                )
                 
                 df_generated = pd.DataFrame(final_data, columns=["번호1", "번호2", "번호3", "번호4", "번호5", "번호6"])
                 df_generated.to_csv(COMBO_SAVE_FILE, index=False)
@@ -217,12 +268,14 @@ elif st.session_state.admin_view == "filter_manage":
             
             st.markdown("<h4 style='color:#FFB300; margin-top:30px;'>💾 엑셀 다운로드 (6셀 개별 분할)</h4>", unsafe_allow_html=True)
             
+            st.markdown('<div class="admin-export-filename-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
             user_file_name = st.text_input("📝 저장할 파일명을 입력하세요 (확장자 제외):", value=f"필터적용_최종결과_{total_created}조합")
             
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_export.to_excel(writer, index=False, sheet_name='배포조합')
             
+            st.markdown('<div class="admin-export-download-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
             st.download_button(
                 label="⬇️ 배포용 엑셀 다운로드 (클릭 시 저장 위치 묻기)",
                 data=output.getvalue(),
