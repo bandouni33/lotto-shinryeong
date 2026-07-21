@@ -30,6 +30,31 @@ foreach ($line in $lines) {
 
 Start-Sleep -Seconds 1
 
+$envFile = Join-Path $PSScriptRoot ".env"
+if (Test-Path $envFile) {
+    Get-Content $envFile -Encoding UTF8 | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line -match "^([^=]+)=(.*)$") {
+            $name = $matches[1].Trim()
+            $value = $matches[2].Trim()
+            Set-Item -Path "env:$name" -Value $value
+        }
+    }
+    Write-Host "Loaded .env"
+} else {
+    Write-Host "WARNING: .env not found — copy .env.example to .env and set KAKAO_REST_API_KEY"
+}
+
+$kakaoKey = $env:KAKAO_REST_API_KEY
+$mockAuth = if ($env:LOTTO_DEV_MOCK_AUTH) { $env:LOTTO_DEV_MOCK_AUTH } else { "1" }
+if ($kakaoKey) {
+    Write-Host "Kakao OAuth: configured (LOTTO_DEV_MOCK_AUTH=$mockAuth)"
+} elseif ($mockAuth -eq "0") {
+    Write-Host "WARNING: KAKAO_REST_API_KEY empty and LOTTO_DEV_MOCK_AUTH=0 — login will not work"
+} else {
+    Write-Host "Kakao OAuth: using dev mock (set KAKAO_REST_API_KEY + LOTTO_DEV_MOCK_AUTH=0 for real login)"
+}
+
 $localUrl = "http://localhost:$Port"
 $mobileUrl = "http://{0}:{1}" -f $PublicIp, $Port
 

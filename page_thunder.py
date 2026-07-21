@@ -4,6 +4,11 @@ from birthday_db import get_user_birthdays
 from lucky_numbers import calculate_all_lucky_numbers
 from lotto_stats import get_thunder_filter_config
 import json
+import uuid
+
+from auth_kakao import current_member_id
+from wallet_db import calc_thunder_cost
+from wallet_ui import deduct_after_result, points_notice_dialog
 
 # ── 번개조합 선택 색상 단일 정의 (삭제수/고정수/행운수) ──
 # 이 3가지 색상은 반드시 여기서만 정의합니다. 다른 파일·CSS 블록에 중복 정의하지 마세요.
@@ -31,9 +36,77 @@ def render(admin_lucky=None):
     js_filter_config = json.dumps(get_thunder_filter_config())
     has_birthdays = bool(birthdays)
 
+    if st.query_params.get("th_action") == "gen":
+        try:
+            g = int(st.query_params.get("th_games", 5))
+        except ValueError:
+            g = 5
+        for k in ("th_action", "th_games"):
+            if k in st.query_params:
+                del st.query_params[k]
+        from wallet_ui import ensure_member_or_banner
+
+        if ensure_member_or_banner(
+            resume="open_thunder_dialog",
+            reason="번개조합 생성을 위해 간편인증이 필요합니다.",
+            resume_data={"games": g},
+        ):
+            st.session_state["open_thunder_dialog"] = True
+            st.session_state["open_thunder_dialog_games"] = g
+        st.rerun()
+
+    if st.query_params.get("th_deduct"):
+        try:
+            g = int(st.query_params.get("th_deduct"))
+        except ValueError:
+            g = 5
+        if "th_deduct" in st.query_params:
+            del st.query_params["th_deduct"]
+        st.session_state.pop("thunder_approved", None)
+        mid = current_member_id()
+        if mid:
+            ref = f"thunder:done:{mid}:{uuid.uuid4().hex[:10]}"
+            if deduct_after_result(mid, "thunder", ref, game_count=g):
+                st.success(f"조합 완료 · {calc_thunder_cost(g):,}P 차감되었습니다.")
+            else:
+                st.error("적립금 차감에 실패했습니다.")
+        st.rerun()
+
+    if st.session_state.get("open_thunder_dialog"):
+        g = int(st.session_state.get("open_thunder_dialog_games", 5))
+        result = points_notice_dialog("thunder", game_count=g)
+        if result == "confirm":
+            st.session_state["open_thunder_dialog"] = False
+            st.session_state["thunder_approved"] = True
+            st.session_state["thunder_auto_run"] = g
+            st.rerun()
+        elif result == "cancel":
+            st.session_state["open_thunder_dialog"] = False
+
+    th_auto_run = st.session_state.pop("thunder_auto_run", None)
+    th_approved_js = "true" if st.session_state.get("thunder_approved") else "false"
+    th_auto_run_js = str(th_auto_run) if th_auto_run else "null"
+
     # ─── 커스텀 CSS ───
     st.markdown("""
         <style>
+        /* PC 녹화용: 480px 이상 뷰포트에서만 폭 제한 (모바일 <480px 미적용) */
+        @media (min-width: 480px) {
+            .block-container {
+                max-width: 480px !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+                padding-left: 12px !important;
+                padding-right: 12px !important;
+            }
+            div[data-testid="stHtml"] iframe,
+            div[data-testid="stHtmlIFrame"] iframe {
+                max-width: 480px !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+                display: block !important;
+            }
+        }
         .main-title {
             font-size: 32px;
             font-weight: 800;
@@ -73,18 +146,39 @@ def render(admin_lucky=None):
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="main-title">⚡ 번개조합</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">⚡ 번\u200b\u200b개조합</div>', unsafe_allow_html=True)
 
     ncol1, ncol2 = st.columns(2)
     with ncol1:
-        if st.button("⬅️ 홈", key="th_nav_home", use_container_width=True):
+        if st.button("⬅️ 홈", key="th_nav_home_6n36s5", use_container_width=True):
             st.query_params.clear()
             st.rerun()
     with ncol2:
-        if st.button("📝 생일/행운수 관리", key="th_nav_bday", use_container_width=True):
+        if st.button("📝 생일/행운수 관리", key="th_nav_bday_6n36s5", use_container_width=True):
             st.query_params.clear()
             st.query_params["page"] = "birthday"
             st.rerun()
+
+    components.html("""
+    <script>
+    window.addEventListener('message', function(e) {
+        const d = e.data || {};
+        if (d.type === 'thunder_generate') {
+            const u = new URL(window.parent.location.href);
+            u.searchParams.set('page', 'thunder');
+            u.searchParams.set('th_action', 'gen');
+            u.searchParams.set('th_games', String(d.count));
+            window.parent.location.href = u.toString();
+        }
+        if (d.type === 'thunder_complete') {
+            const u = new URL(window.parent.location.href);
+            u.searchParams.set('page', 'thunder');
+            u.searchParams.set('th_deduct', String(d.count));
+            window.parent.location.href = u.toString();
+        }
+    });
+    </script>
+    """, height=0)
 
     components.html("""
     <script>
@@ -121,8 +215,44 @@ def render(admin_lucky=None):
                 --th-fixed: {THUNDER_COLOR_FIXED};
                 --th-lucky: {THUNDER_COLOR_LUCKY};
             }}
-            body {{ background-color: #0F172A; color: #F8FAFC; margin: 0; padding: 10px; overflow-x: hidden; }}
-            
+            body {{ background-color: #0F172A; color: #F8FAFC; margin: 0 auto; padding: 10px; overflow-x: hidden; width: 100%; max-width: 480px; }}
+
+            /* PC: 부모 창 너비 기준 (iframe 내부 media query는 iframe 폭만 보므로 JS로 pc-layout 부여) */
+            html.pc-layout .number-grid {{
+                grid-template-columns: repeat(7, 42px);
+                justify-content: center;
+                width: fit-content;
+                max-width: 100%;
+                margin-left: auto;
+                margin-right: auto;
+                min-height: 372px;
+            }}
+            html.pc-layout .num-cell {{
+                width: 42px;
+                height: 42px;
+                aspect-ratio: unset;
+                font-size: 13px;
+            }}
+            html.pc-layout .tab-container,
+            html.pc-layout .control-panel,
+            html.pc-layout .result-area {{
+                max-width: 360px;
+                margin-left: auto;
+                margin-right: auto;
+            }}
+
+            .lucky-warn-slot {{
+                min-height: 22px;
+                margin-bottom: 8px;
+            }}
+            #luckyWarn {{
+                color: #fbbf24;
+                text-align: center;
+                margin: 0;
+                font-size: 13px;
+                line-height: 22px;
+            }}
+
             .nav-container {{ display: flex; gap: 10px; margin-bottom: 20px; }}
             .nav-btn {{
                 flex: 1; padding: 12px; border-radius: 12px; border: none;
@@ -372,9 +502,13 @@ def render(admin_lucky=None):
     </head>
     <body>
         <div class="tab-container">
-            <div id="tab-delete" class="tab active" onclick="setMode('delete')">삭제수</div>
-            <div id="tab-fixed" class="tab" onclick="setMode('fixed')">고정수</div>
-            <div id="tab-lucky" class="tab" onclick="setMode('lucky')">행운수</div>
+            <div id="tab-delete" class="tab active" onclick="setMode('delete')">삭\u200b제수</div>
+            <div id="tab-fixed" class="tab" onclick="setMode('fixed')">고\u200b정수</div>
+            <div id="tab-lucky" class="tab" onclick="setMode('lucky')">행\u200b운수</div>
+        </div>
+
+        <div class="lucky-warn-slot">
+            <p id="luckyWarn" style="display:none;">생일/행운수 관리에서 먼저 등록하세요.</p>
         </div>
 
         <div class="number-grid" id="numberGrid"></div>
@@ -386,15 +520,17 @@ def render(admin_lucky=None):
                 <option value="15">15게임</option>
                 <option value="20">20게임</option>
             </select>
-            <button class="action-btn btn-start" onclick="generateCombination()">조합시작</button>
-            <button class="action-btn btn-save" onclick="saveResults()">결과저장</button>
+            <button class="action-btn btn-start" onclick="generateCombination()">조\u200b합시작</button>
+            <button class="action-btn btn-save" onclick="saveResults()">결\u200b과저장</button>
         </div>
 
         <div class="result-area" id="resultArea"></div>
 
         <script>
             // ── 1) 초기 상태: 삭제수 탭, 모든 선택 비움, DB 행운수는 보관만 ──
-            let currentMode = 'delete';
+            let thunderApproved = {th_approved_js};
+            const autoRunCount = {th_auto_run_js};
+
             let selectedDelete = new Set();
             let selectedFixed = new Set();
             let luckyNumbers = new Set();
@@ -412,18 +548,23 @@ def render(admin_lucky=None):
             }}
 
             function showLuckyWarn(show) {{
-                let el = document.getElementById('luckyWarn');
-                if (!el) {{
-                    el = document.createElement('p');
-                    el.id = 'luckyWarn';
-                    el.style.cssText = 'color:#fbbf24;text-align:center;margin-bottom:10px;';
-                    el.textContent = '생일/행운수 관리에서 먼저 등록하세요.';
-                    document.getElementById('numberGrid').parentNode.insertBefore(
-                        el, document.getElementById('numberGrid')
-                    );
-                }}
-                el.style.display = show ? 'block' : 'none';
+                const el = document.getElementById('luckyWarn');
+                if (el) el.style.display = show ? 'block' : 'none';
             }}
+
+            function applyPcLayout() {{
+                let parentW = window.innerWidth;
+                try {{
+                    parentW = window.parent.innerWidth || parentW;
+                }} catch (e) {{}}
+                if (parentW >= 480) {{
+                    document.documentElement.classList.add('pc-layout');
+                }} else {{
+                    document.documentElement.classList.remove('pc-layout');
+                }}
+            }}
+            applyPcLayout();
+            window.addEventListener('resize', applyPcLayout);
 
             // ── 2) initGrid: 최초 로드 포함 항상 기본 흰색, 핑크는 luckyLoaded 이후만 ──
             function initGrid() {{
@@ -655,6 +796,8 @@ def render(admin_lucky=None):
                 safeVibrate();
 
                 const count = parseInt(document.getElementById('gameCount').value);
+                showLuckyWarn(false);
+
                 const available = [];
                 for (let i = 1; i <= 45; i++) {{
                     if (!selectedDelete.has(i)) available.push(i);
@@ -671,6 +814,9 @@ def render(admin_lucky=None):
                         renderGame(built.game);
                     }}, g * 2000);
                 }}
+                setTimeout(() => {{
+                    window.parent.postMessage({{ type: 'thunder_complete', count: count }}, '*');
+                }}, count * 2000 + 600);
             }}
 
             /* 메인화면 user_page get_ball_style() / orbit-ball radial-gradient 재사용 */
@@ -713,12 +859,17 @@ def render(admin_lucky=None):
 
             // ── 4) 최초 렌더: setMode 호출 없이 빈 격자만 그림 ──
             initGrid();
+            if (autoRunCount) {{
+                document.getElementById('gameCount').value = autoRunCount;
+                thunderApproved = true;
+                setTimeout(() => generateCombination(), 400);
+            }}
         </script>
     </body>
     </html>
     """
 
-    components.html(thunder_ui_html, height=900, scrolling=True)
+    components.html(thunder_ui_html, height=820, scrolling=True)
 
 # 호출 확인
 if __name__ == "__main__":

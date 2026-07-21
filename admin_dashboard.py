@@ -283,3 +283,69 @@ elif st.session_state.admin_view == "filter_manage":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+
+            # ==========================================
+            # 5. [마케팅 DB] 추출 조합 익명 저장 (백엔드)
+            # ==========================================
+            from marketing_db import (
+                bulk_insert_lotto_combinations,
+                get_combination_count_by_draw,
+                init_marketing_tables,
+                parse_combination_rows_from_dataframe,
+                parse_combination_rows_from_text,
+            )
+
+            init_marketing_tables()
+            st.markdown("---")
+            st.subheader("📥 추출 조합 DB 저장")
+            draw_round_save = st.number_input(
+                "저장할 회차",
+                min_value=1,
+                step=1,
+                key="admin_marketing_draw_round",
+            )
+            combo_input_mode = st.radio(
+                "입력 방식",
+                ["현재 추출 결과 사용", "텍스트 직접 입력", "CSV 파일 업로드"],
+                horizontal=True,
+                key="admin_combo_input_mode",
+            )
+
+            rows_to_save = None
+            if combo_input_mode == "현재 추출 결과 사용":
+                rows_to_save = df_export.values.tolist()
+            elif combo_input_mode == "텍스트 직접 입력":
+                combo_text = st.text_area(
+                    "조합 입력 (한 줄에 6개 번호, 쉼표 또는 공백 구분)",
+                    height=150,
+                    key="admin_combo_text_bulk",
+                )
+                if combo_text.strip():
+                    rows_to_save = parse_combination_rows_from_text(combo_text)
+            else:
+                combo_upload = st.file_uploader(
+                    "CSV 업로드 (번호1~6 또는 num1~6)",
+                    type=["csv"],
+                    key="admin_combo_csv_bulk",
+                )
+                if combo_upload is not None:
+                    rows_to_save = parse_combination_rows_from_dataframe(
+                        pd.read_csv(combo_upload)
+                    )
+
+            if st.button("추출 조합 저장", type="primary", key="admin_save_combos_db"):
+                try:
+                    if not rows_to_save:
+                        st.warning("저장할 조합이 없습니다.")
+                    else:
+                        saved_count = bulk_insert_lotto_combinations(
+                            int(draw_round_save),
+                            rows_to_save,
+                        )
+                        total_in_db = get_combination_count_by_draw(int(draw_round_save))
+                        st.success(
+                            f"회차 {int(draw_round_save)}: {saved_count:,}개 조합 저장 완료 "
+                            f"(해당 회차 DB 누적 {total_in_db:,}개)"
+                        )
+                except Exception as e:
+                    st.error(f"저장 오류: {e}")

@@ -320,3 +320,11 @@ def analyze_thunder_filter_rates(filepath: str = DATA_FILE) -> dict:
 def get_thunder_filter_config(filepath: str = DATA_FILE) -> dict:
     """page_thunder.py JS 필터에 전달할 설정."""
     return analyze_thunder_filter_rates(filepath)
+
+
+def get_marketing_win_rank_summary(draw_round: int) -> dict[int, int]:
+    """익명 lotto_combinations 기준 회차별 1~5등 당첨 수량 (마케팅 집계)."""
+    from marketing_db import get_win_rank_counts_by_draw, init_marketing_tables
+
+    init_marketing_tables()
+    return get_win_rank_counts_by_draw(int(draw_round))

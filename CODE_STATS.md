@@ -1,0 +1,64 @@
+# 로또신령 — 코드 통계
+
+| 파일 경로 | 줄 수 |
+|-----------|------:|
+| admin_dashboard.py | 351 |
+| admin_filter.py | 1,972 |
+| app.py | 22 |
+| auth_kakao.py | 21 |
+| auth_providers.py | 239 |
+| auto_purchase_service.py | 107 |
+| birthday_db.py | 73 |
+| data_analyzer.py | 46 |
+| env_loader.py | 17 |
+| frontend/__init__.py | 0 |
+| frontend/app_runner.py | 36 |
+| frontend/components/__init__.py | 0 |
+| frontend/components/haptic.py | 107 |
+| frontend/components/lotto_balls.py | 38 |
+| frontend/lucky_engine.py | 12 |
+| frontend/views/__init__.py | 0 |
+| frontend/views/desktop_view.py | 8 |
+| frontend/views/mobile_view.py | 96 |
+| legal_notices.py | 135 |
+| lotto_engine.py | 326 |
+| lotto_stats.py | 330 |
+| lucky_numbers.py | 81 |
+| marketing_db.py | 502 |
+| page_auto.py | 1,019 |
+| page_birthday.py | 210 |
+| page_thunder.py | 814 |
+| page_thunder_GOLD_backup.py | 302 |
+| page_thunder_stable_backup.py | 273 |
+| premium_test.py | 77 |
+| shared_ui_styles.py | 88 |
+| src/__init__.py | 0 |
+| src/data/__init__.py | 0 |
+| src/data/mock_draws.py | 15 |
+| src/engine/__init__.py | 0 |
+| src/engine/generator.py | 9 |
+| src/engine/pipeline.py | 17 |
+| src/filters/__init__.py | 0 |
+| src/filters/base.py | 12 |
+| src/filters/consecutive.py | 24 |
+| src/filters/high_low_carry.py | 38 |
+| src/filters/odd_even.py | 19 |
+| src/filters/sum_range.py | 14 |
+| src/models/__init__.py | 0 |
+| src/models/combination.py | 41 |
+| src/models/membership.py | 10 |
+| src/services/__init__.py | 0 |
+| src/services/combination_service.py | 55 |
+| src/services/subscription.py | 30 |
+| tests/test_four_filters.py | 107 |
+| tests/test_marketing_db.py | 137 |
+| tests/test_wallet_db.py | 122 |
+| tests/test_zero_phone_db.py | 44 |
+| user_page.py | 1,089 |
+| wallet_db.py | 422 |
+| wallet_ui.py | 460 |
+| zero_phone_db.py | 162 |
+| **합계** | **10,129** |
+
+- Python 파일 수: 56개
+- 연결본 총 줄 수(파일 구분 헤더 포함): 10,185줄

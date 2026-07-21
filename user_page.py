@@ -14,21 +14,35 @@ if st.session_state.get("go_to_admin", False):
 if st.session_state.get("is_admin", False):
     with st.sidebar:
         st.markdown("## ⚙️ 관리자 제어 센터")
-        if st.button("📊 대시보드로 바로가기"):
+        if st.button("📊 대시보드로 바로가기", key="admin_sidebar_dash_6n36s5"):
             st.switch_page("admin_dashboard.py")
 
 # ==========================================
 # 1. 페이지 초기 설정 및 상태 관리
 # ==========================================
-st.set_page_config(page_title="로또신령", page_icon="K-325.jpg", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="로\u200b또신령", page_icon="K-325.jpg", layout="centered", initial_sidebar_state="collapsed")
+
+from wallet_db import init_wallet_tables
+from zero_phone_db import init_zero_phone_tables
+from auth_providers import handle_oauth_callback
+
+init_wallet_tables()
+init_zero_phone_tables()
+if handle_oauth_callback():
+    st.rerun()
 
 current_page = st.query_params.get("page", "main")
+
+if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced"):
+    from wallet_ui import render_wallet_bar
+
+    render_wallet_bar()
 
 # ===============================================================================
 # ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️
 # 앞 번호일수록 유력한 순서로 입력 (예: 44가 가장 유력, 7이 가장 약함)
 # ⚠️⚠️⚠️ 다른 코드는 건드리지 말고 이 줄의 숫자만 바꾸세요 ⚠️⚠️⚠️
-lucky_display = [44, 10, 23, 5, 40, 7]
+lucky_display = [39, 11, 44, 10, 23, 5]
 # ===============================================================================
 
 def get_image_base64(file_path):
@@ -255,138 +269,152 @@ if current_page == "main":
         }}
         .logo-wrapper {{
             position: relative; width: 175px; height: 175px; margin: 0 auto;
+            z-index: 1;
         }}
+        /* HERO_BRAND_ANIM: butterfly-fly — 롤백: user_page.py.bak-hero-spirit-mirage 복사 */
         .hero-with-brand {{
             position: relative;
             text-align: center;
             min-height: 198px;
             padding: 16px 0 20px 0;
             margin-top: -5px;
-            overflow: visible;
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 360px;
+            overflow: hidden;
             box-sizing: border-box;
         }}
-        .app-name-vertical {{
+        .app-name-fly {{
             position: absolute;
-            left: 4px;
-            top: 16px;
-            width: 52px;
-            height: 175px;
+            left: 50%;
+            top: 30px;
+            width: max-content;
             margin: 0;
             padding: 0;
-            z-index: 3;
+            z-index: 4;
             pointer-events: none;
-            font-size: 22px;
+            font-size: 26px;
             font-weight: 800;
-            line-height: 1.08;
-            letter-spacing: 0.1em;
-            color: #ffffff;
-            overflow: visible;
+            line-height: 1;
+            letter-spacing: 0.14em;
+            white-space: nowrap;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-            justify-content: center;
-            gap: 3px;
-        }}
-        .app-name-vertical span {{
-            position: static;
-            margin: 0;
-            display: block;
-            opacity: 0;
-            transform-origin: left center;
+            gap: 5px;
             will-change: transform, opacity, filter;
+            animation: spiritButterflyPath 20s ease-in-out infinite;
+        }}
+        .app-name-fly span {{
+            display: inline-block;
+            transform-origin: center center;
+            opacity: 0;
             background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.92) 42%, rgba(200,225,255,0.85) 58%, rgba(255,255,255,0.4) 100%);
             background-size: 100% 220%;
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
-            animation: spiritMirageSuck 14s cubic-bezier(0.42, 0, 0.58, 1) infinite,
-                       spiritCharShimmer 3.6s ease-in-out infinite;
+            animation: spiritCharShimmer 3.6s ease-in-out infinite,
+                       spiritCharCycle 20s ease-in-out infinite,
+                       spiritWingFlutter 1.1s ease-in-out infinite;
         }}
-        .app-name-vertical span:nth-child(1) {{ --y-start: -11px; animation-delay: 0s, 0s; }}
-        .app-name-vertical span:nth-child(2) {{ --y-start: -4px; animation-delay: 0.35s, 0.12s; }}
-        .app-name-vertical span:nth-child(3) {{ --y-start: 4px; animation-delay: 0.7s, 0.24s; }}
-        .app-name-vertical span:nth-child(4) {{ --y-start: 11px; animation-delay: 1.05s, 0.36s; }}
-        @keyframes spiritMirageSuck {{
-            0% {{
+        .app-name-fly span:nth-child(1) {{ animation-delay: 0s, 0s, 0s; }}
+        .app-name-fly span:nth-child(2) {{ animation-delay: 0.12s, 0.2s, 0.06s; }}
+        .app-name-fly span:nth-child(3) {{ animation-delay: 0.24s, 0.4s, 0.12s; }}
+        .app-name-fly span:nth-child(4) {{ animation-delay: 0.36s, 0.6s, 0.18s; }}
+        @keyframes spiritButterflyPath {{
+            0%, 100% {{
+                transform: translate(calc(-50% - 150px), 0px) rotate(-3deg);
+            }}
+            8% {{
+                transform: translate(calc(-50% - 118px), -7px) rotate(2deg);
+            }}
+            14% {{
+                transform: translate(calc(-50% - 88px), 5px) rotate(-2deg);
+            }}
+            20% {{
+                transform: translate(calc(-50% - 58px), -11px) rotate(3deg);
+            }}
+            26% {{
+                transform: translate(calc(-50% - 28px), 10px) rotate(-3deg);
+            }}
+            32% {{
+                transform: translate(calc(-50% + 2px), -12px) rotate(2deg);
+            }}
+            38% {{
+                transform: translate(calc(-50% + 32px), 9px) rotate(-2deg);
+            }}
+            44% {{
+                transform: translate(calc(-50% + 62px), -11px) rotate(3deg);
+            }}
+            50% {{
+                transform: translate(calc(-50% + 92px), 8px) rotate(-2deg);
+            }}
+            56% {{
+                transform: translate(calc(-50% + 118px), -9px) rotate(2deg);
+            }}
+            62% {{
+                transform: translate(calc(-50% + 138px), 5px) rotate(-1deg);
+            }}
+            68% {{
+                transform: translate(calc(-50% + 152px), -4px) rotate(1deg);
+            }}
+            76% {{
+                transform: translate(calc(-50% + 158px), 0px) rotate(0deg);
+            }}
+            84% {{
+                transform: translate(calc(-50% + 158px), 0px) rotate(0deg);
+            }}
+            90%, 100% {{
+                transform: translate(calc(-50% - 150px), 0px) rotate(-3deg);
+            }}
+        }}
+        @keyframes spiritCharCycle {{
+            /* ── 등장 ── */
+            0%, 100% {{
                 opacity: 0;
-                transform: translate(0px, var(--y-start, 0px)) scale(1);
-                filter: blur(1.4px);
-                background-position: 0% 25%;
+                filter: blur(2.5px);
             }}
-            5% {{
-                opacity: 0.78;
-                transform: translate(2px, calc(var(--y-start, 0px) * 0.85)) scale(0.98);
-                filter: blur(0.25px);
+            4% {{
+                opacity: 0.4;
+                filter: blur(1.2px);
             }}
-            11% {{
-                opacity: 0.22;
-                transform: translate(5px, calc(var(--y-start, 0px) * 0.7)) scale(0.96);
-                filter: blur(1.1px);
-            }}
-            18% {{
-                opacity: 0.86;
-                transform: translate(9px, calc(var(--y-start, 0px) * 0.55)) scale(0.93);
+            8% {{
+                opacity: 1;
                 filter: blur(0);
-                background-position: 0% 78%;
             }}
-            25% {{
-                opacity: 0.3;
-                transform: translate(13px, calc(var(--y-start, 0px) * 0.42)) scale(0.89);
-                filter: blur(0.9px);
-            }}
-            33% {{
-                opacity: 0.82;
-                transform: translate(18px, calc(var(--y-start, 0px) * 0.32)) scale(0.84);
-                filter: blur(0.2px);
-            }}
-            41% {{
-                opacity: 0.26;
-                transform: translate(23px, calc(var(--y-start, 0px) * 0.22)) scale(0.78);
-                filter: blur(1.3px);
-            }}
-            49% {{
-                opacity: 0.74;
-                transform: translate(28px, calc(var(--y-start, 0px) * 0.14)) scale(0.72);
-                filter: blur(0.45px);
-                background-position: 0% 35%;
-            }}
-            57% {{
-                opacity: 0.2;
-                transform: translate(32px, calc(var(--y-start, 0px) * 0.08)) scale(0.66);
-                filter: blur(1.6px);
-            }}
-            65% {{
-                opacity: 0.68;
-                transform: translate(36px, calc(var(--y-start, 0px) * 0.04)) scale(0.58);
-                filter: blur(0.7px);
-            }}
-            73% {{
-                opacity: 0.16;
-                transform: translate(39px, calc(var(--y-start, 0px) * 0.02)) scale(0.5);
-                filter: blur(2px);
-            }}
-            81% {{
-                opacity: 0.52;
-                transform: translate(42px, 0px) scale(0.42);
-                filter: blur(1.4px);
-                background-position: 0% 70%;
-            }}
-            89% {{
-                opacity: 0.1;
-                transform: translate(45px, 0px) scale(0.34);
-                filter: blur(2.8px);
-            }}
-            96% {{
-                opacity: 0.38;
-                transform: translate(47px, 0px) scale(0.28);
-                filter: blur(3.2px);
-            }}
-            100% {{
+            /* ── 비행 중 아지랭이 (희미 ↔ 선명 반복) ── */
+            12% {{ opacity: 0.95; filter: blur(0); }}
+            15% {{ opacity: 0.1; filter: blur(2.2px); }}
+            18% {{ opacity: 0.92; filter: blur(0.2px); }}
+            22% {{ opacity: 0.14; filter: blur(2px); }}
+            25% {{ opacity: 1; filter: blur(0); }}
+            29% {{ opacity: 0.08; filter: blur(2.4px); }}
+            32% {{ opacity: 0.88; filter: blur(0.3px); }}
+            36% {{ opacity: 0.16; filter: blur(1.9px); }}
+            39% {{ opacity: 0.98; filter: blur(0); }}
+            43% {{ opacity: 0.11; filter: blur(2.1px); }}
+            46% {{ opacity: 0.9; filter: blur(0.25px); }}
+            50% {{ opacity: 0.18; filter: blur(1.7px); }}
+            53% {{ opacity: 1; filter: blur(0); }}
+            57% {{ opacity: 0.12; filter: blur(2px); }}
+            60% {{ opacity: 0.93; filter: blur(0.15px); }}
+            64% {{ opacity: 0.2; filter: blur(1.5px); }}
+            67% {{ opacity: 0.82; filter: blur(0.4px); }}
+            /* ── 소멸 ── */
+            71% {{ opacity: 0.6; filter: blur(0.7px); }}
+            75% {{ opacity: 0.28; filter: blur(1.5px); }}
+            79% {{ opacity: 0.08; filter: blur(2.4px); }}
+            83% {{ opacity: 0; filter: blur(2.8px); }}
+            /* ── 쉼 (재등장 전) ── */
+            90%, 98% {{
                 opacity: 0;
-                transform: translate(48px, 0px) scale(0.22);
-                filter: blur(4px);
-                background-position: 0% 25%;
+                filter: blur(2.5px);
             }}
+        }}
+        @keyframes spiritWingFlutter {{
+            0%, 100% {{ transform: translateY(0px); }}
+            50% {{ transform: translateY(-2px); }}
         }}
         @keyframes spiritCharShimmer {{
             0%, 100% {{ background-position: 0% 22%; }}
@@ -400,9 +428,6 @@ if current_page == "main":
         {balls_css}
     </style>
     <div class="hero-with-brand">
-        <p class="app-name-vertical" aria-label="로또신령">
-            <span>로</span><span>또</span><span>신</span><span>령</span>
-        </p>
         <div class="logo-wrapper">
             <img class="logo-img" src="data:image/jpeg;base64,{icon_base64}">
             <div class="orbit-ball-0">{lucky_display[0]}</div>
@@ -412,6 +437,9 @@ if current_page == "main":
             <div class="orbit-ball-4">{lucky_display[4]}</div>
             <div class="orbit-ball-5">{lucky_display[5]}</div>
         </div>
+        <p class="app-name-fly" aria-label="로또신령">
+            <span>로</span><span>또</span><span>신</span><span>령</span>
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -455,8 +483,8 @@ if current_page == "main":
         </div>
         """, unsafe_allow_html=True)
     with col_btn:
-        with st.popover("더 보러가기"):
-            st.markdown("### 🏆 역대 당첨금 TOP 5")
+        with st.popover("더 보러가기", key="main_rank_more_6n36s5"):
+            st.markdown("### 🏆 역대 당\u200b\u200b첨금 TOP 5")
             st.write("1위: 407억 (1회)")
             st.write("2위: 369억 (51회)")
             st.write("3위: 346억 (100회)")
@@ -562,12 +590,21 @@ if current_page == "main":
     # 🟢 2. 하단 4버튼 메뉴 (모바일 앱 스타일, 강한 햅틱 진동 추가)
     st.markdown("""
     <style>
-    .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 7px; }
+    .menu-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 10px; margin-top: 7px; }
+    .menu-grid > a { display: flex; min-height: 0; }
     
     .menu-box { 
         background: linear-gradient(145deg, #1c2645, #101628); 
         border-radius: 20px; 
         padding: 18px 10px; 
+        min-height: 118px;
+        width: 100%;
+        flex: 1;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
         text-align: center; 
         box-shadow: 6px 8px 16px rgba(0,0,0,0.6), inset 1px 1px 2px rgba(255,255,255,0.1); 
         cursor: pointer; 
@@ -584,7 +621,7 @@ if current_page == "main":
     /* 3D 느낌의 크고 선명한 이모티콘 */
     .menu-icon { font-size: 36px; margin-bottom: 8px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
     .menu-title { color: #ffffff; font-weight: 900; font-size: 16px; margin-bottom: 2px; letter-spacing: 0.5px; }
-    .menu-sub { color: #9aa5b1; font-size: 13px; font-weight: 600; }
+    .menu-sub { color: #9aa5b1; font-size: 13px; font-weight: 600; min-height: 18px; line-height: 18px; }
     
     /* 테두리 글로우 효과 */
     .gold { border: 2px solid rgba(255, 179, 0, 0.7); }
@@ -597,7 +634,7 @@ if current_page == "main":
     <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box gold">
             <div class="menu-icon">⚡</div>
-            <div class="menu-title">번개조합</div>
+            <div class="menu-title">번\u200b\u200b개조합</div>
             <div class="menu-sub">빠른 조합</div>
         </div>
     </a>
@@ -608,11 +645,13 @@ if current_page == "main":
             <div class="menu-sub">전문가 분석용</div>
         </div>
     </a>
-    <div class="menu-box purple" onclick="alert('프리미엄 서비스 준비 중입니다.');">
-        <div class="menu-icon">💎</div>
-        <div class="menu-title">자동조합</div>
-        <div class="menu-sub">준비중입니다</div>
-    </div>
+    <a href="?page=auto" target="_self" style="text-decoration:none; display:block;">
+        <div class="menu-box purple">
+            <div class="menu-icon">💎</div>
+            <div class="menu-title">자동구매</div>
+            <div class="menu-sub">자동 발송</div>
+        </div>
+    </a>
     <a href="?page=stats" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box green">
             <div class="menu-icon">📊</div>
@@ -638,15 +677,100 @@ if current_page == "main":
             el.dataset.mainVibrateBound = '1';
             el.addEventListener('click', safeVibrate, { passive: true });
         });
-
-        const premium = doc.querySelector('.menu-box.purple');
-        if (premium && !premium.dataset.mainVibrateBound) {
-            premium.dataset.mainVibrateBound = '1';
-            premium.addEventListener('click', safeVibrate, { passive: true });
-        }
     })();
     </script>
     """, height=0)
+
+    from feedback_db import init_feedback_tables, save_feedback
+    from auth_providers import current_member_id
+
+    init_feedback_tables()
+
+    st.markdown(
+        """
+<div class="main-feedback-section-marker" aria-hidden="true"></div>
+<style>
+.main-feedback-section-marker { display: none !important; }
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) {
+    margin-top: 6px !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-testid="stExpander"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin-bottom: 4px !important;
+}
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-testid="stExpander"] summary {
+    background: linear-gradient(145deg, #243052 0%, #1a2238 42%, #12182b 100%) !important;
+    background-color: transparent !important;
+    color: #b8c2d6 !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    line-height: 1.15 !important;
+    text-align: center;
+    padding: 6px 8px !important;
+    min-height: 0 !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(100, 126, 170, 0.32) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+    justify-content: center !important;
+}
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-testid="stExpander"] summary p,
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-testid="stExpander"] summary span {
+    color: #b8c2d6 !important;
+    font-weight: 700 !important;
+}
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+    background: #16213e !important;
+    border: 2px solid #4a9fc4 !important;
+    border-top: none !important;
+    border-radius: 0 0 10px 10px !important;
+    padding: 8px 10px 4px 10px !important;
+}
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-testid="stForm"] textarea {
+    background-color: #0d1528 !important;
+    color: #ffffff !important;
+    border: 1px solid #2a3a60 !important;
+    min-height: 52px !important;
+}
+div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-testid="stFormSubmitButton"] button {
+    background: linear-gradient(135deg, #87CEEB, #5BB5D9) !important;
+    color: #102030 !important;
+    font-weight: 800 !important;
+    min-height: 36px !important;
+    padding: 0.35rem 0.75rem !important;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container():
+        st.markdown('<div class="main-feedback-section-marker"></div>', unsafe_allow_html=True)
+        with st.expander("개선 요구사항", expanded=False):
+            with st.form("main_feedback_form_6n36s5", clear_on_submit=True):
+                fb_body = st.text_area(
+                    "의견",
+                    placeholder="불편한 점·원하는 기능을 짧게 적어 주세요",
+                    max_chars=2000,
+                    height=52,
+                    label_visibility="collapsed",
+                )
+                submitted = st.form_submit_button("저장", use_container_width=True)
+                if submitted:
+                    try:
+                        mid = current_member_id()
+                        save_feedback(
+                            fb_body,
+                            nickname="익명",
+                            category="기타",
+                            member_id=mid,
+                        )
+                        st.success("저장되었습니다. 감사합니다!")
+                    except ValueError as exc:
+                        st.warning(str(exc))
 
 
 # ==========================================
@@ -659,6 +783,13 @@ elif current_page == "thunder":
 elif current_page == "birthday":
     import page_birthday
     page_birthday.render()
+
+# ==========================================
+# 💎 화면: 자동조합 상세 (Auto Combination View)
+# ==========================================
+elif current_page == "auto":
+    import page_auto
+    page_auto.render()
 
 # ==========================================
 # 🤖 화면 3: 고급필터 상세 페이지 (Advanced Filter View)
@@ -693,15 +824,51 @@ elif current_page == "stats":
         .stat-value { color: #ffffff; font-size: 16px; font-weight: bold; line-height: 1.4; }
         .highlight { color: #ffeb3b; font-size: 22px; font-weight: 900; }
         .tag { background: #2a3a60; padding: 2px 8px; border-radius: 12px; font-size: 11px; color: #aaa; }
+        .auto-back-main-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            min-height: 48px;
+            padding: 8px 12px;
+            box-sizing: border-box;
+            background: #000000 !important;
+            color: #ffffff !important;
+            border: 2px solid #333333 !important;
+            border-radius: 12px !important;
+            text-decoration: none !important;
+            font-weight: 700 !important;
+            font-size: 14px !important;
+        }
+        .auto-back-main-btn:hover {
+            background: #111111 !important;
+            border-color: #555555 !important;
+            color: #ffffff !important;
+        }
+        .auto-back-main-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #ffb300;
+            flex-shrink: 0;
+        }
     </style>
     """, unsafe_allow_html=True)
 
     # 1. 상단 네비게이션
     col_back, col_title = st.columns([3, 7])
     with col_back:
-        if st.button("⬅️ 메인으로", use_container_width=True):
-            st.query_params.clear()
-            st.rerun()
+        stats_icon_html = (
+            f'<img class="auto-back-main-icon" src="data:image/jpeg;base64,{icon_base64}" alt="로또신령">'
+            if icon_base64
+            else "🏠"
+        )
+        st.markdown(
+            f'<a href="?" target="_self" class="auto-back-main-btn">{stats_icon_html}<span>메인으로</span></a>',
+            unsafe_allow_html=True,
+        )
     with col_title:
         st.markdown("<h3 style='color:#ffb300; margin:0; padding-top:2px;'>📊 로또 통계 센터</h3>", unsafe_allow_html=True)
 
@@ -723,12 +890,22 @@ elif current_page == "stats":
         carry_count = stats["carry"]["count"]
         carry_checked = stats["carry"]["checked"]
         is_sum_good = "🔥 이상적" if 120 <= sum_val <= 150 else "❄️ 주의"
+        from lotto_stats import get_marketing_win_rank_summary
+
+        try:
+            draw_round_int = int(str(draw_no).replace("회", "").strip())
+            st.session_state["marketing_win_rank_summary"] = get_marketing_win_rank_summary(
+                draw_round_int
+            )
+        except (TypeError, ValueError):
+            st.session_state["marketing_win_rank_summary"] = {}
     except Exception as e:
         stats = None
         draw_no, numbers, sum_val, ac_val = "오류", [0, 0, 0, 0, 0, 0], 0, "-"
         hot_display, cold_display = "-", "-"
         carry_count, carry_checked = 0, 0
         is_sum_good = "-"
+        st.session_state["marketing_win_rank_summary"] = {}
         st.error(f"통계 데이터 로딩 오류: {e}")
 
     # 3. 3개의 탭으로 모바일 화면 최적화
@@ -886,37 +1063,124 @@ elif current_page == "stats":
 
 
 # ==========================================================
+# 📋 메인 화면 — 회원 고지·약관 (운영자 미리보기, 관리자 메뉴 바로 위)
+# ==========================================================
+if current_page == "main":
+    st.markdown("""
+    <div class="main-legal-notices-marker" aria-hidden="true"></div>
+    <style>
+    .main-legal-notices-marker { display: none !important; }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 10px !important;
+        margin-bottom: 4px !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] summary {
+        background: linear-gradient(145deg, #2a2548 0%, #1c2038 45%, #12182b 100%) !important;
+        background-color: transparent !important;
+        padding: 6px 8px !important;
+        min-height: 0 !important;
+        line-height: 1.15 !important;
+        border-radius: 10px !important;
+        border: 1px solid rgba(120, 100, 170, 0.3) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] details,
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"],
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
+        background-color: #0d1528 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] summary,
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] summary p,
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] summary span {
+        color: #b39ddb !important;
+        font-weight: 700 !important;
+        font-size: 13px !important;
+        white-space: nowrap !important;
+        line-height: 1.15 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] p,
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] li {
+        color: #e0e0e0 !important;
+        font-size: 13px !important;
+        line-height: 1.55 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) button[data-baseweb="tab"] {
+        color: #888 !important;
+        font-size: 12px !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-legal-notices-marker) button[data-baseweb="tab"][aria-selected="true"] {
+        color: #ce93d8 !important;
+        border-bottom-color: #ce93d8 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    with st.expander("📋 회원 고지·약관 (오픈 전 검토용)"):
+        from legal_notices import render_notice_preview
+
+        render_notice_preview()
+        st.info(
+            "※ 현재 **운영자만** 메인 하단에서 확인하는 준비 화면입니다. "
+            "회원 공개·간편인증·적립금 연동은 다음 단계에서 적용합니다."
+        )
+
+
+# ==========================================================
 # 👑 메인 화면 맨 아래 관리자 메뉴
 # ==========================================================
 if current_page == "main":
-    st.markdown("---")
     st.markdown("""
     <div class="main-admin-menu-marker" aria-hidden="true"></div>
     <style>
     .main-admin-menu-marker { display: none !important; }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-top: 0 !important;
+    }
 
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] {
-        background-color: #000000 !important;
-        border: 1px solid #2a2a2a !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
         border-radius: 10px !important;
+        margin-bottom: 0 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary {
+        background: linear-gradient(145deg, #1c2838 0%, #141c2a 45%, #0c1018 100%) !important;
+        background-color: transparent !important;
+        color: #c8d0dc !important;
+        padding: 6px 8px !important;
+        min-height: 0 !important;
+        line-height: 1.15 !important;
+        border-radius: 10px !important;
+        border: 1px solid rgba(80, 95, 120, 0.35) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
     }
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] details {
         background-color: #000000 !important;
     }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary {
-        background-color: #000000 !important;
-        color: #ffffff !important;
-    }
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary:hover {
-        background-color: #111111 !important;
-        color: #ffffff !important;
+        background: linear-gradient(145deg, #243040 0%, #1a2432 45%, #101620 100%) !important;
+        color: #e8ecf2 !important;
     }
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary p,
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary span,
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary div,
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary svg {
-        color: #ffffff !important;
-        fill: #ffffff !important;
+        color: #c8d0dc !important;
+        fill: #c8d0dc !important;
+        font-size: 13px !important;
+        line-height: 1.15 !important;
+        white-space: nowrap !important;
     }
     div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
         background-color: #000000 !important;
@@ -945,7 +1209,20 @@ if current_page == "main":
     </style>
     """, unsafe_allow_html=True)
     with st.expander("🛠️ 시스템 관리자 메뉴"):
-        if st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
+        _ADMIN_MENU_PASSWORD = "ns6365"
+        if not st.session_state.get("admin_menu_unlocked", False):
+            st.text_input(
+                "관리자 비밀번호",
+                type="password",
+                key="admin_menu_pwd_6n36s5",
+            )
+            if st.button("확인", key="admin_menu_pwd_submit_6n36s5"):
+                if st.session_state.get("admin_menu_pwd_6n36s5") == _ADMIN_MENU_PASSWORD:
+                    st.session_state.admin_menu_unlocked = True
+                    st.rerun()
+                else:
+                    st.warning("비밀번호가 올바르지 않습니다.")
+        elif st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
             st.session_state.is_admin = True
             st.session_state.go_to_admin = True
             st.rerun()
