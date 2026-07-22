@@ -7,7 +7,7 @@ from datetime import datetime
 DB_PATH = "lotto.db"
 
 PURCHASE_TYPES = frozenset({"정기구독", "일반구매"})
-SEND_STATUSES = frozenset({"WAIT", "SENT"})
+SEND_STATUSES = frozenset({"WAIT", "SENT", "TEST_SKIP"})
 
 
 class InsufficientCombinationsError(Exception):
@@ -296,7 +296,7 @@ def enqueue_sms(phone: str, purchase_type: str, send_status: str = "WAIT") -> in
     if purchase_type not in PURCHASE_TYPES:
         raise ValueError("purchase_type은 '정기구독' 또는 '일반구매'만 허용됩니다.")
     if send_status not in SEND_STATUSES:
-        raise ValueError("send_status는 'WAIT' 또는 'SENT'만 허용됩니다.")
+        raise ValueError("send_status는 'WAIT', 'SENT', 'TEST_SKIP'만 허용됩니다.")
 
     conn = _connect()
     cur = conn.execute(

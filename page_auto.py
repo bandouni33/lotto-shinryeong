@@ -528,6 +528,19 @@ def render():
             border-radius: 12px !important;
             box-shadow: inset 0 2px 6px rgba(0,0,0,0.28) !important;
         }
+        .st-key-auto_phone_input_6n36s5 div[data-testid="stTextInput"] input {
+            background: #ffffff !important;
+            color: #000000 !important;
+            -webkit-text-fill-color: #000000 !important;
+            caret-color: #000000 !important;
+            border: 1px solid rgba(179, 157, 219, 0.55) !important;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+        }
+        .st-key-auto_phone_input_6n36s5 div[data-testid="stTextInput"] input::placeholder {
+            color: #757575 !important;
+            -webkit-text-fill-color: #757575 !important;
+            opacity: 1 !important;
+        }
         div[data-testid="stTextInput"] label p {
             color: #d1c4e9 !important;
             font-weight: 700 !important;

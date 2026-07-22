@@ -7,11 +7,11 @@ import uuid
 from marketing_db import (
     InsufficientCombinationsError,
     allocate_lotto_combinations,
-    enqueue_sms,
     get_draw_extraction_stats,
     init_marketing_tables,
     release_lotto_combination_allocation,
 )
+from sms_sender import build_purchase_sms_message, dispatch_purchase_sms
 from wallet_db import (
     calc_auto_cost,
     complete_auto_order,
@@ -72,7 +72,8 @@ def process_auto_purchase(
         allocated_ids = [item["id"] for item in allocated]
         combo_count = len(allocated)
 
-        sms_id = enqueue_sms(phone, purchase_type, "SENT")
+        sms_message = build_purchase_sms_message(draw_round, purchase_type, allocated)
+        sms_id = dispatch_purchase_sms(phone, purchase_type, sms_message)
 
         if not deduct_points(member_id, cost, f"auto:{quantity}qty", ref):
             release_lotto_combination_allocation(allocated_ids)
