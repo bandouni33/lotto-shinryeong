@@ -32,6 +32,7 @@ def init_birthday_table():
 
 
 def get_user_birthdays(user_id):
+    init_birthday_table()
     scope = _normalize_scope(user_id)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -44,6 +45,7 @@ def get_user_birthdays(user_id):
 
 
 def upsert_birthday(user_id, slot, label, mmdd):
+    init_birthday_table()
     scope = _normalize_scope(user_id)
     if slot < 1 or slot > 4:
         raise ValueError("슬롯 번호는 1~4 사이여야 합니다")
@@ -76,6 +78,7 @@ def upsert_birthday(user_id, slot, label, mmdd):
 
 
 def delete_birthday(user_id, slot):
+    init_birthday_table()
     scope = _normalize_scope(user_id)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(

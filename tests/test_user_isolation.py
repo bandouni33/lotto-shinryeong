@@ -55,6 +55,16 @@ class UserIsolationTests(unittest.TestCase):
 
         self.assertEqual(guest, [])
 
+    def test_get_user_birthdays_creates_table_if_missing(self):
+        """번개조합 등 — init 없이 조회해도 Cloud 신규 DB에서 OperationalError 방지."""
+        with patch.object(bdb, "DB_PATH", self.db_path):
+            rows = bdb.get_user_birthdays("guest_local")
+        self.assertEqual(rows, [])
+        with patch.object(bdb, "DB_PATH", self.db_path):
+            bdb.upsert_birthday("guest_local", 1, "T", "0315")
+            rows = bdb.get_user_birthdays("guest_local")
+        self.assertEqual(rows[0]["mmdd"], "0315")
+
     def test_per_user_filter_file_paths(self):
         with patch("admin_filter.USERS_DATA_ROOT", self.users_root):
             from admin_filter import get_combo_final_path, get_combo_step1_path, get_user_data_dir

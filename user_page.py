@@ -18,11 +18,13 @@ st.set_page_config(page_title="로\u200b또신령", page_icon="K-325.jpg", layou
 
 from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
+from birthday_db import init_birthday_table
 from auth_providers import handle_oauth_callback
 from user_scope import init_guest_scope
 
 init_wallet_tables()
 init_zero_phone_tables()
+init_birthday_table()
 if handle_oauth_callback():
     st.rerun()
 init_guest_scope()
