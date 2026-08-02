@@ -209,7 +209,9 @@ if current_page == "main":
 
     # 엑셀에서 데이터 가져오기
     try:
-        df = pd.read_excel("로또최근당첨내역.xlsb", engine='pyxlsb', header=None)
+        from lotto_stats import lotto_data_path
+
+        df = pd.read_excel(lotto_data_path(), engine="pyxlsb", header=None)
         row = df.iloc[4].tolist() 
         draw_no = str(row[1]).replace(".0", "") + "회" 
         numbers = sorted([int(x) for x in row[3:9]])
@@ -872,9 +874,9 @@ elif current_page == "stats":
 
     # 2. 엑셀 데이터 기반 통계 집계
     try:
-        from lotto_stats import compute_all_stats
+        from lotto_stats import compute_all_stats, lotto_data_path
 
-        stats = compute_all_stats("로또최근당첨내역.xlsb")
+        stats = compute_all_stats(lotto_data_path())
         draw_no = stats["latest"]["draw_no"]
         numbers = stats["latest"]["numbers"]
         sum_val = stats["latest"]["sum"]

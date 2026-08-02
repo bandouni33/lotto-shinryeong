@@ -1,10 +1,18 @@
 """로또최근당첨내역.xlsb 기반 통계 집계 (과거 데이터 사실 기반)."""
 
 from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 
 DATA_FILE = "로또최근당첨내역.xlsb"
+_APP_ROOT = Path(__file__).resolve().parent
+
+
+def lotto_data_path(name: str = DATA_FILE) -> str:
+    """Streamlit Cloud 등에서 cwd 가 달라도 repo 루트 xlsb 를 찾습니다."""
+    candidate = _APP_ROOT / name
+    return str(candidate) if candidate.is_file() else name
 DATA_START_ROW = 4  # 0-indexed, 헤더(3행) 다음부터 1회차
 COL_DRAW = 1
 COL_NUM_START = 3
@@ -23,7 +31,10 @@ DECADE_BANDS = (
 
 
 def load_lotto_data(filepath: str = DATA_FILE) -> pd.DataFrame:
-    df = pd.read_excel(filepath, engine="pyxlsb", header=None)
+    path = filepath
+    if not Path(path).is_file():
+        path = lotto_data_path(Path(path).name)
+    df = pd.read_excel(path, engine="pyxlsb", header=None)
     return df.iloc[DATA_START_ROW:].reset_index(drop=True)
 
 
