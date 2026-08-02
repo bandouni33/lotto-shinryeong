@@ -16,10 +16,8 @@ maxUploadSize = 5
 
 [browser]
 gatherUsageStats = false
-# ★ 외부 IP로 접속할 때 WebSocket 주소 (하얀 화면 방지)
-# run_server.ps1 실행 시 --browser.serverAddress 로 덮어씀
-serverAddress = "210.99.230.83"
-serverPort = 8501
+# 외부 IP 접속: run_server.ps1 이 --browser.serverAddress / serverPort 를 덮어씀.
+# Streamlit Cloud(lotto-shinryeong.streamlit.app)에서는 serverAddress 를 두면 WebSocket 이 깨집니다.
 
 [client]
 showErrorDetails = true
