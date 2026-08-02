@@ -14,15 +14,15 @@ importlib.reload(lotto_engine)  # 🔥 캐시된 예전 엔진 무시하고 최�
 from lotto_engine import run_filtering_engine 
 
 FILTER_SAVE_FILE = "user_saved_filters.pkl"
-COMBO_STEP1_FILE = "user_step1_combinations.csv"   
-COMBO_SAVE_FILE = "user_saved_combinations.csv"     
+COMBO_STEP1_BASENAME = "step1_combinations.csv"
+COMBO_FINAL_BASENAME = "final_combinations.csv"
+COMBO_SAVE_FILE = "user_saved_combinations.csv"
 
 USERS_DATA_ROOT = "data/users"
 PREMIUM_SETTINGS_FILENAME = "premium_settings.pkl"
 ADVANCED_FILTER_FILENAME = "saved_advanced_filter.csv"
 SHOW_EMAIL_PROMPT = False  # True로 변경 시 이메일 입력 UI 재활성화
-GUEST_EMAIL_FALLBACK = "_guest@local"
-AF_NOTICE_DISMISS_FILE = os.path.join("data", ".af_mobile_notice_dismiss_date")
+GUEST_EMAIL_FALLBACK = "guest_local"
 
 if 'trigger_step1' not in st.session_state: st.session_state['trigger_step1'] = False
 if 'trigger_step2' not in st.session_state: st.session_state['trigger_step2'] = False
@@ -75,6 +75,10 @@ def _collect_premium_settings() -> dict:
 
 def _sync_settings_saved_state() -> None:
     """저장 후 값이 바뀌면 저장 상태 무효화."""
+    if st.session_state.get("trigger_step1") or st.session_state.get("trigger_step2"):
+        return
+    if st.session_state.get("af_show_step1_points") or st.session_state.get("af_show_step2_points"):
+        return
     if not st.session_state.get("settings_saved"):
         return
     if st.session_state.get("saved_settings") != _collect_premium_settings():
@@ -97,7 +101,7 @@ def _run_step1_with_saved_settings() -> None:
         progress_callback=_progress,
     )
     df_out = pd.DataFrame(results, columns=[f"번호{i + 1}" for i in range(6)])
-    df_out.to_csv(COMBO_STEP1_FILE, index=False)
+    df_out.to_csv(get_combo_step1_path(), index=False)
     progress_bar.empty()
     status_text.success(f"✅ 1단계 완료 — 패턴 통과 조합 {len(df_out):,}개")
 
@@ -110,31 +114,63 @@ def _is_valid_email(email: str) -> bool:
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
 
 
-def get_user_data_dir(email: str | None = None) -> str:
-    """data/users/{이메일}/ 폴더 경로 반환 및 생성."""
-    user_email = _normalize_email(email or st.session_state.get("user_email", ""))
-    user_dir = os.path.join(USERS_DATA_ROOT, user_email)
+def get_user_data_dir(scope_key: str | None = None) -> str:
+    """data/users/{스코프}/ 폴더 경로 반환 및 생성."""
+    from user_scope import current_data_dir_key, data_dir_name, init_guest_scope
+
+    init_guest_scope()
+    key = scope_key or current_data_dir_key()
+    user_dir = os.path.join(USERS_DATA_ROOT, data_dir_name(key))
     os.makedirs(user_dir, exist_ok=True)
     return user_dir
 
 
+def get_combo_step1_path(scope_key: str | None = None) -> str:
+    return os.path.join(get_user_data_dir(scope_key), COMBO_STEP1_BASENAME)
+
+
+def resolve_step1_path_for_read(scope_key: str | None = None) -> str | None:
+    """1단계 결과 CSV 읽기 경로 (신규 → 구버전 루트 파일 순)."""
+    primary = get_combo_step1_path(scope_key)
+    if os.path.exists(primary):
+        return primary
+    legacy = "user_step1_combinations.csv"
+    if os.path.exists(legacy):
+        return legacy
+    return None
+
+
+def get_combo_final_path(scope_key: str | None = None) -> str:
+    return os.path.join(get_user_data_dir(scope_key), COMBO_FINAL_BASENAME)
+
+
+def get_af_notice_dismiss_path(scope_key: str | None = None) -> str:
+    return os.path.join(get_user_data_dir(scope_key), ".af_mobile_notice_dismiss_date")
+
+
 def get_user_premium_settings_path(email: str | None = None) -> str:
-    """data/users/{이메일}/premium_settings.pkl 경로 반환."""
+    """data/users/{스코프}/premium_settings.pkl 경로 반환."""
     return os.path.join(get_user_data_dir(email), PREMIUM_SETTINGS_FILENAME)
 
 
 def _load_premium_settings_from_disk() -> dict | None:
     """디스크에 저장된 프리미엄 세팅 불러오기."""
-    path = get_user_premium_settings_path()
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, "rb") as f:
-            payload = pickle.load(f)
-        if isinstance(payload, dict) and payload.get("saved_settings"):
-            return payload
-    except Exception:
-        return None
+    candidates = [
+        get_user_premium_settings_path(),
+        os.path.join(USERS_DATA_ROOT, "_guest@local", PREMIUM_SETTINGS_FILENAME),
+    ]
+    seen = set()
+    for path in candidates:
+        if path in seen or not os.path.exists(path):
+            continue
+        seen.add(path)
+        try:
+            with open(path, "rb") as f:
+                payload = pickle.load(f)
+            if isinstance(payload, dict) and payload.get("saved_settings"):
+                return payload
+        except Exception:
+            continue
     return None
 
 
@@ -186,7 +222,7 @@ def _hydrate_premium_settings_from_disk() -> None:
 
 
 def get_advanced_filter_cache_path(email: str | None = None) -> str:
-    """data/users/{이메일}/saved_advanced_filter.csv 경로 반환."""
+    """data/users/{스코프}/saved_advanced_filter.csv 경로 반환."""
     return os.path.join(get_user_data_dir(email), ADVANCED_FILTER_FILENAME)
 
 
@@ -249,9 +285,10 @@ def _get_icon_base64(file_path: str = "K-325.jpg") -> str:
 def _af_notice_dismissed_today() -> bool:
     if st.session_state.get("af_mobile_notice_dismissed"):
         return True
-    if os.path.exists(AF_NOTICE_DISMISS_FILE):
+    path = get_af_notice_dismiss_path()
+    if os.path.exists(path):
         try:
-            with open(AF_NOTICE_DISMISS_FILE, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 return f.read().strip() == date.today().isoformat()
         except OSError:
             pass
@@ -259,18 +296,20 @@ def _af_notice_dismissed_today() -> bool:
 
 
 def _save_af_notice_dismiss_today() -> None:
-    os.makedirs(os.path.dirname(AF_NOTICE_DISMISS_FILE), exist_ok=True)
-    with open(AF_NOTICE_DISMISS_FILE, "w", encoding="utf-8") as f:
+    path = get_af_notice_dismiss_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         f.write(date.today().isoformat())
     st.session_state.af_mobile_notice_dismissed = True
 
 
 def _prompt_user_email() -> None:
-    """session_state에 이메일이 없으면 최상단에서 1회 입력받음."""
+    """사용자 데이터 스코프 초기화 (member/guest 자동 분리)."""
+    from user_scope import init_guest_scope
+
     if not SHOW_EMAIL_PROMPT:
-        if not st.session_state.get("user_email"):
-            st.session_state["user_email"] = GUEST_EMAIL_FALLBACK
-            get_user_data_dir(GUEST_EMAIL_FALLBACK)
+        init_guest_scope()
+        get_user_data_dir()
         return
 
     if st.session_state.get("user_email"):
@@ -1578,7 +1617,10 @@ def draw_premium_pattern(col, title, tooltip, options, icon, accent="cyan"):
         )
         cc = st.columns(len(options))
         for i, opt in enumerate(options):
-            cc[i].checkbox(opt, value=True, key=f"{title}_{opt}")
+            key = f"{title}_{opt}"
+            if key not in st.session_state:
+                st.session_state[key] = True
+            cc[i].checkbox(opt, key=key)
 
 def draw_placeholder_card(col):
     with col.container(border=True):
@@ -1796,24 +1838,30 @@ with st.container(key="af_bottom_center"):
         r = points_notice_dialog("advanced")
         if r == "confirm":
             st.session_state["af_show_step1_points"] = False
-            if not st.session_state.get("settings_saved"):
-                st.warning("⚠️ 세팅이 저장되지 않았거나 저장 후 값이 변경되었습니다. [세팅완료 저장]을 다시 눌러주세요.")
-            else:
-                st.session_state["trigger_step1"] = True
-                st.rerun()
+            snapshot = _collect_premium_settings()
+            st.session_state.saved_settings = snapshot
+            st.session_state.settings_saved = True
+            _save_premium_settings_to_disk(snapshot)
+            st.session_state["trigger_step1"] = True
+            st.rerun()
         elif r == "cancel":
             st.session_state["af_show_step1_points"] = False
 
-    if st.session_state.get("trigger_step1") and st.session_state.get("settings_saved"):
-        try:
-            _run_step1_with_saved_settings()
-        except Exception as e:
-            st.error(f"1단계 연산 중 오류가 발생했습니다: {e}")
-        finally:
+    if st.session_state.get("trigger_step1"):
+        if not st.session_state.get("saved_settings"):
+            st.warning("⚠️ 세팅이 없습니다. [세팅완료 저장]을 먼저 눌러주세요.")
             st.session_state["trigger_step1"] = False
+        else:
+            try:
+                _run_step1_with_saved_settings()
+            except Exception as e:
+                st.error(f"1단계 연산 중 오류가 발생했습니다: {e}")
+            finally:
+                st.session_state["trigger_step1"] = False
 
-    if os.path.exists(COMBO_STEP1_FILE) and not st.session_state.get("trigger_step1"):
-        df_step1_check = _normalize_combo_df(pd.read_csv(COMBO_STEP1_FILE))
+    step1_path = resolve_step1_path_for_read()
+    if step1_path and not st.session_state.get("trigger_step1"):
+        df_step1_check = _normalize_combo_df(pd.read_csv(step1_path))
         st.markdown('<div class="af-step1-info-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
         st.info(f"📋 1단계 패턴 통과 조합: **{len(df_step1_check):,}**개")
         if len(df_step1_check) > 0:
@@ -1900,11 +1948,12 @@ with st.container(key="af_bottom_center"):
                 st.warning("⚠️ 세팅이 저장되지 않았거나 저장 후 값이 변경되었습니다. [세팅완료 저장]을 다시 눌러주세요.")
             else:
                 try:
-                    if not os.path.exists(COMBO_STEP1_FILE):
-                        raise FileNotFoundError(COMBO_STEP1_FILE)
+                    step1_path = resolve_step1_path_for_read()
+                    if not step1_path:
+                        raise FileNotFoundError(get_combo_step1_path())
 
                     # 1단계 필터링 통과 조합만 입력으로 사용 (전체 풀 사용 금지)
-                    step1_df = _normalize_combo_df(pd.read_csv(COMBO_STEP1_FILE))
+                    step1_df = _normalize_combo_df(pd.read_csv(step1_path))
                     step1_df = step1_df.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
 
                     rules = []
@@ -1952,7 +2001,7 @@ with st.container(key="af_bottom_center"):
                             key="af_final_combo_editor_6n36s5",
                         )
 
-                        final_df.to_csv("user_final_combinations.csv", index=False)
+                        final_df.to_csv(get_combo_final_path(), index=False)
 
                         csv_data = final_df.to_csv(index=False, encoding="utf-8-sig")
 
@@ -1969,4 +2018,4 @@ with st.container(key="af_bottom_center"):
                         st.warning("⚠️ 산출된 조합이 0개입니다. 엑셀의 최소/최대 조건들이 서로 충돌하지 않는지 확인해주세요.")
 
                 except FileNotFoundError:
-                    st.error(f"🚨 1단계 결과 파일('{COMBO_STEP1_FILE}')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
+                    st.error(f"🚨 1단계 결과 파일('{get_combo_step1_path()}')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")

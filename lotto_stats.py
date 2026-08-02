@@ -9,6 +9,7 @@ DATA_START_ROW = 4  # 0-indexed, 헤더(3행) 다음부터 1회차
 COL_DRAW = 1
 COL_NUM_START = 3
 COL_NUM_END = 9
+COL_BONUS = 9
 COL_AC = 11
 
 PATTERN_DEFAULT_N = 20
@@ -328,3 +329,103 @@ def get_marketing_win_rank_summary(draw_round: int) -> dict[int, int]:
 
     init_marketing_tables()
     return get_win_rank_counts_by_draw(int(draw_round))
+
+
+def _bonus_from_row(row) -> int | None:
+    if len(row) <= COL_BONUS:
+        return None
+    val = pd.to_numeric(row[COL_BONUS], errors="coerce")
+    if pd.notna(val):
+        return int(val)
+    return None
+
+
+def get_draw_result_by_round(draw_round: int, filepath: str = DATA_FILE) -> dict | None:
+    """엑셀에 해당 회차 당첨번호·보너스가 있으면 반환."""
+    draw_round = int(draw_round)
+    try:
+        data = load_lotto_data(filepath)
+    except (OSError, ValueError, FileNotFoundError):
+        return None
+    for _, row in data.iterrows():
+        val = pd.to_numeric(row[COL_DRAW], errors="coerce")
+        if pd.isna(val) or int(float(val)) != draw_round:
+            continue
+        numbers = _draw_numbers(row)
+        if len(numbers) != 6:
+            return None
+        bonus = _bonus_from_row(row)
+        if bonus is None:
+            return None
+        return {"draw_no": draw_round, "numbers": numbers, "bonus": bonus}
+    return None
+
+
+def calc_lotto_win_rank(
+    combo: tuple[int, ...] | list[int],
+    winning_numbers: list[int],
+    bonus_number: int,
+) -> int | None:
+    """로또 6/45 등수 (1~5). 낙첨은 None."""
+    combo_set = set(int(n) for n in combo)
+    winning_set = set(int(n) for n in winning_numbers)
+    matches = len(combo_set & winning_set)
+    bonus = int(bonus_number)
+    if matches == 6:
+        return 1
+    if matches == 5 and bonus in combo_set:
+        return 2
+    if matches == 5:
+        return 3
+    if matches == 4:
+        return 4
+    if matches == 3:
+        return 5
+    return None
+
+
+def sync_marketing_win_ranks_for_round(
+    draw_round: int,
+    filepath: str = DATA_FILE,
+) -> dict:
+    """추첨 완료 회차 — DB 저장 조합에 1~5등 win_rank 반영."""
+    from marketing_db import (
+        get_combination_count_by_draw,
+        get_win_rank_counts_by_draw,
+        init_marketing_tables,
+        update_win_ranks_for_draw,
+    )
+
+    init_marketing_tables()
+    draw_round = int(draw_round)
+    if get_combination_count_by_draw(draw_round) == 0:
+        return {"synced": False, "reason": "no_combinations", "draw_round": draw_round}
+
+    result = get_draw_result_by_round(draw_round, filepath)
+    if not result:
+        return {"synced": False, "reason": "draw_not_found", "draw_round": draw_round}
+
+    updated = update_win_ranks_for_draw(
+        draw_round,
+        result["numbers"],
+        int(result["bonus"]),
+    )
+    return {
+        "synced": True,
+        "draw_round": draw_round,
+        "updated": updated,
+        "ranks": get_win_rank_counts_by_draw(draw_round),
+    }
+
+
+def sync_marketing_win_ranks_for_db_draws(filepath: str = DATA_FILE) -> list[dict]:
+    """DB에 저장된 회차 중 엑셀 당첨번호가 있는 회차를 일괄 갱신."""
+    from marketing_db import get_draw_extraction_stats, init_marketing_tables
+
+    init_marketing_tables()
+    synced: list[dict] = []
+    for item in get_draw_extraction_stats(limit=100):
+        outcome = sync_marketing_win_ranks_for_round(int(item["draw_round"]), filepath)
+        if outcome.get("synced"):
+            synced.append(outcome)
+    return synced

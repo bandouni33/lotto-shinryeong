@@ -17,6 +17,10 @@ load_dotenv_file()
 
 logger = logging.getLogger(__name__)
 
+# False: 화면 배너 안내 + sms_queue BANNER_ONLY (기본)
+# True: 알리고 설정 시 실발송, 미설정 시 TEST_SKIP
+SMS_ENABLED = False
+
 ALIGO_SEND_URL = "https://apis.aligo.in/send/"
 ALIGO_SUCCESS_CODE = "1"
 
@@ -137,12 +141,21 @@ def send_sms_via_aligo(receiver: str, message: str, *, msg_type: str = "LMS") ->
 
 def dispatch_purchase_sms(phone: str, purchase_type: str, message: str) -> int:
     """
-    구매 확정 SMS: 알리고 설정 시 실발송+SENT, 미설정 시 시뮬레이션+TEST_SKIP.
-    실패 시 WAIT 큐 등록.
+    구매 확정 SMS: SMS_ENABLED=False → BANNER_ONLY(발송 생략).
+    SMS_ENABLED=True → 알리고 설정 시 실발송+SENT, 미설정 시 TEST_SKIP. 실패 시 WAIT.
     """
     phone = str(phone).strip()
     purchase_type = str(purchase_type).strip()
     message = str(message).strip()
+
+    if not SMS_ENABLED:
+        logger.info(
+            "SMS disabled (banner mode): phone=%s type=%s | msg_preview=%s",
+            phone,
+            purchase_type,
+            message[:120],
+        )
+        return enqueue_sms(phone, purchase_type, "BANNER_ONLY")
 
     if not is_aligo_configured():
         sim_line = f"[테스트 모드] SMS 발송 시뮬레이션: {phone}로 발송 예정"

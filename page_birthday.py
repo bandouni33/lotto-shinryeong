@@ -1,7 +1,14 @@
 import streamlit as st
 import streamlit.components.v1 as components
 from birthday_db import init_birthday_table, get_user_birthdays, upsert_birthday, delete_birthday
-from lucky_numbers import get_life_path_number, get_lucky_numbers_from_life_path, LIFE_PATH_MEANINGS, calculate_lucky_numbers
+from user_scope import current_birthday_scope, init_guest_scope
+from lucky_numbers import (
+    get_life_path_number,
+    get_lucky_numbers_from_life_path,
+    LIFE_PATH_MEANINGS,
+    calculate_lucky_numbers,
+    validate_mmdd,
+)
 
 
 def _render_birthday_nav_html() -> str:
@@ -19,8 +26,9 @@ def _render_birthday_nav_html() -> str:
 
 def render():
     init_birthday_table()
+    init_guest_scope()
 
-    user_id = st.session_state.get("user_id") or "guest_local"
+    user_id = current_birthday_scope()
 
     birthdays = get_user_birthdays(user_id)
     birthday_dict = {b["slot"]: b for b in birthdays}
@@ -129,12 +137,13 @@ def render():
         existing = birthday_dict.get(slot)
 
         if existing:
-            # 등록된 슬롯 표시
-            lp = get_life_path_number(existing["mmdd"])
-            lucky = get_lucky_numbers_from_life_path(lp)
-            balls_html = "".join([f'<span class="lucky-ball">{n}</span>' for n in lucky])
+            mmdd_ok, mmdd_err = validate_mmdd(existing["mmdd"])
+            if mmdd_ok:
+                lp = get_life_path_number(existing["mmdd"])
+                lucky = get_lucky_numbers_from_life_path(lp)
+                balls_html = "".join([f'<span class="lucky-ball">{n}</span>' for n in lucky])
 
-            st.markdown(f"""
+                st.markdown(f"""
             <div class="slot-card">
                 <div class="slot-header">
                     <span class="slot-label">슬롯 {slot}</span>
@@ -144,6 +153,16 @@ def render():
                 <div class="slot-lucky">{balls_html}</div>
             </div>
             """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+            <div class="slot-card">
+                <div class="slot-header">
+                    <span class="slot-label">슬롯 {slot}</span>
+                </div>
+                <div class="slot-info">{existing["label"]} ({existing["mmdd"]})</div>
+            </div>
+            """, unsafe_allow_html=True)
+                st.warning(f"월일 형식 오류: {mmdd_err} (예: 0315)")
 
             # 수정/삭제 버튼 (한 줄)
             c1, c2, c3 = st.columns([4, 3, 3])
@@ -165,10 +184,14 @@ def render():
                     new_mmdd = st.text_input("월일", value=existing["mmdd"], key=f"emmdd_{slot}", label_visibility="collapsed")
                 with col3:
                     if st.button("저장", key=f"save_{slot}", type="primary"):
-                        if new_label and new_mmdd and len(new_mmdd) == 4 and new_mmdd.isdigit():
-                            upsert_birthday(user_id, slot, new_label, new_mmdd)
-                            st.session_state[f"editing_{slot}"] = False
-                            st.rerun()
+                        if new_label and new_mmdd:
+                            ok, err = validate_mmdd(new_mmdd)
+                            if ok:
+                                upsert_birthday(user_id, slot, new_label, new_mmdd)
+                                st.session_state[f"editing_{slot}"] = False
+                                st.rerun()
+                            else:
+                                st.toast(err or "월일 형식이 올바르지 않습니다.")
                         else:
                             st.toast("별칭과 월일 4자리를 정확히 입력하세요.")
 
@@ -187,9 +210,13 @@ def render():
                 mmdd = st.text_input("월일", placeholder="0315", key=f"mmdd_{slot}", label_visibility="collapsed")
             with col3:
                 if st.button("등록", key=f"reg_{slot}", type="primary"):
-                    if label and mmdd and len(mmdd) == 4 and mmdd.isdigit():
-                        upsert_birthday(user_id, slot, label, mmdd)
-                        st.rerun()
+                    if label and mmdd:
+                        ok, err = validate_mmdd(mmdd)
+                        if ok:
+                            upsert_birthday(user_id, slot, label, mmdd)
+                            st.rerun()
+                        else:
+                            st.toast(err or "월일 형식이 올바르지 않습니다.")
                     else:
                         st.toast("별칭과 월일 4자리를 정확히 입력하세요.")
 

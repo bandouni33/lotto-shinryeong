@@ -20,4 +20,7 @@ if st.session_state.is_admin:
 else:
     pg = st.navigation([user_view])
 
+if st.session_state.pop("go_to_admin", False):
+    st.switch_page("admin_dashboard.py")
+
 pg.run()

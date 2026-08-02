@@ -412,6 +412,25 @@ def complete_auto_order(
     conn.close()
 
 
+def list_completed_auto_orders(member_id: int, limit: int = 20) -> list[dict]:
+    """완료된 자동구매 주문 목록 (최신순)."""
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT id, quantity, purchase_type, phone, sms_days, draw_round,
+               combo_count, created_at, completed_at
+        FROM auto_orders
+        WHERE member_id = ? AND status = 'completed'
+        ORDER BY completed_at DESC, id DESC
+        LIMIT ?
+        """,
+        (int(member_id), int(limit)),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def fail_auto_order(order_id: int) -> None:
     conn = _connect()
     conn.execute(

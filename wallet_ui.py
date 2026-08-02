@@ -408,8 +408,11 @@ def render_wallet_bar() -> int | None:
     with col_b:
         if zp_uid:
             if st.button("로그아웃", key="zp_logout_btn", use_container_width=True, type="secondary"):
+                from user_scope import clear_user_session
+
                 for key in ("zp_user_id", "zp_point_balance", "zp_is_premium"):
                     st.session_state.pop(key, None)
+                clear_user_session()
                 st.rerun()
         else:
             bc1, bc2 = st.columns(2)

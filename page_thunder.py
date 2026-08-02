@@ -7,6 +7,7 @@ import json
 import uuid
 
 from auth_kakao import current_member_id
+from user_scope import current_birthday_scope, init_guest_scope, thunder_reveal_storage_suffix
 from wallet_db import calc_thunder_cost
 from wallet_ui import deduct_after_result, points_notice_dialog
 
@@ -19,10 +20,11 @@ THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
 
 
 def render(admin_lucky=None):
+    init_guest_scope()
     # ─── 데이터 로드 및 행운수 계산 ───
     if admin_lucky is None:
         admin_lucky = []
-    user_id = st.session_state.get("user_id") or "guest_local"
+    user_id = current_birthday_scope()
     birthdays = get_user_birthdays(user_id)
     
     if birthdays:
@@ -70,6 +72,8 @@ def render(admin_lucky=None):
                 st.success(f"조합 완료 · {calc_thunder_cost(g):,}P 차감되었습니다.")
             else:
                 st.error("적립금 차감에 실패했습니다.")
+        cur_ver = st.session_state.get("thunder_reveal_version", 1)
+        st.session_state["thunder_reveal_version"] = (cur_ver % 3) + 1
         st.rerun()
 
     if st.session_state.get("open_thunder_dialog"):
@@ -86,6 +90,8 @@ def render(admin_lucky=None):
     th_auto_run = st.session_state.pop("thunder_auto_run", None)
     th_approved_js = "true" if st.session_state.get("thunder_approved") else "false"
     th_auto_run_js = str(th_auto_run) if th_auto_run else "null"
+    reveal_version_js = str(st.session_state.get("thunder_reveal_version", 1))
+    reveal_scope_js = thunder_reveal_storage_suffix().replace("\\", "\\\\").replace("'", "\\'")
 
     # ─── 커스텀 CSS ───
     st.markdown("""
@@ -421,6 +427,7 @@ def render(admin_lucky=None):
                 will-change: transform, opacity;
                 animation: resultRowReveal 1s cubic-bezier(0.34, 1.45, 0.64, 1) forwards;
             }}
+            /* 버전1: 슬라이드 업 + 볼 글로우 */
             /* 메인화면(user_page) 로또볼 3D 스타일 재사용 */
             .ball {{
                 width: 35px; height: 35px; border-radius: 50%; display: flex;
@@ -442,6 +449,49 @@ def render(admin_lucky=None):
             .result-row.reveal .ball:nth-child(4) {{ animation-delay: 0.16s; }}
             .result-row.reveal .ball:nth-child(5) {{ animation-delay: 0.20s; }}
             .result-row.reveal .ball:nth-child(6) {{ animation-delay: 0.24s; }}
+
+            /* 버전2·3 전용 (버전1 reveal CSS와 완전 분리 — JS Web Animations 구동) */
+            .mystic-v2-row, .mystic-v3-row {{
+                position: relative;
+                overflow: visible;
+            }}
+            .mystic-v2-track, .mystic-v3-track {{
+                display: flex;
+                justify-content: center;
+                gap: 8px;
+                position: relative;
+                z-index: 2;
+            }}
+            .mystic-v2-aura {{
+                position: absolute;
+                inset: 0;
+                border-radius: 12px;
+                background: linear-gradient(180deg, rgba(2, 6, 23, 0.9) 0%, rgba(6, 182, 212, 0.35) 45%, rgba(168, 85, 247, 0.65) 100%);
+                z-index: 0;
+                pointer-events: none;
+                transform-origin: bottom center;
+            }}
+            .mystic-v2-spark {{
+                position: absolute;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #e0f2fe;
+                box-shadow: 0 0 10px 3px rgba(34, 211, 238, 0.9);
+                pointer-events: none;
+                z-index: 1;
+            }}
+            .mystic-v3-rift {{
+                position: absolute;
+                inset: -6px;
+                border-radius: 16px;
+                background: radial-gradient(ellipse at center, rgba(168, 85, 247, 0.55) 0%, rgba(15, 23, 42, 0) 72%);
+                z-index: 0;
+                pointer-events: none;
+            }}
+            .mystic-v3-row .ball {{
+                will-change: transform, opacity, filter;
+            }}
 
             @keyframes resultRowReveal {{
                 0% {{
@@ -540,6 +590,43 @@ def render(admin_lucky=None):
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
             let currentResults = [];
+            const activeRevealVersion = {reveal_version_js};
+            const REVEAL_STORE = 'thunder_reveal_cycle_{reveal_scope_js}';
+            let runRevealVersion = activeRevealVersion;
+            let genRunId = 0;
+            let isGenerating = false;
+            let activeGenTimers = [];
+            let activeGenIntervals = [];
+
+            function clearActiveGeneration() {{
+                activeGenTimers.forEach((id) => clearTimeout(id));
+                activeGenTimers = [];
+                activeGenIntervals.forEach((id) => clearInterval(id));
+                activeGenIntervals = [];
+            }}
+
+            function setStartButtonEnabled(enabled) {{
+                const startBtn = document.querySelector('.btn-start');
+                if (startBtn) startBtn.disabled = !enabled;
+            }}
+
+            try {{
+                if (!localStorage.getItem(REVEAL_STORE)) {{
+                    localStorage.setItem(REVEAL_STORE, String(activeRevealVersion));
+                }}
+            }} catch (e) {{}}
+
+            function consumeRevealVersion() {{
+                let v = 1;
+                try {{
+                    v = parseInt(localStorage.getItem(REVEAL_STORE) || String(activeRevealVersion), 10);
+                }} catch (e) {{}}
+                if (isNaN(v) || v < 1 || v > 3) v = 1;
+                const current = v;
+                const next = (v % 3) + 1;
+                try {{ localStorage.setItem(REVEAL_STORE, String(next)); }} catch (e) {{}}
+                return current;
+            }}
 
             function safeVibrate() {{
                 if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {{
@@ -792,10 +879,46 @@ def render(admin_lucky=None):
                 return {{ game, attempts, gaveUp }};
             }}
 
-            function generateCombination() {{
-                safeVibrate();
+            function scrollResultsIntoView(anchorEl) {{
+                const target = anchorEl || document.getElementById('resultArea');
+                if (!target) return;
 
-                const count = parseInt(document.getElementById('gameCount').value);
+                requestAnimationFrame(() => {{
+                    target.scrollIntoView({{ behavior: 'smooth', block: 'start', inline: 'nearest' }});
+                    try {{
+                        const frame = window.frameElement;
+                        const parentWin = window.parent;
+                        if (frame && parentWin) {{
+                            const targetRect = target.getBoundingClientRect();
+                            const frameRect = frame.getBoundingClientRect();
+                            const topInParent = frameRect.top + targetRect.top;
+                            parentWin.scrollTo({{
+                                top: Math.max(0, parentWin.scrollY + topInParent - 12),
+                                behavior: 'smooth',
+                            }});
+                        }}
+                    }} catch (e) {{}}
+                }});
+            }}
+
+            function generateCombination() {{
+                if (isGenerating) return;
+
+                safeVibrate();
+                clearActiveGeneration();
+                genRunId += 1;
+                const thisRun = genRunId;
+                isGenerating = true;
+                setStartButtonEnabled(false);
+
+                runRevealVersion = consumeRevealVersion();
+
+                const count = parseInt(document.getElementById('gameCount').value, 10);
+                if (isNaN(count) || count < 1) {{
+                    isGenerating = false;
+                    setStartButtonEnabled(true);
+                    return;
+                }}
                 showLuckyWarn(false);
 
                 const available = [];
@@ -806,17 +929,24 @@ def render(admin_lucky=None):
                 currentResults = [];
                 const resultArea = document.getElementById('resultArea');
                 resultArea.innerHTML = '';
+                scrollResultsIntoView(resultArea);
 
                 for (let g = 0; g < count; g++) {{
-                    setTimeout(() => {{
+                    const tid = setTimeout(() => {{
+                        if (thisRun !== genRunId) return;
                         const built = buildOneGame(available);
                         currentResults.push(built.game);
                         renderGame(built.game);
                     }}, g * 2000);
+                    activeGenTimers.push(tid);
                 }}
-                setTimeout(() => {{
+                const completeId = setTimeout(() => {{
+                    if (thisRun !== genRunId) return;
+                    isGenerating = false;
+                    setStartButtonEnabled(true);
                     window.parent.postMessage({{ type: 'thunder_complete', count: count }}, '*');
                 }}, count * 2000 + 600);
+                activeGenTimers.push(completeId);
             }}
 
             /* 메인화면 user_page get_ball_style() / orbit-ball radial-gradient 재사용 */
@@ -828,7 +958,161 @@ def render(admin_lucky=None):
                 return 'radial-gradient(circle at 35% 35%, #81c784, #388e3c, #1b5e20)';
             }}
 
+            function createBallEl(n) {{
+                const ball = document.createElement('div');
+                ball.className = 'ball';
+                ball.style.background = getBallBackground(n);
+                ball.innerText = n;
+                return ball;
+            }}
+
+            /* 버전2: 심해 오라 — 볼이 어둠 속에서 1.6배까지 튀어오르며 계시 (v1과 무관) */
+            function renderGameV2(nums) {{
+                const row = document.createElement('div');
+                row.className = 'result-row mystic-v2-row';
+
+                const aura = document.createElement('div');
+                aura.className = 'mystic-v2-aura';
+                row.appendChild(aura);
+
+                const track = document.createElement('div');
+                track.className = 'mystic-v2-track';
+                row.appendChild(track);
+
+                const balls = nums.map(n => {{
+                    const b = createBallEl(n);
+                    b.style.opacity = '0';
+                    b.style.visibility = 'hidden';
+                    track.appendChild(b);
+                    return b;
+                }});
+
+                document.getElementById('resultArea').appendChild(row);
+                scrollResultsIntoView(row);
+
+                aura.animate([
+                    {{ opacity: 0, transform: 'scaleY(0)' }},
+                    {{ opacity: 1, transform: 'scaleY(1)', offset: 0.25 }},
+                    {{ opacity: 0.85, transform: 'scaleY(0.55)', offset: 0.75 }},
+                    {{ opacity: 0, transform: 'scaleY(0)' }}
+                ], {{ duration: 3000, easing: 'ease-in-out', fill: 'forwards' }});
+
+                balls.forEach((ball, i) => {{
+                    const tid = setTimeout(() => {{
+                        const spark = document.createElement('div');
+                        spark.className = 'mystic-v2-spark';
+                        spark.style.left = (18 + i * 14) + '%';
+                        spark.style.bottom = '6px';
+                        row.appendChild(spark);
+                        spark.animate([
+                            {{ opacity: 0, transform: 'translateY(0) scale(0)' }},
+                            {{ opacity: 1, transform: 'translateY(-30px) scale(2)', offset: 0.4 }},
+                            {{ opacity: 0, transform: 'translateY(-70px) scale(0)' }}
+                        ], {{ duration: 1200, fill: 'forwards' }});
+                        setTimeout(() => spark.remove(), 1300);
+
+                        ball.style.visibility = 'visible';
+                        ball.animate([
+                            {{ opacity: 0, transform: 'translateY(180px) scale(0) rotate(270deg)', filter: 'blur(18px) brightness(0.05)' }},
+                            {{ opacity: 0.7, transform: 'translateY(-50px) scale(1.65) rotate(-20deg)', filter: 'blur(0) brightness(2.2) drop-shadow(0 0 28px #22d3ee) drop-shadow(0 0 48px #a855f7)', offset: 0.42 }},
+                            {{ opacity: 1, transform: 'translateY(22px) scale(0.82) rotate(10deg)', filter: 'brightness(1.15)', offset: 0.72 }},
+                            {{ opacity: 1, transform: 'translateY(0) scale(1) rotate(0deg)', filter: 'none' }}
+                        ], {{ duration: 2600, easing: 'cubic-bezier(0.1, 1.45, 0.22, 1)', fill: 'forwards' }});
+                    }}, i * 320);
+                    activeGenTimers.push(tid);
+                }});
+            }}
+
+            /* 버전3: 균열 너머 영혼 — 5.5초간 사라졌다 나타났다 후 수렴 (v1과 무관) */
+            function renderGameV3(nums) {{
+                const row = document.createElement('div');
+                row.className = 'result-row mystic-v3-row';
+
+                const rift = document.createElement('div');
+                rift.className = 'mystic-v3-rift';
+                row.appendChild(rift);
+
+                const track = document.createElement('div');
+                track.className = 'mystic-v3-track';
+                row.appendChild(track);
+
+                const balls = nums.map(n => {{
+                    const b = createBallEl(n);
+                    b.style.opacity = '0';
+                    track.appendChild(b);
+                    return b;
+                }});
+
+                document.getElementById('resultArea').appendChild(row);
+                scrollResultsIntoView(row);
+
+                rift.animate([
+                    {{ opacity: 0, transform: 'scale(0.7) rotate(0deg)' }},
+                    {{ opacity: 0.95, transform: 'scale(1.08) rotate(6deg)', offset: 0.35 }},
+                    {{ opacity: 0.5, transform: 'scale(1.15) rotate(-8deg)', offset: 0.7 }},
+                    {{ opacity: 0, transform: 'scale(1.3) rotate(0deg)' }}
+                ], {{ duration: 5500, fill: 'forwards' }});
+
+                const started = performance.now();
+                const duration = 5500;
+                const baseShadow = '0 4px 0 #000000, 0 7px 16px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04)';
+
+                const flickerTimer = setInterval(() => {{
+                    const progress = (performance.now() - started) / duration;
+                    if (progress >= 1) {{
+                        clearInterval(flickerTimer);
+                        balls.forEach(b => {{
+                            b.style.opacity = '1';
+                            b.style.transform = 'translate(0px, 0px) scale(1)';
+                            b.style.filter = 'none';
+                        }});
+                        row.style.boxShadow = baseShadow;
+                        row.style.transform = 'scale(1)';
+                        return;
+                    }}
+
+                    const chaos = 1 - progress * progress;
+                    balls.forEach(b => {{
+                        if (Math.random() > chaos * 0.85 + 0.08) {{
+                            b.style.opacity = String(0.15 + Math.random() * 0.85);
+                            b.style.transform = 'translate('
+                                + Math.round((Math.random() - 0.5) * 56) + 'px,'
+                                + Math.round((Math.random() - 0.5) * 44) + 'px) scale('
+                                + (0.35 + Math.random() * 1.35).toFixed(2) + ')';
+                            b.style.filter = 'hue-rotate(' + Math.round(Math.random() * 300)
+                                + 'deg) brightness(' + (0.4 + Math.random() * 1.6).toFixed(2) + ')';
+                        }} else {{
+                            b.style.opacity = '0';
+                            b.style.transform = 'translate('
+                                + Math.round((Math.random() - 0.5) * 80) + 'px,'
+                                + Math.round((Math.random() - 0.5) * 60) + 'px) scale(0.15)';
+                        }}
+                    }});
+
+                    if (Math.random() > 0.45) {{
+                        row.style.boxShadow = '0 0 ' + Math.round(18 + Math.random() * 36)
+                            + 'px ' + Math.round(6 + Math.random() * 10)
+                            + 'px rgba(168, 85, 247, ' + (0.45 + Math.random() * 0.55).toFixed(2) + ')';
+                        row.style.transform = 'scale(' + (0.97 + Math.random() * 0.06).toFixed(3) + ')';
+                    }} else {{
+                        row.style.boxShadow = baseShadow;
+                        row.style.transform = 'scale(1)';
+                    }}
+                }}, 100);
+                activeGenIntervals.push(flickerTimer);
+            }}
+
             function renderGame(nums) {{
+                const ver = runRevealVersion;
+                if (ver === 2 || ver === '2') {{
+                    renderGameV2(nums);
+                    return;
+                }}
+                if (ver === 3 || ver === '3') {{
+                    renderGameV3(nums);
+                    return;
+                }}
+
                 const row = document.createElement('div');
                 row.className = 'result-row reveal';
                 nums.forEach(n => {{
@@ -839,6 +1123,7 @@ def render(admin_lucky=None):
                     row.appendChild(ball);
                 }});
                 document.getElementById('resultArea').appendChild(row);
+                scrollResultsIntoView(row);
             }}
 
             function saveResults() {{
@@ -862,7 +1147,9 @@ def render(admin_lucky=None):
             if (autoRunCount) {{
                 document.getElementById('gameCount').value = autoRunCount;
                 thunderApproved = true;
-                setTimeout(() => generateCombination(), 400);
+                setTimeout(() => {{
+                    if (!isGenerating) generateCombination();
+                }}, 400);
             }}
         </script>
     </body>

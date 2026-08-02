@@ -2,11 +2,13 @@ import streamlit as st
 import pandas as pd
 import datetime
 import io
+import json
 import os
-import random
 import pickle
-
-from lotto_engine import run_filtering_engine
+import random
+import subprocess
+import sys
+from datetime import timedelta
 
 # ==========================================
 # 0. 초기화 로직 및 로컬 마스터 파일/데이터 보존 로드
@@ -17,6 +19,82 @@ if "admin_view" not in st.session_state:
 MASTER_FILE = "로또기록 앱 업로드용.xlsb"
 FILTER_SAVE_FILE = "saved_filters.pkl"     # 필터 유지용 저장 파일 (로그아웃해도 유지)
 COMBO_SAVE_FILE = "saved_combinations.csv" # 조합 결과 유지용 저장 파일 (로그아웃해도 유지)
+FILTER_JOB_STATUS_FILE = "filter_job.status"
+FILTER_WORKER_SCRIPT = os.path.join(os.path.dirname(__file__), "filter_worker.py")
+
+
+def _read_filter_job_status() -> dict | None:
+    if not os.path.exists(FILTER_JOB_STATUS_FILE):
+        return None
+    try:
+        with open(FILTER_JOB_STATUS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _pid_alive(pid: int | None) -> bool:
+    if not pid:
+        return False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            handle = ctypes.windll.kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid)
+            )
+            if not handle:
+                return False
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        except Exception:
+            return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+def _sync_filter_job_status() -> dict | None:
+    status = _read_filter_job_status()
+    if not status or status.get("state") != "running":
+        return status
+    if _pid_alive(status.get("pid")):
+        return status
+    status["state"] = "error"
+    status["message"] = "연산 프로세스가 중단되었습니다."
+    try:
+        with open(FILTER_JOB_STATUS_FILE, "w", encoding="utf-8") as f:
+            json.dump(status, f, ensure_ascii=False)
+    except OSError:
+        pass
+    return status
+
+
+def _start_filter_job() -> None:
+    if not os.path.exists(FILTER_SAVE_FILE):
+        raise FileNotFoundError("saved_filters.pkl 이 없습니다. 필터를 먼저 업로드해 주세요.")
+    import pickle
+    from filter_sheet_validation import normalize_three_filter_data, validate_three_filter_sheets
+
+    with open(FILTER_SAVE_FILE, "rb") as f:
+        saved_filters = normalize_three_filter_data(pickle.load(f))
+    val_errors, _ = validate_three_filter_sheets(saved_filters)
+    if val_errors:
+        raise ValueError(
+            "3종 필터 검증 오류 — 연산을 시작할 수 없습니다. "
+            f"(첫 오류: {val_errors[0]})"
+        )
+    worker = FILTER_WORKER_SCRIPT
+    if not os.path.exists(worker):
+        raise FileNotFoundError("filter_worker.py 를 찾을 수 없습니다.")
+    subprocess.Popen(
+        [sys.executable, worker],
+        cwd=os.path.dirname(__file__) or ".",
+        close_fds=True,
+    )
 
 @st.cache_data(ttl=3600)
 def load_lotto_history():
@@ -67,7 +145,7 @@ st.markdown("""
     }
     .stButton > button:hover { border-color: #FFB300 !important; color: #FFB300 !important; background-color: #2D3446; }
     
-    /* 4종 필터 탭 글자 시인성 강화 */
+    /* 3종 필터 탭 글자 시인성 강화 */
     div[data-testid="stTabs"] button p {
         color: #FFFFFF !important;
         font-weight: 700 !important;
@@ -152,22 +230,22 @@ if st.session_state.admin_view == "home":
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>작업 프로세스 메뉴</h4>", unsafe_allow_html=True)
     
     # 🔥 기존의 1단계, 2단계 버튼을 완전히 없애고 이 버튼 하나로 통합했습니다.
-    if st.button("🚀 4종 필터 업로드 및 원스톱 조합 생성 시작", type="primary"):
+    if st.button("🚀 3종 필터 업로드 및 원스톱 조합 생성 시작", type="primary"):
         change_view("filter_manage")
         st.rerun()
 
 # ==========================================
-# 🔧 [통합] 4종 필터 관리 및 원스톱 조합 생성 시스템
+# 🔧 [통합] 3종 필터 관리 및 원스톱 조합 생성 시스템
 # ==========================================
 elif st.session_state.admin_view == "filter_manage":
     if st.button("⬅️ 대시보드 홈으로 이동"):
         change_view("home")
         st.rerun()
     
-    st.markdown("<h3 style='color:#FFB300; font-weight:800;'>🔧 4종 필터 통합 관리 및 조합 생성</h3>", unsafe_allow_html=True)
-    st.info("💡 엑셀 업로드 후 하단에서 즉시 엔진을 가동하여 조합을 생성할 수 있습니다.")
+    st.markdown("<h3 style='color:#FFB300; font-weight:800;'>🔧 3종 필터 통합 관리 및 조합 생성</h3>", unsafe_allow_html=True)
+    st.info("💡 **3종필터.xlsx** (기본·절대·이격수 시트) 업로드 후 3단계 연산을 실행하세요. 특수필터 시트는 사용하지 않습니다.")
     
-    uploaded_excel = st.file_uploader("📂 주간 통합 패턴 엑셀 업로드 (.xlsx)", type=["xlsx"])
+    uploaded_excel = st.file_uploader("📂 3종필터 엑셀 업로드 (.xlsx)", type=["xlsx"])
 
     # 1. 엑셀 업로드 시 파일 파싱 및 로컬 저장
     if uploaded_excel:
@@ -192,22 +270,45 @@ elif st.session_state.admin_view == "filter_manage":
                 return df[df["입력데이터"] != ""].reset_index(drop=True)
 
             filters_data = {
-                'basic': get_clean_data('기본필터'),
-                'special': get_clean_data('특수필터'),
-                'interval': get_clean_data('이격수필터'),
-                'absolute': get_clean_data('절대필터')
+                "basic": get_clean_data("기본필터"),
+                "absolute": get_clean_data("절대필터"),
+                "interval": get_clean_data("이격수필터"),
             }
-            with open(FILTER_SAVE_FILE, 'wb') as f:
+            with open(FILTER_SAVE_FILE, "wb") as f:
                 pickle.dump(filters_data, f)
-                
-            st.success("✅ 필터 업로드 성공! 데이터가 시스템에 안전하게 저장되었습니다.")
+
+            from filter_sheet_validation import validate_three_filter_sheets
+
+            val_errors, val_summary = validate_three_filter_sheets(filters_data)
+            st.session_state["admin_filter_validation_summary"] = val_summary
+            if val_errors:
+                st.error(
+                    "⚠️ 필터는 저장됐지만 **검증 오류**가 있습니다. "
+                    "연산 전 엑셀(I·J 열)을 수정·재업로드해 주세요."
+                )
+                for msg in val_errors[:20]:
+                    st.warning(msg)
+                if len(val_errors) > 20:
+                    st.caption(f"… 외 {len(val_errors) - 20}건")
+            else:
+                st.success("✅ 필터 업로드·검증 성공! 데이터가 시스템에 안전하게 저장되었습니다.")
+            cap = " · ".join(f"{k}={v}" for k, v in val_summary.items())
+            st.caption(cap)
         except Exception as e:
             st.error(f"❌ 시트명 또는 양식 오류: {e}")
 
     # 2. 업로드 여부와 상관없이 저장된 파일이 있으면 무조건 렌더링
     if os.path.exists(FILTER_SAVE_FILE):
-        with open(FILTER_SAVE_FILE, 'rb') as f:
-            saved_filters = pickle.load(f)
+        from filter_sheet_validation import normalize_three_filter_data
+
+        with open(FILTER_SAVE_FILE, "rb") as f:
+            saved_filters = normalize_three_filter_data(pickle.load(f))
+
+        if "admin_filter_validation_summary" not in st.session_state:
+            from filter_sheet_validation import validate_three_filter_sheets
+
+            _, val_summary = validate_three_filter_sheets(saved_filters)
+            st.session_state["admin_filter_validation_summary"] = val_summary
             
         def remove_decimals_from_df_cache(df):
             df_safe = df.copy()
@@ -224,28 +325,120 @@ elif st.session_state.admin_view == "filter_manage":
 
         st.markdown("<h5 style='color:#00E676; margin-top:20px;'>저장된 필터 데이터 현황 (텍스트 가독성 최적화)</h5>", unsafe_allow_html=True)
         
-        tab1, tab2, tab3, tab4 = st.tabs(["기본", "특수", "이격수", "절대"])
-        
-        with tab1: st.dataframe(style_dataframe(remove_decimals_from_df_cache(saved_filters['basic'])), use_container_width=True, hide_index=True)
-        with tab2: st.dataframe(style_dataframe(remove_decimals_from_df_cache(saved_filters['special'])), use_container_width=True, hide_index=True)
-        with tab3: st.dataframe(style_dataframe(remove_decimals_from_df_cache(saved_filters['interval'])), use_container_width=True, hide_index=True)
-        with tab4: st.dataframe(style_dataframe(remove_decimals_from_df_cache(saved_filters['absolute'])), use_container_width=True, hide_index=True)
+        tab_basic, tab_absolute, tab_interval = st.tabs(["① 기본", "② 절대", "③ 이격수"])
+
+        with tab_basic:
+            st.dataframe(
+                style_dataframe(remove_decimals_from_df_cache(saved_filters["basic"])),
+                use_container_width=True,
+                hide_index=True,
+            )
+        with tab_absolute:
+            st.dataframe(
+                style_dataframe(remove_decimals_from_df_cache(saved_filters["absolute"])),
+                use_container_width=True,
+                hide_index=True,
+            )
+        with tab_interval:
+            st.dataframe(
+                style_dataframe(remove_decimals_from_df_cache(saved_filters["interval"])),
+                use_container_width=True,
+                hide_index=True,
+            )
             
+        st.markdown("---")
+        st.markdown(
+            "<p style='color:#94A3B8;margin-bottom:8px;'>3단계 연산 순서 (한 번에 실행)</p>",
+            unsafe_allow_html=True,
+        )
+        step_col1, step_col2, step_col3 = st.columns(3)
+        summary = st.session_state.get("admin_filter_validation_summary") or {}
+        with step_col1:
+            st.markdown(
+                f"**① 기본**  \n"
+                f"<span style='color:#00E676;'>{int(summary.get('basic_rows', len(saved_filters['basic'])))} 규칙</span>",
+                unsafe_allow_html=True,
+            )
+        with step_col2:
+            st.markdown(
+                f"**② 절대**  \n"
+                f"<span style='color:#00E676;'>{int(summary.get('absolute_rows', len(saved_filters['absolute'])))} 규칙</span>",
+                unsafe_allow_html=True,
+            )
+        with step_col3:
+            st.markdown(
+                f"**③ 이격수**  \n"
+                f"<span style='color:#00E676;'>{int(summary.get('interval_rows', len(saved_filters['interval'])))} 규칙</span>",
+                unsafe_allow_html=True,
+            )
+        if int(summary.get("basic_rows", 0)) == 0:
+            st.caption(
+                "① 기본필터에 활성 규칙이 없으면 1단계는 **전체 814만 조합**을 그대로 넘깁니다. "
+                "(구 **특수필터** 시트는 더 이상 적용하지 않습니다 — 엑셀 재업로드 권장)"
+            )
+
         st.markdown("---") 
         
         # ==========================================
         # 3. [통합 연동] 조합 생성 엔진 가동 버튼
         # ==========================================
-        if st.button("⚡ 4종 필터 기반 조합 연산 실행 (엔진 정밀 필터링)", type="primary"):
-            with st.spinner("🚀 8,145,060 조합 전수 검사 엔진 가동 중..."):
-                final_data = run_filtering_engine(
-                    saved_filters,
-                    apply_premium_patterns=False,
-                )
-                
-                df_generated = pd.DataFrame(final_data, columns=["번호1", "번호2", "번호3", "번호4", "번호5", "번호6"])
-                df_generated.to_csv(COMBO_SAVE_FILE, index=False)
+        job_status = _sync_filter_job_status()
+        job_running = bool(job_status and job_status.get("state") == "running")
+
+        if job_running:
+            st.info(
+                "🚀 8,145,060 조합 전수 검사 **백그라운드 연산 중**입니다. "
+                "이 화면을 유지한 채 완료될 때까지 기다려 주세요. "
+                "(다른 브라우저·기기의 **메인 화면**은 이용 가능합니다.)"
+            )
+
+            @st.fragment(run_every=timedelta(seconds=4))
+            def _poll_filter_job_status() -> None:
+                status = _sync_filter_job_status()
+                if status and status.get("state") == "running":
+                    st.caption("연산 진행 중… 자동 확인 중")
+                elif status and status.get("state") in ("done", "error"):
+                    st.rerun()
+
+            _poll_filter_job_status()
+            if st.button("상태 새로고침", key="admin_filter_job_refresh"):
                 st.rerun()
+        elif job_status and job_status.get("state") == "done":
+            st.success(
+                f"✅ 백그라운드 연산 완료 — {int(job_status.get('total', 0)):,}개 조합 생성"
+            )
+            stage_stats = job_status.get("stage_stats") or {}
+            if stage_stats:
+                s1 = int(
+                    stage_stats.get("stage1_basic")
+                    or stage_stats.get("stage1_basic_special")
+                    or 0
+                )
+                st.caption(
+                    "3단계 잔량: "
+                    f"① 기본 {s1:,} → "
+                    f"② 절대 {int(stage_stats.get('stage2_absolute', 0)):,} → "
+                    f"③ 이격수 {int(stage_stats.get('stage3_interval', 0)):,} "
+                    f"(전체 풀 {int(stage_stats.get('total_pool', 8145060)):,})"
+                )
+        elif job_status and job_status.get("state") == "error":
+            st.error(f"연산 오류: {job_status.get('message', '알 수 없는 오류')}")
+            for msg in (job_status.get("validation_errors") or [])[:10]:
+                st.warning(str(msg))
+
+        if st.button(
+            "⚡ 3단계 조합 연산 실행 (① 기본 → ② 절대 → ③ 이격수)",
+            type="primary",
+            disabled=job_running,
+        ):
+            try:
+                if job_running:
+                    st.warning("이미 연산이 진행 중입니다.")
+                else:
+                    _start_filter_job()
+                    st.rerun()
+            except Exception as e:
+                st.error(f"연산 시작 오류: {e}")
         
         # ==========================================
         # 4. [통합 연동] 결과물 화면 노출 및 다운로드
@@ -289,6 +482,7 @@ elif st.session_state.admin_view == "filter_manage":
             # ==========================================
             from marketing_db import (
                 bulk_insert_lotto_combinations,
+                delete_lotto_combinations_by_draw,
                 get_combination_count_by_draw,
                 init_marketing_tables,
                 parse_combination_rows_from_dataframe,
@@ -296,6 +490,129 @@ elif st.session_state.admin_view == "filter_manage":
             )
 
             init_marketing_tables()
+
+            def _admin_dialog(title: str):
+                if hasattr(st, "dialog"):
+                    return st.dialog(title)
+                if hasattr(st, "experimental_dialog"):
+                    return st.experimental_dialog(title)
+
+                def _wrap(func):
+                    def _inner(*args, **kwargs):
+                        with st.container(border=True):
+                            st.subheader(title)
+                            return func(*args, **kwargs)
+
+                    return _inner
+
+                return _wrap
+
+            def _admin_perform_combo_save(
+                draw_round: int,
+                rows: list,
+                *,
+                replace_existing: bool,
+            ) -> None:
+                draw_round = int(draw_round)
+                if replace_existing:
+                    delete_lotto_combinations_by_draw(draw_round)
+                saved_count = bulk_insert_lotto_combinations(draw_round, rows)
+                total_in_db = get_combination_count_by_draw(draw_round)
+                st.success(
+                    f"회차 {draw_round}: {saved_count:,}개 조합 저장 완료 "
+                    f"(해당 회차 DB 누적 {total_in_db:,}개)"
+                )
+
+            @_admin_dialog("저장 확인")
+            def _admin_combo_save_conflict_dialog() -> None:
+                pending = st.session_state.get("admin_combo_save_pending") or {}
+                draw_round = int(pending.get("draw_round") or 0)
+                existing = int(pending.get("existing_count") or 0)
+                rows = pending.get("rows") or []
+
+                st.warning(
+                    f"회차 **{draw_round}**에 이미 **{existing:,}개** 조합이 저장되어 있습니다.\n\n"
+                    "어떻게 저장할까요?"
+                )
+
+                btn_replace, btn_rename = st.columns(2)
+                with btn_replace:
+                    if st.button(
+                        "삭제후 신규저장",
+                        type="primary",
+                        use_container_width=True,
+                        key="admin_combo_save_replace",
+                    ):
+                        try:
+                            _admin_perform_combo_save(
+                                draw_round,
+                                rows,
+                                replace_existing=True,
+                            )
+                        except Exception as e:
+                            st.error(f"저장 오류: {e}")
+                        else:
+                            for key in (
+                                "admin_combo_save_pending",
+                                "admin_combo_save_alt_mode",
+                            ):
+                                st.session_state.pop(key, None)
+                            st.rerun()
+
+                with btn_rename:
+                    if st.button(
+                        "다른이름으로 저장",
+                        use_container_width=True,
+                        key="admin_combo_save_rename",
+                    ):
+                        st.session_state["admin_combo_save_alt_mode"] = True
+                        st.rerun()
+
+                if st.session_state.get("admin_combo_save_alt_mode"):
+                    alt_round = st.number_input(
+                        "새 저장 회차",
+                        min_value=1,
+                        step=1,
+                        key="admin_combo_save_alt_round",
+                    )
+                    if st.button(
+                        "이 회차로 저장",
+                        type="primary",
+                        key="admin_combo_save_alt_confirm",
+                    ):
+                        alt_round = int(alt_round)
+                        if alt_round == draw_round:
+                            st.error("현재와 다른 회차 번호를 입력해 주세요.")
+                        elif get_combination_count_by_draw(alt_round) > 0:
+                            st.error(
+                                f"회차 {alt_round}에도 이미 저장된 조합이 있습니다. "
+                                "다른 회차를 입력해 주세요."
+                            )
+                        else:
+                            try:
+                                _admin_perform_combo_save(
+                                    alt_round,
+                                    rows,
+                                    replace_existing=False,
+                                )
+                            except Exception as e:
+                                st.error(f"저장 오류: {e}")
+                            else:
+                                for key in (
+                                    "admin_combo_save_pending",
+                                    "admin_combo_save_alt_mode",
+                                ):
+                                    st.session_state.pop(key, None)
+                                st.rerun()
+
+                if st.button("취소", key="admin_combo_save_cancel"):
+                    for key in (
+                        "admin_combo_save_pending",
+                        "admin_combo_save_alt_mode",
+                    ):
+                        st.session_state.pop(key, None)
+                    st.rerun()
+
             st.markdown("---")
             st.subheader("📥 추출 조합 DB 저장")
             draw_round_save = st.number_input(
@@ -338,14 +655,24 @@ elif st.session_state.admin_view == "filter_manage":
                     if not rows_to_save:
                         st.warning("저장할 조합이 없습니다.")
                     else:
-                        saved_count = bulk_insert_lotto_combinations(
-                            int(draw_round_save),
-                            rows_to_save,
-                        )
-                        total_in_db = get_combination_count_by_draw(int(draw_round_save))
-                        st.success(
-                            f"회차 {int(draw_round_save)}: {saved_count:,}개 조합 저장 완료 "
-                            f"(해당 회차 DB 누적 {total_in_db:,}개)"
-                        )
+                        target_round = int(draw_round_save)
+                        existing_count = get_combination_count_by_draw(target_round)
+                        if existing_count > 0:
+                            st.session_state["admin_combo_save_pending"] = {
+                                "draw_round": target_round,
+                                "existing_count": existing_count,
+                                "rows": rows_to_save,
+                            }
+                            st.session_state.pop("admin_combo_save_alt_mode", None)
+                            st.rerun()
+                        else:
+                            _admin_perform_combo_save(
+                                target_round,
+                                rows_to_save,
+                                replace_existing=False,
+                            )
                 except Exception as e:
                     st.error(f"저장 오류: {e}")
+
+            if st.session_state.get("admin_combo_save_pending"):
+                _admin_combo_save_conflict_dialog()

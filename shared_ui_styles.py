@@ -76,7 +76,7 @@ def auto_page_button_css() -> str:
 <style>
 {sel} {{
     {_PRIMARY_GRADIENT}
-    font-size: 16px !important;
+    font-size: 18px !important;
     padding: 0.65rem 1rem !important;
     min-height: 48px !important;
     width: 100% !important;

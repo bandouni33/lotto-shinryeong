@@ -1,7 +1,13 @@
 import sqlite3
 from datetime import datetime
 
+from lucky_numbers import validate_mmdd
+
 DB_PATH = "lotto.db"
+
+
+def _normalize_scope(user_id) -> str:
+    return str(user_id).strip()
 
 
 def init_birthday_table():
@@ -9,7 +15,7 @@ def init_birthday_table():
     conn.execute("""
         CREATE TABLE IF NOT EXISTS userBirthdays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
             slot INTEGER NOT NULL,
             label TEXT NOT NULL,
             mmdd TEXT NOT NULL,
@@ -26,48 +32,55 @@ def init_birthday_table():
 
 
 def get_user_birthdays(user_id):
+    scope = _normalize_scope(user_id)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT * FROM userBirthdays WHERE user_id = ? ORDER BY slot",
-        (user_id,)
+        (scope,),
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 
 def upsert_birthday(user_id, slot, label, mmdd):
+    scope = _normalize_scope(user_id)
     if slot < 1 or slot > 4:
         raise ValueError("슬롯 번호는 1~4 사이여야 합니다")
-    
+
+    ok, err = validate_mmdd(mmdd)
+    if not ok:
+        raise ValueError(err or "월일 형식이 올바르지 않습니다")
+
     conn = sqlite3.connect(DB_PATH)
     existing = conn.execute(
         "SELECT id FROM userBirthdays WHERE user_id = ? AND slot = ?",
-        (user_id, slot)
+        (scope, slot),
     ).fetchone()
-    
+
     now = datetime.now().isoformat()
-    
+
     if existing:
         conn.execute(
             "UPDATE userBirthdays SET label = ?, mmdd = ?, updated_at = ? WHERE user_id = ? AND slot = ?",
-            (label, mmdd, now, user_id, slot)
+            (label, mmdd, now, scope, slot),
         )
     else:
         conn.execute(
             "INSERT INTO userBirthdays (user_id, slot, label, mmdd, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, slot, label, mmdd, now, now)
+            (scope, slot, label, mmdd, now, now),
         )
-    
+
     conn.commit()
     conn.close()
 
 
 def delete_birthday(user_id, slot):
+    scope = _normalize_scope(user_id)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "DELETE FROM userBirthdays WHERE user_id = ? AND slot = ?",
-        (user_id, slot)
+        (scope, slot),
     )
     conn.commit()
     conn.close()

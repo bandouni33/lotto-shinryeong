@@ -107,6 +107,9 @@ def finalize_login(provider: str, provider_user_id: str) -> tuple[int, bool, boo
     st.session_state.member_id = member_id
     st.session_state.oauth_provider = provider
     st.session_state.oauth_hash_display = oauth_hash(provider, provider_user_id)[:8] + "…"
+    from user_scope import bind_identity_on_login
+
+    bind_identity_on_login(member_id)
     if bonus:
         st.session_state.wallet_toast = "간편인증 완료! 적립금 5,000P가 지급되었습니다."
     else:
@@ -122,6 +125,9 @@ def mock_provider_login(provider: str) -> tuple[int, bool, bool]:
     st.session_state.member_id = member_id
     st.session_state.oauth_provider = provider
     st.session_state.oauth_hash_display = oauth_hash(provider, fake_id)[:8] + "…"
+    from user_scope import bind_identity_on_login
+
+    bind_identity_on_login(member_id)
     msg = "5,000P 지급 완료!" if bonus else "로그인 완료"
     st.session_state.wallet_toast = f"{provider.upper()} {msg}"
     return member_id, is_new, bonus
@@ -225,13 +231,9 @@ def handle_oauth_callback() -> bool:
 
 
 def logout() -> None:
-    for key in (
-        "member_id",
-        "oauth_provider",
-        "oauth_hash_display",
-        "wallet_toast",
-    ):
-        st.session_state.pop(key, None)
+    from user_scope import clear_user_session
+
+    clear_user_session()
 
 
 def current_member_id() -> int | None:

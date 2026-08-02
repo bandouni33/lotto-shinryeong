@@ -1,5 +1,6 @@
 """익명 마케팅 데이터 전용 SQLite 모듈 (sms_queue ↔ lotto_combinations 완전 분리)."""
 
+import random
 import sqlite3
 from collections import Counter
 from datetime import datetime
@@ -7,7 +8,7 @@ from datetime import datetime
 DB_PATH = "lotto.db"
 
 PURCHASE_TYPES = frozenset({"정기구독", "일반구매"})
-SEND_STATUSES = frozenset({"WAIT", "SENT", "TEST_SKIP"})
+SEND_STATUSES = frozenset({"WAIT", "SENT", "TEST_SKIP", "BANNER_ONLY"})
 
 
 class InsufficientCombinationsError(Exception):
@@ -252,6 +253,106 @@ def allocate_lotto_combinations(
     return result
 
 
+def _pick_spread_indices(pool_size: int, count: int) -> list[int]:
+    """
+    풀 전체에 count개를 불규칙 간격으로 분산 (1-indexed 예: 1, 3, 6, 10, 14).
+    시작 위치 + 매번 랜덤 gap(최소 1)으로 앞쪽부터 퍼뜨림.
+    """
+    if count <= 0:
+        return []
+    if count == 1:
+        return [random.randrange(pool_size)]
+    if count >= pool_size:
+        return sorted(random.sample(range(pool_size), pool_size))
+
+    head_room = pool_size - count
+    max_start = max(0, min(head_room, pool_size // 3))
+    pos = random.randint(0, max_start)
+    indices = [pos]
+    picks_left = count - 1
+
+    for remaining_picks in range(picks_left, 0, -1):
+        slots_left = pool_size - pos - 1
+        min_gap = 1
+        max_gap = max(min_gap, slots_left - remaining_picks + 1)
+        if max_gap > min_gap + 1 and random.random() < 0.6:
+            upper = max(min_gap + 1, max_gap // 2 + random.randint(0, max(0, max_gap // 3)))
+            gap = random.randint(min_gap, min(upper, max_gap))
+        else:
+            gap = random.randint(min_gap, max_gap)
+        pos += gap
+        indices.append(pos)
+
+    return indices
+
+
+def allocate_lotto_combinations_random_sequential(
+    draw_round: int,
+    count: int,
+    auto_order_id: int,
+) -> list[dict]:
+    """
+    미배포 조합 풀(관리자 저장)에서 불규칙 간격으로 count개 분산 배정.
+
+    예) 5개 → 인덱스 1, 3, 6, 10, 14처럼 퍼져서 선택.
+    재고가 부족하면 해당 회차 배포를 초기화한 뒤 다시 배정(회전).
+    """
+    draw_round = int(draw_round)
+    count = int(count)
+    if count < 1:
+        return []
+
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rotated = False
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        total = _count_total_combinations(conn, draw_round)
+        if total < count:
+            raise InsufficientCombinationsError(draw_round, count, total)
+
+        pending = _fetch_pending_rows(conn, draw_round)
+        if len(pending) < count:
+            _reset_draw_allocations(conn, draw_round)
+            pending = _fetch_pending_rows(conn, draw_round)
+            rotated = True
+
+        if len(pending) < count:
+            raise InsufficientCombinationsError(draw_round, count, len(pending))
+
+        pick_indices = _pick_spread_indices(len(pending), count)
+        ordered = [pending[i] for i in pick_indices]
+        now = datetime.now().isoformat()
+        ids = [int(row["id"]) for row in ordered]
+        placeholders = ",".join("?" * len(ids))
+        conn.execute(
+            f"""
+            UPDATE lotto_combinations
+            SET allocated_at = ?, auto_order_id = ?
+            WHERE id IN ({placeholders})
+            """,
+            [now, int(auto_order_id), *ids],
+        )
+        conn.commit()
+    except InsufficientCombinationsError:
+        conn.execute("ROLLBACK")
+        raise
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
+
+    return [
+        {
+            "id": int(row["id"]),
+            "combo": _combo_nums_from_row(row),
+            "rotated": rotated,
+        }
+        for row in ordered
+    ]
+
+
 def release_lotto_combination_allocation(combo_ids: list[int]) -> int:
     """배포 롤백 (결제 실패 등)."""
     if not combo_ids:
@@ -285,6 +386,26 @@ def count_available_combinations(draw_round: int) -> int:
     return int(row[0]) if row else 0
 
 
+def get_combinations_by_auto_order_id(auto_order_id: int) -> list[dict]:
+    """자동구매 주문에 배정된 조합 목록."""
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT id, num1, num2, num3, num4, num5, num6
+        FROM lotto_combinations
+        WHERE auto_order_id = ?
+        ORDER BY id
+        """,
+        (int(auto_order_id),),
+    ).fetchall()
+    conn.close()
+    return [
+        {"id": int(row["id"]), "combo": list(_combo_nums_from_row(row))}
+        for row in rows
+    ]
+
+
 def enqueue_sms(phone: str, purchase_type: str, send_status: str = "WAIT") -> int:
     """구매확정 시 문자 발송 대기열 등록 (로또 번호 저장 없음)."""
     phone = str(phone).strip()
@@ -296,7 +417,9 @@ def enqueue_sms(phone: str, purchase_type: str, send_status: str = "WAIT") -> in
     if purchase_type not in PURCHASE_TYPES:
         raise ValueError("purchase_type은 '정기구독' 또는 '일반구매'만 허용됩니다.")
     if send_status not in SEND_STATUSES:
-        raise ValueError("send_status는 'WAIT', 'SENT', 'TEST_SKIP'만 허용됩니다.")
+        raise ValueError(
+            "send_status는 'WAIT', 'SENT', 'TEST_SKIP', 'BANNER_ONLY'만 허용됩니다."
+        )
 
     conn = _connect()
     cur = conn.execute(
@@ -392,6 +515,53 @@ def bulk_insert_lotto_combinations(
     conn.commit()
     conn.close()
     return len(payload)
+
+
+def update_win_ranks_for_draw(
+    draw_round: int,
+    winning_numbers: list[int],
+    bonus_number: int,
+) -> int:
+    """운영자 추출 조합 vs 당첨번호 — 1~5등 win_rank 일괄 갱신."""
+    from lotto_stats import calc_lotto_win_rank
+
+    draw_round = int(draw_round)
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT id, num1, num2, num3, num4, num5, num6
+        FROM lotto_combinations
+        WHERE draw_round = ?
+        """,
+        (draw_round,),
+    ).fetchall()
+    updated = 0
+    for row in rows:
+        combo = _combo_nums_from_row(row)
+        rank = calc_lotto_win_rank(combo, winning_numbers, bonus_number)
+        conn.execute(
+            "UPDATE lotto_combinations SET win_rank = ? WHERE id = ?",
+            (rank, int(row["id"])),
+        )
+        updated += 1
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def delete_lotto_combinations_by_draw(draw_round: int) -> int:
+    """해당 회차 추출 조합 전체 삭제."""
+    draw_round = int(draw_round)
+    conn = _connect()
+    cur = conn.execute(
+        "DELETE FROM lotto_combinations WHERE draw_round = ?",
+        (draw_round,),
+    )
+    deleted = int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted
 
 
 def get_win_rank_counts_by_draw(draw_round: int) -> dict[int, int]:
@@ -493,8 +663,12 @@ __all__ = [
     "build_number_frequency_map",
     "combo_priority_score",
     "allocate_lotto_combinations",
+    "allocate_lotto_combinations_random_sequential",
     "release_lotto_combination_allocation",
     "count_available_combinations",
+    "get_combinations_by_auto_order_id",
+    "delete_lotto_combinations_by_draw",
+    "update_win_ranks_for_draw",
     "get_win_rank_counts_by_draw",
     "get_combination_count_by_draw",
     "get_draw_extraction_stats",

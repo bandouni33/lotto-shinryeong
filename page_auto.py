@@ -11,6 +11,12 @@ import streamlit.components.v1 as components
 WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 SUBSCRIPTION_WEEKDAYS = ["화", "수", "목"]
 QUANTITY_OPTIONS = [5, 10, 15, 20]
+# 테스트 기간 기본: 구매 확정 시 인증 건너뜀. 출시 시 AUTO_PURCHASE_SKIP_AUTH=0
+AUTO_PURCHASE_SKIP_AUTH = os.environ.get("AUTO_PURCHASE_SKIP_AUTH", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def _get_icon_base64(file_path: str = "K-325.jpg") -> str:
@@ -210,16 +216,266 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
     return df
 
 
+def _sync_completed_draw_win_ranks() -> None:
+    """메인 엑셀에 당첨번호가 있는 회차 — 추출 조합 등수 집계 반영."""
+    try:
+        from lotto_stats import sync_marketing_win_ranks_for_db_draws
+
+        sync_marketing_win_ranks_for_db_draws()
+    except Exception:
+        pass
+
+
 def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     mdb = _marketing_db()
     mdb.init_marketing_tables()
+    _sync_completed_draw_win_ranks()
     stats = mdb.get_draw_extraction_stats(limit=20)
     if stats:
         return _stats_to_dataframe(stats, False), False
     return _stats_to_dataframe(mdb.get_mock_draw_extraction_stats(), True), True
 
 
+def _load_pattern_count_from_n5() -> int | None:
+    """관리자 3종필터(saved_filters.pkl) — 기본·절대·이격수 활성 규칙 합계."""
+    import pickle
+
+    path = "saved_filters.pkl"
+    if not os.path.exists(path):
+        return None
+    try:
+        from filter_sheet_validation import normalize_three_filter_data, validate_three_filter_sheets
+
+        with open(path, "rb") as f:
+            saved = normalize_three_filter_data(pickle.load(f))
+        _, summary = validate_three_filter_sheets(saved)
+        total = (
+            int(summary.get("basic_rows", 0))
+            + int(summary.get("absolute_rows", 0))
+            + int(summary.get("interval_rows", 0))
+        )
+        return total if total > 0 else None
+    except Exception:
+        return None
+
+
+def _pattern_applied_count() -> int:
+    """3종 필터 규칙 합계 (없으면 0)."""
+    count = _load_pattern_count_from_n5()
+    return int(count) if count is not None else 0
+
+
+def _ball_color(n: int) -> str:
+    if 1 <= n <= 10:
+        return "#f9a825"
+    if 11 <= n <= 20:
+        return "#1976d2"
+    if 21 <= n <= 30:
+        return "#e53935"
+    if 31 <= n <= 40:
+        return "#757575"
+    return "#388e3c"
+
+
+def _sms_schedule_label(purchase_method: str, sms_days: list[str] | str) -> str:
+    days = sms_days
+    if isinstance(days, str):
+        days = [d.strip() for d in days.split(",") if d.strip()]
+    if purchase_method == "월간구독" and days:
+        return "문자 발송 예정: 매주 " + " · ".join(f"{d}요일" for d in days)
+    return "문자 발송: 즉시 구매 (테스트 기간 — 화면 확인)"
+
+
+def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
+    allocated = data.get("allocated") or []
+    draw_round = data.get("draw_round", "")
+    combo_count = data.get("combo_count", len(allocated))
+    cost = data.get("cost")
+    purchase_method = data.get("purchase_method") or (
+        "월간구독" if data.get("purchase_type") == "정기구독" else "즉시"
+    )
+    sms_days = data.get("sms_days") or []
+    schedule = _sms_schedule_label(purchase_method, sms_days)
+    cost_line = f"{int(cost):,}P 차감" if cost is not None else ""
+
+    combo_rows = ""
+    for idx, item in enumerate(allocated, start=1):
+        combo = item.get("combo") or []
+        balls = "".join(
+            f'<span class="auto-banner-ball" style="background:{_ball_color(n)};">{n:02d}</span>'
+            for n in combo
+        )
+        combo_rows += (
+            f'<div class="auto-banner-combo">'
+            f'<span class="auto-banner-combo-idx">{idx}</span>'
+            f'<div class="auto-banner-ball-row">{balls}</div>'
+            f"</div>"
+        )
+
+    notice = (
+        ""
+        if compact
+        else (
+            '<p class="auto-banner-notice">'
+            "현재 테스트 기간으로 문자 발송 대신 화면에서 결과를 확인하실 수 있습니다."
+            "</p>"
+        )
+    )
+
+    oid = data.get("order_id")
+    if compact:
+        if oid is not None and int(oid) < 0:
+            title = f"내역 #{abs(int(oid))}"
+        else:
+            title = f"주문 #{oid}"
+    else:
+        title = "구매 완료"
+    meta_parts = [f"{combo_count}개 배정", schedule]
+    if cost_line:
+        meta_parts.append(cost_line)
+    meta = " · ".join(meta_parts)
+    compact_cls = " auto-purchase-banner-compact" if compact else ""
+
+    return (
+        f'<div class="auto-purchase-banner{compact_cls}">'
+        f'<div class="auto-banner-head">'
+        f'<span class="auto-banner-badge">✓</span>'
+        f"<div>"
+        f'<div class="auto-banner-title">{title} · {draw_round}회차</div>'
+        f'<div class="auto-banner-meta">{meta}</div>'
+        f"</div></div>"
+        f'<div class="auto-banner-combos">{combo_rows}</div>'
+        f"{notice}"
+        f"</div>"
+    )
+
+
+def _purchase_history_entry(
+    outcome: dict,
+    purchase_method: str,
+    sms_days: list[str] | None = None,
+) -> dict:
+    return {
+        "draw_round": outcome["draw_round"],
+        "combo_count": outcome["combo_count"],
+        "cost": outcome["cost"],
+        "allocated": outcome.get("allocated") or [],
+        "purchase_method": purchase_method,
+        "purchase_type": outcome.get("purchase_type"),
+        "sms_days": outcome.get("sms_days") or sms_days or [],
+        "order_id": outcome["order_id"],
+    }
+
+
+def _append_purchase_history(entry: dict) -> None:
+    from user_scope import session_key
+
+    hist_key = session_key("auto_purchase_history")
+    history = list(st.session_state.get(hist_key) or [])
+    order_id = entry.get("order_id")
+    if order_id is not None:
+        history = [item for item in history if item.get("order_id") != order_id]
+    history.insert(0, entry)
+    st.session_state[hist_key] = history[:20]
+
+
+def _build_quick_purchase_entry(
+    quantity: int,
+    purchase_method: str,
+    sms_days: list[str],
+) -> dict:
+    """테스트 기간 — DB 저장 조합(회차 풀)에서 무작위 순차 배정."""
+    from auto_purchase_service import (
+        NextDrawPoolNotReadyError,
+        _next_draw_round,
+        check_next_draw_pool_ready,
+    )
+    from marketing_db import (
+        allocate_lotto_combinations_random_sequential,
+        init_marketing_tables,
+    )
+    from wallet_db import calc_auto_cost
+
+    pool = check_next_draw_pool_ready()
+    if not pool["ok"]:
+        raise NextDrawPoolNotReadyError(pool["draw_round"], pool["message"])
+
+    init_marketing_tables()
+    draw_round = _next_draw_round()
+    from user_scope import session_key
+
+    seq_key = session_key("auto_purchase_seq")
+    seq = int(st.session_state.get(seq_key) or 0) + 1
+    st.session_state[seq_key] = seq
+    test_order_id = 9_000_000 + seq
+
+    allocated = allocate_lotto_combinations_random_sequential(
+        draw_round,
+        int(quantity),
+        test_order_id,
+    )
+    return {
+        "draw_round": draw_round,
+        "combo_count": int(quantity),
+        "cost": calc_auto_cost(int(quantity)),
+        "allocated": allocated,
+        "purchase_method": purchase_method,
+        "purchase_type": "정기구독" if purchase_method == "월간구독" else "일반구매",
+        "sms_days": list(sms_days),
+        "order_id": -seq,
+    }
+
+
+def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
+    """세션 + DB 구매 내역 (order_id 기준 중복 제거, 최신순)."""
+    from user_scope import session_key
+
+    items: list[dict] = []
+    seen_order_ids: set[int] = set()
+
+    for entry in st.session_state.get(session_key("auto_purchase_history")) or []:
+        order_id = entry.get("order_id")
+        if order_id is not None:
+            if order_id in seen_order_ids:
+                continue
+            seen_order_ids.add(int(order_id))
+        items.append(entry)
+
+    if member_id:
+        from marketing_db import get_combinations_by_auto_order_id, init_marketing_tables
+        from wallet_db import calc_auto_cost, init_wallet_tables, list_completed_auto_orders
+
+        init_wallet_tables()
+        init_marketing_tables()
+        for order in list_completed_auto_orders(member_id, limit=20):
+            order_id = int(order["id"])
+            if order_id in seen_order_ids:
+                continue
+            seen_order_ids.add(order_id)
+            combos = get_combinations_by_auto_order_id(order_id)
+            purchase_method = (
+                "월간구독" if order.get("purchase_type") == "정기구독" else "즉시"
+            )
+            items.append(
+                {
+                    "order_id": order_id,
+                    "draw_round": order.get("draw_round"),
+                    "combo_count": order.get("combo_count") or len(combos),
+                    "cost": calc_auto_cost(int(order.get("quantity") or 0)),
+                    "allocated": combos,
+                    "purchase_method": purchase_method,
+                    "purchase_type": order.get("purchase_type"),
+                    "sms_days": order.get("sms_days") or "",
+                }
+            )
+
+    return items
+
+
 def render():
+    from user_scope import init_guest_scope
+
+    init_guest_scope()
     from shared_ui_styles import auto_page_button_css
 
     st.markdown(auto_page_button_css(), unsafe_allow_html=True)
@@ -332,12 +588,141 @@ def render():
             background: linear-gradient(145deg, #243052 0%, #1a2238 42%, #12182b 100%);
             color: #b8c2d6;
             font-weight: 800;
-            font-size: 14px;
+            font-size: 16px;
             padding: 10px 16px;
             border-radius: 14px;
             border: 1px solid rgba(100, 126, 170, 0.32);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
             margin: 8px 0 12px 0;
+        }
+        .st-key-auto_table_head_row_6n36s5 div[data-testid="stHorizontalBlock"] {
+            align-items: center !important;
+            gap: 8px !important;
+            margin-bottom: 0 !important;
+        }
+        .st-key-auto_table_head_row_6n36s5 .auto-table-title {
+            margin: 8px 0 12px 0 !important;
+        }
+        .st-key-auto_table_head_row_6n36s5 .auto-pattern-applied-note {
+            margin: 8px 0 12px 0 !important;
+            text-align: right !important;
+            color: #f1f5f9 !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            line-height: 1.45 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p {
+            font-size: 16px !important;
+            font-weight: 800 !important;
+        }
+        .auto-purchase-banner {
+            margin: 14px 0 18px;
+            padding: 16px 14px 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(206, 147, 216, 0.55);
+            background: linear-gradient(155deg, rgba(74, 20, 140, 0.92) 0%, rgba(26, 34, 56, 0.96) 55%, rgba(18, 24, 43, 0.98) 100%);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(179, 157, 219, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+        .auto-purchase-banner-compact {
+            margin: 10px 0;
+            padding: 12px;
+        }
+        .auto-next-draw-pool-banner {
+            margin: 0 0 14px 0;
+            padding: 14px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 183, 77, 0.55);
+            background: linear-gradient(155deg, rgba(62, 39, 7, 0.95) 0%, rgba(26, 34, 56, 0.98) 100%);
+            color: #ffe082;
+            font-size: 15px;
+            font-weight: 800;
+            line-height: 1.5;
+            text-align: center;
+        }
+        .auto-banner-head {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .auto-banner-badge {
+            flex: 0 0 auto;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 14px;
+            color: #4a148c;
+            background: linear-gradient(145deg, #e1bee7, #ce93d8);
+            box-shadow: 0 2px 8px rgba(206, 147, 216, 0.35);
+        }
+        .auto-banner-title {
+            color: #f3e5f5;
+            font-weight: 800;
+            font-size: 16px;
+            line-height: 1.35;
+        }
+        .auto-banner-meta {
+            color: #b39ddb;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 4px;
+            line-height: 1.45;
+        }
+        .auto-banner-combos {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .auto-banner-combo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.22);
+            border: 1px solid rgba(179, 157, 219, 0.22);
+        }
+        .auto-banner-combo-idx {
+            flex: 0 0 auto;
+            width: 22px;
+            color: #ce93d8;
+            font-weight: 800;
+            font-size: 13px;
+            text-align: center;
+        }
+        .auto-banner-ball-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .auto-banner-ball {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 4px;
+            border-radius: 50%;
+            color: #fff;
+            font-weight: 800;
+            font-size: 12px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+            box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.35), 0 2px 4px rgba(0, 0, 0, 0.35);
+        }
+        .auto-banner-notice {
+            margin: 12px 0 0;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255, 193, 7, 0.12);
+            border: 1px solid rgba(255, 213, 79, 0.35);
+            color: #ffe082;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.5;
         }
         div[data-testid="stRadio"] label p {
             font-weight: 700 !important;
@@ -550,6 +935,18 @@ def render():
             border-radius: 12px !important;
             background: rgba(255,255,255,0.03) !important;
         }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary svg {
+            color: #000000 !important;
+            fill: #000000 !important;
+            -webkit-text-fill-color: #000000 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            background: #ffffff !important;
+            border-radius: 12px !important;
+        }
         .auto-spirit2-slot-mobile {
             display: none;
             width: 100%;
@@ -703,6 +1100,87 @@ def render():
             div[data-testid="stVerticalBlock"]:has(.auto-spirit2-slot-desktop) {
                 overflow: visible !important;
             }
+            .st-key-auto_purchase_history_zone_6n36s5 .auto-banner-combo {
+                flex-wrap: nowrap !important;
+                padding: 8px 12px !important;
+                gap: 10px !important;
+            }
+            .st-key-auto_purchase_history_zone_6n36s5 .auto-banner-ball-row {
+                flex: 1 1 auto !important;
+                flex-wrap: nowrap !important;
+                min-width: 0 !important;
+                gap: 4px !important;
+                overflow: visible !important;
+            }
+            .st-key-auto_purchase_history_zone_6n36s5 .auto-banner-ball {
+                flex: 0 0 auto !important;
+                min-width: 24px !important;
+                width: 24px !important;
+                height: 24px !important;
+                font-size: 10px !important;
+            }
+            .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-compact {
+                width: 100% !important;
+                max-width: none !important;
+                box-sizing: border-box !important;
+            }
+            .st-key-auto_page_columns_6n36s5 div[data-testid="column"]:has(.st-key-auto_purchase_history_zone_6n36s5) {
+                overflow: visible !important;
+            }
+            .st-key-auto_purchase_history_zone_6n36s5 {
+                width: 500px !important;
+                max-width: min(500px, calc(100vw - 24px)) !important;
+            }
+            .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"],
+            .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] details,
+            .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > div {
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow: visible !important;
+            }
+        }
+        @keyframes autoHistoryBlink {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(206, 147, 216, 0);
+                background: #ffffff !important;
+            }
+            50% {
+                box-shadow: 0 0 0 5px rgba(206, 147, 216, 0.95), 0 0 22px rgba(186, 104, 200, 0.65);
+                background: #f3e5f5 !important;
+            }
+        }
+        @keyframes autoHistoryCardPulse {
+            0%, 100% {
+                transform: scale(1);
+                border-color: rgba(171, 71, 188, 0.35) !important;
+            }
+            50% {
+                transform: scale(1.015);
+                border-color: rgba(171, 71, 188, 0.95) !important;
+                box-shadow: 0 0 24px rgba(186, 104, 200, 0.45) !important;
+            }
+        }
+        @keyframes autoHistoryChevronBounce {
+            0%, 100% { transform: translateY(0); }
+            40% { transform: translateY(3px); }
+            60% { transform: translateY(-2px); }
+        }
+        .st-key-auto_purchase_history_zone_6n36s5:has(.auto-history-just-saved-marker) div[data-testid="stExpander"] {
+            animation: autoHistoryCardPulse 0.95s ease-in-out 7 !important;
+            border: 2px solid rgba(171, 71, 188, 0.75) !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5:has(.auto-history-just-saved-marker) div[data-testid="stExpander"] > details > summary {
+            animation: autoHistoryBlink 0.95s ease-in-out 7 !important;
+            font-weight: 900 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5:has(.auto-history-just-saved-marker) div[data-testid="stExpander"] summary svg {
+            animation: autoHistoryChevronBounce 0.95s ease-in-out 7 !important;
+        }
+        .auto-history-just-saved-marker {
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         .auto-stats-table {
             width: 100%;
@@ -956,16 +1434,52 @@ def render():
                 key="auto_phone_input_6n36s5",
             )
 
+            from auto_purchase_service import (
+                NEXT_DRAW_POOL_BANNER,
+                NextDrawPoolNotReadyError,
+                check_next_draw_pool_ready,
+            )
+
+            next_pool = check_next_draw_pool_ready()
+            if not next_pool["ok"]:
+                st.markdown(
+                    f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
+                    unsafe_allow_html=True,
+                )
+
             if st.button("구매 확정", type="primary", use_container_width=True, key="auto_purchase_confirm_6n36s5"):
-                from wallet_ui import ensure_member_or_banner
+                if not next_pool["ok"]:
+                    st.error(NEXT_DRAW_POOL_BANNER)
+                elif AUTO_PURCHASE_SKIP_AUTH:
+                    from marketing_db import InsufficientCombinationsError
 
-                if ensure_member_or_banner(
-                    resume="auto_show_points",
-                    reason="구매 확정을 위해 간편인증이 필요합니다.",
-                ):
-                    st.session_state["auto_show_points"] = True
+                    try:
+                        entry = _build_quick_purchase_entry(
+                            selected_quantity,
+                            purchase_method,
+                            st.session_state.get("auto_sms_days", []),
+                        )
+                    except NextDrawPoolNotReadyError:
+                        st.error(NEXT_DRAW_POOL_BANNER)
+                    except InsufficientCombinationsError as exc:
+                        st.error(
+                            f"{exc.draw_round}회차 저장 조합이 부족합니다. "
+                            f"(요청 {exc.requested}개 / 가용 {exc.available}개)"
+                        )
+                    else:
+                        _append_purchase_history(entry)
+                        st.session_state["auto_history_blink"] = True
+                        st.rerun()
+                else:
+                    from wallet_ui import ensure_member_or_banner
 
-            if st.session_state.get("auto_show_points"):
+                    if ensure_member_or_banner(
+                        resume="auto_show_points",
+                        reason="구매 확정을 위해 간편인증이 필요합니다.",
+                    ):
+                        st.session_state["auto_show_points"] = True
+
+            if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                 from wallet_ui import points_notice_dialog
                 from auth_providers import current_member_id
                 from auto_purchase_service import process_auto_purchase
@@ -985,16 +1499,53 @@ def render():
                             st.session_state.get("auto_sms_days", []),
                         )
                         if outcome.get("ok"):
-                            st.success(
-                                f"회차 {outcome['draw_round']} · 추출 {outcome['combo_count']}개 · "
-                                f"SMS 발송 · {outcome['cost']:,}P 차감 완료"
+                            entry = _purchase_history_entry(
+                                outcome,
+                                purchase_method,
+                                st.session_state.get("auto_sms_days", []),
                             )
+                            _append_purchase_history(entry)
+                            st.session_state["auto_history_blink"] = True
+                            st.rerun()
                         elif outcome.get("error") == "insufficient_balance":
                             st.error("적립금이 부족합니다.")
+                        elif outcome.get("error") == "next_draw_pool_missing":
+                            st.error(outcome.get("message") or NEXT_DRAW_POOL_BANNER)
                         else:
                             st.error("구매 처리에 실패했습니다.")
                 elif result == "cancel":
                     st.session_state["auto_show_points"] = False
+
+            history_blink = bool(st.session_state.pop("auto_history_blink", False))
+            history_expander_label = (
+                "📋 구매 내역  ·  ✨ 방금 저장됐어요!"
+                if history_blink
+                else "📋 구매 내역"
+            )
+            with st.container(key="auto_purchase_history_zone_6n36s5"):
+                if history_blink:
+                    st.markdown(
+                        '<div class="auto-history-just-saved-marker" aria-hidden="true"></div>',
+                        unsafe_allow_html=True,
+                    )
+                with st.expander(
+                    history_expander_label,
+                    expanded=history_blink,
+                ):
+                    from auth_providers import current_member_id
+
+                    mid = current_member_id()
+                    history_items = _collect_purchase_history_items(mid)
+                    if not history_items:
+                        st.caption(
+                            "아직 구매 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다."
+                        )
+                    else:
+                        for item in history_items:
+                            st.markdown(
+                                _purchase_banner_html(item, compact=True),
+                                unsafe_allow_html=True,
+                            )
 
             if spirit2_base64:
                 st.markdown(
@@ -1021,10 +1572,21 @@ def render():
     stats_df, is_mock = _load_stats_table()
     if not stats_df.empty:
         stats_df = stats_df[~stats_df["회차"].isin([1233, 1])]
-    st.markdown(
-        '<div class="auto-table-title">회차별 당\u200b첨번호 배출</div>',
-        unsafe_allow_html=True,
-    )
+    with st.container(key="auto_table_head_row_6n36s5"):
+        head_title_col, head_btn_col = st.columns([2.4, 1], gap="small")
+        with head_title_col:
+            st.markdown(
+                '<div class="auto-table-title">회차별 당\u200b첨번호 배출</div>',
+                unsafe_allow_html=True,
+            )
+        with head_btn_col:
+            pattern_count = _pattern_applied_count()
+            st.markdown(
+                f'<div class="auto-pattern-applied-note">'
+                f"당 회차 필터링에 {pattern_count:,}개의 패턴이 적용되었습니다"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
     if is_mock:
         st.caption("현재 DB에 등록된 회차 데이터가 없어 테스트용 샘플을 표시합니다.")
 

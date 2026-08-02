@@ -12,19 +12,30 @@ def reduce_to_single(num: int) -> int:
     return num
 
 
-def get_life_path_number(mmdd: str) -> int:
-    """월일 4자리 → 생명수(1~9)"""
+def validate_mmdd(mmdd: str) -> tuple[bool, str | None]:
+    """월일 4자리 유효성 (True, None) 또는 (False, 오류 메시지)."""
     if len(mmdd) != 4 or not mmdd.isdigit():
-        raise ValueError("월일은 4자리 숫자여야 합니다")
-    
+        return False, "월일은 4자리 숫자여야 합니다"
+
     month = int(mmdd[:2])
     day = int(mmdd[2:])
-    
+
     if month < 1 or month > 12:
-        raise ValueError("월은 01~12 사이여야 합니다")
+        return False, "월은 01~12 사이여야 합니다"
     if day < 1 or day > 31:
-        raise ValueError("일은 01~31 사이여야 합니다")
-    
+        return False, "일은 01~31 사이여야 합니다"
+
+    return True, None
+
+
+def get_life_path_number(mmdd: str) -> int:
+    """월일 4자리 → 생명수(1~9)"""
+    ok, err = validate_mmdd(mmdd)
+    if not ok:
+        raise ValueError(err or "월일 형식이 올바르지 않습니다")
+
+    month = int(mmdd[:2])
+    day = int(mmdd[2:])
     month_reduced = reduce_to_single(month)
     day_reduced = reduce_to_single(day)
     return reduce_to_single(month_reduced + day_reduced)
@@ -59,11 +70,14 @@ def calculate_lucky_numbers(mmdd: str) -> list:
 
 
 def calculate_all_lucky_numbers(birthday_list: list) -> list:
-    """여러 명 생일 → 통합 행운수 (중복 제거)"""
+    """여러 명 생일 → 통합 행운수 (중복 제거, 잘못된 월일은 건너뜀)."""
     all_nums = set()
     for mmdd in birthday_list:
-        for n in calculate_lucky_numbers(mmdd):
-            all_nums.add(n)
+        try:
+            for n in calculate_lucky_numbers(mmdd):
+                all_nums.add(n)
+        except ValueError:
+            continue
     return sorted(all_nums)
 
 

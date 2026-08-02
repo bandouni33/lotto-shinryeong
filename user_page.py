@@ -5,12 +5,6 @@ import base64
 import os
 import pandas as pd
 
-# 🚨 [여기에 추가!] 관리자 모드가 켜지면 대시보드 파일로 즉시 강제 점프!
-if st.session_state.get("go_to_admin", False):
-    st.session_state.go_to_admin = False # 깃발 내리기
-    st.switch_page("admin_dashboard.py")  # 👈 이 한 줄이 핵심 치트키입니다.
-
-# 2. ✅ 관리자 모드일 때만 나타나는 사이드바 메뉴
 if st.session_state.get("is_admin", False):
     with st.sidebar:
         st.markdown("## ⚙️ 관리자 제어 센터")
@@ -25,11 +19,13 @@ st.set_page_config(page_title="로\u200b또신령", page_icon="K-325.jpg", layou
 from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
 from auth_providers import handle_oauth_callback
+from user_scope import init_guest_scope
 
 init_wallet_tables()
 init_zero_phone_tables()
 if handle_oauth_callback():
     st.rerun()
+init_guest_scope()
 
 current_page = st.query_params.get("page", "main")
 
@@ -42,7 +38,7 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced"):
 # ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️
 # 앞 번호일수록 유력한 순서로 입력 (예: 44가 가장 유력, 7이 가장 약함)
 # ⚠️⚠️⚠️ 다른 코드는 건드리지 말고 이 줄의 숫자만 바꾸세요 ⚠️⚠️⚠️
-lucky_display = [39, 11, 44, 10, 23, 5]
+lucky_display = [33, 21, 32, 10, 23, 5]
 # ===============================================================================
 
 def get_image_base64(file_path):
@@ -894,6 +890,9 @@ elif current_page == "stats":
 
         try:
             draw_round_int = int(str(draw_no).replace("회", "").strip())
+            from lotto_stats import sync_marketing_win_ranks_for_round
+
+            sync_marketing_win_ranks_for_round(draw_round_int)
             st.session_state["marketing_win_rank_summary"] = get_marketing_win_rank_summary(
                 draw_round_int
             )
