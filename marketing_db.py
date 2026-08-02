@@ -1,11 +1,17 @@
 """익명 마케팅 데이터 전용 SQLite 모듈 (sms_queue ↔ lotto_combinations 완전 분리)."""
 
+import csv
+import gzip
 import random
 import sqlite3
 from collections import Counter
 from datetime import datetime
+from pathlib import Path
 
 DB_PATH = "lotto.db"
+_APP_ROOT = Path(__file__).resolve().parent
+MARKETING_POOL_SEED_DRAWS = (1234, 1235, 1236)
+_MARKETING_POOL_DIR = _APP_ROOT / "data" / "marketing_pools"
 
 PURCHASE_TYPES = frozenset({"정기구독", "일반구매"})
 SEND_STATUSES = frozenset({"WAIT", "SENT", "TEST_SKIP", "BANNER_ONLY"})
@@ -67,6 +73,42 @@ def init_marketing_tables():
     _migrate_lotto_combinations(conn)
     conn.commit()
     conn.close()
+
+
+def _marketing_pool_seed_path(draw_round: int) -> Path:
+    return _MARKETING_POOL_DIR / f"draw_{int(draw_round)}.csv.gz"
+
+
+def import_marketing_pool_seed(draw_round: int) -> int:
+    """회차 DB가 비어 있으면 repo 의 data/marketing_pools/draw_N.csv.gz 를 적재."""
+    draw_round = int(draw_round)
+    if get_combination_count_by_draw(draw_round) > 0:
+        return 0
+    path = _marketing_pool_seed_path(draw_round)
+    if not path.is_file():
+        return 0
+    rows: list[list] = []
+    with gzip.open(path, "rt", encoding="utf-8", newline="") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        for row in reader:
+            if len(row) >= 6:
+                rows.append(row[:6])
+    if not rows:
+        return 0
+    return bulk_insert_lotto_combinations(draw_round, rows)
+
+
+def ensure_marketing_pool_seeds(
+    draw_rounds: tuple[int, ...] = MARKETING_POOL_SEED_DRAWS,
+) -> dict[int, int]:
+    """Cloud 등 lotto.db 가 비어 있을 때 관리자 저장 회차 풀 복원."""
+    imported: dict[int, int] = {}
+    for draw_round in draw_rounds:
+        count = import_marketing_pool_seed(draw_round)
+        if count:
+            imported[draw_round] = count
+    return imported
 
 
 def _migrate_lotto_combinations(conn: sqlite3.Connection) -> None:
@@ -631,13 +673,11 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
 
 
 def get_mock_draw_extraction_stats() -> list[dict]:
-    """DB 비어 있을 때 K-595 시안용 테스트 데이터 (1233~1229)."""
+    """DB 비어 있을 때 — 관리자 저장 회차(1236~1234) 요약 fallback."""
     seed = [
-        (1233, 1000, 0, 1, 4, 38, 295),
-        (1232, 980, 0, 0, 3, 35, 280),
-        (1231, 1050, 0, 2, 5, 41, 310),
-        (1230, 990, 0, 1, 3, 36, 288),
-        (1229, 1020, 0, 0, 4, 39, 302),
+        (1236, 1715, 0, 0, 0, 0, 0),
+        (1235, 2008, 1, 0, 7, 70, 597),
+        (1234, 7507, 1, 0, 5, 43, 311),
     ]
     return [
         {
@@ -673,4 +713,7 @@ __all__ = [
     "get_combination_count_by_draw",
     "get_draw_extraction_stats",
     "get_mock_draw_extraction_stats",
+    "ensure_marketing_pool_seeds",
+    "import_marketing_pool_seed",
+    "MARKETING_POOL_SEED_DRAWS",
 ]

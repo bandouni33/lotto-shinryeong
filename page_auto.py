@@ -229,6 +229,7 @@ def _sync_completed_draw_win_ranks() -> None:
 def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     mdb = _marketing_db()
     mdb.init_marketing_tables()
+    mdb.ensure_marketing_pool_seeds()
     _sync_completed_draw_win_ranks()
     stats = mdb.get_draw_extraction_stats(limit=20)
     if stats:

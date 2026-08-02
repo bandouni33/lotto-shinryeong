@@ -39,6 +39,14 @@ class MarketingDbTests(unittest.TestCase):
         self.assertNotIn("num1", cols)
         self.assertNotIn("draw_round", cols)
 
+    def test_marketing_pool_seed_imports_repo_draw_1236(self):
+        imported = mdb.ensure_marketing_pool_seeds((1236,))
+        seed_path = mdb._marketing_pool_seed_path(1236)
+        if not seed_path.is_file():
+            self.skipTest("data/marketing_pools/draw_1236.csv.gz 없음")
+        self.assertGreater(imported.get(1236, 0), 0)
+        self.assertEqual(mdb.get_combination_count_by_draw(1236), imported[1236])
+
     def test_bulk_insert_and_win_rank_group_by(self):
         mdb.bulk_insert_lotto_combinations(1201, [(1, 2, 3, 4, 5, 6)])
         conn = mdb._connect()

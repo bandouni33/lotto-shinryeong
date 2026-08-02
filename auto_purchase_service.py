@@ -55,6 +55,9 @@ def check_next_draw_pool_ready() -> dict:
     N+1 회차 조합이 DB에 없으면 배포 불가.
     """
     init_marketing_tables()
+    from marketing_db import ensure_marketing_pool_seeds
+
+    ensure_marketing_pool_seeds()
     draw_round = _next_draw_round()
     total = get_combination_count_by_draw(draw_round)
     if total < 1:
