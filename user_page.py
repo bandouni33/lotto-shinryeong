@@ -1213,7 +1213,12 @@ if current_page == "main":
     """, unsafe_allow_html=True)
 with st.expander("🛠️ 시스템 관리자 메뉴"):
         import os
-        _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD") or st.secrets.get("ADMIN_MENU_PASSWORD", None)
+        _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD")
+        if not _ADMIN_MENU_PASSWORD:
+            try:
+                _ADMIN_MENU_PASSWORD = st.secrets.get("ADMIN_MENU_PASSWORD", None)
+            except Exception:
+                _ADMIN_MENU_PASSWORD = None
         if not _ADMIN_MENU_PASSWORD:
             st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
             st.stop()
@@ -1229,7 +1234,28 @@ with st.expander("🛠️ 시스템 관리자 메뉴"):
                     st.rerun()
                 else:
                     st.warning("비밀번호가 올바르지 않습니다.")
-        elif st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
+elif st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
             st.session_state.is_admin = True
             st.session_state.go_to_admin = True
             st.rerun()
+
+        # ── 임시 진단 코드: 데이터 유실 여부 확인용 (확인 후 삭제할 것) ──
+        if st.session_state.get("admin_menu_unlocked", False):
+            if st.button("🔍 실제 회원 데이터 생존 확인", key="admin_data_check"):
+                import sqlite3
+                try:
+                    conn = sqlite3.connect("lotto.db")
+                    cur = conn.cursor()
+                    for table, date_col in [
+                        ("members", "created_at"),
+                        ("improvement_feedback", "created_at"),
+                    ]:
+                        try:
+                            cur.execute(f"SELECT COUNT(*), MIN({date_col}), MAX({date_col}) FROM {table}")
+                            cnt, min_d, max_d = cur.fetchone()
+                            st.write(f"**{table}**: {cnt}건 | 최초: {min_d} | 최근: {max_d}")
+                        except Exception as e:
+                            st.write(f"**{table}**: 조회 실패 ({e})")
+                    conn.close()
+                except Exception as e:
+                    st.error(f"DB 연결 실패: {e}")
