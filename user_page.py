@@ -1211,14 +1211,12 @@ if current_page == "main":
     }
     </style>
     """, unsafe_allow_html=True)
-    with st.expander("🛠️ 시스템 관리자 메뉴"):
-      with st.expander("🛠️ 시스템 관리자 메뉴"):
-    import os
-    _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD") or st.secrets.get("ADMIN_MENU_PASSWORD", None)
-    if not _ADMIN_MENU_PASSWORD:
-        st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
-        st.stop()
-    if not st.session_state.get("admin_menu_unlocked", False):
+with st.expander("🛠️ 시스템 관리자 메뉴"):
+        import os
+        _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD") or st.secrets.get("ADMIN_MENU_PASSWORD", None)
+        if not _ADMIN_MENU_PASSWORD:
+            st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
+            st.stop()
         if not st.session_state.get("admin_menu_unlocked", False):
             st.text_input(
                 "관리자 비밀번호",
