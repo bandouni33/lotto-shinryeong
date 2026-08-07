@@ -1234,7 +1234,7 @@ with st.expander("🛠️ 시스템 관리자 메뉴"):
                     st.rerun()
                 else:
                     st.warning("비밀번호가 올바르지 않습니다.")
-elif st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
+        elif st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
             st.session_state.is_admin = True
             st.session_state.go_to_admin = True
             st.rerun()
