@@ -1211,7 +1211,7 @@ if current_page == "main":
     }
     </style>
     """, unsafe_allow_html=True)
-with st.expander("🛠️ 시스템 관리자 메뉴"):
+    with st.expander(" 시스템 관리자 메뉴"):
         import os
         _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD")
         if not _ADMIN_MENU_PASSWORD:
@@ -1234,14 +1234,32 @@ with st.expander("🛠️ 시스템 관리자 메뉴"):
                     st.rerun()
                 else:
                     st.warning("비밀번호가 올바르지 않습니다.")
-        elif st.button("📊 대시보드로 이동", key="admin_btn_dashboard"):
+        elif st.button(" 대시보드로 이동", key="admin_btn_dashboard"):
             st.session_state.is_admin = True
             st.session_state.go_to_admin = True
             st.rerun()
 
-        # ── 임시 진단 코드: 데이터 유실 여부 확인용 (확인 후 삭제할 것) ──
+        #  임시: DB 파일 백업 다운로드 (데이터 유실 대비, 급함) 
         if st.session_state.get("admin_menu_unlocked", False):
-            if st.button("🔍 실제 회원 데이터 생존 확인", key="admin_data_check"):
+            import os as _os
+            if _os.path.exists("lotto.db"):
+                with open("lotto.db", "rb") as _f:
+                    _db_bytes = _f.read()
+                import datetime
+                _ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                st.download_button(
+                    label=" lotto.db 백업 다운로드",
+                    data=_db_bytes,
+                    file_name=f"lotto_backup_{_ts}.db",
+                    mime="application/octet-stream",
+                    key="admin_db_backup",
+                )
+            else:
+                st.warning("lotto.db 파일을 찾을 수 없습니다.")
+
+        #  임시 진단 코드: 데이터 유실 여부 확인용 (확인 후 삭제할 것) 
+        if st.session_state.get("admin_menu_unlocked", False):
+            if st.button(" 실제 회원 데이터 생존 확인", key="admin_data_check"):
                 import sqlite3
                 try:
                     conn = sqlite3.connect("lotto.db")
