@@ -596,16 +596,32 @@ def render():
     from user_scope import init_guest_scope
 
     init_guest_scope()
-    from shared_ui_styles import auto_page_button_css
 
-    st.markdown(auto_page_button_css(), unsafe_allow_html=True)
     st.markdown(
         """
     <style>
         .stApp { background-color: #12182b; color: white; }
-        .block-container { padding: 10px !important; max-width: 600px; }
+        html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewContainer"] > section.main {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            height: auto !important;
+            min-height: 100% !important;
+            max-height: none !important;
+        }
+        section.main > div.block-container {
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+        }
+        .block-container { padding: 10px !important; padding-bottom: 96px !important; max-width: 600px; }
         section[data-testid="stSidebar"], header[data-testid="stHeader"] { display: none; }
-        .auto-page-wrap { max-width: 600px; margin: 0 auto; }
+        .st-key-auto_page_wrap_6n36s5 {
+            width: 100% !important;
+            max-width: 600px !important;
+            margin: 0 auto !important;
+            overflow: visible !important;
+        }
         .auto-label-pill {
             display: inline-block;
             flex: 0 0 auto;
@@ -803,6 +819,7 @@ def render():
         /* K-979: 구매내역 — 6볼 × 5줄 그리드 전용 */
         .st-key-auto_purchase_history_zone_6n36s5 {
             overflow: visible !important;
+            z-index: auto !important;
         }
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"],
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] details {
@@ -810,6 +827,7 @@ def render():
         }
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
             position: relative !important;
+            z-index: 40 !important;
         }
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpanderDetails"] {
             overflow: visible !important;
@@ -1156,9 +1174,16 @@ def render():
         .st-key-auto_form_lower_6n36s5 {
             margin-top: 2px !important;
             padding-top: 0 !important;
+            overflow: visible !important;
         }
         .st-key-auto_form_lower_6n36s5 > div[data-testid="stVerticalBlock"] {
             gap: 0.35rem !important;
+            overflow: visible !important;
+        }
+        .st-key-auto_confirm_history_row_6n36s5,
+        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stVerticalBlock"],
+        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            overflow: visible !important;
         }
         .st-key-auto_form_lower_6n36s5 div[data-testid="stTextInput"],
         .st-key-auto_form_lower_6n36s5 div[data-testid="stButton"],
@@ -1190,10 +1215,23 @@ def render():
             width: 100% !important;
             max-width: 600px !important;
             box-sizing: border-box !important;
+            overflow: visible !important;
+            position: relative !important;
+            z-index: 2 !important;
         }
-        .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) .st-key-auto_stats_section_6n36s5 {
-            width: calc(100% / 0.55) !important;
+        .st-key-auto_page_columns_6n36s5 > div[data-testid="stVerticalBlock"] {
+            overflow: visible !important;
+        }
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 {
+            width: 100% !important;
             max-width: min(600px, calc(100vw - 20px)) !important;
+            margin: 10px auto 0 !important;
+            clear: both !important;
+        }
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_spirit_below_confirm_6n36s5 {
+            width: 100% !important;
+            max-width: min(600px, calc(100vw - 20px)) !important;
+            margin: 8px auto 0 !important;
         }
         .st-key-auto_stats_section_6n36s5 div[data-testid="stMarkdown"] {
             width: 100% !important;
@@ -1211,17 +1249,23 @@ def render():
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
         }
+        .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            display: block !important;
+        }
         .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
-            flex: 1 1 55% !important;
-            width: 55% !important;
+            flex: none !important;
+            width: 100% !important;
             min-width: 0 !important;
-            max-width: 55% !important;
+            max-width: 100% !important;
         }
         .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
-            flex: 1 1 42% !important;
-            width: 42% !important;
-            min-width: 0 !important;
-            max-width: 42% !important;
+            display: none !important;
+            flex: 0 0 0 !important;
+            width: 0 !important;
+            max-width: 0 !important;
+            overflow: hidden !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
         }
         .auto-spirit2-slot-mobile {
             display: none !important;
@@ -1931,26 +1975,21 @@ def render():
             font-size: 15px !important;
             line-height: 1.25 !important;
         }
-        /* 닫힌 버튼에는 선택값 대신 「구매방식」 표시 */
+        /* 닫힌 select — 선택값(즉시/월간구독) 표시, 로컬·Cloud DOM 차이 없도록 ::before 미사용 */
         .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] > div > div:first-of-type {
-            flex: 0 0 0 !important;
-            width: 0 !important;
-            min-width: 0 !important;
-            max-width: 0 !important;
-            overflow: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] > div::before {
-            content: "구매방식" !important;
             flex: 1 1 auto !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] span {
+            display: block !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
             text-align: center !important;
-            font-family: "Noto Sans KR", sans-serif !important;
-            font-weight: 900 !important;
-            font-size: 15px !important;
-            line-height: 1.25 !important;
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
         }
         /* 구매 수량 select — 구매확정/구매내역과 동일 106×35로 통일 */
         .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"],
@@ -2017,24 +2056,19 @@ def render():
             line-height: 1.25 !important;
         }
         .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div > div:first-of-type {
-            flex: 0 0 0 !important;
-            width: 0 !important;
-            min-width: 0 !important;
-            max-width: 0 !important;
-            overflow: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-        }
-        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div::before {
-            content: "구매 수량" !important;
             flex: 1 1 auto !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] span {
+            display: block !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
             text-align: center !important;
-            font-family: "Noto Sans KR", sans-serif !important;
-            font-weight: 900 !important;
-            font-size: 15px !important;
-            line-height: 1.25 !important;
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
         }
         .auto-section-row .auto-label-pill {
             margin: 0 !important;
@@ -2122,39 +2156,38 @@ def render():
             unsafe_allow_html=True,
         )
 
-    st.markdown('<div class="auto-page-wrap">', unsafe_allow_html=True)
-
     spirit2_base64 = _get_icon_base64("로또신령2.jpg")
 
-    with st.container(key="auto_page_columns_6n36s5"):
-        col_form, col_visual = st.columns([0.55, 0.45], gap="small")
+    with st.container(key="auto_page_wrap_6n36s5"):
+        with st.container(key="auto_page_columns_6n36s5"):
+            col_form, col_visual = st.columns([0.55, 0.45], gap="small")
 
-        with col_form:
-            # ── 1. 구매 방식 + 구매 수량 (나란히) + 월간구독 요일 ──
-            with st.container(key="auto_purchase_method_zone_6n36s5"):
-                col_method, col_qty = st.columns(2, gap="small")
-                with col_method:
-                    with st.container(key="auto_method_left_6n36s5"):
-                        purchase_method = st.selectbox(
-                            "구매 방식",
-                            ["즉시", "월간구독"],
-                            label_visibility="collapsed",
-                            key="auto_purchase_method_6n36s5",
-                        )
-                    is_monthly = purchase_method == "월간구독"
-                    selected_days = []
-                    if is_monthly:
-                        with st.container(key="auto_sms_days_6n36s5"):
-                            day_cols = st.columns(len(SUBSCRIPTION_WEEKDAYS), gap="small")
-                            for idx, day in enumerate(SUBSCRIPTION_WEEKDAYS):
-                                with day_cols[idx]:
-                                    if st.checkbox(
-                                        day,
-                                        key=f"auto_sms_day_{day}_6n36s5",
-                                    ):
-                                        selected_days.append(day)
-                        st.markdown(
-                            """
+            with col_form:
+                # ── 1. 구매 방식 + 구매 수량 (나란히) + 월간구독 요일 ──
+                with st.container(key="auto_purchase_method_zone_6n36s5"):
+                    col_method, col_qty = st.columns(2, gap="small")
+                    with col_method:
+                        with st.container(key="auto_method_left_6n36s5"):
+                            purchase_method = st.selectbox(
+                                "구매 방식",
+                                ["즉시", "월간구독"],
+                                label_visibility="collapsed",
+                                key="auto_purchase_method_6n36s5",
+                            )
+                        is_monthly = purchase_method == "월간구독"
+                        selected_days = []
+                        if is_monthly:
+                            with st.container(key="auto_sms_days_6n36s5"):
+                                day_cols = st.columns(len(SUBSCRIPTION_WEEKDAYS), gap="small")
+                                for idx, day in enumerate(SUBSCRIPTION_WEEKDAYS):
+                                    with day_cols[idx]:
+                                        if st.checkbox(
+                                            day,
+                                            key=f"auto_sms_day_{day}_6n36s5",
+                                        ):
+                                            selected_days.append(day)
+                            st.markdown(
+                                """
                             <style>
                             .st-key-auto_purchase_method_zone_6n36s5 .st-key-auto_sms_days_6n36s5 {
                                 margin-top: 6px !important;
@@ -2163,206 +2196,206 @@ def render():
                             }
                             </style>
                             """,
+                                unsafe_allow_html=True,
+                            )
+                    with col_qty:
+                        with st.container(key="auto_quantity_zone_6n36s5"):
+                            quantity_label = st.selectbox(
+                                "구매 수량",
+                                ["5개", "10개"],
+                                label_visibility="collapsed",
+                                key="auto_purchase_quantity_6n36s5",
+                            )
+                st.session_state["auto_sms_days"] = selected_days if is_monthly else []
+                selected_quantity = int(str(quantity_label).replace("개", ""))
+
+                with st.container(key="auto_form_lower_6n36s5"):
+                    # ── 3. 구매 안내 Expander ──
+                    with st.expander("⚠️ 구매 안\u200b내 및 유의사항 (필독)"):
+                        st.markdown(
+                            """
+    • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
+
+    • **자동 결제 안내:** 월간구독은 신청일 기준 30일마다 자동 결제되며, 마이페이지에서 언제든지 해지하실 수 있습니다.
+
+    • **환불 규정:** 로또 번호 추출 및 SMS 발송 서비스가 시작된 이후에는 디지털 콘텐츠 특성상 중도 청약철회 및 환불이 불가능합니다.
+
+    • **당첨 면책 조항:** 본 조합 서비스는 당첨을 100% 보장하지 않으며, 실제 로또 결과에 대한 어떠한 법적 책임도 지지 않습니다.
+                            """
+                        )
+
+                    phone = st.text_input(
+                        "수신 번호 (문자 발송용)",
+                        placeholder="01012345678",
+                        key="auto_phone_input_6n36s5",
+                    )
+
+                    from auto_purchase_service import (
+                        NEXT_DRAW_POOL_BANNER,
+                        NextDrawPoolNotReadyError,
+                        check_next_draw_pool_ready,
+                    )
+
+                    next_pool = check_next_draw_pool_ready()
+                    if not next_pool["ok"]:
+                        st.markdown(
+                            f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
                             unsafe_allow_html=True,
                         )
-                with col_qty:
-                    with st.container(key="auto_quantity_zone_6n36s5"):
-                        quantity_label = st.selectbox(
-                            "구매 수량",
-                            ["5개", "10개"],
-                            label_visibility="collapsed",
-                            key="auto_purchase_quantity_6n36s5",
-                        )
-            st.session_state["auto_sms_days"] = selected_days if is_monthly else []
-            selected_quantity = int(str(quantity_label).replace("개", ""))
 
-            with st.container(key="auto_form_lower_6n36s5"):
-                # ── 3. 구매 안내 Expander ──
-                with st.expander("⚠️ 구매 안\u200b내 및 유의사항 (필독)"):
-                    st.markdown(
-                        """
-• **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
-
-• **자동 결제 안내:** 월간구독은 신청일 기준 30일마다 자동 결제되며, 마이페이지에서 언제든지 해지하실 수 있습니다.
-
-• **환불 규정:** 로또 번호 추출 및 SMS 발송 서비스가 시작된 이후에는 디지털 콘텐츠 특성상 중도 청약철회 및 환불이 불가능합니다.
-
-• **당첨 면책 조항:** 본 조합 서비스는 당첨을 100% 보장하지 않으며, 실제 로또 결과에 대한 어떠한 법적 책임도 지지 않습니다.
-                        """
-                    )
-
-                phone = st.text_input(
-                    "수신 번호 (문자 발송용)",
-                    placeholder="01012345678",
-                    key="auto_phone_input_6n36s5",
-                )
-
-                from auto_purchase_service import (
-                    NEXT_DRAW_POOL_BANNER,
-                    NextDrawPoolNotReadyError,
-                    check_next_draw_pool_ready,
-                )
-
-                next_pool = check_next_draw_pool_ready()
-                if not next_pool["ok"]:
-                    st.markdown(
-                        f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                confirm_history_row = st.container(key="auto_confirm_history_row_6n36s5")
-                with confirm_history_row:
-                    col_confirm, col_history = st.columns(2, gap="small")
-                with col_confirm:
-                    if st.button(
-                        "구매 확정",
-                        type="primary",
-                        use_container_width=True,
-                        key="auto_purchase_confirm_6n36s5",
-                    ):
-                        if not _is_auto_deploy_window_open():
-                            st.markdown(
-                                f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        elif not next_pool["ok"]:
-                            st.error(NEXT_DRAW_POOL_BANNER)
-                        elif AUTO_PURCHASE_SKIP_AUTH:
-                            from marketing_db import InsufficientCombinationsError
-
-                            try:
-                                entry = _build_quick_purchase_entry(
-                                    selected_quantity,
-                                    purchase_method,
-                                    st.session_state.get("auto_sms_days", []),
-                                )
-                            except NextDrawPoolNotReadyError:
-                                st.error(NEXT_DRAW_POOL_BANNER)
-                            except InsufficientCombinationsError as exc:
-                                st.error(
-                                    f"{exc.draw_round}회차 저장 조합이 부족합니다. "
-                                    f"(요청 {exc.requested}개 / 가용 {exc.available}개)"
-                                )
-                            else:
-                                _append_purchase_history(entry)
-                                st.session_state["auto_history_blink"] = True
-                                st.rerun()
-                        else:
-                            from wallet_ui import ensure_member_or_banner
-
-                            if ensure_member_or_banner(
-                                resume="auto_show_points",
-                                reason="구매 확정을 위해 간편인증이 필요합니다.",
+                    confirm_history_row = st.container(key="auto_confirm_history_row_6n36s5")
+                    with confirm_history_row:
+                        col_confirm, col_history = st.columns(2, gap="small")
+                        with col_confirm:
+                            if st.button(
+                                "구매 확정",
+                                type="primary",
+                                use_container_width=True,
+                                key="auto_purchase_confirm_6n36s5",
                             ):
-                                st.session_state["auto_show_points"] = True
-
-                with col_history:
-                    history_blink = bool(st.session_state.pop("auto_history_blink", False))
-                    history_expander_label = "구매내역"
-                    with st.container(key="auto_purchase_history_zone_6n36s5"):
-                        if history_blink:
-                            st.markdown(
-                                '<div class="auto-history-just-saved-marker" aria-hidden="true"></div>',
-                                unsafe_allow_html=True,
-                            )
-                        with st.expander(
-                            history_expander_label,
-                            expanded=history_blink,
-                        ):
-                            from auth_providers import current_member_id
-
-                            mid = current_member_id()
-                            history_items = _collect_purchase_history_items(mid)
-                            if not history_items:
-                                st.caption(
-                                    "아직 구매 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다."
-                                )
-                            else:
-                                for item in history_items:
+                                if not _is_auto_deploy_window_open():
                                     st.markdown(
-                                        _purchase_banner_html(item, compact=True),
+                                        f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
                                         unsafe_allow_html=True,
                                     )
+                                elif not next_pool["ok"]:
+                                    st.error(NEXT_DRAW_POOL_BANNER)
+                                elif AUTO_PURCHASE_SKIP_AUTH:
+                                    from marketing_db import InsufficientCombinationsError
 
-                with st.container(key="auto_spirit_below_confirm_6n36s5"):
-                    if spirit2_base64:
-                        st.markdown(
-                            _spirit2_image_block(
-                                spirit2_base64,
-                                "auto-spirit2-slot-right",
-                                "auto-spirit-ripple-mob",
-                            ),
-                            unsafe_allow_html=True,
-                        )
+                                    try:
+                                        entry = _build_quick_purchase_entry(
+                                            selected_quantity,
+                                            purchase_method,
+                                            st.session_state.get("auto_sms_days", []),
+                                        )
+                                    except NextDrawPoolNotReadyError:
+                                        st.error(NEXT_DRAW_POOL_BANNER)
+                                    except InsufficientCombinationsError as exc:
+                                        st.error(
+                                            f"{exc.draw_round}회차 저장 조합이 부족합니다. "
+                                            f"(요청 {exc.requested}개 / 가용 {exc.available}개)"
+                                        )
+                                    else:
+                                        _append_purchase_history(entry)
+                                        st.session_state["auto_history_blink"] = True
+                                        st.rerun()
+                                else:
+                                    from wallet_ui import ensure_member_or_banner
 
-                # ── 4. 회차별 당첨번호 배출 표 (아이콘 바로 아래) ──
-                stats_df, is_mock = _load_stats_table_cached(_admin_combo_save_mtime())
-                if not stats_df.empty:
-                    stats_df = stats_df[~stats_df["회차"].isin([1233, 1])]
-                with st.container(key="auto_stats_section_6n36s5"):
-                    pattern_count = _pattern_applied_count()
-                    st.markdown(
-                        f"""
-                        <div class="auto-stats-head-row">
-                            <div class="auto-table-title">회차별 당\u200b첨번호 배출</div>
-                            <div class="auto-pattern-applied-note">당 회차 필터링에 {pattern_count:,}개의 패턴이 적용되었습니다</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                    if is_mock:
-                        st.caption("현재 DB에 등록된 회차 데이터가 없어 테스트용 샘플을 표시합니다.")
-                    table_html = stats_df.to_html(index=False, border=0, classes="auto-stats-table")
-                    st.markdown(
-                        f'<div class="auto-stats-table-wrap">{table_html}</div>',
-                        unsafe_allow_html=True,
-                    )
+                                    if ensure_member_or_banner(
+                                        resume="auto_show_points",
+                                        reason="구매 확정을 위해 간편인증이 필요합니다.",
+                                    ):
+                                        st.session_state["auto_show_points"] = True
 
-                if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
-                    from wallet_ui import points_notice_dialog
-                    from auth_providers import current_member_id
-                    from auto_purchase_service import process_auto_purchase
+                        with col_history:
+                            history_blink = bool(st.session_state.pop("auto_history_blink", False))
+                            history_expander_label = "구매내역"
+                            with st.container(key="auto_purchase_history_zone_6n36s5"):
+                                if history_blink:
+                                    st.markdown(
+                                        '<div class="auto-history-just-saved-marker" aria-hidden="true"></div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                with st.expander(
+                                    history_expander_label,
+                                    expanded=history_blink,
+                                ):
+                                    from auth_providers import current_member_id
 
-                    result = points_notice_dialog("auto", quantity=selected_quantity)
-                    if result == "confirm":
-                        st.session_state["auto_show_points"] = False
-                        if not _is_auto_deploy_window_open():
-                            st.markdown(
-                                f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        elif not phone.strip():
-                            st.error("수신 번호를 입력해 주세요.")
-                        else:
-                            mid = current_member_id()
-                            if mid:
-                                outcome = process_auto_purchase(
-                                    mid,
-                                    selected_quantity,
-                                    purchase_method,
-                                    phone,
-                                    st.session_state.get("auto_sms_days", []),
+                                    mid = current_member_id()
+                                    history_items = _collect_purchase_history_items(mid)
+                                    if not history_items:
+                                        st.caption(
+                                            "아직 구매 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다."
+                                        )
+                                    else:
+                                        for item in history_items:
+                                            st.markdown(
+                                                _purchase_banner_html(item, compact=True),
+                                                unsafe_allow_html=True,
+                                            )
+
+                    if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
+                        from wallet_ui import points_notice_dialog
+                        from auth_providers import current_member_id
+                        from auto_purchase_service import process_auto_purchase
+
+                        result = points_notice_dialog("auto", quantity=selected_quantity)
+                        if result == "confirm":
+                            st.session_state["auto_show_points"] = False
+                            if not _is_auto_deploy_window_open():
+                                st.markdown(
+                                    f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
+                                    unsafe_allow_html=True,
                                 )
-                                if outcome.get("ok"):
-                                    entry = _purchase_history_entry(
-                                        outcome,
+                            elif not phone.strip():
+                                st.error("수신 번호를 입력해 주세요.")
+                            else:
+                                mid = current_member_id()
+                                if mid:
+                                    outcome = process_auto_purchase(
+                                        mid,
+                                        selected_quantity,
                                         purchase_method,
+                                        phone,
                                         st.session_state.get("auto_sms_days", []),
                                     )
-                                    _append_purchase_history(entry)
-                                    st.session_state["auto_history_blink"] = True
-                                    st.rerun()
-                                elif outcome.get("error") == "insufficient_balance":
-                                    st.error("적립금이 부족합니다.")
-                                elif outcome.get("error") == "next_draw_pool_missing":
-                                    st.error(outcome.get("message") or NEXT_DRAW_POOL_BANNER)
-                                else:
-                                    st.error("구매 처리에 실패했습니다.")
-                    elif result == "cancel":
-                        st.session_state["auto_show_points"] = False
+                                    if outcome.get("ok"):
+                                        entry = _purchase_history_entry(
+                                            outcome,
+                                            purchase_method,
+                                            st.session_state.get("auto_sms_days", []),
+                                        )
+                                        _append_purchase_history(entry)
+                                        st.session_state["auto_history_blink"] = True
+                                        st.rerun()
+                                    elif outcome.get("error") == "insufficient_balance":
+                                        st.error("적립금이 부족합니다.")
+                                    elif outcome.get("error") == "next_draw_pool_missing":
+                                        st.error(outcome.get("message") or NEXT_DRAW_POOL_BANNER)
+                                    else:
+                                        st.error("구매 처리에 실패했습니다.")
+                        elif result == "cancel":
+                            st.session_state["auto_show_points"] = False
 
-        with col_visual:
-            pass
+            with col_visual:
+                pass
+
+        # ── 신령 이미지 + 회차별 당첨번호 배출 (2열 밖·전체 너비) ──
+        with st.container(key="auto_spirit_below_confirm_6n36s5"):
+            if spirit2_base64:
+                st.markdown(
+                    _spirit2_image_block(
+                        spirit2_base64,
+                        "auto-spirit2-slot-right",
+                        "auto-spirit-ripple-mob",
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+        stats_df, is_mock = _load_stats_table_cached(_admin_combo_save_mtime())
+        if not stats_df.empty:
+            stats_df = stats_df[~stats_df["회차"].isin([1233, 1])]
+        with st.container(key="auto_stats_section_6n36s5"):
+            pattern_count = _pattern_applied_count()
+            st.markdown(
+                f"""
+            <div class="auto-stats-head-row">
+                <div class="auto-table-title">회차별 당\u200b첨번호 배출</div>
+                <div class="auto-pattern-applied-note">당 회차 필터링에 {pattern_count:,}개의 패턴이 적용되었습니다</div>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+            if is_mock:
+                st.caption("현재 DB에 등록된 회차 데이터가 없어 테스트용 샘플을 표시합니다.")
+            table_html = stats_df.to_html(index=False, border=0, classes="auto-stats-table")
+            st.markdown(
+                f'<div class="auto-stats-table-wrap">{table_html}</div>',
+                unsafe_allow_html=True,
+            )
 
     # ── 최종 레이아웃 강제 오버라이드 ──
     # Streamlit이 stVerticalBlock/stHorizontalBlock 사이에 stLayoutWrapper를 끼워 넣는
@@ -2389,7 +2422,21 @@ def render():
             flex-shrink: 0 !important;
         }
         .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
+            display: block !important;
+        }
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5,
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 > div[data-testid="stVerticalBlock"],
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 [data-testid="stMarkdown"],
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 .auto-stats-table-wrap {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            position: relative !important;
+            z-index: 1 !important;
         }
         /* 왼쪽 쏠림 없이 양 끝으로 균형 배치 */
         .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
@@ -2399,9 +2446,11 @@ def render():
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            justify-content: space-between !important;
+            justify-content: flex-start !important;
             align-items: center !important;
+            gap: 8px !important;
             width: 100% !important;
+            max-width: 228px !important;
         }
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
             flex: 0 0 auto !important;
@@ -2426,13 +2475,15 @@ def render():
             position: relative !important;
             z-index: 1 !important;
         }
-        .st-key-auto_purchase_history_zone_6n36s5 {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
             position: relative !important;
-            z-index: 41 !important;
+            z-index: 40 !important;
+        }
+        html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
+            overflow-y: auto !important;
+            max-height: none !important;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
-    st.markdown("</div>", unsafe_allow_html=True)
