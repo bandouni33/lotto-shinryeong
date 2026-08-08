@@ -149,6 +149,33 @@ def render(admin_lucky=None):
                 0 4px 8px rgba(0, 0, 0, 0.22),
                 inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
         }
+        /* 상단 네비 2버튼만: 글자 한 단계 + iframe 레이어 위로 */
+        div[data-testid="stHorizontalBlock"]:has(.st-key-th_nav_home_6n36s5) {
+            position: relative !important;
+            z-index: 50 !important;
+            isolation: isolate !important;
+        }
+        .st-key-th_nav_home_6n36s5,
+        .st-key-th_nav_bday_6n36s5 {
+            position: relative !important;
+            z-index: 51 !important;
+        }
+        .st-key-th_nav_home_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-th_nav_bday_6n36s5 div[data-testid="stButton"] > button {
+            font-size: 16px !important;
+            font-weight: 900 !important;
+            line-height: 1.35 !important;
+            position: relative !important;
+            z-index: 52 !important;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            transform: translateZ(0);
+        }
+        .st-key-th_nav_home_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-th_nav_bday_6n36s5 div[data-testid="stButton"] > button p {
+            font-weight: 900 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -220,6 +247,7 @@ def render(admin_lucky=None):
                 --th-delete: {THUNDER_COLOR_DELETE};
                 --th-fixed: {THUNDER_COLOR_FIXED};
                 --th-lucky: {THUNDER_COLOR_LUCKY};
+                --th-mode-btn-h: 35px;
             }}
             body {{ background-color: #0F172A; color: #F8FAFC; margin: 0 auto; padding: 10px; overflow-x: hidden; width: 100%; max-width: 480px; }}
 
@@ -276,35 +304,61 @@ def render(admin_lucky=None):
                     0 10px 20px rgba(0, 0, 0, 0.35),
                     inset 0 1px 0 rgba(255, 255, 255, 0.08);
                 transition: box-shadow 0.12s ease;
+                position: relative;
+                z-index: 8;
+                isolation: isolate;
             }}
             .tab {{
-                flex: 1; padding: 12px; text-align: center; border-radius: 8px;
-                cursor: pointer; font-weight: 900; font-size: 15px;
-                transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease;
+                flex: 1;
+                box-sizing: border-box;
+                height: var(--th-mode-btn-h);
+                min-height: var(--th-mode-btn-h);
+                max-height: var(--th-mode-btn-h);
+                padding: 0 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                border-radius: 12px;
+                border: none;
+                cursor: pointer;
+                font-family: 'Noto Sans KR', sans-serif;
+                font-weight: 900;
+                font-size: 15px;
+                line-height: 1.25;
+                transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
                 box-shadow:
-                    0 3px 0 rgba(0, 0, 0, 0.25),
-                    0 4px 8px rgba(0, 0, 0, 0.2),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+                    0 4px 0 rgba(0, 0, 0, 0.35),
+                    0 7px 14px rgba(0, 0, 0, 0.28),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+                position: relative;
+                z-index: 9;
+                isolation: isolate;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+                text-rendering: optimizeLegibility;
+                transform: translateZ(0);
+                opacity: 1;
             }}
             .tab.active {{
                 background: linear-gradient(180deg, #c084fc 0%, #A855F7 55%, #9333ea 100%);
                 color: #FFFFFF;
-                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+                text-shadow: none;
                 box-shadow:
                     0 4px 0 #6b21a8,
                     0 7px 14px rgba(168, 85, 247, 0.45),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+                    inset 0 1px 0 rgba(255, 255, 255, 0.3);
             }}
             .tab:not(.active) {{
-                color: #F1F5F9;
+                color: #FFFFFF;
                 background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
-                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+                text-shadow: none;
             }}
             .tab:not(.active):hover {{
                 box-shadow:
-                    0 4px 0 rgba(0, 0, 0, 0.3),
-                    0 6px 12px rgba(0, 0, 0, 0.28),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+                    0 5px 0 rgba(0, 0, 0, 0.38),
+                    0 9px 18px rgba(0, 0, 0, 0.32),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.3);
             }}
             .tab:active {{ transform: scale(0.97); }}
 
@@ -364,11 +418,16 @@ def render(admin_lucky=None):
                     inset 0 1px 0 rgba(255, 255, 255, 0.35);
             }}
             
-            .control-panel {{ display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; margin-top: 20px; }}
+            .control-panel {{ display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; margin-top: 20px; position: relative; z-index: 8; isolation: isolate; }}
             .select-game {{
                 background: linear-gradient(180deg, #334155 0%, #1E293B 100%);
                 color: #F8FAFC; border: 2px solid #334155;
-                padding: 12px; border-radius: 12px; font-weight: 900; outline: none;
+                box-sizing: border-box;
+                height: 39px;
+                min-height: 39px;
+                max-height: 39px;
+                padding: 0 10px;
+                border-radius: 12px; font-weight: 900; outline: none;
                 transition: box-shadow 0.12s ease, transform 0.12s ease;
                 box-shadow:
                     0 4px 0 #0b1220,
@@ -376,26 +435,49 @@ def render(admin_lucky=None):
                     inset 0 1px 0 rgba(255, 255, 255, 0.1);
             }}
             .select-game:active {{ transform: scale(0.97); }}
-            .action-btn {{
-                padding: 12px; border-radius: 12px; border: none; font-weight: 900;
-                cursor: pointer; font-size: 16px;
+            .action-btn.btn-start,
+            .action-btn.btn-save {{
+                box-sizing: border-box;
+                height: var(--th-mode-btn-h);
+                min-height: var(--th-mode-btn-h);
+                max-height: var(--th-mode-btn-h);
+                padding: 0 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 12px; border: none;
+                font-family: 'Noto Sans KR', sans-serif;
+                font-weight: 900;
+                font-size: 15px;
+                line-height: 1.25;
+                cursor: pointer;
                 transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
                 box-shadow:
                     0 4px 0 rgba(0, 0, 0, 0.35),
                     0 7px 14px rgba(0, 0, 0, 0.28),
                     inset 0 1px 0 rgba(255, 255, 255, 0.25);
+                position: relative;
+                z-index: 9;
+                isolation: isolate;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+                text-rendering: optimizeLegibility;
+                transform: translateZ(0);
+                color: #FFFFFF;
+                opacity: 1;
+                text-shadow: none;
             }}
-            .action-btn:hover {{
+            .action-btn.btn-start:hover,
+            .action-btn.btn-save:hover {{
                 box-shadow:
                     0 5px 0 rgba(0, 0, 0, 0.38),
                     0 9px 18px rgba(0, 0, 0, 0.32),
                     inset 0 1px 0 rgba(255, 255, 255, 0.3);
             }}
-            .action-btn:active {{ transform: scale(0.97); }}
+            .action-btn.btn-start:active,
+            .action-btn.btn-save:active {{ transform: scale(0.97); }}
             .btn-start {{
                 background: linear-gradient(180deg, #22d3ee 0%, #06B6D4 55%, #0891b2 100%);
-                color: #FFFFFF;
-                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
                 box-shadow:
                     0 4px 0 #0e7490,
                     0 7px 14px rgba(6, 182, 212, 0.4),
@@ -403,8 +485,6 @@ def render(admin_lucky=None):
             }}
             .btn-save {{
                 background: linear-gradient(180deg, #65a30d 0%, #3F6212 55%, #365314 100%);
-                color: #FFFFFF;
-                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
                 box-shadow:
                     0 4px 0 #1a2e05,
                     0 7px 14px rgba(63, 98, 18, 0.4),

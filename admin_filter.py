@@ -407,22 +407,22 @@ st.markdown("""
         align-items: flex-start !important;
     }
     /* 패턴 3열 그리드: 열 간격·카드 폭 확보 */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) {
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) {
         gap: 1rem !important;
     }
-    div[data-testid="column"] {
+    div[data-testid="stColumn"] {
         gap: 0.35rem !important;
     }
-    div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
+    div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
         gap: 0.55rem !important;
     }
     div[data-testid="stVerticalBlockBorderWrapper"],
-    div[data-testid="column"]:has(.premium-card-marker) > div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"]:has(.premium-card-marker) {
+    div[data-testid="stColumn"]:has(.premium-card-marker) > div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"]:has(.premium-card-marker) {
         overflow: visible !important;
     }
     /* ── 패턴 3열 그리드: K-493 스타일 개별 카드 박스 (stVerticalBlock) ── */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
-        div[data-testid="column"]:not(:has(.af-col3-stack)) > div[data-testid="stVerticalBlock"]
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
+        div[data-testid="stColumn"]:not(:has(.af-col3-stack)) > div[data-testid="stVerticalBlock"]
         > div[data-testid="stVerticalBlock"]:has(.premium-card-marker):not(:has(.af-placeholder-card)) {
         background: linear-gradient(165deg, #181832 0%, #141428 52%, #10101f 100%) !important;
         border: 2px solid rgba(203, 213, 225, 0.28) !important;
@@ -435,20 +435,20 @@ st.markdown("""
             inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
     }
     /* 1·2열: 카드 사이 간격 균일 */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
-        div[data-testid="column"]:not(:has(.af-col3-stack)) > div[data-testid="stVerticalBlock"] {
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
+        div[data-testid="stColumn"]:not(:has(.af-col3-stack)) > div[data-testid="stVerticalBlock"] {
         gap: 14px !important;
     }
     /* 3열: 카드 간격 + 개별 카드 박스 (stVerticalBlock + container key) */
-    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"] {
+    div[data-testid="stColumn"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"] {
         gap: 14px !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+    div[data-testid="stColumn"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
         > div[data-testid="stVerticalBlock"]:has(.premium-card-marker),
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_soja"],
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_decade"],
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_hotzone"],
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_total"] {
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_soja"],
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_decade"],
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_hotzone"],
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_total"] {
         box-sizing: border-box !important;
         width: 100% !important;
         background: linear-gradient(165deg, #181832 0%, #141428 52%, #10101f 100%) !important;
@@ -461,32 +461,32 @@ st.markdown("""
             0 0 0 1px rgba(255, 255, 255, 0.06),
             inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+    div[data-testid="stColumn"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
         > div[data-testid="stVerticalBlock"]:has(.accent-teal),
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_soja"] {
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_soja"] {
         border: 2px solid rgba(20, 184, 166, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(20,184,166,0.18), 0 0 24px rgba(20,184,166,0.12) !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+    div[data-testid="stColumn"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
         > div[data-testid="stVerticalBlock"]:has(.accent-violet),
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_decade"] {
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_decade"] {
         border: 2px solid rgba(139, 92, 246, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(139,92,246,0.18), 0 0 24px rgba(139,92,246,0.12) !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+    div[data-testid="stColumn"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
         > div[data-testid="stVerticalBlock"]:has(.accent-amber),
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_hotzone"] {
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_hotzone"] {
         border: 2px solid rgba(245, 158, 11, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(245,158,11,0.18), 0 0 24px rgba(245,158,11,0.12) !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
+    div[data-testid="stColumn"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"]
         > div[data-testid="stVerticalBlock"]:has(.accent-indigo),
-    div[data-testid="column"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_total"] {
+    div[data-testid="stColumn"]:has(.af-col3-stack) div[data-testid="stVerticalBlock"][class*="af_col3_total"] {
         border: 2px solid rgba(99, 102, 241, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(99,102,241,0.18), 0 0 24px rgba(99,102,241,0.12) !important;
     }
     /* 개발중 placeholder 카드 (1·2열 하단) */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.af-placeholder-card) {
         box-sizing: border-box !important;
         width: 100% !important;
@@ -504,7 +504,7 @@ st.markdown("""
             0 0 18px rgba(59, 130, 246, 0.12),
             inset 0 1px 0 rgba(147, 197, 253, 0.1) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.af-placeholder-card)
         > div[data-testid="stVerticalBlock"] {
         box-sizing: border-box !important;
@@ -517,7 +517,7 @@ st.markdown("""
         justify-content: center !important;
         gap: 0 !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.af-placeholder-card)
         [data-testid="stMarkdownContainer"]:has(.af-placeholder-card) {
         display: none !important;
@@ -551,7 +551,7 @@ st.markdown("""
         overflow: visible !important;
         gap: 0.4rem !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
         overflow: visible !important;
         min-width: 0 !important;
         flex: 1 1 0 !important;
@@ -634,47 +634,47 @@ st.markdown("""
     .premium-card-marker { display: none; }
     .af-col3-stack { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
     /* 패턴 그리드 카드: accent 색상 테두리 유지 */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-cyan) {
         border: 2px solid rgba(6, 182, 212, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(6,182,212,0.18), 0 0 24px rgba(6,182,212,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-violet) {
         border: 2px solid rgba(139, 92, 246, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(139,92,246,0.18), 0 0 24px rgba(139,92,246,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-blue) {
         border: 2px solid rgba(59, 130, 246, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(59,130,246,0.18), 0 0 24px rgba(59,130,246,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-teal) {
         border: 2px solid rgba(20, 184, 166, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(20,184,166,0.18), 0 0 24px rgba(20,184,166,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-purple) {
         border: 2px solid rgba(168, 85, 247, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(168,85,247,0.18), 0 0 24px rgba(168,85,247,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-amber) {
         border: 2px solid rgba(245, 158, 11, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(245,158,11,0.18), 0 0 24px rgba(245,158,11,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-rose) {
         border: 2px solid rgba(244, 63, 94, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(244,63,94,0.18), 0 0 24px rgba(244,63,94,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-emerald) {
         border: 2px solid rgba(16, 185, 129, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(16,185,129,0.18), 0 0 24px rgba(16,185,129,0.12) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack)
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack)
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.accent-indigo) {
         border: 2px solid rgba(99, 102, 241, 0.62) !important;
         box-shadow: 0 6px 22px rgba(0,0,0,0.62), 0 0 0 1px rgba(99,102,241,0.18), 0 0 24px rgba(99,102,241,0.12) !important;
@@ -1225,12 +1225,12 @@ st.markdown("""
 
     /* ── 세팅완료 저장 버튼 전용 (key=save_settings_btn, 기존 CSS 미변경·추가만) ── */
     .af-save-settings-btn-marker { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
-    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] {
+    div[data-testid="stColumn"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] {
         width: 100% !important;
         max-width: 100% !important;
     }
-    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"],
-    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[kind="secondary"] {
+    div[data-testid="stColumn"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"],
+    div[data-testid="stColumn"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[kind="secondary"] {
         width: 100% !important;
         background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 52%, #1d4ed8 100%) !important;
         color: #FFFFFF !important;
@@ -1246,8 +1246,8 @@ st.markdown("""
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55) !important;
         transition: transform 0.15s ease, box-shadow 0.15s ease !important;
     }
-    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover,
-    div[data-testid="column"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[kind="secondary"]:hover {
+    div[data-testid="stColumn"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover,
+    div[data-testid="stColumn"]:has(.af-save-settings-btn-marker) div[data-testid="stButton"] > button[kind="secondary"]:hover {
         transform: translateY(-1px) !important;
         color: #FFFFFF !important;
         border-color: rgba(186, 230, 253, 0.95) !important;
@@ -1333,36 +1333,36 @@ st.markdown("""
     }
 
     /* K-502/K-538 — 프리미엄 3열 그리드 열 간격·구분선 (상단 패턴 영역 전용, 추가만) */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) {
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) {
         gap: 1.75rem !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) > div[data-testid="column"] {
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) > div[data-testid="stColumn"] {
         padding: 0 10px !important;
         box-sizing: border-box !important;
         border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) > div[data-testid="column"]:last-child {
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) > div[data-testid="stColumn"]:last-child {
         border-right: none !important;
     }
 
     /* K-503 — 3열 카드 세로 간격 확대 (1·2열 높이 균형, 추가만) */
-    div[data-testid="column"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"] {
+    div[data-testid="stColumn"]:has(.af-col3-stack) > div[data-testid="stVerticalBlock"] {
         gap: 22px !important;
     }
 
     /* K-538 — 프리미엄 3열 그리드 폰트 가독성 (상단 패턴 영역 전용, 추가만) */
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) .premium-title {
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) .premium-title {
         font-size: 19px !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) div[data-testid="stCheckbox"] label,
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"],
-    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="column"] .af-col3-stack) div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) div[data-testid="stCheckbox"] label,
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"],
+    div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] .af-col3-stack) div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {
         font-size: 18px !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack) .af-table-header {
+    div[data-testid="stColumn"]:has(.af-col3-stack) .af-table-header {
         font-size: 16px !important;
     }
-    div[data-testid="column"]:has(.af-col3-stack) .af-table-label {
+    div[data-testid="stColumn"]:has(.af-col3-stack) .af-table-label {
         font-size: 17px !important;
     }
 
@@ -1378,11 +1378,11 @@ st.markdown("""
         border: none !important;
         padding: 16px !important;
     }
-    div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
+    div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
         gap: 16px !important;
     }
-    div[data-testid="column"]:nth-child(1) div[data-testid="stVerticalBlockBorderWrapper"]:nth-last-child(-n+2),
-    div[data-testid="column"]:nth-child(2) div[data-testid="stVerticalBlockBorderWrapper"]:nth-last-child(-n+2) {
+    div[data-testid="stColumn"]:nth-child(1) div[data-testid="stVerticalBlockBorderWrapper"]:nth-last-child(-n+2),
+    div[data-testid="stColumn"]:nth-child(2) div[data-testid="stVerticalBlockBorderWrapper"]:nth-last-child(-n+2) {
         border: 2px dashed rgba(52, 152, 219, 0.4) !important;
         min-height: 120px !important;
         display: flex !important;

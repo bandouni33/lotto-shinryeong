@@ -6,7 +6,7 @@ import uuid
 
 from marketing_db import (
     InsufficientCombinationsError,
-    allocate_lotto_combinations,
+    allocate_lotto_combinations_random_sequential,
     get_combination_count_by_draw,
     get_draw_extraction_stats,
     init_marketing_tables,
@@ -110,7 +110,9 @@ def process_auto_purchase(
     allocated_ids: list[int] = []
     try:
         draw_round = _next_draw_round()
-        allocated = allocate_lotto_combinations(draw_round, int(quantity), order_id)
+        allocated = allocate_lotto_combinations_random_sequential(
+            draw_round, int(quantity), order_id
+        )
         allocated_ids = [item["id"] for item in allocated]
         combo_count = len(allocated)
 

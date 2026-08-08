@@ -36,6 +36,22 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced"):
 
     render_wallet_bar()
 
+    from app_settings import get_update_notice
+
+    _update_notice = get_update_notice()
+    if _update_notice["version"] and st.session_state.get("dismissed_update_version") != _update_notice["version"]:
+        st.warning(f"🔔 업데이트 정보가 있습니다 — {_update_notice['message']} (v{_update_notice['version']})")
+        _col_now, _col_later = st.columns(2)
+        with _col_now:
+            if _update_notice["url"]:
+                st.link_button("지금 업데이트", _update_notice["url"], use_container_width=True, type="primary")
+            else:
+                st.button("지금 업데이트", use_container_width=True, disabled=True, key="update_now_disabled_6n36s5")
+        with _col_later:
+            if st.button("나중에", use_container_width=True, key="update_later_btn_6n36s5"):
+                st.session_state["dismissed_update_version"] = _update_notice["version"]
+                st.rerun()
+
 # ===============================================================================
 # ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️
 # 앞 번호일수록 유력한 순서로 입력 (예: 44가 가장 유력, 7이 가장 약함)
@@ -1213,6 +1229,8 @@ if current_page == "main":
     """, unsafe_allow_html=True)
     with st.expander(" 시스템 관리자 메뉴"):
         import os
+        import admin_auth_guard
+
         _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD")
         if not _ADMIN_MENU_PASSWORD:
             try:
@@ -1222,58 +1240,39 @@ if current_page == "main":
         if not _ADMIN_MENU_PASSWORD:
             st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
             st.stop()
+
+        _ADMIN_MAX_ATTEMPTS = 5
+        _ADMIN_LOCKOUT_SECONDS = 300  # 5분
+
         if not st.session_state.get("admin_menu_unlocked", False):
-            st.text_input(
-                "관리자 비밀번호",
-                type="password",
-                key="admin_menu_pwd_6n36s5",
-            )
-            if st.button("확인", key="admin_menu_pwd_submit_6n36s5"):
-                if st.session_state.get("admin_menu_pwd_6n36s5") == _ADMIN_MENU_PASSWORD:
-                    st.session_state.admin_menu_unlocked = True
-                    st.rerun()
-                else:
-                    st.warning("비밀번호가 올바르지 않습니다.")
+            _remaining = admin_auth_guard.seconds_locked_remaining()
+            if _remaining > 0:
+                st.error(f"비밀번호 시도 횟수를 초과했습니다. {int(_remaining) + 1}초 후 다시 시도해 주세요.")
+            else:
+                st.text_input(
+                    "관리자 비밀번호",
+                    type="password",
+                    key="admin_menu_pwd_6n36s5",
+                )
+                if st.button("확인", key="admin_menu_pwd_submit_6n36s5"):
+                    if st.session_state.get("admin_menu_pwd_6n36s5") == _ADMIN_MENU_PASSWORD:
+                        admin_auth_guard.record_success()
+                        st.session_state.admin_menu_unlocked = True
+                        st.rerun()
+                    else:
+                        fail_count = admin_auth_guard.record_failure(
+                            _ADMIN_MAX_ATTEMPTS, _ADMIN_LOCKOUT_SECONDS
+                        )
+                        if fail_count == 0:
+                            st.warning(
+                                f"비밀번호가 올바르지 않습니다. 시도 횟수 초과로 {_ADMIN_LOCKOUT_SECONDS}초간 잠금됩니다."
+                            )
+                        else:
+                            st.warning(
+                                f"비밀번호가 올바르지 않습니다. ({fail_count}/{_ADMIN_MAX_ATTEMPTS}회)"
+                            )
         elif st.button(" 대시보드로 이동", key="admin_btn_dashboard"):
             st.session_state.is_admin = True
             st.session_state.go_to_admin = True
             st.rerun()
 
-        #  임시: DB 파일 백업 다운로드 (데이터 유실 대비, 급함) 
-        if st.session_state.get("admin_menu_unlocked", False):
-            import os as _os
-            if _os.path.exists("lotto.db"):
-                with open("lotto.db", "rb") as _f:
-                    _db_bytes = _f.read()
-                import datetime
-                _ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                st.download_button(
-                    label=" lotto.db 백업 다운로드",
-                    data=_db_bytes,
-                    file_name=f"lotto_backup_{_ts}.db",
-                    mime="application/octet-stream",
-                    key="admin_db_backup",
-                )
-            else:
-                st.warning("lotto.db 파일을 찾을 수 없습니다.")
-
-        #  임시 진단 코드: 데이터 유실 여부 확인용 (확인 후 삭제할 것) 
-        if st.session_state.get("admin_menu_unlocked", False):
-            if st.button(" 실제 회원 데이터 생존 확인", key="admin_data_check"):
-                import sqlite3
-                try:
-                    conn = sqlite3.connect("lotto.db")
-                    cur = conn.cursor()
-                    for table, date_col in [
-                        ("members", "created_at"),
-                        ("improvement_feedback", "created_at"),
-                    ]:
-                        try:
-                            cur.execute(f"SELECT COUNT(*), MIN({date_col}), MAX({date_col}) FROM {table}")
-                            cnt, min_d, max_d = cur.fetchone()
-                            st.write(f"**{table}**: {cnt}건 | 최초: {min_d} | 최근: {max_d}")
-                        except Exception as e:
-                            st.write(f"**{table}**: 조회 실패 ({e})")
-                    conn.close()
-                except Exception as e:
-                    st.error(f"DB 연결 실패: {e}")

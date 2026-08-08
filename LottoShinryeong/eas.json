@@ -15,7 +15,10 @@
   }
 },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_STREAMLIT_URL": "https://lotto-shinryeong.streamlit.app"
+      }
     }
   },
   "submit": {

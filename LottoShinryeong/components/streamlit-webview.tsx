@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Platform,
   StyleSheet,
   Text,
@@ -16,20 +17,71 @@ import { getStreamlitPageUrl } from '@/constants/streamlit';
 type Props = {
   page: string;
   title?: string;
+  /** 메인(홈) Streamlit — 뒤로가기 숨김, 히스토리 없을 때 앱 종료 */
+  showBack?: boolean;
 };
 
-export default function StreamlitWebView({ page, title }: Props) {
+export default function StreamlitWebView({ page, title, showBack = true }: Props) {
   const insets = useSafeAreaInsets();
   const uri = getStreamlitPageUrl(page);
+  const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  const onNavigationStateChange = useCallback((navState: { canGoBack: boolean }) => {
+    setCanGoBack(navState.canGoBack);
+  }, []);
+
+  const goToStreamlitHome = useCallback(() => {
+    router.replace('/');
+  }, []);
+
+  const handleNativeBack = useCallback(() => {
+    if (error) {
+      setError(null);
+      return true;
+    }
+    if (canGoBack && webViewRef.current) {
+      webViewRef.current.goBack();
+      return true;
+    }
+    if (showBack) {
+      goToStreamlitHome();
+      return true;
+    }
+    BackHandler.exitApp();
+    return true;
+  }, [canGoBack, error, goToStreamlitHome, showBack]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    const sub = BackHandler.addEventListener('hardwareBackPress', handleNativeBack);
+    return () => sub.remove();
+  }, [handleNativeBack]);
+
+  const onToolbarBack = () => {
+    if (canGoBack && webViewRef.current) {
+      webViewRef.current.goBack();
+      return;
+    }
+    if (showBack) {
+      goToStreamlitHome();
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.toolbar}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-          <Text style={styles.backText}>← 메인</Text>
-        </TouchableOpacity>
+        {showBack ? (
+          <TouchableOpacity style={styles.backBtn} onPress={onToolbarBack} activeOpacity={0.7}>
+            <Text style={styles.backText}>← 메인</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backPlaceholder} />
+        )}
         <Text style={styles.title} numberOfLines={1}>
           {title ?? page}
         </Text>
@@ -40,8 +92,9 @@ export default function StreamlitWebView({ page, title }: Props) {
           <Text style={styles.errorTitle}>페이지를 불러오지 못했습니다</Text>
           <Text style={styles.errorMsg}>{error}</Text>
           <Text style={styles.errorHint}>
-            PC에서 Streamlit 서버가 실행 중인지 확인하세요.{'\n'}
-            (run_server.ps1 · {uri})
+            서버 주소: {uri}
+            {'\n'}
+            (Cloud: lotto-shinryeong.streamlit.app · 로컬: run_server.ps1)
           </Text>
           <TouchableOpacity style={styles.retryBtn} onPress={() => setError(null)}>
             <Text style={styles.retryText}>다시 시도</Text>
@@ -49,9 +102,11 @@ export default function StreamlitWebView({ page, title }: Props) {
         </View>
       ) : (
         <WebView
+          ref={webViewRef}
           key={uri}
           source={{ uri }}
           style={styles.webview}
+          onNavigationStateChange={onNavigationStateChange}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onError={(e) => {
@@ -100,6 +155,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#1c2645',
   },
+  backPlaceholder: { width: 72 },
   backText: { color: '#f9a825', fontWeight: '700', fontSize: 14 },
   title: { flex: 1, color: '#e0e0e0', fontWeight: '700', fontSize: 15 },
   webview: { flex: 1, backgroundColor: '#12182b' },

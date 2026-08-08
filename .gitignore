@@ -25,6 +25,11 @@ wheels/
 venv/
 env/
 ENV/
+venv312/
+
+# Screenshots / scratch (debugging artifacts, not app source)
+.cursor-screenshots/
+LottoShinryeong/.expo-web-check/
 
 # Environment & secrets
 .env

@@ -15,6 +15,9 @@ from datetime import timedelta
 # ==========================================
 if "admin_view" not in st.session_state:
     st.session_state.admin_view = "home"
+_qp_admin_view = st.query_params.get("admin_view")
+if _qp_admin_view in ("home", "filter_manage"):
+    st.session_state.admin_view = _qp_admin_view
 
 MASTER_FILE = "로또기록 앱 업로드용.xlsb"
 FILTER_SAVE_FILE = "saved_filters.pkl"     # 필터 유지용 저장 파일 (로그아웃해도 유지)
@@ -73,6 +76,37 @@ def _sync_filter_job_status() -> dict | None:
     return status
 
 
+def _load_combo_upload_as_export_df(uploaded) -> pd.DataFrame:
+    """배포용 엑셀/CSV 업로드 → saved_combinations.csv 형식(번호1~6)."""
+    from marketing_db import parse_combination_rows_from_dataframe
+
+    name = (uploaded.name or "").lower()
+    if name.endswith((".xlsx", ".xls")):
+        xl = pd.ExcelFile(uploaded)
+        sheet = "배포조합" if "배포조합" in xl.sheet_names else xl.sheet_names[0]
+        df_raw = pd.read_excel(uploaded, sheet_name=sheet)
+    elif name.endswith(".csv"):
+        df_raw = pd.read_csv(uploaded)
+    else:
+        raise ValueError("xlsx, xls, csv 파일만 업로드할 수 있습니다.")
+
+    cols_ko = [f"번호{i}" for i in range(1, 7)]
+    cols_num = [f"num{i}" for i in range(1, 7)]
+    if not (
+        all(c in df_raw.columns for c in cols_ko)
+        or all(c in df_raw.columns for c in cols_num)
+    ):
+        if df_raw.shape[1] < 6:
+            raise ValueError("조합 데이터는 6열(번호 6개) 이상이어야 합니다.")
+        df_raw = df_raw.iloc[:, :6].copy()
+        df_raw.columns = cols_ko
+
+    rows = parse_combination_rows_from_dataframe(df_raw)
+    if not rows:
+        raise ValueError("유효한 6개 번호 조합을 찾지 못했습니다.")
+    return pd.DataFrame(rows, columns=cols_ko)
+
+
 def _start_filter_job() -> None:
     if not os.path.exists(FILTER_SAVE_FILE):
         raise FileNotFoundError("saved_filters.pkl 이 없습니다. 필터를 먼저 업로드해 주세요.")
@@ -114,6 +148,10 @@ df_history, latest_info = load_lotto_history()
 
 def change_view(view_name):
     st.session_state.admin_view = view_name
+    try:
+        st.query_params["admin_view"] = view_name
+    except Exception:
+        pass
 
 st.set_page_config(page_title="운영자 대시보드", layout="centered", initial_sidebar_state="collapsed")
 
@@ -157,7 +195,8 @@ st.markdown("""
 
     /* K-589 — 엑셀 다운로드: 파일명 SKY / 배포 다운로드 ORANGE (추가만) */
     .admin-export-filename-marker,
-    .admin-export-download-marker { display: none !important; }
+    .admin-export-download-marker,
+    .admin-export-upload-marker { display: none !important; }
 
     div[data-testid="stVerticalBlock"]:has(.admin-export-filename-marker) div[data-testid="stTextInput"] input {
         background-color: #87CEEB !important;
@@ -221,23 +260,62 @@ def style_dataframe(df):
 if st.session_state.admin_view == "home":
     st.markdown("<h2 style='font-weight:800; color:#FFFFFF; margin-bottom:5px;'>운영자 메인 대시보드</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#94A3B8; margin-bottom:25px;'>대시보드 운영 현황</p>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1: st.metric("총 회원 수", "1,248 명")
-    with col2: st.metric("프리미엄 회원수", "312 명")
-    with col3: st.metric("배포 대기 건수", "645 건")
-        
+
+    def _member_activity_counts() -> tuple[int, int]:
+        """(누적 가입자 수, 오늘 활동 인원). last_login_at은 로그인 시마다 갱신됨."""
+        import datetime as _dt
+        import wallet_db
+
+        conn = wallet_db._connect()
+        total_row = conn.execute("SELECT COUNT(*) AS c FROM members").fetchone()
+        today = _dt.datetime.now(wallet_db.KST).strftime("%Y-%m-%d")
+        active_row = conn.execute(
+            "SELECT COUNT(*) AS c FROM members WHERE substr(last_login_at, 1, 10) = ?",
+            (today,),
+        ).fetchone()
+        conn.close()
+        return int(total_row["c"]) if total_row else 0, int(active_row["c"]) if active_row else 0
+
+    try:
+        _total_members, _active_today = _member_activity_counts()
+    except Exception as e:
+        _total_members, _active_today = 0, 0
+        st.warning(f"회원 통계 조회 실패: {e}")
+
+    col1, col2 = st.columns(2)
+    with col1: st.metric("누적 가입자 수 (설치인원)", f"{_total_members:,} 명")
+    with col2: st.metric("오늘 활동 인원", f"{_active_today:,} 명")
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>작업 프로세스 메뉴</h4>", unsafe_allow_html=True)
-    
+
     # 🔥 기존의 1단계, 2단계 버튼을 완전히 없애고 이 버튼 하나로 통합했습니다.
     if st.button("🚀 3종 필터 업로드 및 원스톱 조합 생성 시작", type="primary"):
         change_view("filter_manage")
         st.rerun()
 
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
+    with st.expander("배너 설정 (사용자 화면 상단에 노출)"):
+        from app_settings import get_update_notice, set_update_notice
+
+        _notice = get_update_notice()
+        st.caption("배포 버전을 비워두면 배너가 표시되지 않습니다.")
+        _new_version = st.text_input("배포 버전 (예: 1.0.2)", value=_notice["version"], key="admin_update_version")
+        _new_url = st.text_input("업데이트 링크 (APK/스토어 URL)", value=_notice["url"], key="admin_update_url")
+        _new_message = st.text_area("안내 문구", value=_notice["message"], key="admin_update_message")
+        if st.button("저장", key="admin_update_notice_save"):
+            set_update_notice(_new_version, _new_url, _new_message)
+            st.success("저장했습니다. 사용자 화면에 즉시 반영됩니다.")
+            st.rerun()
+
 # ==========================================
 # 🔧 [통합] 3종 필터 관리 및 원스톱 조합 생성 시스템
 # ==========================================
 elif st.session_state.admin_view == "filter_manage":
+    st.session_state.admin_view = "filter_manage"
+    try:
+        st.query_params["admin_view"] = "filter_manage"
+    except Exception:
+        pass
     if st.button("⬅️ 대시보드 홈으로 이동"):
         change_view("home")
         st.rerun()
@@ -477,6 +555,39 @@ elif st.session_state.admin_view == "filter_manage":
                 use_container_width=True
             )
 
+            st.markdown('<div class="admin-export-upload-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+            uploaded_redeploy = st.file_uploader(
+                "⬆️ 배포용 엑셀 재업로드 (xlsx · csv)",
+                type=["xlsx", "xls", "csv"],
+                key="admin_export_combo_reupload",
+            )
+            if uploaded_redeploy is not None:
+                reupload_token = f"{uploaded_redeploy.name}:{uploaded_redeploy.size}"
+                if st.session_state.get("admin_combo_reupload_token") != reupload_token:
+                    try:
+                        df_reupload = _load_combo_upload_as_export_df(uploaded_redeploy)
+                        df_reupload.to_csv(COMBO_SAVE_FILE, index=False)
+                        st.session_state["admin_combo_reupload_token"] = reupload_token
+                        st.session_state.admin_view = "filter_manage"
+                        try:
+                            st.query_params["admin_view"] = "filter_manage"
+                        except Exception:
+                            pass
+                        st.session_state["admin_combo_reupload_flash"] = (
+                            f"✅ 업로드 저장 완료: {len(df_reupload):,}개 조합이 "
+                            f"시스템({COMBO_SAVE_FILE})에 반영되었습니다."
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        st.session_state.admin_view = "filter_manage"
+                        try:
+                            st.query_params["admin_view"] = "filter_manage"
+                        except Exception:
+                            pass
+                        st.error(f"❌ 업로드 저장 실패: {e}")
+            if st.session_state.get("admin_combo_reupload_flash"):
+                st.success(st.session_state.pop("admin_combo_reupload_flash"))
+
             # ==========================================
             # 5. [마케팅 DB] 추출 조합 익명 저장 (백엔드)
             # ==========================================
@@ -621,16 +732,21 @@ elif st.session_state.admin_view == "filter_manage":
                 step=1,
                 key="admin_marketing_draw_round",
             )
+            if st.session_state.get("admin_combo_input_mode") == "현재 추출 결과 사용":
+                st.session_state["admin_combo_input_mode"] = "재업로드 저장본 사용"
             combo_input_mode = st.radio(
                 "입력 방식",
-                ["현재 추출 결과 사용", "텍스트 직접 입력", "CSV 파일 업로드"],
+                ["재업로드 저장본 사용", "텍스트 직접 입력", "CSV 파일 업로드"],
                 horizontal=True,
                 key="admin_combo_input_mode",
             )
 
             rows_to_save = None
-            if combo_input_mode == "현재 추출 결과 사용":
-                rows_to_save = df_export.values.tolist()
+            if combo_input_mode == "재업로드 저장본 사용":
+                if os.path.exists(COMBO_SAVE_FILE):
+                    rows_to_save = parse_combination_rows_from_dataframe(
+                        pd.read_csv(COMBO_SAVE_FILE)
+                    )
             elif combo_input_mode == "텍스트 직접 입력":
                 combo_text = st.text_area(
                     "조합 입력 (한 줄에 6개 번호, 쉼표 또는 공백 구분)",
@@ -652,6 +768,10 @@ elif st.session_state.admin_view == "filter_manage":
 
             if st.button("추출 조합 저장", type="primary", key="admin_save_combos_db"):
                 try:
+                    if combo_input_mode == "재업로드 저장본 사용" and os.path.exists(COMBO_SAVE_FILE):
+                        rows_to_save = parse_combination_rows_from_dataframe(
+                            pd.read_csv(COMBO_SAVE_FILE)
+                        )
                     if not rows_to_save:
                         st.warning("저장할 조합이 없습니다.")
                     else:

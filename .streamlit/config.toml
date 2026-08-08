@@ -20,5 +20,5 @@ gatherUsageStats = false
 # Streamlit Cloud(lotto-shinryeong.streamlit.app)에서는 serverAddress 를 두면 WebSocket 이 깨집니다.
 
 [client]
-showErrorDetails = true
+showErrorDetails = false
 toolbarMode = "minimal"

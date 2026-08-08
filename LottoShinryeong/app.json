@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "LottoShinryeong",
+    "name": "로또신령",
     "slug": "bandouni",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
@@ -22,7 +22,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundColor": "#1a1a2e"
+        "backgroundColor": "#2a2438"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.bandouni.lottoshinryeong"
@@ -40,7 +40,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#1a1a2e"
+          "backgroundColor": "#2a2438"
         }
       ]
     ],

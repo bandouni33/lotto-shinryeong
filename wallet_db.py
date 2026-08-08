@@ -6,6 +6,8 @@ import hashlib
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+import db_turso
+
 DB_PATH = "lotto.db"
 SIGNUP_BONUS = 5000
 ADVANCED_PRODUCT = "advanced_filter_monthly"
@@ -23,10 +25,8 @@ def oauth_hash(provider: str, provider_user_id: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _connect():
+    return db_turso.connect()
 
 
 def init_wallet_tables() -> None:
