@@ -31,7 +31,7 @@ init_guest_scope()
 
 current_page = st.query_params.get("page", "main")
 
-if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced"):
+if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot"):
     from wallet_ui import render_wallet_bar
 
     render_wallet_bar()
@@ -644,8 +644,39 @@ if current_page == "main":
     .blue { border: 2px solid rgba(41, 182, 246, 0.7); }
     .green { border: 2px solid rgba(102, 187, 106, 0.7); }
     .purple { border: 2px solid rgba(171, 71, 188, 0.7); }
+
+    .tarot-box {
+        background: linear-gradient(145deg, #2a1c45, #161028);
+        border: 2px solid rgba(186, 104, 200, 0.7);
+        border-radius: 20px;
+        padding: 14px 10px;
+        min-height: 64px;
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        text-align: center;
+        box-shadow: 6px 8px 16px rgba(0,0,0,0.6), inset 1px 1px 2px rgba(255,255,255,0.1);
+        cursor: pointer;
+        transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+        margin-top: 7px;
+    }
+    .tarot-box:active {
+        transform: scale(0.93) translateY(4px);
+        box-shadow: 2px 3px 6px rgba(0,0,0,0.6), inset 4px 6px 12px rgba(0,0,0,0.8), inset -2px -2px 6px rgba(255,255,255,0.05);
+    }
+    .tarot-icon { font-size: 26px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
+    .tarot-title { color: #ffffff; font-weight: 900; font-size: 16px; letter-spacing: 0.5px; }
     </style>
 
+<a href="?page=tarot" target="_self" class="tarot-link" style="text-decoration:none; display:block;">
+    <div class="tarot-box">
+        <div class="tarot-icon">🔮</div>
+        <div class="tarot-title">삶이 지치고 힘들 때 신비로운 타로 점</div>
+    </div>
+</a>
 <div class="menu-grid">
     <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box gold">
@@ -688,7 +719,7 @@ if current_page == "main":
         }
         const doc = window.parent.document;
 
-        doc.querySelectorAll('.menu-grid a').forEach(function(el) {
+        doc.querySelectorAll('.menu-grid a, .tarot-link').forEach(function(el) {
             if (el.dataset.mainVibrateBound) return;
             el.dataset.mainVibrateBound = '1';
             el.addEventListener('click', safeVibrate, { passive: true });
@@ -816,6 +847,24 @@ elif current_page == "advanced":
             exec(f.read())
     else:
         st.error("admin_filter.py 파일을 찾을 수 없습니다. 파일이 같은 폴더에 있는지 확인해주세요.")
+
+# ==========================================
+# 🔮 화면: 오늘의 타로 한 장 (Tarot View)
+# ==========================================
+elif current_page == "tarot":
+    import sys as _sys
+
+    _tarot_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tarot")
+    if _tarot_dir not in _sys.path:
+        _sys.path.insert(0, _tarot_dir)
+
+    st.markdown(
+        '<a href="?" target="_self" style="text-decoration:none; color:#9aa5b1; font-weight:700; font-size:14px;">‹ 메인으로</a>',
+        unsafe_allow_html=True,
+    )
+
+    import tarot_page
+    tarot_page.render()
 
 # ==========================================
 # 📊 화면 4: 통계 대시보드 (Stats View)
