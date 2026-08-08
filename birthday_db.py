@@ -1,4 +1,5 @@
 import sqlite3
+import db_turso
 from datetime import datetime
 
 from lucky_numbers import validate_mmdd
@@ -11,7 +12,7 @@ def _normalize_scope(user_id) -> str:
 
 
 def init_birthday_table():
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS userBirthdays (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +35,7 @@ def init_birthday_table():
 def get_user_birthdays(user_id):
     init_birthday_table()
     scope = _normalize_scope(user_id)
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT * FROM userBirthdays WHERE user_id = ? ORDER BY slot",
@@ -54,7 +55,7 @@ def upsert_birthday(user_id, slot, label, mmdd):
     if not ok:
         raise ValueError(err or "월일 형식이 올바르지 않습니다")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     existing = conn.execute(
         "SELECT id FROM userBirthdays WHERE user_id = ? AND slot = ?",
         (scope, slot),
@@ -80,7 +81,7 @@ def upsert_birthday(user_id, slot, label, mmdd):
 def delete_birthday(user_id, slot):
     init_birthday_table()
     scope = _normalize_scope(user_id)
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     conn.execute(
         "DELETE FROM userBirthdays WHERE user_id = ? AND slot = ?",
         (scope, slot),

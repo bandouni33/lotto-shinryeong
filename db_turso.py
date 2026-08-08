@@ -43,6 +43,9 @@ class _CursorWrapper:
         self._idx = len(self._rs.rows)
         return rows
 
+    def __iter__(self):
+        return iter(self.fetchall())
+
 
 class _ConnectionWrapper:
     def __init__(self, client):
@@ -58,6 +61,18 @@ class _ConnectionWrapper:
                 raise sqlite3.IntegrityError(msg) from e
             raise
         return _CursorWrapper(rs)
+
+    def executemany(self, sql, params_list):
+        stmts = [(sql, list(p)) for p in params_list]
+        if not stmts:
+            return
+        try:
+            self._client.batch(stmts)
+        except libsql_client.LibsqlError as e:
+            msg = str(e)
+            if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
+                raise sqlite3.IntegrityError(msg) from e
+            raise
 
     def executescript(self, script):
         stmts = [s.strip() for s in re.split(r";\s*\n|;\s*$", script, flags=re.M) if s.strip()]

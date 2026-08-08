@@ -4,6 +4,7 @@ import csv
 import gzip
 import random
 import sqlite3
+import db_turso
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +31,7 @@ class InsufficientCombinationsError(Exception):
 
 
 def _connect():
-    return sqlite3.connect(DB_PATH)
+    return db_turso.connect()
 
 
 def init_marketing_tables():

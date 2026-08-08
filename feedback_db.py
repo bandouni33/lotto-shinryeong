@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import db_turso
 from datetime import datetime
 
 DB_PATH = "lotto.db"
@@ -15,7 +16,7 @@ def _now_iso() -> str:
 
 
 def init_feedback_tables() -> None:
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS improvement_feedback (
@@ -56,7 +57,7 @@ def save_feedback(
     if cat not in FEEDBACK_CATEGORIES:
         cat = "기타"
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     cur = conn.execute(
         """
         INSERT INTO improvement_feedback (nickname, category, body, member_id, created_at)
@@ -71,7 +72,7 @@ def save_feedback(
 
 
 def list_feedback(limit: int = 500) -> list[dict]:
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """
@@ -87,7 +88,7 @@ def list_feedback(limit: int = 500) -> list[dict]:
 
 
 def count_feedback() -> int:
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     row = conn.execute("SELECT COUNT(*) FROM improvement_feedback").fetchone()
     conn.close()
     return int(row[0]) if row else 0

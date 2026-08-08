@@ -18,6 +18,7 @@ Zero-Phone 익명 회원 DB — 전화번호·실명 등 PII 미수집.
 from __future__ import annotations
 
 import sqlite3
+import db_turso
 from datetime import datetime, timedelta, timezone
 
 DB_PATH = "lotto.db"
@@ -35,7 +36,7 @@ def _now_iso() -> str:
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = db_turso.connect()
     conn.row_factory = sqlite3.Row
     return conn
 
