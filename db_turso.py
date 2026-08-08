@@ -89,6 +89,13 @@ def connect() -> _ConnectionWrapper:
     url = os.getenv("TURSO_DATABASE_URL")
     token = os.getenv("TURSO_AUTH_TOKEN")
     if not url or not token:
+        try:
+            import streamlit as st
+            url = url or st.secrets.get("TURSO_DATABASE_URL", None)
+            token = token or st.secrets.get("TURSO_AUTH_TOKEN", None)
+        except Exception:
+            pass
+    if not url or not token:
         raise RuntimeError(
             "TURSO_DATABASE_URL / TURSO_AUTH_TOKEN 환경변수가 설정되지 않았습니다."
         )
