@@ -248,66 +248,6 @@ def _sync_completed_draw_win_ranks() -> None:
         pass
 
 
-def _auto_target_draw_round() -> int:
-    from auto_purchase_service import _next_draw_round
-
-    return int(_next_draw_round())
-
-
-def _rank_counts_from_upload_combos(
-    combos: list[tuple[int, int, int, int, int, int]],
-    draw_round: int,
-) -> dict[int, int]:
-    from lotto_stats import calc_lotto_win_rank, get_draw_result_by_round
-
-    counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-    result = get_draw_result_by_round(int(draw_round))
-    if not result:
-        return counts
-    winning = result["numbers"]
-    bonus = int(result["bonus"])
-    for combo in combos:
-        rank = calc_lotto_win_rank(combo, winning, bonus)
-        if rank is not None:
-            counts[int(rank)] += 1
-    return counts
-
-
-def _stats_from_admin_combo_upload(draw_round: int) -> dict | None:
-    """운영자 대시보드 배포용 재업로드(saved_combinations.csv) → 해당 회차 통계."""
-    if not os.path.exists(ADMIN_COMBO_SAVE_FILE):
-        return None
-    try:
-        from marketing_db import parse_combination_rows_from_dataframe
-
-        df = pd.read_csv(ADMIN_COMBO_SAVE_FILE)
-        combos = parse_combination_rows_from_dataframe(df)
-        if not combos:
-            return None
-        ranks = _rank_counts_from_upload_combos(combos, draw_round)
-        return {
-            "draw_round": int(draw_round),
-            "total_count": len(combos),
-            "rank_1": ranks[1],
-            "rank_2": ranks[2],
-            "rank_3": ranks[3],
-            "rank_4": ranks[4],
-            "rank_5": ranks[5],
-        }
-    except Exception:
-        return None
-
-
-def _merge_upload_stats_for_target_draw(stats: list[dict], draw_round: int) -> list[dict]:
-    upload_item = _stats_from_admin_combo_upload(draw_round)
-    if not upload_item:
-        return stats
-    merged = [item for item in stats if int(item["draw_round"]) != int(draw_round)]
-    merged.append(upload_item)
-    merged.sort(key=lambda x: int(x["draw_round"]), reverse=True)
-    return merged
-
-
 def _admin_combo_save_mtime() -> float:
     try:
         return os.path.getmtime(ADMIN_COMBO_SAVE_FILE)
@@ -316,18 +256,15 @@ def _admin_combo_save_mtime() -> float:
 
 
 def _load_stats_table() -> tuple[pd.DataFrame, bool]:
+    """실제 DB(lotto_combinations)에 저장된 회차만 표시 — 로컬 재업로드 파일은 미리보기일 뿐
+    실제 추출 결과가 아니므로 반영하지 않는다."""
     mdb = _marketing_db()
     mdb.init_marketing_tables()
     mdb.ensure_marketing_pool_seeds()
     _sync_completed_draw_win_ranks()
-    target_draw = _auto_target_draw_round()
     stats = mdb.get_draw_extraction_stats(limit=20)
     if stats:
-        stats = _merge_upload_stats_for_target_draw(stats, target_draw)
         return _stats_to_dataframe(stats, False), False
-    upload_only = _stats_from_admin_combo_upload(target_draw)
-    if upload_only:
-        return _stats_to_dataframe([upload_only], False), False
     return _stats_to_dataframe(mdb.get_mock_draw_extraction_stats(), True), True
 
 
@@ -1184,6 +1121,9 @@ def render():
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stVerticalBlock"],
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
             overflow: visible !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
         }
         .st-key-auto_form_lower_6n36s5 div[data-testid="stTextInput"],
         .st-key-auto_form_lower_6n36s5 div[data-testid="stButton"],
@@ -2438,31 +2378,30 @@ def render():
             position: relative !important;
             z-index: 1 !important;
         }
-        /* 왼쪽 쏠림 없이 양 끝으로 균형 배치 */
+        /* 하단 통계표 폭 기준 — 가운데 정렬로 통일 (양 끝 쏠림/좌측 쏠림 방지) */
         .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            justify-content: space-between !important;
+            justify-content: center !important;
+            gap: 32px !important;
         }
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            justify-content: flex-start !important;
+            justify-content: center !important;
             align-items: center !important;
             gap: 8px !important;
             width: 100% !important;
-            max-width: 228px !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
         }
-        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
-            flex: 0 0 auto !important;
-            width: 106px !important;
-            max-width: 106px !important;
-            min-width: 0 !important;
-        }
+        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
             flex: 0 0 auto !important;
-            width: 106px !important;
-            max-width: 106px !important;
+            width: auto !important;
+            max-width: none !important;
             min-width: 0 !important;
+            height: auto !important;
         }
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
@@ -2482,6 +2421,74 @@ def render():
         html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
             overflow-y: auto !important;
             max-height: none !important;
+        }
+        /* 구매방식·구매수량·구매확정·구매내역 — 공통 사이즈 조정 (높이 -10%, 폰트 한 단계 확대) */
+        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"],
+        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"] > div,
+        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] > div,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"],
+        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"] > div,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            height: 32px !important;
+            min-height: 32px !important;
+            max-height: 32px !important;
+            font-size: 16px !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] span,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] span {
+            font-size: 16px !important;
+        }
+        /* 구매방식·구매수량 — 현재 Streamlit 버전은 BaseWeb select 대신
+           React Aria ComboBox(input[type="text"] + div[role="group"])를 쓰므로
+           위 data-baseweb 규칙이 매치되지 않는다. 실제 DOM 기준으로 재적용. */
+        .st-key-auto_purchase_method_6n36s5 div[role="group"],
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
+            height: 32px !important;
+            min-height: 32px !important;
+            max-height: 32px !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 input[type="text"],
+        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
+            font-size: 16px !important;
+        }
+        /* input[type=text]가 브라우저 기본 폭(약 211px)을 그대로 차지해서 화살표 버튼이
+           박스 밖으로 밀려나 overflow:hidden에 잘려 안 보이던 문제 — input은 남는 공간만
+           차지하고 버튼은 자기 크기만큼만 차지하도록 flex 배분을 명시. */
+        .st-key-auto_purchase_method_6n36s5 input[type="text"],
+        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
+            flex: 1 1 auto !important;
+            width: 0 !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"] button,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button {
+            flex: 0 0 auto !important;
+        }
+        /* 즉시/월간·5개/10개 — 클릭 가능한 선택 요소로 보이도록 테두리·그림자·hover 반응 추가 */
+        .st-key-auto_purchase_method_6n36s5 div[role="group"],
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
+            box-sizing: border-box !important;
+            overflow: visible !important;
+            border: 2px solid #6C3CE0 !important;
+            box-shadow: 0 2px 6px rgba(108, 60, 224, 0.35) !important;
+            cursor: pointer !important;
+            transition: box-shadow 0.15s ease, border-color 0.15s ease !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"]:hover,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:hover,
+        .st-key-auto_purchase_method_6n36s5 div[role="group"]:focus-within,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:focus-within {
+            border-color: #8B5CF6 !important;
+            box-shadow: 0 3px 10px rgba(108, 60, 224, 0.55) !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"] button svg,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button svg {
+            width: 1.6rem !important;
+            height: 1.6rem !important;
+            color: #6C3CE0 !important;
+            fill: #6C3CE0 !important;
         }
         </style>
         """,
