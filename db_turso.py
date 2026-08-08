@@ -28,6 +28,10 @@ class _CursorWrapper:
     def lastrowid(self):
         return self._rs.last_insert_rowid
 
+    @property
+    def rowcount(self):
+        return self._rs.rows_affected
+
     def _wrap(self, raw):
         return Row(zip(self._rs.columns, raw))
 

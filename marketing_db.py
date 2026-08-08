@@ -579,18 +579,19 @@ def update_win_ranks_for_draw(
         """,
         (draw_round,),
     ).fetchall()
-    updated = 0
+    payload = []
     for row in rows:
         combo = _combo_nums_from_row(row)
         rank = calc_lotto_win_rank(combo, winning_numbers, bonus_number)
-        conn.execute(
+        payload.append((rank, int(row["id"])))
+    if payload:
+        conn.executemany(
             "UPDATE lotto_combinations SET win_rank = ? WHERE id = ?",
-            (rank, int(row["id"])),
+            payload,
         )
-        updated += 1
     conn.commit()
     conn.close()
-    return updated
+    return len(payload)
 
 
 def delete_lotto_combinations_by_draw(draw_round: int) -> int:
