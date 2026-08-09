@@ -131,7 +131,16 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           sharedCookiesEnabled
           startInLoadingState
           allowsBackForwardNavigationGestures
-          {...(Platform.OS === 'android' ? { mixedContentMode: 'always' as const } : {})}
+          // 핀치 줌이 안 된다는 실기기 리포트가 있어, 라이브러리 기본값에 맡기지 않고
+          // 안드로이드 확대 관련 옵션을 명시적으로 켠다 (핀치 줌 허용 + 확대/축소 버튼은 숨김).
+          scalesPageToFit
+          {...(Platform.OS === 'android'
+            ? {
+                mixedContentMode: 'always' as const,
+                setBuiltInZoomControls: true,
+                setDisplayZoomControls: false,
+              }
+            : {})}
         />
       )}
 

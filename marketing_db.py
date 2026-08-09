@@ -13,6 +13,8 @@ DB_PATH = "lotto.db"
 _APP_ROOT = Path(__file__).resolve().parent
 MARKETING_POOL_SEED_DRAWS = (1234, 1235, 1236)
 _MARKETING_POOL_DIR = _APP_ROOT / "data" / "marketing_pools"
+# 첫 시드 회차(1234) 미만은 테스트/스트레이 데이터로 간주 — 통계 조회에서 제외한다.
+MIN_DISPLAY_DRAW_ROUND = min(MARKETING_POOL_SEED_DRAWS)
 
 PURCHASE_TYPES = frozenset({"정기구독", "일반구매"})
 SEND_STATUSES = frozenset({"WAIT", "SENT", "TEST_SKIP", "BANNER_ONLY"})
@@ -675,11 +677,12 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
             SUM(CASE WHEN win_rank = 4 THEN 1 ELSE 0 END) AS rank_4,
             SUM(CASE WHEN win_rank = 5 THEN 1 ELSE 0 END) AS rank_5
         FROM lotto_combinations
+        WHERE draw_round >= ?
         GROUP BY draw_round
         ORDER BY draw_round DESC
         LIMIT ?
         """,
-        (int(limit),),
+        (MIN_DISPLAY_DRAW_ROUND, int(limit)),
     ).fetchall()
     conn.close()
     return [

@@ -2353,8 +2353,6 @@ def render():
                 )
 
         stats_df, is_mock = _load_stats_table_cached(_admin_combo_save_mtime())
-        if not stats_df.empty:
-            stats_df = stats_df[~stats_df["회차"].isin([1233, 1])]
         with st.container(key="auto_stats_section_6n36s5"):
             pattern_count = _pattern_applied_count()
             st.markdown(

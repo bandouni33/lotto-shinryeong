@@ -37,72 +37,146 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
     render_wallet_bar()
 
     from app_settings import get_update_notice
+    import html as _html
 
     _update_notice = get_update_notice()
-    _dismissed_cookie = st.context.cookies.get("dismissed_update_version")
-    _update_dismissed = (
-        st.session_state.get("dismissed_update_version") == _update_notice["version"]
-        or _dismissed_cookie == _update_notice["version"]
-    )
-    if _update_notice["version"] and not _update_dismissed:
-        with st.container(key="update_notice_zone_6n36s5"):
-            st.warning(f"🔔 {_update_notice['message']}")
-            st.markdown(
-                """
-                <style>
-                .st-key-update_later_btn_6n36s5 button,
-                .st-key-update_later_btn_6n36s5 button p,
-                .st-key-update_now_disabled_6n36s5 button,
-                .st-key-update_now_disabled_6n36s5 button p {
-                    color: #1F1A2E !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-            _col_now, _col_later = st.columns(2)
-            with _col_now:
-                if _update_notice["url"]:
-                    # TODO(update-banner-link): 앱(React Native WebView)에서 새 탭이 아니라 이
-                    # 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
-                    # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
-                    st.link_button("지금 업데이트", _update_notice["url"], use_container_width=True, type="primary")
-                else:
-                    st.button("지금 업데이트", use_container_width=True, disabled=True, key="update_now_disabled_6n36s5")
-            with _col_later:
-                if st.button("나중에", use_container_width=True, key="update_later_btn_6n36s5"):
-                    st.session_state["dismissed_update_version"] = _update_notice["version"]
-                    components.html(
-                        f"""
-                        <script>
-                        (function() {{
-                            const doc = window.parent.document;
-                            const version = {_update_notice['version']!r};
-                            doc.cookie = "dismissed_update_version=" + encodeURIComponent(version)
-                                + "; path=/; max-age=15552000";
-                        }})();
-                        </script>
-                        """,
-                        height=0,
-                    )
-                    st.rerun()
+    if _update_notice["version"]:
+        # "이미 봤는지"는 서버(session_state/쿠키)가 아니라 브라우저 localStorage로만 판단한다.
+        # session_state는 페이지 전환·앱 재부팅마다 새 세션이 열리며 초기화되고, 쿠키도
+        # st.context.cookies가 세션 시작 시점 스냅샷이라 즉시 갱신되지 않아 신뢰할 수 없었다.
+        # localStorage는 같은 기기·같은 웹뷰인 한 세션과 무관하게 남는다.
+        _un_version = _update_notice["version"]
+        _un_message = _html.escape(_update_notice["message"])
+        _un_url = _update_notice["url"]
 
-        # 서버 왕복(rerun) 없이 클릭 즉시 배너를 숨겨서 지체 없이 사라지도록 — 실제 재실행은
-        # 백그라운드에서 이어지고, 그 결과(세션/쿠키 반영)는 다음 렌더부터 반영된다.
+        if _un_url:
+            # TODO(update-banner-link): 앱(React Native WebView)에서 target="_blank"가 새 탭이
+            # 아니라 이 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
+            # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
+            _un_action_html = (
+                f'<a class="update-toast-btn-now" href="{_html.escape(_un_url, quote=True)}" '
+                f'target="_blank" rel="noopener">지금 업데이트</a>'
+            )
+        else:
+            _un_action_html = (
+                '<span class="update-toast-btn-now update-toast-btn-disabled">지금 업데이트</span>'
+            )
+
+        st.markdown(
+            f"""
+            <div class="update-toast" id="update-toast-6n36s5">
+                <div class="update-toast-msg">🔔 {_un_message}</div>
+                <div class="update-toast-actions">
+                    {_un_action_html}
+                    <button type="button" class="update-toast-btn-later" id="update-toast-later-6n36s5">나중에</button>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         components.html(
-            """
+            f"""
             <script>
-            (function() {
+            (function() {{
                 const doc = window.parent.document;
-                const btn = doc.querySelector('.st-key-update_later_btn_6n36s5 button');
-                const zone = doc.querySelector('.st-key-update_notice_zone_6n36s5');
-                if (btn && zone && !btn.dataset.instantHideBound) {
-                    btn.dataset.instantHideBound = '1';
-                    btn.addEventListener('click', function() {
-                        zone.style.display = 'none';
-                    }, { once: true });
-                }
-            })();
+                const version = {_un_version!r};
+                const toast = doc.getElementById('update-toast-6n36s5');
+                if (!toast || toast.dataset.toastInit === '1') return;
+                toast.dataset.toastInit = '1';
+
+                if (!doc.getElementById('update-toast-style')) {{
+                    const style = doc.createElement('style');
+                    style.id = 'update-toast-style';
+                    style.textContent = `
+                        .update-toast {{
+                            position: fixed;
+                            top: 14px;
+                            left: 50%;
+                            z-index: 9999;
+                            width: max-content;
+                            max-width: min(92vw, 420px);
+                            padding: 14px 18px;
+                            border-radius: 14px;
+                            border: 1px solid rgba(255, 193, 7, 0.4);
+                            background: rgba(20, 14, 8, 0.92);
+                            backdrop-filter: blur(8px);
+                            -webkit-backdrop-filter: blur(8px);
+                            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+                            opacity: 0;
+                            visibility: hidden;
+                            pointer-events: none;
+                            transform: translate(-50%, -8px);
+                            transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
+                        }}
+                        .update-toast.show {{
+                            opacity: 1;
+                            visibility: visible;
+                            pointer-events: auto;
+                            transform: translate(-50%, 0);
+                        }}
+                        .update-toast-msg {{
+                            color: #ffe082;
+                            font-size: 14px;
+                            font-weight: 700;
+                            line-height: 1.5;
+                            text-align: center;
+                            margin-bottom: 10px;
+                        }}
+                        .update-toast-actions {{
+                            display: flex;
+                            gap: 8px;
+                            justify-content: center;
+                        }}
+                        .update-toast-btn-now,
+                        .update-toast-btn-later {{
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 7px 16px;
+                            border-radius: 10px;
+                            font-size: 13px;
+                            font-weight: 700;
+                            cursor: pointer;
+                            text-decoration: none;
+                            border: none;
+                        }}
+                        .update-toast-btn-now {{
+                            background: linear-gradient(180deg, #ffca28 0%, #ffb300 100%);
+                            color: #241a00;
+                        }}
+                        .update-toast-btn-disabled {{
+                            opacity: 0.5;
+                            pointer-events: none;
+                        }}
+                        .update-toast-btn-later {{
+                            background: rgba(255, 255, 255, 0.12);
+                            color: #ffe082;
+                        }}
+                    `;
+                    doc.head.appendChild(style);
+                }}
+
+                let dismissed = null;
+                try {{ dismissed = window.parent.localStorage.getItem('dismissed_update_version'); }} catch (e) {{}}
+                if (dismissed === version) return;
+
+                function dismiss() {{
+                    toast.classList.remove('show');
+                    try {{ window.parent.localStorage.setItem('dismissed_update_version', version); }} catch (e) {{}}
+                }}
+
+                toast.classList.add('show');
+                const timer = window.setTimeout(dismiss, 6000);
+
+                const laterBtn = doc.getElementById('update-toast-later-6n36s5');
+                if (laterBtn) {{
+                    laterBtn.addEventListener('click', function() {{
+                        window.clearTimeout(timer);
+                        dismiss();
+                    }});
+                }}
+            }})();
             </script>
             """,
             height=0,

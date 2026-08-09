@@ -37,7 +37,7 @@ def inject_mobile_scripts(button_keyword: str = EXTRACT_BUTTON_KEYWORD) -> None:
                     if (!doc || doc.querySelector('meta[name="viewport"]')) return;
                     const meta = doc.createElement("meta");
                     meta.name = "viewport";
-                    meta.content = "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover";
+                    meta.content = "width=device-width, initial-scale=1, viewport-fit=cover";
                     doc.head.appendChild(meta);
                 }} catch (err) {{
                     /* ignore */
