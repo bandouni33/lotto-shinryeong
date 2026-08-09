@@ -45,46 +45,68 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
         or _dismissed_cookie == _update_notice["version"]
     )
     if _update_notice["version"] and not _update_dismissed:
-        st.warning(f"🔔 {_update_notice['message']}")
-        st.markdown(
+        with st.container(key="update_notice_zone_6n36s5"):
+            st.warning(f"🔔 {_update_notice['message']}")
+            st.markdown(
+                """
+                <style>
+                .st-key-update_later_btn_6n36s5 button,
+                .st-key-update_later_btn_6n36s5 button p,
+                .st-key-update_now_disabled_6n36s5 button,
+                .st-key-update_now_disabled_6n36s5 button p {
+                    color: #1F1A2E !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            _col_now, _col_later = st.columns(2)
+            with _col_now:
+                if _update_notice["url"]:
+                    # TODO(update-banner-link): 앱(React Native WebView)에서 새 탭이 아니라 이
+                    # 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
+                    # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
+                    st.link_button("지금 업데이트", _update_notice["url"], use_container_width=True, type="primary")
+                else:
+                    st.button("지금 업데이트", use_container_width=True, disabled=True, key="update_now_disabled_6n36s5")
+            with _col_later:
+                if st.button("나중에", use_container_width=True, key="update_later_btn_6n36s5"):
+                    st.session_state["dismissed_update_version"] = _update_notice["version"]
+                    components.html(
+                        f"""
+                        <script>
+                        (function() {{
+                            const doc = window.parent.document;
+                            const version = {_update_notice['version']!r};
+                            doc.cookie = "dismissed_update_version=" + encodeURIComponent(version)
+                                + "; path=/; max-age=15552000";
+                        }})();
+                        </script>
+                        """,
+                        height=0,
+                    )
+                    st.rerun()
+
+        # 서버 왕복(rerun) 없이 클릭 즉시 배너를 숨겨서 지체 없이 사라지도록 — 실제 재실행은
+        # 백그라운드에서 이어지고, 그 결과(세션/쿠키 반영)는 다음 렌더부터 반영된다.
+        components.html(
             """
-            <style>
-            .st-key-update_later_btn_6n36s5 button,
-            .st-key-update_later_btn_6n36s5 button p,
-            .st-key-update_now_disabled_6n36s5 button,
-            .st-key-update_now_disabled_6n36s5 button p {
-                color: #1F1A2E !important;
-            }
-            </style>
+            <script>
+            (function() {
+                const doc = window.parent.document;
+                const btn = doc.querySelector('.st-key-update_later_btn_6n36s5 button');
+                const zone = doc.querySelector('.st-key-update_notice_zone_6n36s5');
+                if (btn && zone && !btn.dataset.instantHideBound) {
+                    btn.dataset.instantHideBound = '1';
+                    btn.addEventListener('click', function() {
+                        zone.style.display = 'none';
+                    }, { once: true });
+                }
+            })();
+            </script>
             """,
-            unsafe_allow_html=True,
+            height=0,
         )
-        _col_now, _col_later = st.columns(2)
-        with _col_now:
-            if _update_notice["url"]:
-                # TODO(update-banner-link): 앱(React Native WebView)에서 새 탭이 아니라 이
-                # 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
-                # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
-                st.link_button("지금 업데이트", _update_notice["url"], use_container_width=True, type="primary")
-            else:
-                st.button("지금 업데이트", use_container_width=True, disabled=True, key="update_now_disabled_6n36s5")
-        with _col_later:
-            if st.button("나중에", use_container_width=True, key="update_later_btn_6n36s5"):
-                st.session_state["dismissed_update_version"] = _update_notice["version"]
-                components.html(
-                    f"""
-                    <script>
-                    (function() {{
-                        const doc = window.parent.document;
-                        const version = {_update_notice['version']!r};
-                        doc.cookie = "dismissed_update_version=" + encodeURIComponent(version)
-                            + "; path=/; max-age=15552000";
-                    }})();
-                    </script>
-                    """,
-                    height=0,
-                )
-                st.rerun()
 
 # ===============================================================================
 # ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️

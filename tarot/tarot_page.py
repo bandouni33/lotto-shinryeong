@@ -67,7 +67,7 @@ def _inject_base_css():
     css = textwrap.dedent("""
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gamja+Flower&family=Black+Han+Sans&family=Nanum+Brush+Script&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gamja+Flower&family=Black+Han+Sans&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
         <style>
         .tarot-wrap * { box-sizing: border-box; }
         .tarot-wrap { font-family: 'Gaegu', sans-serif; }
@@ -146,10 +146,10 @@ def _inject_base_css():
         }
 
         .letter-body {
-            font-family: 'Nanum Brush Script', cursive;
-            font-size: 25px;
+            font-family: 'Nanum Pen Script', cursive;
+            font-size: 24px;
             font-weight: normal;
-            line-height: 1.75;
+            line-height: 1.7;
             color: #3A2E1D;
         }
         .letter-body .hope {
