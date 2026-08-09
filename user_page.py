@@ -39,7 +39,12 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
     from app_settings import get_update_notice
 
     _update_notice = get_update_notice()
-    if _update_notice["version"] and st.session_state.get("dismissed_update_version") != _update_notice["version"]:
+    _dismissed_cookie = st.context.cookies.get("dismissed_update_version")
+    _update_dismissed = (
+        st.session_state.get("dismissed_update_version") == _update_notice["version"]
+        or _dismissed_cookie == _update_notice["version"]
+    )
+    if _update_notice["version"] and not _update_dismissed:
         st.warning(f"🔔 {_update_notice['message']}")
         st.markdown(
             """
@@ -66,6 +71,19 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
         with _col_later:
             if st.button("나중에", use_container_width=True, key="update_later_btn_6n36s5"):
                 st.session_state["dismissed_update_version"] = _update_notice["version"]
+                components.html(
+                    f"""
+                    <script>
+                    (function() {{
+                        const doc = window.parent.document;
+                        const version = {_update_notice['version']!r};
+                        doc.cookie = "dismissed_update_version=" + encodeURIComponent(version)
+                            + "; path=/; max-age=15552000";
+                    }})();
+                    </script>
+                    """,
+                    height=0,
+                )
                 st.rerun()
 
 # ===============================================================================
