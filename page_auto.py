@@ -186,23 +186,15 @@ html, body {{
 </html>"""
 
 
-def _spirit2_image_block(base64: str, slot_class: str, filter_id: str) -> str:
+def _spirit2_image_block(base64: str, slot_class: str) -> str:
+    """정적 원형 크롭 이미지 (물결 애니메이션은 추후 원형 비율에 맞게 재조정해서 복원 예정)."""
     return f"""
-    {_spirit2_filter_svg(filter_id)}
     <div class="{slot_class}">
       <div class="auto-spirit2-wrap">
         <div class="auto-spirit2-ripple">
           <img class="auto-spirit2-img auto-spirit2-img-base"
                src="data:image/jpeg;base64,{base64}"
                alt="로또신령2">
-          <div class="auto-spirit2-body-mask" aria-hidden="true">
-            <div class="auto-spirit2-ripple-wave">
-              <img class="auto-spirit2-img auto-spirit2-img-wave"
-                   style="filter:url(#{filter_id});-webkit-filter:url(#{filter_id});"
-                   src="data:image/jpeg;base64,{base64}"
-                   alt="">
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -558,6 +550,10 @@ def render():
             max-width: 600px !important;
             margin: 0 auto !important;
             overflow: visible !important;
+            /* 캐릭터 이미지 영역과 그 위 버튼/드롭다운 행이 공통으로 참조하는 단일 폭 기준.
+               이미지 모양(사각형→원형 등)이 바뀌어도 여기 값만 조정하면 버튼 위치가 자동으로
+               같이 따라오고, 이미지 내부 스타일만 바뀌는 경우엔 버튼은 전혀 영향받지 않는다. */
+            --auto-visual-col-width: min(360px, calc(100vw - 24px));
         }
         .auto-label-pill {
             display: inline-block;
@@ -829,17 +825,34 @@ def render():
             font-size: 9px !important;
             padding: 0 !important;
         }
+        @keyframes autoToastFade {
+            0% { opacity: 0; transform: translate(-50%, -6px); }
+            8% { opacity: 1; transform: translate(-50%, 0); }
+            85% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, -6px); }
+        }
         .auto-next-draw-pool-banner {
-            margin: 0 0 14px 0;
-            padding: 14px 16px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 183, 77, 0.55);
-            background: linear-gradient(155deg, rgba(62, 39, 7, 0.95) 0%, rgba(26, 34, 56, 0.98) 100%);
+            position: absolute;
+            top: calc(100% + 10px);
+            left: 50%;
+            z-index: 45;
+            width: max-content;
+            max-width: min(90vw, 380px);
+            margin: 0;
+            padding: 13px 20px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 193, 7, 0.4);
+            background: rgba(24, 17, 9, 0.88);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
             color: #ffe082;
-            font-size: 15px;
-            font-weight: 800;
+            font-size: 14px;
+            font-weight: 700;
             line-height: 1.5;
             text-align: center;
+            pointer-events: none;
+            animation: autoToastFade 4s ease forwards;
         }
         .auto-banner-head {
             display: flex;
@@ -1125,6 +1138,9 @@ def render():
             min-height: 0 !important;
             max-height: none !important;
         }
+        .st-key-auto_confirm_history_row_6n36s5 {
+            position: relative !important;
+        }
         .st-key-auto_form_lower_6n36s5 div[data-testid="stTextInput"],
         .st-key-auto_form_lower_6n36s5 div[data-testid="stButton"],
         .st-key-auto_form_lower_6n36s5 div[data-testid="stExpander"] {
@@ -1232,7 +1248,7 @@ def render():
             display: block !important;
             visibility: visible !important;
             width: 100% !important;
-            max-width: min(360px, calc(100vw - 24px)) !important;
+            max-width: var(--auto-visual-col-width) !important;
             height: auto !important;
             min-height: 0 !important;
             overflow: visible !important;
@@ -1242,7 +1258,7 @@ def render():
         .st-key-auto_spirit_below_confirm_6n36s5 .auto-spirit2-wrap,
         .st-key-auto_spirit_below_confirm_6n36s5 .auto-spirit2-ripple {
             width: 100% !important;
-            max-width: min(360px, calc(100vw - 24px)) !important;
+            max-width: var(--auto-visual-col-width) !important;
             height: auto !important;
         }
         .st-key-auto_spirit_below_confirm_6n36s5 .auto-spirit2-img-base {
@@ -1254,7 +1270,7 @@ def render():
         }
         .st-key-auto_spirit_below_confirm_6n36s5 [data-testid="stElementContainer"]:has([data-testid="stMarkdown"]) {
             width: 100% !important;
-            max-width: min(360px, calc(100vw - 24px)) !important;
+            max-width: var(--auto-visual-col-width) !important;
             margin: 0 auto !important;
             height: auto !important;
             flex: 0 0 auto !important;
@@ -1289,10 +1305,17 @@ def render():
             margin: 0;
             padding: 0;
         }
-        .auto-spirit2-slot-right .auto-spirit2-img {
-            width: 100%;
-            max-width: 100%;
-            border-radius: 10px;
+        .auto-spirit2-slot-right .auto-spirit2-img,
+        .st-key-auto_spirit_below_confirm_6n36s5 .auto-spirit2-slot-right .auto-spirit2-img-base {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            border-radius: 50% !important;
+            border: 2px solid rgba(34, 211, 238, 0.45) !important;
+            box-shadow:
+                0 6px 16px rgba(6, 182, 212, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
         }
         .auto-spirit2-slot-desktop {
             display: block;
@@ -1469,7 +1492,7 @@ def render():
                 visibility: visible !important;
                 height: auto !important;
                 overflow: visible !important;
-                max-width: min(360px, calc(100vw - 24px)) !important;
+                max-width: var(--auto-visual-col-width) !important;
             }
             .auto-spirit2-slot-mobile {
                 display: none !important;
@@ -1728,6 +1751,8 @@ def render():
         .auto-spirit2-ripple {
             position: relative;
             width: 100%;
+            aspect-ratio: 1 / 1;
+            overflow: hidden;
         }
         .auto-spirit2-img {
             width: 100%;
@@ -2075,8 +2100,20 @@ def render():
             z-index: 13 !important;
             margin: 0 !important;
         }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary svg {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary svg,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary img,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > *:not(p):not(span) {
             display: none !important;
+            width: 0 !important;
+            visibility: hidden !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary {
+            list-style: none !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary::-webkit-details-marker,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary::marker {
+            display: none !important;
+            content: "" !important;
         }
     </style>
         """,
@@ -2151,18 +2188,19 @@ def render():
 
                 with st.container(key="auto_form_lower_6n36s5"):
                     # ── 3. 구매 안내 Expander ──
-                    with st.expander("⚠️ 구매 안\u200b내 및 유의사항 (필독)"):
-                        st.markdown(
-                            """
-    • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
+                    with st.container(key="auto_guide_expander_zone_6n36s5"):
+                        with st.expander("⚠️ 구매 안\u200b내 및 유의사항 (필독)"):
+                            st.markdown(
+                                """
+        • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
 
-    • **자동 결제 안내:** 월간구독은 신청일 기준 30일마다 자동 결제되며, 마이페이지에서 언제든지 해지하실 수 있습니다.
+        • **자동 결제 안내:** 월간구독은 신청일 기준 30일마다 자동 결제되며, 마이페이지에서 언제든지 해지하실 수 있습니다.
 
-    • **환불 규정:** 로또 번호 추출 및 SMS 발송 서비스가 시작된 이후에는 디지털 콘텐츠 특성상 중도 청약철회 및 환불이 불가능합니다.
+        • **환불 규정:** 로또 번호 추출 및 SMS 발송 서비스가 시작된 이후에는 디지털 콘텐츠 특성상 중도 청약철회 및 환불이 불가능합니다.
 
-    • **당첨 면책 조항:** 본 조합 서비스는 당첨을 100% 보장하지 않으며, 실제 로또 결과에 대한 어떠한 법적 책임도 지지 않습니다.
-                            """
-                        )
+        • **당첨 면책 조항:** 본 조합 서비스는 당첨을 100% 보장하지 않으며, 실제 로또 결과에 대한 어떠한 법적 책임도 지지 않습니다.
+                                """
+                            )
 
                     phone = st.text_input(
                         "수신 번호 (문자 발송용)",
@@ -2310,7 +2348,6 @@ def render():
                     _spirit2_image_block(
                         spirit2_base64,
                         "auto-spirit2-slot-right",
-                        "auto-spirit-ripple-mob",
                     ),
                     unsafe_allow_html=True,
                 )
@@ -2378,22 +2415,42 @@ def render():
             position: relative !important;
             z-index: 1 !important;
         }
-        /* 하단 통계표 폭 기준 — 가운데 정렬로 통일 (양 끝 쏠림/좌측 쏠림 방지) */
+        /* 구매방식·수량 / 구매확정·구매내역 — 아래 캐릭터 이미지와 같은 폭 기준(360px 중앙정렬)으로
+           맞추고, 각 쌍의 중심이 그 폭의 좌측 20%·우측 20%(=80%) 지점에 오도록 정렬한다.
+           (106px 박스의 절반인 53px을 20%에서 빼서 padding으로 밀어내는 방식 — position:absolute를
+           쓰지 않아서, 월간구독 선택 시 요일 체크박스가 늘어나도 높이가 자연스럽게 따라간다.) */
+        .st-key-auto_purchase_method_zone_6n36s5 {
+            width: 100% !important;
+            max-width: var(--auto-visual-col-width) !important;
+            margin: 0 auto !important;
+        }
         .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            justify-content: center !important;
-            gap: 32px !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            gap: 0 !important;
+            padding-left: calc(20% - 53px) !important;
+            padding-right: calc(20% - 53px) !important;
+            box-sizing: border-box !important;
+        }
+        .st-key-auto_confirm_history_row_6n36s5 {
+            width: 100% !important;
+            max-width: var(--auto-visual-col-width) !important;
+            margin: 0 auto !important;
         }
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            justify-content: center !important;
+            justify-content: space-between !important;
             align-items: center !important;
-            gap: 8px !important;
+            gap: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
             height: auto !important;
             min-height: 0 !important;
+            padding-left: calc(30% - 52.8px) !important;
+            padding-right: calc(30% - 52.8px) !important;
+            box-sizing: border-box !important;
         }
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
@@ -2408,6 +2465,37 @@ def render():
             width: 106px !important;
             min-width: 106px !important;
             max-width: 106px !important;
+        }
+        /* ⚠️ 구매 안내 expander — 내용 크기만큼만 폭을 줄이고 가로 중앙 정렬 */
+        .st-key-auto_guide_expander_zone_6n36s5 {
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] {
+            width: auto !important;
+            max-width: max-content !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details {
+            width: auto !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            width: auto !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            padding: 10px 18px !important;
+            white-space: nowrap !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary svg {
+            flex: 0 0 auto !important;
+            margin: 0 !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary span {
+            margin: 0 !important;
+            white-space: nowrap !important;
         }
         /* 캐릭터 이미지는 항상 "구매내역" 팝업(z-index:40) 뒤에 있도록 낮은 z-index 고정 */
         .st-key-auto_spirit_below_confirm_6n36s5 {
@@ -2489,6 +2577,65 @@ def render():
             height: 1.6rem !important;
             color: #6C3CE0 !important;
             fill: #6C3CE0 !important;
+        }
+        /* 구매확정·구매내역 버튼 — 106px → 7%↓(98.58) → 4%↑(102.52) → 3%↑(105.6px) */
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            width: 105.6px !important;
+            min-width: 105.6px !important;
+            max-width: 105.6px !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button div {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary span {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+        }
+        /* 화살표는 Material Symbols 아이콘 폰트로 렌더링된다. 번들 코드를 더 파보니
+           "icon"/"type" prop이 있는 특수 expander(체크·에러·스피너)만 data-testid를
+           "stExpanderIcon*"로 오버라이드하고, 우리처럼 그런 prop이 없는 일반 expander는
+           기본 아이콘 컴포넌트를 타서 기본 testid인 "stIconMaterial" 그대로 남는다 —
+           그래서 stExpanderIcon만 노렸던 지난 시도가 안 먹혔다. 둘 다 잡는다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stExpanderIcon"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            gap: 0 !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > p {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+            flex: 1 1 auto !important;
         }
         </style>
         """,

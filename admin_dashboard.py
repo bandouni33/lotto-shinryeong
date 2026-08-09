@@ -196,7 +196,36 @@ st.markdown("""
     /* K-589 — 엑셀 다운로드: 파일명 SKY / 배포 다운로드 ORANGE (추가만) */
     .admin-export-filename-marker,
     .admin-export-download-marker,
-    .admin-export-upload-marker { display: none !important; }
+    .admin-export-upload-marker,
+    .admin-update-banner-marker { display: none !important; }
+
+    /* 업데이트 안내 배너 설정 — 아코디언 헤더(어두운 배경)는 흰 글씨,
+       입력창(흰 배경)은 진한 글씨로 명암 대비 확보 */
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stExpander"] summary,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stExpander"] summary p,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stExpander"] summary span {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextInput"] input,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextArea"] textarea {
+        color: #102030 !important;
+        font-weight: 600 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextInput"] input::placeholder,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextArea"] textarea::placeholder {
+        color: #5A6472 !important;
+        opacity: 1 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextInput"] label,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextInput"] label p,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextArea"] label,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stTextArea"] label p,
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stCaptionContainer"],
+    div[data-testid="stVerticalBlock"]:has(.admin-update-banner-marker) div[data-testid="stCaptionContainer"] p {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
 
     div[data-testid="stVerticalBlock"]:has(.admin-export-filename-marker) div[data-testid="stTextInput"] input {
         background-color: #87CEEB !important;
@@ -294,6 +323,7 @@ if st.session_state.admin_view == "home":
         st.rerun()
 
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
+    st.markdown('<div class="admin-update-banner-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
     with st.expander("배너 설정 (사용자 화면 상단에 노출)"):
         from app_settings import get_update_notice, set_update_notice
 

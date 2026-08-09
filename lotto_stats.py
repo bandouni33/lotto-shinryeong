@@ -1,9 +1,11 @@
 """로또최근당첨내역.xlsb 기반 통계 집계 (과거 데이터 사실 기반)."""
 
+import os
 from collections import Counter
 from pathlib import Path
 
 import pandas as pd
+import streamlit as st
 
 DATA_FILE = "로또최근당첨내역.xlsb"
 _APP_ROOT = Path(__file__).resolve().parent
@@ -30,12 +32,27 @@ DECADE_BANDS = (
 )
 
 
+def _xlsb_mtime(path: str) -> float:
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
+
+
+@st.cache_data(show_spinner=False)
+def _load_lotto_data_cached(path: str, _mtime: float) -> pd.DataFrame:
+    """pyxlsb는 순수 파이썬 파서라 6MB 파일 재파싱에 초 단위가 걸린다.
+    파일 mtime을 캐시 키에 포함해, 관리자가 새 회차로 갱신하면 즉시 무효화되면서도
+    바뀌지 않은 동안에는 렌더마다 재파싱하지 않도록 한다."""
+    df = pd.read_excel(path, engine="pyxlsb", header=None)
+    return df.iloc[DATA_START_ROW:].reset_index(drop=True)
+
+
 def load_lotto_data(filepath: str = DATA_FILE) -> pd.DataFrame:
     path = filepath
     if not Path(path).is_file():
         path = lotto_data_path(Path(path).name)
-    df = pd.read_excel(path, engine="pyxlsb", header=None)
-    return df.iloc[DATA_START_ROW:].reset_index(drop=True)
+    return _load_lotto_data_cached(path, _xlsb_mtime(path))
 
 
 def _draw_numbers(row) -> list[int]:

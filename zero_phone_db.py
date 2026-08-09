@@ -41,8 +41,18 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+_ZERO_PHONE_TABLES_READY = False
+
+
 def init_zero_phone_tables() -> None:
-    """users · msg_queue 테이블 생성 (phone 컬럼 없음)."""
+    """users · msg_queue 테이블 생성 (phone 컬럼 없음).
+
+    CREATE TABLE/INDEX IF NOT EXISTS라 멱등이지만, render_wallet_bar()가 매 렌더마다
+    호출해서 원격 DB 왕복이 반복되던 걸 막기 위해 최초 1회 이후로는 스킵한다.
+    """
+    global _ZERO_PHONE_TABLES_READY
+    if _ZERO_PHONE_TABLES_READY:
+        return
     conn = _connect()
     conn.executescript(
         """
@@ -69,6 +79,7 @@ def init_zero_phone_tables() -> None:
     )
     conn.commit()
     conn.close()
+    _ZERO_PHONE_TABLES_READY = True
 
 
 def _row_to_dict(row: sqlite3.Row | None) -> dict | None:

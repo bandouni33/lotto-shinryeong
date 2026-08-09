@@ -101,6 +101,13 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           </TouchableOpacity>
         </View>
       ) : (
+        // TODO(update-banner-link): target="_blank" 링크(예: user_page.py의 업데이트 안내
+        // 배너 "지금 업데이트" st.link_button)가 새 탭이 아니라 이 웹뷰 안에서 그대로 열림 —
+        // setSupportMultipleWindows/onOpenWindow 핸들러가 없기 때문. update_url이 스토어
+        // 웹페이지면 그럭저럭 동작하지만, APK 직링크면 onFileDownload 핸들러 없이는
+        // 다운로드가 아예 안 될 가능성이 높음. 고치려면 onShouldStartLoadWithRequest로
+        // 외부 URL을 기기 기본 브라우저(Linking.openURL)로 넘기는 처리 추가 필요 —
+        // 이 프로젝트(LottoShinryeong) 재빌드가 필요한 변경이라 별도로 진행.
         <WebView
           ref={webViewRef}
           key={uri}

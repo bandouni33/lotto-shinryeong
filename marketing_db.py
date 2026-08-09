@@ -34,8 +34,19 @@ def _connect():
     return db_turso.connect()
 
 
+_MARKETING_TABLES_READY = False
+
+
 def init_marketing_tables():
-    """sms_queue, lotto_combinations 테이블 생성 (FK/회원 ID 없음)."""
+    """sms_queue, lotto_combinations 테이블 생성 (FK/회원 ID 없음).
+
+    CREATE TABLE/INDEX IF NOT EXISTS라 멱등이지만, 한 프로세스 안에서 같은
+    렌더 경로가 여러 호출부(check_next_draw_pool_ready, _load_stats_table 등)를
+    거치며 중복 실행되던 걸 막기 위해 최초 1회 이후로는 스킵한다.
+    """
+    global _MARKETING_TABLES_READY
+    if _MARKETING_TABLES_READY:
+        return
     conn = _connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sms_queue (
@@ -74,6 +85,7 @@ def init_marketing_tables():
     _migrate_lotto_combinations(conn)
     conn.commit()
     conn.close()
+    _MARKETING_TABLES_READY = True
 
 
 def _marketing_pool_seed_path(draw_round: int) -> Path:
@@ -100,15 +112,25 @@ def import_marketing_pool_seed(draw_round: int) -> int:
     return bulk_insert_lotto_combinations(draw_round, rows)
 
 
+_MARKETING_POOL_SEEDS_CHECKED: set[tuple[int, ...]] = set()
+
+
 def ensure_marketing_pool_seeds(
     draw_rounds: tuple[int, ...] = MARKETING_POOL_SEED_DRAWS,
 ) -> dict[int, int]:
-    """Cloud 등 lotto.db 가 비어 있을 때 관리자 저장 회차 풀 복원."""
+    """Cloud 등 lotto.db 가 비어 있을 때 관리자 저장 회차 풀 복원.
+
+    같은 draw_rounds 조합에 대해 한 프로세스 안에서 이미 확인했다면 다시
+    회차별 COUNT 쿼리를 반복하지 않는다 (여러 호출부가 기본값으로 중복 호출하던 문제).
+    """
+    if draw_rounds in _MARKETING_POOL_SEEDS_CHECKED:
+        return {}
     imported: dict[int, int] = {}
     for draw_round in draw_rounds:
         count = import_marketing_pool_seed(draw_round)
         if count:
             imported[draw_round] = count
+    _MARKETING_POOL_SEEDS_CHECKED.add(draw_rounds)
     return imported
 
 

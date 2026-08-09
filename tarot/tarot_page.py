@@ -67,7 +67,7 @@ def _inject_base_css():
     css = textwrap.dedent("""
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gamja+Flower&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gamja+Flower&family=Black+Han+Sans&display=swap" rel="stylesheet">
         <style>
         .tarot-wrap * { box-sizing: border-box; }
         .tarot-wrap { font-family: 'Gaegu', sans-serif; }
@@ -78,6 +78,13 @@ def _inject_base_css():
             grid-template-columns: 1fr 1fr;
             gap: 10px;
             margin-top: 6px;
+        }
+
+        /* 카테고리·소분류 선택 버튼 — 폭 40% 축소(60%) + 가로 중앙 정렬 */
+        .st-key-tarot_cat_grid_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-tarot_sub_list_6n36s5 div[data-testid="stButton"] > button {
+            width: 60% !important;
+            margin: 0 auto !important;
         }
 
         /* 소분류 도입부 카드 */
@@ -139,6 +146,7 @@ def _inject_base_css():
         }
 
         .letter-body {
+            font-family: 'Black Han Sans', sans-serif;
             font-size: 21px;
             font-weight: 700;
             line-height: 1.6;
@@ -190,14 +198,15 @@ def render():
 def _render_category_select():
     st.markdown("##### 지금, 마음이 어디에 머물러 있나요")
     cats = list(SUBCATEGORIES.keys())
-    cols = st.columns(2)
-    for i, cat in enumerate(cats):
-        with cols[i % 2]:
-            icon = CATEGORY_ICON.get(cat, "✦")
-            if st.button(f"{icon}  {cat}", key=f"cat_{i}", use_container_width=True):
-                st.session_state["tarot_category"] = cat
-                st.session_state["tarot_stage"] = "subcategory"
-                st.rerun()
+    with st.container(key="tarot_cat_grid_6n36s5"):
+        cols = st.columns(2)
+        for i, cat in enumerate(cats):
+            with cols[i % 2]:
+                icon = CATEGORY_ICON.get(cat, "✦")
+                if st.button(f"{icon}  {cat}", key=f"cat_{i}", use_container_width=True):
+                    st.session_state["tarot_category"] = cat
+                    st.session_state["tarot_stage"] = "subcategory"
+                    st.rerun()
 
 
 def _render_subcategory_select():
@@ -209,13 +218,14 @@ def _render_subcategory_select():
         st.rerun()
 
     st.markdown(f"##### {CATEGORY_ICON.get(cat,'✦')}  {cat}")
-    for i, sub in enumerate(subs):
-        if st.button(sub, key=f"sub_{i}", use_container_width=True):
-            st.session_state["tarot_subcategory"] = sub
-            key, _card = _draw_card()
-            st.session_state["tarot_card_key"] = key
-            st.session_state["tarot_stage"] = "result"
-            st.rerun()
+    with st.container(key="tarot_sub_list_6n36s5"):
+        for i, sub in enumerate(subs):
+            if st.button(sub, key=f"sub_{i}", use_container_width=True):
+                st.session_state["tarot_subcategory"] = sub
+                key, _card = _draw_card()
+                st.session_state["tarot_card_key"] = key
+                st.session_state["tarot_stage"] = "result"
+                st.rerun()
 
 
 def _draw_card():

@@ -40,10 +40,26 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 
     _update_notice = get_update_notice()
     if _update_notice["version"] and st.session_state.get("dismissed_update_version") != _update_notice["version"]:
-        st.warning(f"🔔 업데이트 정보가 있습니다 — {_update_notice['message']} (v{_update_notice['version']})")
+        st.warning(f"🔔 {_update_notice['message']}")
+        st.markdown(
+            """
+            <style>
+            .st-key-update_later_btn_6n36s5 button,
+            .st-key-update_later_btn_6n36s5 button p,
+            .st-key-update_now_disabled_6n36s5 button,
+            .st-key-update_now_disabled_6n36s5 button p {
+                color: #1F1A2E !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         _col_now, _col_later = st.columns(2)
         with _col_now:
             if _update_notice["url"]:
+                # TODO(update-banner-link): 앱(React Native WebView)에서 새 탭이 아니라 이
+                # 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
+                # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
                 st.link_button("지금 업데이트", _update_notice["url"], use_container_width=True, type="primary")
             else:
                 st.button("지금 업데이트", use_container_width=True, disabled=True, key="update_now_disabled_6n36s5")
@@ -78,6 +94,7 @@ if current_page == "main":
         .block-container { padding-top: 5px !important; padding-bottom: 0px !important; padding-left: 12px !important; padding-right: 12px !important; max-width: 600px; }
         section[data-testid="stSidebar"] { display: none; }
         header[data-testid="stHeader"] { display: none; }
+        div[data-testid="stVerticalBlock"] { gap: 0.35rem !important; }
 
         div[data-columns="true"] {
             display: flex !important;
@@ -89,138 +106,29 @@ if current_page == "main":
         }
         div[data-testid="stColumn"] { padding: 0px !important; margin: 0px !important; }
 
-        div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) {
+        .st-key-main_rank_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
             align-items: center !important;
-            justify-content: space-between !important;
-            gap: 6px !important;
+            justify-content: flex-start !important;
+            gap: 10px !important;
             width: 100% !important;
-            background: linear-gradient(145deg, #1c2645, #12182b) !important;
-            border-radius: 14px !important;
-            padding: 6px 10px !important;
-            border: 1px solid #2a3a60 !important;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4) !important;
-            min-height: 44px !important;
             box-sizing: border-box !important;
         }
-        div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) > div[data-testid="stColumn"]:nth-child(1) {
+        .st-key-main_rank_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
             flex: 1 1 0 !important;
             min-width: 0 !important;
             display: flex !important;
             align-items: center !important;
             justify-content: flex-start !important;
         }
-        div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) > div[data-testid="stColumn"]:nth-child(2) {
-            flex: 1 1 0 !important;
-            min-width: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) > div[data-testid="stColumn"]:nth-child(3) {
-            flex: 1 1 0 !important;
+        .st-key-main_rank_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
+            flex: 0 0 auto !important;
             min-width: 0 !important;
             display: flex !important;
             align-items: center !important;
             justify-content: flex-end !important;
-        }
-
-        div[data-testid="stPopover"] {
-            width: auto !important;
-            min-width: 120px !important;
-        }
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button,
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button[data-testid="stBaseButton-secondary"],
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button[data-testid="baseButton-secondary"],
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button[kind="secondary"],
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stButton"] > button {
-            background: linear-gradient(145deg, #1e88e5, #1565c0) !important;
-            background-color: #1976d2 !important;
-            background-image: linear-gradient(145deg, #1e88e5, #1565c0) !important;
-            color: #ffffff !important;
-            border: 1px solid #0d47a1 !important;
-            border-color: #0d47a1 !important;
-            border-radius: 10px !important;
-            font-size: 11px !important;
-            font-weight: 800 !important;
-            line-height: 1.2 !important;
-            letter-spacing: -0.1px !important;
-            padding: 9px 14px !important;
-            width: auto !important;
-            min-width: 120px !important;
-            height: 40px !important;
-            min-height: 40px !important;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.35) !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            overflow: visible !important;
-            white-space: nowrap !important;
-            flex-shrink: 0 !important;
-            -webkit-font-smoothing: antialiased !important;
-            text-rendering: optimizeLegibility !important;
-        }
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button *,
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button p,
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button span,
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button div,
-        .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stButton"] > button * {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            background: transparent !important;
-            background-color: transparent !important;
-        }
-        /* 팝업: body 포털 기준 ( .stApp 바깥 렌더링 대응 ) */
-        html body div[data-baseweb="popover"],
-        body > div[data-baseweb="popover"] {
-            z-index: 9999 !important;
-            position: fixed !important;
-            isolation: isolate !important;
-        }
-        html body [data-testid="stPopoverBody"],
-        body [data-testid="stPopoverBody"] {
-            background-color: #1a2542 !important;
-            background: #1a2542 !important;
-            color: #ffffff !important;
-            border: 1px solid #f9a825 !important;
-            border-radius: 12px !important;
-            min-width: 240px !important;
-            padding: 14px 16px !important;
-            box-sizing: border-box !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-            z-index: 9999 !important;
-            position: fixed !important;
-            isolation: isolate !important;
-            pointer-events: auto !important;
-        }
-        html body [data-testid="stPopoverBody"] *,
-        html body [data-testid="stPopoverBody"] p,
-        html body [data-testid="stPopoverBody"] h1,
-        html body [data-testid="stPopoverBody"] h2,
-        html body [data-testid="stPopoverBody"] h3,
-        html body [data-testid="stPopoverBody"] div[data-testid="stMarkdownContainer"],
-        html body [data-testid="stPopoverBody"] div[data-testid="element-container"],
-        html body [data-testid="stPopoverBody"] div[data-testid="stMarkdownContainer"] * {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            background-color: transparent !important;
-            background: transparent !important;
-            line-height: 1.6 !important;
-            white-space: normal !important;
-            word-break: keep-all !important;
-            font-size: 14px !important;
-            font-weight: 600 !important;
-            -webkit-font-smoothing: antialiased !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-        }
-        html body [data-testid="stPopoverBody"] h3 {
-            font-size: 16px !important;
-            font-weight: 800 !important;
-            margin-bottom: 8px !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -483,122 +391,140 @@ if current_page == "main":
         </div>
         """, unsafe_allow_html=True)
 
-    # 역대 최고 당첨금 (한 줄 정렬 - 3구역 space-between)
-    col_title, col_amount, col_btn = st.columns(3)
-    with col_title:
+    # 역대 최고 당첨금 (좌: 순위+금액 박스 / 우: 더보러가기 박스, 분리)
+    main_rank_row = st.container(key="main_rank_row_6n36s5")
+    col_info, col_btn = main_rank_row.columns([2, 1])
+    with col_info:
         st.markdown("""
-        <div style="display:flex; align-items:center; gap:4px; white-space:nowrap; width:100%;">
-            <span style="color:#b0bec5; font-size:11px; font-weight:bold; letter-spacing:-0.3px; line-height:1;">🏆 역대 최고 당첨 금액 순위</span>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_amount:
-        st.markdown("""
-        <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; justify-content:center; width:100%;">
-            <div style="background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c); width:18px; height:18px; border-radius:50%; text-align:center; line-height:18px; color:white; font-weight:bold; font-size:11px; box-shadow: 1px 2px 3px rgba(0,0,0,0.5); flex-shrink:0;">1</div>
-            <span style="color:#fff; font-weight:900; font-size:16px; letter-spacing:-0.5px; line-height:1;">407억 원</span>
+        <div style="height:32px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:0 10px; background: linear-gradient(145deg, #1c2645, #12182b); border-radius:10px; border:1px solid #2a3a60; box-shadow: 0 3px 6px rgba(0,0,0,0.35);">
+            <span style="color:#b0bec5; font-size:13px; font-weight:bold; letter-spacing:-0.3px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🏆 역대 최고 당첨 금액 순위</span>
+            <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; flex-shrink:0;">
+                <div style="background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c); width:18px; height:18px; border-radius:50%; text-align:center; line-height:18px; color:white; font-weight:bold; font-size:11px; box-shadow: 1px 2px 3px rgba(0,0,0,0.5); flex-shrink:0;">1</div>
+                <span style="color:#fff; font-weight:900; font-size:16px; letter-spacing:-0.5px; line-height:1;">407억 원</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     with col_btn:
-        with st.popover("더 보러가기", key="main_rank_more_6n36s5"):
-            st.markdown("### 🏆 역대 당\u200b\u200b첨금 TOP 5")
-            st.write("1위: 407억 (1회)")
-            st.write("2위: 369억 (51회)")
-            st.write("3위: 346억 (100회)")
+        st.markdown("""
+        <div class="rank-more-wrap">
+            <button type="button" id="rank-more-btn-6n36s5" class="rank-more-btn">더 보러가기</button>
+            <div id="rank-more-toast-6n36s5" class="rank-more-toast">
+                <div class="rank-more-toast-title">🏆 역대 당첨금 TOP 5</div>
+                <div class="rank-more-toast-body">
+                    1위: 407억 (1회)<br>
+                    2위: 369억 (51회)<br>
+                    3위: 346억 (100회)
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     components.html("""
     <script>
     (function() {
         const doc = window.parent.document;
-        if (!doc.getElementById('rank-more-btn-style')) {
+        if (!doc.getElementById('rank-more-toast-style')) {
             const style = doc.createElement('style');
-            style.id = 'rank-more-btn-style';
+            style.id = 'rank-more-toast-style';
             style.textContent = `
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button,
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button[data-testid="stBaseButton-secondary"],
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button[data-testid="baseButton-secondary"],
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button[kind="secondary"],
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stButton"] > button {
+                @keyframes rankToastFade {
+                    0% { opacity: 0; transform: translateY(-6px); }
+                    100% { opacity: 1; transform: translateY(0); }
+                }
+                .rank-more-wrap {
+                    position: relative;
+                    display: inline-block;
+                }
+                .rank-more-btn {
                     background: linear-gradient(145deg, #1e88e5, #1565c0) !important;
                     background-color: #1976d2 !important;
-                    background-image: linear-gradient(145deg, #1e88e5, #1565c0) !important;
                     color: #ffffff !important;
                     border: 1px solid #0d47a1 !important;
-                    border-color: #0d47a1 !important;
+                    border-radius: 8px !important;
+                    height: 32px !important;
+                    box-sizing: border-box !important;
+                    padding: 0 14px !important;
+                    font-weight: 700 !important;
+                    font-size: 13px !important;
+                    line-height: 1.4 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    cursor: pointer !important;
                 }
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button *,
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stPopover"] button p,
-                html body .stApp div[data-testid="stHorizontalBlock"]:has([data-testid="stPopover"]) div[data-testid="stButton"] > button * {
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
-                    background: transparent !important;
+                .rank-more-toast {
+                    position: absolute;
+                    top: calc(100% + 8px);
+                    right: 0;
+                    z-index: 60;
+                    width: max-content;
+                    max-width: min(80vw, 260px);
+                    padding: 13px 16px;
+                    border-radius: 14px;
+                    border: 1px solid rgba(255, 193, 7, 0.4);
+                    background: rgba(24, 17, 9, 0.88);
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+                    opacity: 0;
+                    visibility: hidden;
+                    pointer-events: none;
+                    transform: translateY(-6px);
+                    transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
+                    text-align: left;
+                }
+                .rank-more-toast.show {
+                    opacity: 1;
+                    visibility: visible;
+                    pointer-events: auto;
+                    transform: translateY(0);
+                    animation: rankToastFade 0.25s ease;
+                }
+                .rank-more-toast-title {
+                    color: #ffe082;
+                    font-weight: 900;
+                    font-size: 14px;
+                    margin-bottom: 8px;
+                }
+                .rank-more-toast-body {
+                    color: #ffffff;
+                    font-size: 13px;
+                    line-height: 1.9;
+                    font-weight: 600;
                 }
             `;
             doc.head.appendChild(style);
         }
-        if (!doc.getElementById('rank-popover-layer-fix')) {
-            const popStyle = doc.createElement('style');
-            popStyle.id = 'rank-popover-layer-fix';
-            popStyle.textContent = `
-                html body div[data-baseweb="popover"],
-                body > div[data-baseweb="popover"] {
-                    z-index: 9999 !important;
-                    position: fixed !important;
-                    isolation: isolate !important;
-                }
-                html body [data-testid="stPopoverBody"],
-                body [data-testid="stPopoverBody"] {
-                    background-color: #1a2542 !important;
-                    background: #1a2542 !important;
-                    color: #ffffff !important;
-                    border: 1px solid #f9a825 !important;
-                    border-radius: 12px !important;
-                    min-width: 240px !important;
-                    padding: 14px 16px !important;
-                    box-sizing: border-box !important;
-                    opacity: 1 !important;
-                    visibility: visible !important;
-                    z-index: 9999 !important;
-                    position: fixed !important;
-                    isolation: isolate !important;
-                    pointer-events: auto !important;
-                }
-                html body [data-testid="stPopoverBody"] *,
-                html body [data-testid="stPopoverBody"] p,
-                html body [data-testid="stPopoverBody"] h3,
-                html body [data-testid="stPopoverBody"] div[data-testid="stMarkdownContainer"],
-                html body [data-testid="stPopoverBody"] div[data-testid="element-container"],
-                html body [data-testid="stPopoverBody"] div[data-testid="stMarkdownContainer"] * {
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
-                    background-color: transparent !important;
-                    background: transparent !important;
-                    opacity: 1 !important;
-                    visibility: visible !important;
-                }
-            `;
-            doc.head.appendChild(popStyle);
-        }
-    })();
-    </script>
-    """, height=0)
 
-    components.html("""
-    <script>
-    (function() {
         function safeVibrate() {
             if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
                 try { navigator.vibrate(70); } catch (e) {}
             }
         }
-        const doc = window.parent.document;
-        doc.querySelectorAll('div[data-testid="stPopover"] button').forEach(function(btn) {
-            if (btn.dataset.mainVibrateBound) return;
-            const label = (btn.innerText || '').trim();
-            if (label.indexOf('더 보러가기') !== -1 || label.indexOf('더보러가기') !== -1 || label === '➡️') {
-                btn.dataset.mainVibrateBound = '1';
-                btn.addEventListener('click', safeVibrate, { passive: true });
-            }
-        });
+
+        const btn = doc.getElementById('rank-more-btn-6n36s5');
+        const toast = doc.getElementById('rank-more-toast-6n36s5');
+        if (btn && toast && !btn.dataset.rankToastBound) {
+            btn.dataset.rankToastBound = '1';
+            let hideTimer = null;
+            btn.addEventListener('click', function() {
+                safeVibrate();
+                if (hideTimer) {
+                    clearTimeout(hideTimer);
+                    hideTimer = null;
+                }
+                const isOpen = toast.classList.contains('show');
+                if (isOpen) {
+                    toast.classList.remove('show');
+                } else {
+                    toast.classList.add('show');
+                    hideTimer = setTimeout(function() {
+                        toast.classList.remove('show');
+                        hideTimer = null;
+                    }, 5000);
+                }
+            });
+        }
     })();
     </script>
     """, height=0)
@@ -645,38 +571,48 @@ if current_page == "main":
     .green { border: 2px solid rgba(102, 187, 106, 0.7); }
     .purple { border: 2px solid rgba(171, 71, 188, 0.7); }
 
+    .tarot-unit {
+        width: 70%;
+        max-width: 70%;
+        margin: 35px auto 35px;
+        transform: translateX(-10%) translateX(-12px);
+    }
     .tarot-box {
+        position: relative;
         background: linear-gradient(145deg, #2a1c45, #161028);
         border: 2px solid rgba(186, 104, 200, 0.7);
         border-radius: 20px;
-        padding: 14px 10px;
-        min-height: 64px;
+        padding: 11px 8px;
+        min-height: 51px;
         width: 100%;
+        max-width: 100%;
         box-sizing: border-box;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 10px;
+        gap: 8px;
         text-align: center;
         box-shadow: 6px 8px 16px rgba(0,0,0,0.6), inset 1px 1px 2px rgba(255,255,255,0.1);
         cursor: pointer;
         transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
-        margin-top: 7px;
+        margin-top: 0px;
     }
     .tarot-box:active {
         transform: scale(0.93) translateY(4px);
         box-shadow: 2px 3px 6px rgba(0,0,0,0.6), inset 4px 6px 12px rgba(0,0,0,0.8), inset -2px -2px 6px rgba(255,255,255,0.05);
     }
-    .tarot-icon { font-size: 26px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
-    .tarot-title { color: #ffffff; font-weight: 900; font-size: 16px; letter-spacing: 0.5px; }
+    .tarot-icon { font-size: 21px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
+    .tarot-title { color: #ffffff; font-weight: 900; font-size: 13px; letter-spacing: 0.5px; }
     </style>
 
-<a href="?page=tarot" target="_self" class="tarot-link" style="text-decoration:none; display:block;">
-    <div class="tarot-box">
-        <div class="tarot-icon">🔮</div>
-        <div class="tarot-title">삶이 지치고 힘들 때 신비로운 타로 점</div>
-    </div>
-</a>
+<div class="tarot-unit">
+    <a href="?page=tarot" target="_self" class="tarot-link" style="text-decoration:none; display:block;">
+        <div class="tarot-box" id="tarot-box-6n36s5">
+            <div class="tarot-icon">🔮</div>
+            <div class="tarot-title">삶이 지치고 힘들 때 신비로운 타로 점</div>
+        </div>
+    </a>
+</div>
 <div class="menu-grid">
     <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box gold">
@@ -727,6 +663,45 @@ if current_page == "main":
     })();
     </script>
     """, height=0)
+
+    # 타로 카드 장식 이미지 (버튼 밖으로 살짝 삐져나오는 고정 데코레이션)
+    tarot_card_deco_base64 = get_image_base64(os.path.join("tarot", "images", "major_17.jpg"))
+    if tarot_card_deco_base64:
+        components.html(f"""
+        <script>
+        (function() {{
+            const doc = window.parent.document;
+            if (!doc.getElementById('tarot-card-deco-style')) {{
+                const style = doc.createElement('style');
+                style.id = 'tarot-card-deco-style';
+                style.textContent = `
+                    .tarot-card-deco {{
+                        position: absolute;
+                        top: 50%;
+                        right: -24px;
+                        width: 40px;
+                        height: auto;
+                        border-radius: 6px;
+                        border: 1px solid rgba(255, 193, 7, 0.4);
+                        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+                        transform: translateY(-50%) rotate(8deg);
+                        z-index: 5;
+                        pointer-events: none;
+                    }}
+                `;
+                doc.head.appendChild(style);
+            }}
+            const box = doc.getElementById('tarot-box-6n36s5');
+            if (box && !box.querySelector('.tarot-card-deco')) {{
+                const img = doc.createElement('img');
+                img.className = 'tarot-card-deco';
+                img.src = 'data:image/jpeg;base64,{tarot_card_deco_base64}';
+                img.alt = '';
+                box.appendChild(img);
+            }}
+        }})();
+        </script>
+        """, height=0)
 
     from feedback_db import init_feedback_tables, save_feedback
     from auth_providers import current_member_id
