@@ -10,16 +10,23 @@ def inject_pinch_zoom() -> None:
     네이티브 WebView의 확대 옵션(setBuiltInZoomControls)만으로는 실기기에서 핀치줌이
     잘 안 된다는 리포트가 있어, 웹 콘텐츠 쪽에 자체 구현으로 대체한다.
 
-    구현 방식 메모(실기기에서 문제 겪은 뒤 정리):
-      - transform:scale(body)는 시도했다가 되돌렸다 — CSS 스펙상 조상에 transform이
-        붙으면 그 안의 position:fixed 요소(업데이트 배너 등)의 기준이 뷰포트가 아니라
-        그 조상으로 바뀌어버려서, 확대 시 화면이 엉뚱한 위치로 밀려 하얗게 보이는
-        문제가 있었다.
-      - 그래서 CSS zoom을 쓴다 — fixed 요소를 깨뜨리지 않는다. 다만 zoom은 항상
-        왼쪽 위를 기준으로 다시 레이아웃을 계산하므로, 그대로 두면 핀치한 지점이
-        아니라 좌상단이 고정된 것처럼 보인다. transform 없이 "핀치한 지점이 화면에서
-        안 움직이는" 느낌을 내기 위해, zoom을 바꾼 직후 스크롤 위치를 계산해서
-        보정한다 (핀치 지점의 문서상 논리 좌표가 화면의 같은 자리에 남도록).
+    구현 방식 메모(실기기에서 여러 번 문제를 겪은 뒤 정리):
+      1차 — CSS zoom: fixed 요소는 안 깨지지만 레이아웃을 다시 계산해서 텍스트가
+        줄바꿈되며 움직였다. "사진처럼 그 자리에서 커지는" 느낌을 원해서 폐기.
+      2차 — transform:scale(body): 시각적으로만 커져서 텍스트는 안 움직이지만,
+        body 전체에 걸면 fixed 요소(업데이트 배너) 기준점이 깨지고 좌표 계산도
+        어긋나 화면이 빈 공간(흰 화면)으로 밀려나는 문제가 있었다.
+      3차 — transform:scale(stMain, 스크롤되는 요소 자체): 확대는 잘 되지만,
+        "스크롤되는 요소 자기 자신"에 transform을 걸면 그 조상 입장에서 레이아웃
+        크기가 그대로라 스크롤 가능 범위가 커진 콘텐츠만큼 안 늘어난다 — 화면
+        범위 밖으로 확대된 부분을 스크롤해서 볼 수가 없었다.
+
+      최종: 실제 스크롤은 [data-testid="stMain"]에서 일어나지만, transform은 그
+      안쪽 자식인 [data-testid="stMainBlockContainer"](진짜 페이지 콘텐츠)에
+      건다 — 스크롤 컨테이너 자신은 그대로 두고 "그 안의 콘텐츠"만 확대해야,
+      브라우저가 확대된 콘텐츠의 실제 렌더링 크기만큼 스크롤 컨테이너의 스크롤
+      가능 범위를 자동으로 늘려준다. transform-origin을 핀치 지점으로 잡아두면
+      스크롤 보정을 따로 계산할 필요 없이 그 지점이 화면에서 자연히 고정된다.
     두 손가락 터치는 iframe(커스텀 컴포넌트) 밖 메인 문서에서만 감지된다.
     """
     components.html(
@@ -30,11 +37,8 @@ def inject_pinch_zoom() -> None:
             if (!doc || doc.__pinchZoomInit) return;
             doc.__pinchZoomInit = true;
 
-            // 이 앱은 window/body가 아니라 [data-testid="stMain"] 내부 컨테이너가
-            // 실제로 스크롤된다(.stApp는 overflow:hidden으로 감싸고 있음) — 스크롤
-            // 보정은 이 요소를 대상으로 해야 한다. 못 찾으면 window로 폴백한다.
-            function getScroller() {
-                return doc.querySelector('[data-testid="stMain"]');
+            function getZoomTarget() {
+                return doc.querySelector('[data-testid="stMainBlockContainer"]');
             }
 
             const MIN_ZOOM = %s;
@@ -57,26 +61,25 @@ def inject_pinch_zoom() -> None:
                 };
             }
 
-            function applyZoom(z, midX, midY) {
+            function setToastVisible(visible) {
+                const toast = doc.getElementById('update-toast-6n36s5');
+                if (toast) toast.style.visibility = visible ? '' : 'hidden';
+            }
+
+            function applyZoom(z, clientX, clientY) {
+                const target = getZoomTarget();
+                if (!target) return;
                 const zoomOld = zoom;
                 zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
                 if (zoom === zoomOld) return;
 
-                const scroller = getScroller();
-                let scrollX0 = 0;
-                let scrollY0 = 0;
-                if (midX != null && midY != null && scroller) {
-                    scrollX0 = scroller.scrollLeft || 0;
-                    scrollY0 = scroller.scrollTop || 0;
+                if (clientX != null && clientY != null) {
+                    const rect = target.getBoundingClientRect();
+                    target.style.transformOrigin =
+                        (clientX - rect.left) + 'px ' + (clientY - rect.top) + 'px';
                 }
-
-                doc.body.style.zoom = zoom === 1 ? '' : zoom;
-
-                if (midX != null && midY != null && zoomOld > 0 && scroller) {
-                    const ratio = zoom / zoomOld;
-                    scroller.scrollLeft = (scrollX0 + midX) * ratio - midX;
-                    scroller.scrollTop = (scrollY0 + midY) * ratio - midY;
-                }
+                target.style.transform = zoom === 1 ? '' : 'scale(' + zoom + ')';
+                setToastVisible(zoom === 1);
             }
 
             doc.addEventListener('touchstart', function (e) {
