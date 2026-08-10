@@ -34,7 +34,7 @@ KST = timezone(timedelta(hours=9))
 # SPREADS에 항목을 늘리고 이 값을 상황에 맞게 분기하면 된다.
 ACTIVE_SPREAD = "single"
 
-MAX_DAILY_DRAWS = 2  # 기본 1장 + 추가 1장
+MAX_DAILY_DRAWS = 1  # 하루 1장
 
 # 카드 스프레드에 펼쳐 보여줄 메이저 아르카나 22장 (뒷면 상태로 노출)
 MAJOR_KEYS = [k for k in CARDS if CARDS[k]["arcana"] == "major"]
@@ -216,19 +216,57 @@ def _today_str() -> str:
     return datetime.now(KST).strftime("%Y-%m-%d")
 
 
+def _draw_count_cookie_key() -> str:
+    return f"tarot_draws_{_today_str()}"
+
+
 def _draws_remaining() -> int:
-    """오늘(KST) 남은 뽑기 횟수. 날짜가 바뀌면 자동으로 초기화된다."""
+    """오늘(KST) 남은 뽑기 횟수. 날짜가 바뀌면 자동으로 초기화된다.
+
+    session_state만으로 세면 앱을 완전히 껐다가 다시 켤 때(새 세션 시작) 값이
+    사라져서 하루 제한이 무의미해지는 문제가 있었다 — 업데이트 배너와 동일한
+    원인. 새 세션이 시작되는 시점(이 날짜로 처음 진입하는 시점)에는 그 세션의
+    쿠키 스냅샷(st.context.cookies)에 저장해둔 값을 복원해서 이어간다.
+    """
     today = _today_str()
     if st.session_state.get("tarot_daily_date") != today:
         st.session_state["tarot_daily_date"] = today
-        st.session_state["tarot_daily_count"] = 0
+        cookie_val = st.context.cookies.get(_draw_count_cookie_key())
+        try:
+            restored = int(cookie_val) if cookie_val is not None else 0
+        except (TypeError, ValueError):
+            restored = 0
+        st.session_state["tarot_daily_count"] = max(0, min(MAX_DAILY_DRAWS, restored))
     return MAX_DAILY_DRAWS - st.session_state["tarot_daily_count"]
 
 
+def _sync_draw_count_cookie(count: int) -> None:
+    """오늘 뽑은 횟수를 쿠키에도 남겨서, 앱을 재시작한 다음 세션에서도 이어진다."""
+    key = _draw_count_cookie_key()
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            const doc = window.parent.document;
+            doc.cookie = {key!r} + '=' + {str(count)!r} + '; max-age=31536000; path=/';
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _register_draw():
-    """실제 카드가 결정되는 시점(셔플)에 한 번 호출해 오늘의 뽑기 횟수를 소진한다."""
+    """실제 카드가 결정되는 시점(셔플)에 한 번 호출해 오늘의 뽑기 횟수를 소진한다.
+
+    쿠키 동기화는 여기서 바로 하지 않는다 — 이 함수 호출 직후 곧바로 st.rerun()이
+    실행되는데, 그러면 방금 넣은 components.html(iframe)이 스크립트를 실행할
+    틈도 없이 리런이 화면을 갈아치워버려서 쿠키가 저장 안 되는 문제가 있었다.
+    대신 플래그만 남겨두고, 다음(리런 이후의) 정상 렌더링 때 실제로 쿠키를 쓴다.
+    """
     _draws_remaining()  # 날짜 롤오버 보장
     st.session_state["tarot_daily_count"] += 1
+    st.session_state["_tarot_cookie_sync_pending"] = st.session_state["tarot_daily_count"]
 
 
 def _reset():
@@ -243,6 +281,12 @@ def _reset():
 def render():
     _inject_base_css()
     st.session_state.setdefault("tarot_stage", "category")
+
+    # _register_draw()가 남겨둔 대기 중인 쿠키 동기화가 있으면, 리런 직후가 아닌
+    # 이 "정상" 렌더링 시점에 실제로 내보낸다 (자세한 이유는 _register_draw 참고).
+    _pending = st.session_state.pop("_tarot_cookie_sync_pending", None)
+    if _pending is not None:
+        _sync_draw_count_cookie(_pending)
 
     # 예전엔 st.markdown으로 <div class="tarot-wrap">를 열고 별도의 st.markdown 호출로
     # 닫았는데, Streamlit은 각 st.markdown 호출을 독립된 조각으로 렌더링해서 실제로는
