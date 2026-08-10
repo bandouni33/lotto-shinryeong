@@ -131,14 +131,15 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           sharedCookiesEnabled
           startInLoadingState
           allowsBackForwardNavigationGestures
-          // 네이티브 확대 옵션(setBuiltInZoomControls)만으로는 실기기에서 핀치 줌이 잘 안 된다는
-          // 리포트가 있어, 웹 콘텐츠 쪽에 자체 핀치 줌(frontend/components/pinch_zoom.py)을
-          // 구현했다. 네이티브 줌을 같이 켜두면 두 핀치 핸들러가 충돌해 버벅이므로 끈다.
+          // 웹 콘텐츠 쪽에 자체 핀치 줌(frontend/components/pinch_zoom.py)을 구현해봤지만
+          // iframe(타로 카드 스프레드 등) 안까지는 이벤트가 닿지 않아 그 부분에선 오히려
+          // 네이티브 줌이 방해 없이 더 잘 동작했다 — 자체 구현을 걷어내고 네이티브 확대
+          // 옵션을 다시 켠다(핀치 줌 허용 + 확대/축소 버튼은 숨김).
           scalesPageToFit
           {...(Platform.OS === 'android'
             ? {
                 mixedContentMode: 'always' as const,
-                setBuiltInZoomControls: false,
+                setBuiltInZoomControls: true,
                 setDisplayZoomControls: false,
               }
             : {})}

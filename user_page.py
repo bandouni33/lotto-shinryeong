@@ -32,10 +32,12 @@ init_guest_scope()
 current_page = st.query_params.get("page", "main")
 
 if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot"):
-    from frontend.components.pinch_zoom import inject_pinch_zoom
-
-    inject_pinch_zoom()
-
+    # 자체 JS 핀치줌(frontend/components/pinch_zoom.py)은 여러 차례 시도했으나 실기기에서
+    # 계속 문제가 있었다 — 타로 부채꼴 스프레드(iframe 안에서 렌더링됨) 페이지에서는
+    # 이 커스텀 스크립트가 닿지 못해 네이티브 WebView 줌이 방해 없이 그대로 동작했는데,
+    # 거기서 오히려 가장 잘 됐다는 피드백을 받았다. 즉 커스텀 스크립트가 메인 문서에서
+    # 네이티브 줌을 가로채 더 나쁘게 만들고 있었을 가능성이 높아 제거하고 네이티브 줌
+    # (streamlit-webview.tsx의 scalesPageToFit / setBuiltInZoomControls)에 맡긴다.
     from wallet_ui import render_wallet_bar
 
     render_wallet_bar()
