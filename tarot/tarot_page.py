@@ -184,11 +184,21 @@ def _inject_base_css():
             color: #3A2E1D;
         }
         .letter-body .emphasis {
-            text-decoration: underline;
-            text-decoration-style: wavy;
-            text-decoration-color: rgba(180, 130, 70, 0.75);
-            text-decoration-thickness: 2.5px;
-            text-underline-offset: 5px;
+            position: relative;
+            text-decoration: none;
+        }
+        .letter-body .emphasis::after {
+            content: "";
+            position: absolute;
+            left: 2px;
+            bottom: -0.14em;
+            width: 72px;
+            height: 0.5em;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 26' preserveAspectRatio='none'%3E%3Cpath d='M6,20 C10,6 14,4 20,10 C34,22 52,16 66,15 C80,14 88,6 94,3' stroke='%2358c453' stroke-width='9' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+            opacity: 0.62;
+            pointer-events: none;
         }
 
         /* 실제 셔플을 발생시키는 버튼은 화면에는 숨기고, 스와이프 컴포넌트가 대신 클릭한다 */
