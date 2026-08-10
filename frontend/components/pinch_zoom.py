@@ -9,9 +9,16 @@ def inject_pinch_zoom() -> None:
 
     네이티브 WebView의 확대 옵션(setBuiltInZoomControls)만으로는 실기기에서 핀치줌이
     잘 안 된다는 리포트가 있어, 웹 콘텐츠 쪽에 자체 구현으로 대체한다.
-    CSS zoom은 레이아웃을 왼쪽 위 기준으로 다시 계산해서 화면이 아래로만 늘어나 보이는
-    문제가 있었다 — transform:scale + 핀치 중심점을 transform-origin으로 써서, 손가락을
-    댄 지점을 중심으로 커지도록(사진 앱 핀치줌과 비슷한 느낌으로) 바꿨다.
+
+    구현 방식 메모(실기기에서 두 번 깨진 뒤 정리):
+      - transform:scale(body)는 시도했다가 되돌렸다 — CSS 스펙상 조상에 transform이
+        붙으면 그 안의 position:fixed 요소(업데이트 배너 등)의 기준이 뷰포트가 아니라
+        그 조상으로 바뀌어버려서, 확대 시 화면이 엉뚱한 위치로 밀려 하얗게 보이는
+        문제가 있었다.
+      - 그래서 CSS zoom을 쓴다. zoom은 레이아웃을 다시 계산하는 방식이라 스크롤이
+        자연스럽게 따라오고 fixed 요소도 깨지지 않는다. 다만 항상 왼쪽 위를 기준으로
+        커지기 때문에(zoom-origin 같은 속성이 없다) 핀치한 지점이 정중앙에 고정되진
+        않는다 — 대신 확실히 안전하게 동작한다.
     두 손가락 터치는 iframe(커스텀 컴포넌트) 밖 메인 문서에서만 감지된다.
     """
     components.html(
@@ -35,27 +42,15 @@ def inject_pinch_zoom() -> None:
                 return Math.sqrt(dx * dx + dy * dy);
             }
 
-            function getMidpoint(touches) {
-                return {
-                    x: (touches[0].pageX + touches[1].pageX) / 2,
-                    y: (touches[0].pageY + touches[1].pageY) / 2,
-                };
-            }
-
-            function applyZoom(z, origin) {
+            function applyZoom(z) {
                 zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
-                if (origin) {
-                    doc.body.style.transformOrigin = origin.x + 'px ' + origin.y + 'px';
-                }
-                doc.body.style.transform = zoom === 1 ? '' : 'scale(' + zoom + ')';
+                doc.body.style.zoom = zoom === 1 ? '' : zoom;
             }
 
             doc.addEventListener('touchstart', function (e) {
                 if (e.touches.length === 2) {
                     startDistance = getDistance(e.touches);
                     startZoom = zoom;
-                    doc.body.style.transformOrigin =
-                        getMidpoint(e.touches).x + 'px ' + getMidpoint(e.touches).y + 'px';
                 }
             }, { passive: true });
 
@@ -63,7 +58,7 @@ def inject_pinch_zoom() -> None:
                 if (e.touches.length === 2 && startDistance > 0) {
                     e.preventDefault();
                     const dist = getDistance(e.touches);
-                    applyZoom(startZoom * (dist / startDistance), getMidpoint(e.touches));
+                    applyZoom(startZoom * (dist / startDistance));
                 }
             }, { passive: false });
 
