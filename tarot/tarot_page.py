@@ -14,16 +14,30 @@ tarot_data.py, images/ 폴더와 같은 위치에 두고 사용하세요.
 """
 
 import base64
+import json
 import random
 import textwrap
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
-from tarot_data import SUBCATEGORIES, CARDS
+from tarot_data import SUBCATEGORIES, CARDS, SPREADS
 
 BASE_DIR = Path(__file__).parent
 IMAGE_DIR = BASE_DIR / "images"
+
+KST = timezone(timedelta(hours=9))
+
+# 지금 실제로 연결되어 있는 스프레드. 유료 스프레드를 추가할 때는
+# SPREADS에 항목을 늘리고 이 값을 상황에 맞게 분기하면 된다.
+ACTIVE_SPREAD = "single"
+
+MAX_DAILY_DRAWS = 2  # 기본 1장 + 추가 1장
+
+# 카드 스프레드에 펼쳐 보여줄 메이저 아르카나 22장 (뒷면 상태로 노출)
+MAJOR_KEYS = [k for k in CARDS if CARDS[k]["arcana"] == "major"]
 
 # ── 카테고리별 편지지 색상 (10종, 톤에 맞춰 배정) ──
 CATEGORY_THEME = {
@@ -152,13 +166,16 @@ def _inject_base_css():
             line-height: 1.7;
             color: #3A2E1D;
         }
-        .letter-body .hope {
-            display: block;
-            margin-top: 8px;
-            color: #7A3B2E;
-            background: linear-gradient(to top, rgba(212,165,116,0.4) 45%, transparent 45%);
-            padding: 0 2px;
+        .letter-body .emphasis {
+            text-decoration: underline;
+            text-decoration-style: wavy;
+            text-decoration-color: rgba(180, 130, 70, 0.75);
+            text-decoration-thickness: 2.5px;
+            text-underline-offset: 5px;
         }
+
+        /* 실제 셔플을 발생시키는 버튼은 화면에는 숨기고, 스와이프 컴포넌트가 대신 클릭한다 */
+        .st-key-shuffle_btn { display: none !important; }
         </style>
         """)
     # 마크다운 파서가 <style> 내부의 빈 줄에서 HTML 블록을 끊고 이후 내용을
@@ -166,6 +183,25 @@ def _inject_base_css():
     # <style> 태그가 끊기지 않고 끝까지 raw HTML로 유지되게 한다.
     css = "\n".join(line for line in css.splitlines() if line.strip())
     st.markdown(css, unsafe_allow_html=True)
+
+
+def _today_str() -> str:
+    return datetime.now(KST).strftime("%Y-%m-%d")
+
+
+def _draws_remaining() -> int:
+    """오늘(KST) 남은 뽑기 횟수. 날짜가 바뀌면 자동으로 초기화된다."""
+    today = _today_str()
+    if st.session_state.get("tarot_daily_date") != today:
+        st.session_state["tarot_daily_date"] = today
+        st.session_state["tarot_daily_count"] = 0
+    return MAX_DAILY_DRAWS - st.session_state["tarot_daily_count"]
+
+
+def _register_draw():
+    """실제 카드가 결정되는 시점(셔플)에 한 번 호출해 오늘의 뽑기 횟수를 소진한다."""
+    _draws_remaining()  # 날짜 롤오버 보장
+    st.session_state["tarot_daily_count"] += 1
 
 
 def _reset():
@@ -189,6 +225,8 @@ def render():
         _render_category_select()
     elif stage == "subcategory":
         _render_subcategory_select()
+    elif stage == "draw":
+        _render_draw_stage()
     elif stage == "result":
         _render_result()
 
@@ -222,16 +260,241 @@ def _render_subcategory_select():
         for i, sub in enumerate(subs):
             if st.button(sub, key=f"sub_{i}", use_container_width=True):
                 st.session_state["tarot_subcategory"] = sub
-                key, _card = _draw_card()
-                st.session_state["tarot_card_key"] = key
-                st.session_state["tarot_stage"] = "result"
+                st.session_state["tarot_stage"] = "draw"
                 st.rerun()
 
 
 def _draw_card():
-    """78장 중 완전 무작위 1장 (카테고리와 무관)"""
-    key = random.choice(list(CARDS.keys()))
+    """SPREADS[ACTIVE_SPREAD]에 정의된 장수만큼 78장 중 무작위로 뽑는다 (현재 "single"은 1장)."""
+    num_cards = SPREADS[ACTIVE_SPREAD]["num_cards"]
+    key = random.sample(list(CARDS.keys()), num_cards)[0]
     return key, CARDS[key]
+
+
+def _render_draw_stage():
+    """소분류 도입부 표시 → [카드 섞기]로 서버에서 카드 확정 → 인터랙티브 뒤집기."""
+    cat = st.session_state["tarot_category"]
+    sub = st.session_state["tarot_subcategory"]
+    intro_text = SUBCATEGORIES[cat][sub]
+    bg = CATEGORY_THEME.get(cat, "#FBF5E7")
+
+    if st.button("‹ 뒤로", key="back_to_sub"):
+        st.session_state.pop("tarot_card_key", None)
+        st.session_state["tarot_stage"] = "subcategory"
+        st.rerun()
+
+    st.markdown(
+        f'<div class="intro-card" style="background:{bg};">{intro_text}</div>',
+        unsafe_allow_html=True,
+    )
+
+    card_key = st.session_state.get("tarot_card_key")
+
+    if card_key is None:
+        remaining = _draws_remaining()
+        if remaining <= 0:
+            st.info("오늘은 여기까지 볼 수 있어요. 내일 다시 만나요 🌙")
+            return
+        st.caption(f"오늘 남은 뽑기: {remaining}회")
+        _render_shuffle_deck()
+        if st.button("⟲", key="shuffle_btn"):
+            key, _card = _draw_card()
+            st.session_state["tarot_card_key"] = key
+            _register_draw()
+            st.rerun()
+        return
+
+    # 카드는 이미 서버에서 확정된 상태 — 뒤집기는 컴포넌트 안에서 순수 JS로 처리
+    _render_flip_component(card_key)
+
+    if st.button("해석 보기 →", key="reveal_result_btn", use_container_width=True):
+        st.session_state["tarot_stage"] = "result"
+        st.rerun()
+
+
+def _render_shuffle_deck():
+    """탭/스와이프로 셔플하는 카드 덱. 실제 카드 확정은 숨겨진 shuffle_btn 클릭으로 서버에서 처리한다."""
+    back_b64 = _img_b64(str(IMAGE_DIR / "card_back.svg"))
+    num_stack = 6
+    stack_html = "".join(
+        f'<div class="dcard" style="--drot:{(i - (num_stack - 1) / 2) * 2.4}deg; z-index:{i};"></div>'
+        for i in range(num_stack)
+    )
+
+    html = f"""
+    <div class="wrap">
+      <style>
+        html, body {{ margin:0; padding:0; background:transparent; overflow:hidden; }}
+        .wrap {{ font-family:'Gaegu', sans-serif; text-align:center; padding-top:6px; }}
+        .hint {{ color:#8a7a5e; font-size:13px; margin-bottom:16px; }}
+        .deck {{
+            position:relative; width:74px; height:110px; margin:0 auto;
+            cursor:grab; user-select:none; touch-action:none;
+        }}
+        .deck.pressed {{ cursor:grabbing; }}
+        .dcard {{
+            position:absolute; inset:0; margin:auto;
+            width:66px; height:104px; border-radius:7px;
+            background-image:url('data:image/svg+xml;base64,{back_b64}');
+            background-size:cover;
+            box-shadow:0 2px 6px rgba(0,0,0,0.35);
+            transform: rotate(var(--drot,0deg));
+            transition: transform 0.15s ease;
+        }}
+        .deck.shuffling .dcard {{ animation: riffle 0.55s ease; }}
+        @keyframes riffle {{
+            0%   {{ transform: rotate(var(--drot)) translate(0, 0); }}
+            30%  {{ transform: rotate(calc(var(--drot) * -2 - 10deg)) translate(var(--rx,0px), -16px); }}
+            65%  {{ transform: rotate(calc(var(--drot) * 2 + 8deg)) translate(calc(var(--rx,0px) * -1), -6px); }}
+            100% {{ transform: rotate(var(--drot)) translate(0, 0); }}
+        }}
+      </style>
+      <div class="hint">덱을 좌우로 밀거나 눌러서 섞어보세요</div>
+      <div class="deck" id="deck">{stack_html}</div>
+      <script>
+        const deck = document.getElementById('deck');
+        let pressed = false;
+        let done = false;
+
+        function triggerShuffle() {{
+            if (done) return;
+            done = true;
+            document.querySelectorAll('.dcard').forEach(function(c) {{
+                c.style.setProperty('--rx', (Math.random() * 40 - 20) + 'px');
+            }});
+            deck.classList.add('shuffling');
+            setTimeout(function() {{
+                const btn = window.parent.document.querySelector('.st-key-shuffle_btn button')
+                    || Array.from(window.parent.document.querySelectorAll('button'))
+                        .find(function(b) {{ return b.textContent.trim() === '⟲'; }});
+                if (btn) btn.click();
+            }}, 520);
+        }}
+
+        deck.addEventListener('pointerdown', function() {{
+            pressed = true;
+            deck.classList.add('pressed');
+        }});
+        deck.addEventListener('pointerup', function() {{
+            if (!pressed) return;
+            pressed = false;
+            deck.classList.remove('pressed');
+            triggerShuffle();
+        }});
+        deck.addEventListener('pointercancel', function() {{
+            pressed = false;
+            deck.classList.remove('pressed');
+        }});
+      </script>
+    </div>
+    """
+
+    components.html(html, height=170, scrolling=False)
+
+
+def _render_flip_component(card_key: str):
+    card = CARDS[card_key]
+    img_path = IMAGE_DIR / card["image"].split("/")[-1]
+    front_b64 = _img_b64(str(img_path)) if img_path.exists() else ""
+    back_b64 = _img_b64(str(IMAGE_DIR / "card_back.svg"))
+    name_kr = card["name_kr"] or card["name_en"]
+
+    payload = json.dumps({
+        "front": f"data:image/jpeg;base64,{front_b64}",
+        "nameKr": name_kr,
+        "nameEn": card["name_en"],
+    })
+
+    n = len(MAJOR_KEYS)
+    spread_deg = 100  # 부채꼴 전체 각도
+    start_deg = -spread_deg / 2
+    step_deg = spread_deg / (n - 1)
+    slots_html = "".join(
+        f'<div class="tcard" style="--rot:{start_deg + i * step_deg:.2f}deg; z-index:{i};" data-idx="{i}"></div>'
+        for i in range(n)
+    )
+
+    html = f"""
+    <div class="wrap">
+      <style>
+        html, body {{ margin:0; padding:0; background:transparent; overflow:hidden; }}
+        .wrap {{ font-family: 'Gaegu', sans-serif; text-align:center; }}
+        .hint {{ color:#8a7a5e; font-size:13px; margin:2px 0 10px; }}
+        .grid {{
+            position:relative; height:160px; margin:4px auto 0;
+            width:100%; max-width:520px; perspective:800px;
+        }}
+        .tcard {{
+            position:absolute; left:50%; top:0; margin-left:-20px;
+            width:40px; height:66px; border-radius:5px; cursor:pointer;
+            background-image:url('data:image/svg+xml;base64,{back_b64}');
+            background-size:cover; box-shadow:0 2px 6px rgba(0,0,0,0.35);
+            transform-origin:50% var(--originY,220px);
+            transform:rotate(var(--rot,0deg));
+            transition:transform 0.4s cubic-bezier(.22,.85,.32,1.2), box-shadow 0.2s ease;
+            transform-style:preserve-3d;
+        }}
+        .tcard:hover {{ transform:rotate(var(--rot,0deg)) translateY(-8px); box-shadow:0 6px 12px rgba(0,0,0,0.4); z-index:50 !important; }}
+        .tcard.flipped {{ transform:rotate(var(--rot,0deg)) translateY(-8px) rotateY(180deg); box-shadow:0 4px 14px rgba(0,0,0,0.45); z-index:60 !important; }}
+        .tcard.dim {{ opacity:0.35; pointer-events:none; }}
+        .reveal {{
+            margin-top:14px; display:none; flex-direction:column; align-items:center;
+            animation:pop 0.4s ease;
+        }}
+        .reveal.show {{ display:flex; }}
+        @keyframes pop {{ from {{opacity:0; transform:scale(0.9);}} to {{opacity:1; transform:scale(1);}} }}
+        .reveal img {{ width:110px; border-radius:8px; border:3px solid #fff;
+            outline:1.5px solid rgba(120,90,50,0.35); box-shadow:0 4px 12px rgba(0,0,0,0.28); }}
+        .reveal .kr {{ font-size:19px; color:#4A3B22; margin-top:8px; }}
+        .reveal .en {{ font-size:12px; color:#A5926E; }}
+      </style>
+
+      <div class="hint">펼쳐진 카드 중 마음이 가는 한 장을 눌러보세요</div>
+      <div class="grid" id="grid">{slots_html}</div>
+      <div class="reveal" id="reveal">
+        <img id="revealImg" src="" alt="">
+        <div class="kr" id="revealKr"></div>
+        <div class="en" id="revealEn"></div>
+      </div>
+
+      <script>
+        const CARD = {payload};
+        let revealed = false;
+
+        function layoutFan() {{
+            const grid = document.getElementById('grid');
+            const w = grid.clientWidth || window.innerWidth;
+            const maxAngleRad = ({spread_deg / 2} * Math.PI) / 180;
+            const radius = Math.max(130, Math.min(240, w * 0.52));
+            const dip = radius * (1 - Math.cos(maxAngleRad));
+            document.querySelectorAll('.tcard').forEach(function(c) {{
+                c.style.setProperty('--originY', radius + 'px');
+            }});
+            grid.style.height = Math.ceil(dip + 74) + 'px';
+        }}
+        layoutFan();
+        window.addEventListener('resize', layoutFan);
+
+        document.getElementById('grid').addEventListener('click', function(e) {{
+            const el = e.target.closest('.tcard');
+            if (!el || revealed) return;
+            revealed = true;
+            el.classList.add('flipped');
+            document.querySelectorAll('.tcard').forEach(function(c) {{
+                if (c !== el) c.classList.add('dim');
+            }});
+            setTimeout(function() {{
+                document.getElementById('revealImg').src = CARD.front;
+                document.getElementById('revealKr').textContent = CARD.nameKr;
+                document.getElementById('revealEn').textContent = CARD.nameEn;
+                document.getElementById('reveal').classList.add('show');
+            }}, 320);
+        }});
+      </script>
+    </div>
+    """
+
+    components.html(html, height=420, scrolling=False)
 
 
 def _render_result():
@@ -262,19 +525,27 @@ def _render_result():
             </div>
             <div class="letter-intro">{card['intro']}</div>
             <div class="letter-body">
-                {card['state']}<br>{card['comfort']}<br>{card['acceptance']}
-                <span class="hope">{card['hope']}</span>
+                {card['state']}<br><span class="emphasis">{card['comfort']}</span><br>{card['acceptance']}
+                <br>{card['hope']}
             </div>
         </div>
         """),
         unsafe_allow_html=True,
     )
 
+    remaining = _draws_remaining()
+    if remaining <= 0:
+        st.info("오늘은 여기까지 볼 수 있어요. 내일 다시 만나요 🌙")
+        if st.button("처음으로", use_container_width=True):
+            _reset()
+            st.rerun()
+        return
+
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 다시 뽑기", use_container_width=True):
-            key, _c = _draw_card()
-            st.session_state["tarot_card_key"] = key
+        if st.button(f"🔄 다시 뽑기 ({remaining}회 남음)", use_container_width=True):
+            st.session_state.pop("tarot_card_key", None)
+            st.session_state["tarot_stage"] = "draw"
             st.rerun()
     with col2:
         if st.button("처음으로", use_container_width=True):

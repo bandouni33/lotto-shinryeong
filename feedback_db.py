@@ -15,7 +15,16 @@ def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+_FEEDBACK_TABLES_READY = False
+
+
 def init_feedback_tables() -> None:
+    """CREATE TABLE/INDEX IF NOT EXISTS라 멱등이지만, user_page.py가 거의 모든 페이지
+    렌더마다 호출해서 원격 DB 왕복이 반복되던 걸 막기 위해(zero_phone_db와 동일한 방식)
+    최초 1회 이후로는 스킵한다."""
+    global _FEEDBACK_TABLES_READY
+    if _FEEDBACK_TABLES_READY:
+        return
     conn = db_turso.connect()
     conn.execute(
         """
@@ -37,6 +46,7 @@ def init_feedback_tables() -> None:
     )
     conn.commit()
     conn.close()
+    _FEEDBACK_TABLES_READY = True
 
 
 def save_feedback(

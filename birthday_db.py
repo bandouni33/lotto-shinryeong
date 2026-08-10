@@ -11,7 +11,17 @@ def _normalize_scope(user_id) -> str:
     return str(user_id).strip()
 
 
+_BIRTHDAY_TABLE_READY = False
+
+
 def init_birthday_table():
+    """CREATE TABLE/INDEX IF NOT EXISTS라 멱등이지만, 매 렌더마다(그리고
+    get_user_birthdays 등 내부 호출에서도) 반복 호출되면서 원격 DB 왕복이 쌓이던 걸
+    막기 위해(zero_phone_db.init_zero_phone_tables와 동일한 방식) 최초 1회 이후로는
+    스킵한다."""
+    global _BIRTHDAY_TABLE_READY
+    if _BIRTHDAY_TABLE_READY:
+        return
     conn = db_turso.connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS userBirthdays (
@@ -25,11 +35,12 @@ def init_birthday_table():
         )
     """)
     conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_user_slot 
+        CREATE INDEX IF NOT EXISTS idx_user_slot
         ON userBirthdays(user_id, slot)
     """)
     conn.commit()
     conn.close()
+    _BIRTHDAY_TABLE_READY = True
 
 
 def get_user_birthdays(user_id):

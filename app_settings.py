@@ -13,7 +13,16 @@ def _connect():
     return db_turso.connect()
 
 
+_SETTINGS_TABLE_READY = False
+
+
 def init_settings_table() -> None:
+    """CREATE TABLE IF NOT EXISTS라 멱등이지만, get_update_notice()가 거의 모든 페이지
+    렌더마다 호출해서 원격 DB 왕복이 반복되던 걸 막기 위해(zero_phone_db와 동일한 방식)
+    최초 1회 이후로는 스킵한다."""
+    global _SETTINGS_TABLE_READY
+    if _SETTINGS_TABLE_READY:
+        return
     conn = _connect()
     conn.executescript(
         """
@@ -26,6 +35,7 @@ def init_settings_table() -> None:
     )
     conn.commit()
     conn.close()
+    _SETTINGS_TABLE_READY = True
 
 
 def get_setting(key: str, default: str = "") -> str:

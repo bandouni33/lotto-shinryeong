@@ -32,6 +32,10 @@ init_guest_scope()
 current_page = st.query_params.get("page", "main")
 
 if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot"):
+    from frontend.components.pinch_zoom import inject_pinch_zoom
+
+    inject_pinch_zoom()
+
     from wallet_ui import render_wallet_bar
 
     render_wallet_bar()
@@ -81,8 +85,24 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
             (function() {{
                 const doc = window.parent.document;
                 const version = {_un_version!r};
+
+                // 이 iframe의 스크립트는 옆의 배너 <div>(별도의 st.markdown 호출로 그려짐)보다
+                // 먼저 실행될 수 있다 — React가 그 div를 아직 DOM에 붙이기 전이면
+                // getElementById가 null을 반환하는데, 예전엔 그러면 그냥 조용히 포기하고
+                // 다시 시도하지 않아서 배너가 아예 안 뜨는(그리고 "확인함" 기록도 못 남기는)
+                // 경우가 있었다 — haptic.py와 같은 재시도 패턴으로 고친다.
+                let tries = 0;
+                const MAX_TRIES = 15;
+                const timer0 = window.setInterval(function() {{
+                    tries += 1;
+                    const ok = boot();
+                    if (ok || tries >= MAX_TRIES) window.clearInterval(timer0);
+                }}, 300);
+                boot();
+
+                function boot() {{
                 const toast = doc.getElementById('update-toast-6n36s5');
-                if (!toast || toast.dataset.toastInit === '1') return;
+                if (!toast || toast.dataset.toastInit === '1') return !!toast;
                 toast.dataset.toastInit = '1';
 
                 if (!doc.getElementById('update-toast-style')) {{
@@ -157,13 +177,32 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                     doc.head.appendChild(style);
                 }}
 
-                let dismissed = null;
-                try {{ dismissed = window.parent.localStorage.getItem('dismissed_update_version'); }} catch (e) {{}}
-                if (dismissed === version) return;
+                // 이 앱은 화면(페이지)마다 네이티브 WebView가 새로 뜨는 구조라(streamlit-webview.tsx의
+                // key={{uri}}) localStorage는 WebView 인스턴스마다 따로 놀 수 있다 — 반면 쿠키는
+                // sharedCookiesEnabled로 명시적으로 화면 간 공유되게 해둔 값이라 더 신뢰할 수 있다.
+                // 그래서 쿠키를 1차로, localStorage를 보조로 같이 쓴다.
+                function getCookie(name) {{
+                    const m = doc.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+                    return m ? decodeURIComponent(m[1]) : null;
+                }}
+                function setCookie(name, value) {{
+                    doc.cookie = name + '=' + encodeURIComponent(value) + '; max-age=31536000; path=/';
+                }}
+
+                let dismissed = getCookie('dismissed_update_version');
+                if (dismissed === null) {{
+                    try {{ dismissed = window.parent.localStorage.getItem('dismissed_update_version'); }} catch (e) {{}}
+                }}
+                if (dismissed === version) return true;
+
+                // 화면에 노출되는 순간 "확인함"으로 기록한다 — 6초를 다 채우거나 버튼을
+                // 눌러야만 기록되면, 사용자가 그 전에 다른 탭으로 넘어갈 때마다(타이머가
+                // 취소되며) 매번 다시 뜨는 문제가 있었다.
+                setCookie('dismissed_update_version', version);
+                try {{ window.parent.localStorage.setItem('dismissed_update_version', version); }} catch (e) {{}}
 
                 function dismiss() {{
                     toast.classList.remove('show');
-                    try {{ window.parent.localStorage.setItem('dismissed_update_version', version); }} catch (e) {{}}
                 }}
 
                 toast.classList.add('show');
@@ -176,6 +215,8 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                         dismiss();
                     }});
                 }}
+                return true;
+                }}
             }})();
             </script>
             """,
@@ -186,7 +227,7 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 # ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️
 # 앞 번호일수록 유력한 순서로 입력 (예: 44가 가장 유력, 7이 가장 약함)
 # ⚠️⚠️⚠️ 다른 코드는 건드리지 말고 이 줄의 숫자만 바꾸세요 ⚠️⚠️⚠️
-lucky_display = [33, 21, 32, 10, 23, 5]
+lucky_display = [26, 17, 33, 32, 23, 5]
 # ===============================================================================
 
 def get_image_base64(file_path):
@@ -696,8 +737,8 @@ if current_page == "main":
         background: linear-gradient(145deg, #2a1c45, #161028);
         border: 2px solid rgba(186, 104, 200, 0.7);
         border-radius: 20px;
-        padding: 11px 8px;
-        min-height: 51px;
+        padding: 9px 8px;
+        min-height: 48px;
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
@@ -792,8 +833,8 @@ if current_page == "main":
                     .tarot-card-deco {{
                         position: absolute;
                         top: 50%;
-                        right: -24px;
-                        width: 40px;
+                        right: -28px;
+                        width: 38px;
                         height: auto;
                         border-radius: 6px;
                         border: 1px solid rgba(255, 193, 7, 0.4);

@@ -1700,7 +1700,7 @@ def render():
             color: #1a1a1a !important;
             padding: 10px 4px !important;
             border: 1px solid #cfd8dc !important;
-            font-size: 13px !important;
+            font-size: 15px !important;
         }
         .auto-stats-table th:nth-child(1),
         .auto-stats-table td:nth-child(1) { width: 14%; }
@@ -2107,6 +2107,14 @@ def render():
             width: 0 !important;
             visibility: hidden !important;
         }
+        /* 화살표 아이콘 자체는 숨겨지지만, 그걸 감싼 wrapper span이 flex:0 0 auto로
+           너비를 그대로 차지해서 옆 텍스트("구매내역")가 남은 공간 0px로 밀리는 문제가
+           있었다 — wrapper span 자체를 구조적으로 찾아 같이 접는다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span:has(> [data-testid="stIconMaterial"]) {
+            display: none !important;
+            width: 0 !important;
+            flex: 0 0 0 !important;
+        }
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary {
             list-style: none !important;
         }
@@ -2413,21 +2421,20 @@ def render():
             position: relative !important;
             z-index: 1 !important;
         }
-        /* 구매방식·수량 / 구매확정·구매내역 — 아래 캐릭터 이미지와 같은 폭 기준(360px 중앙정렬)으로
-           맞추고, 각 쌍의 중심이 그 폭의 좌측 20%·우측 20%(=80%) 지점에 오도록 정렬한다.
-           (106px 박스의 절반인 53px을 20%에서 빼서 padding으로 밀어내는 방식 — position:absolute를
-           쓰지 않아서, 월간구독 선택 시 요일 체크박스가 늘어나도 높이가 자연스럽게 따라간다.) */
+        /* 구매방식·수량 / 구매확정·구매내역 — 아래 캐릭터 이미지와 같은 폭 기준(360px 중앙정렬)
+           컨테이너 안에서, 두 항목을 하나의 짝으로 묶어 항상 가운데(캐릭터 아이콘과 같은 축)에
+           배치한다. 예전엔 위쪽 줄은 20%/80%, 아래 줄은 30%/70% 지점으로 서로 다르게 벌려놔서
+           두 줄이 서로 다른 폭으로 벌어져 보였다 — 두 줄 모두 같은 방식(중앙 정렬 + 고정 간격)으로
+           통일해서 좌우 균형이 맞도록 한다. */
         .st-key-auto_purchase_method_zone_6n36s5 {
             width: 100% !important;
             max-width: var(--auto-visual-col-width) !important;
             margin: 0 auto !important;
         }
         .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            justify-content: space-between !important;
+            justify-content: center !important;
             align-items: center !important;
-            gap: 0 !important;
-            padding-left: calc(20% - 53px) !important;
-            padding-right: calc(20% - 53px) !important;
+            gap: 14px !important;
             box-sizing: border-box !important;
         }
         .st-key-auto_confirm_history_row_6n36s5 {
@@ -2439,15 +2446,13 @@ def render():
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            justify-content: space-between !important;
+            justify-content: center !important;
             align-items: center !important;
-            gap: 0 !important;
+            gap: 14px !important;
             width: 100% !important;
             max-width: 100% !important;
             height: auto !important;
             min-height: 0 !important;
-            padding-left: calc(30% - 52.8px) !important;
-            padding-right: calc(30% - 52.8px) !important;
             box-sizing: border-box !important;
         }
         .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
@@ -2634,6 +2639,42 @@ def render():
             text-align: center !important;
             margin: 0 auto !important;
             flex: 1 1 auto !important;
+        }
+        /* 구매확정·구매내역 — 버튼/summary 자체에 font-size·weight를 줘도 안쪽 <p>가
+           Streamlit 기본 스타일(구매확정 p는 weight 400, 구매내역 p는 weight 900으로
+           서로 달랐다)을 그대로 써서 두 버튼 글씨체가 달라 보였다 — 실제로 텍스트를
+           그리는 p/span에 직접 같은 값을 지정해야 반영된다. font-family까지 명시해서
+           혹시 모를 폴백 폰트 차이도 없앤다. */
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span {
+            font-family: "Source Sans", sans-serif !important;
+            font-size: 17px !important;
+            font-weight: 700 !important;
+        }
+        /* 구매내역 쪽 p는 폭이 텍스트 크기만큼만 좁게 잡혀서(68px) 106px 버튼 안에서
+           살짝 왼쪽으로 치우쳐 보이거나(데스크톱), 모바일 폭에서는 아예 0px로 접혀
+           안 보이는 문제까지 있었다 — flex-grow 하나에만 기대지 않고, 감싸는 모든
+           단계(outer span → text-wrap div → stMarkdownContainer → p)를 전부
+           display:block + width:100%로 강제해서 어떤 화면 폭에서도 안정적으로
+           구매확정 쪽과 동일하게 꽉 채워 중앙정렬되게 한다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span > div,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stMarkdownContainer"] {
+            display: block !important;
+            width: 100% !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 auto !important;
+            text-align: center !important;
         }
         </style>
         """,

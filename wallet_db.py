@@ -29,7 +29,16 @@ def _connect():
     return db_turso.connect()
 
 
+_WALLET_TABLES_READY = False
+
+
 def init_wallet_tables() -> None:
+    """CREATE TABLE/INDEX IF NOT EXISTS라 멱등이지만, 매 렌더마다 호출되면서 원격 DB
+    왕복이 반복되던 걸 막기 위해(zero_phone_db.init_zero_phone_tables와 동일한 방식)
+    최초 1회 이후로는 스킵한다."""
+    global _WALLET_TABLES_READY
+    if _WALLET_TABLES_READY:
+        return
     conn = _connect()
     conn.executescript(
         """
@@ -118,6 +127,7 @@ def init_wallet_tables() -> None:
     )
     conn.commit()
     conn.close()
+    _WALLET_TABLES_READY = True
 
 
 def get_or_create_member(provider: str, provider_user_id: str) -> tuple[int, bool]:

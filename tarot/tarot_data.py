@@ -10,6 +10,23 @@
 출처: Rider-Waite-Smith 덱, 미국 내 퍼블릭 도메인
 """
 
+# 뽑기 스프레드 설정 (draw_config)
+#   - "single"은 지금 실제로 연결되어 있는 무료 스프레드.
+#   - "past_present_future"는 향후 유료 전환을 위해 구조만 미리 잡아둔 자리로,
+#     아직 UI/결제 로직에 연결되어 있지 않다.
+SPREADS = {
+    "single": {
+        "label": "오늘의 카드 한 장",
+        "num_cards": 1,
+        "tier": "free",
+    },
+    "past_present_future": {
+        "label": "과거 · 현재 · 미래",
+        "num_cards": 3,
+        "tier": "premium",
+    },
+}
+
 SUBCATEGORIES = {
     '번아웃 / 무기력': {
         '일에 완전히 지침': '몸도 마음도 다 써버린 것 같은 날이 있어요. 애쓰지 않아도 괜찮은 시간이에요.',
