@@ -265,8 +265,21 @@ def _load_stats_table_cached(_admin_combo_csv_mtime: float) -> tuple[pd.DataFram
     return _load_stats_table()
 
 
-def _load_pattern_count_from_n5() -> int | None:
-    """관리자 3종필터(saved_filters.pkl) — 기본·절대·이격수 활성 규칙 합계."""
+def _saved_filters_mtime() -> float:
+    try:
+        return os.path.getmtime("saved_filters.pkl")
+    except OSError:
+        return 0.0
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _load_pattern_count_from_n5(_saved_filters_pkl_mtime: float) -> int | None:
+    """관리자 3종필터(saved_filters.pkl) — 기본·절대·이격수 활성 규칙 합계.
+
+    이 파일이 350KB 정도라 매 렌더마다(버튼 클릭 하나하나마다) unpickle +
+    검증을 다시 하면 약 1.9초가 걸렸다 — _load_stats_table_cached와 동일하게
+    파일 mtime을 키로 캐싱해서, 파일이 실제로 바뀌었을 때만 다시 계산한다.
+    """
     import pickle
 
     path = "saved_filters.pkl"
@@ -290,7 +303,7 @@ def _load_pattern_count_from_n5() -> int | None:
 
 def _pattern_applied_count() -> int:
     """3종 필터 규칙 합계 (없으면 0)."""
-    count = _load_pattern_count_from_n5()
+    count = _load_pattern_count_from_n5(_saved_filters_mtime())
     return int(count) if count is not None else 0
 
 
