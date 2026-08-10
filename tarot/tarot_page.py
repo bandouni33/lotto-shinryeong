@@ -83,8 +83,25 @@ def _inject_base_css():
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gamja+Flower&family=Black+Han+Sans&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
         <style>
-        .tarot-wrap * { box-sizing: border-box; }
-        .tarot-wrap { font-family: 'Gaegu', sans-serif; }
+        .st-key-tarot_page_root_6n36s5 * { box-sizing: border-box; }
+        .st-key-tarot_page_root_6n36s5 { font-family: 'Gaegu', sans-serif; }
+
+        /* 타로 전 화면 공통 글자 크기 체계 — 예전엔 화면마다 13px~24px로 제각각이라
+           들쭉날쭉했다. 제목 20px / 버튼·본문 16px / 힌트·캡션 14px / 해석 본문 24px로
+           통일한다. */
+        .st-key-tarot_page_root_6n36s5 h5 {
+            font-size: 20px !important;
+            font-weight: 700 !important;
+        }
+        .st-key-tarot_page_root_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-tarot_page_root_6n36s5 div[data-testid="stButton"] > button p {
+            font-size: 16px !important;
+            font-weight: 700 !important;
+        }
+        .st-key-tarot_page_root_6n36s5 [data-testid="stCaptionContainer"],
+        .st-key-tarot_page_root_6n36s5 [data-testid="stCaptionContainer"] p {
+            font-size: 14px !important;
+        }
 
         /* 카테고리 그리드 */
         .cat-grid {
@@ -105,7 +122,7 @@ def _inject_base_css():
         .intro-card {
             border-radius: 12px;
             padding: 18px 20px;
-            font-size: 19px;
+            font-size: 16px;
             font-weight: 700;
             line-height: 1.6;
             color: #3A2E1D;
@@ -145,13 +162,13 @@ def _inject_base_css():
 
         .card-name-kr {
             font-family: 'Gamja Flower', cursive;
-            font-size: 21px;
+            font-size: 22px;
             color: #4A3B22;
         }
-        .card-name-en { font-size: 13px; color: #A5926E; margin-top: 2px; }
+        .card-name-en { font-size: 14px; color: #A5926E; margin-top: 2px; }
 
         .letter-intro {
-            font-size: 15px;
+            font-size: 16px;
             color: #6B5B44;
             background: rgba(120,90,50,0.06);
             border-radius: 8px;
@@ -217,20 +234,21 @@ def render():
     _inject_base_css()
     st.session_state.setdefault("tarot_stage", "category")
 
-    st.markdown('<div class="tarot-wrap">', unsafe_allow_html=True)
+    # 예전엔 st.markdown으로 <div class="tarot-wrap">를 열고 별도의 st.markdown 호출로
+    # 닫았는데, Streamlit은 각 st.markdown 호출을 독립된 조각으로 렌더링해서 실제로는
+    # 감싸지지 않고 빈 div만 남았다 — 그 안을 겨냥한 CSS가 전혀 안 먹히고 있었다.
+    # st.container(key=...)를 쓰면 진짜로 그 안의 위젯들을 감싸는 DOM이 생긴다.
+    with st.container(key="tarot_page_root_6n36s5"):
+        stage = st.session_state["tarot_stage"]
 
-    stage = st.session_state["tarot_stage"]
-
-    if stage == "category":
-        _render_category_select()
-    elif stage == "subcategory":
-        _render_subcategory_select()
-    elif stage == "draw":
-        _render_draw_stage()
-    elif stage == "result":
-        _render_result()
-
-    st.markdown('</div>', unsafe_allow_html=True)
+        if stage == "category":
+            _render_category_select()
+        elif stage == "subcategory":
+            _render_subcategory_select()
+        elif stage == "draw":
+            _render_draw_stage()
+        elif stage == "result":
+            _render_result()
 
 
 def _render_category_select():
@@ -326,7 +344,7 @@ def _render_shuffle_deck():
       <style>
         html, body {{ margin:0; padding:0; background:transparent; overflow:hidden; }}
         .wrap {{ font-family:'Gaegu', sans-serif; text-align:center; padding-top:6px; }}
-        .hint {{ color:#8a7a5e; font-size:13px; margin-bottom:16px; }}
+        .hint {{ color:#8a7a5e; font-size:14px; font-weight:700; margin-bottom:16px; }}
         .deck {{
             position:relative; width:74px; height:110px; margin:0 auto;
             cursor:grab; user-select:none; touch-action:none;
@@ -419,7 +437,7 @@ def _render_flip_component(card_key: str):
       <style>
         html, body {{ margin:0; padding:0; background:transparent; overflow:hidden; }}
         .wrap {{ font-family: 'Gaegu', sans-serif; text-align:center; }}
-        .hint {{ color:#8a7a5e; font-size:13px; margin:2px 0 10px; }}
+        .hint {{ color:#8a7a5e; font-size:14px; font-weight:700; margin:2px 0 10px; }}
         .grid {{
             position:relative; height:160px; margin:4px auto 0;
             width:100%; max-width:520px; perspective:800px;
@@ -445,8 +463,8 @@ def _render_flip_component(card_key: str):
         @keyframes pop {{ from {{opacity:0; transform:scale(0.9);}} to {{opacity:1; transform:scale(1);}} }}
         .reveal img {{ width:110px; border-radius:8px; border:3px solid #fff;
             outline:1.5px solid rgba(120,90,50,0.35); box-shadow:0 4px 12px rgba(0,0,0,0.28); }}
-        .reveal .kr {{ font-size:19px; color:#4A3B22; margin-top:8px; }}
-        .reveal .en {{ font-size:12px; color:#A5926E; }}
+        .reveal .kr {{ font-size:20px; font-weight:700; color:#4A3B22; margin-top:8px; }}
+        .reveal .en {{ font-size:14px; color:#A5926E; }}
       </style>
 
       <div class="hint">펼쳐진 카드 중 마음이 가는 한 장을 눌러보세요</div>

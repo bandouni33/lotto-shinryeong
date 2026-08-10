@@ -60,18 +60,22 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
             # 아니라 이 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
             # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
             _un_action_html = (
-                f'<a class="update-toast-btn-now" href="{_html.escape(_un_url, quote=True)}" '
-                f'target="_blank" rel="noopener">지금 업데이트</a>'
+                f'<a class="update-toast-btn-now" id="update-toast-now-6n36s5" '
+                f'href="{_html.escape(_un_url, quote=True)}" target="_blank" rel="noopener">'
+                f'<span>지금 업데이트</span></a>'
             )
         else:
             _un_action_html = (
-                '<span class="update-toast-btn-now update-toast-btn-disabled">지금 업데이트</span>'
+                '<span class="update-toast-btn-now update-toast-btn-disabled">'
+                '<span>지금 업데이트</span></span>'
             )
 
         st.markdown(
             f"""
             <div class="update-toast" id="update-toast-6n36s5">
-                <div class="update-toast-msg">🔔 {_un_message}</div>
+                <div class="update-toast-glow" aria-hidden="true"></div>
+                <div class="update-toast-badge">✨ NEW</div>
+                <div class="update-toast-msg">{_un_message}</div>
                 <div class="update-toast-actions">
                     {_un_action_html}
                     <button type="button" class="update-toast-btn-later" id="update-toast-later-6n36s5">나중에</button>
@@ -113,37 +117,68 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                     style.textContent = `
                         .update-toast {{
                             position: fixed;
-                            top: 14px;
+                            top: 16px;
                             left: 50%;
                             z-index: 9999;
                             width: max-content;
-                            max-width: min(92vw, 420px);
-                            padding: 14px 18px;
-                            border-radius: 14px;
-                            border: 1px solid rgba(255, 193, 7, 0.4);
-                            background: rgba(20, 14, 8, 0.92);
-                            backdrop-filter: blur(8px);
-                            -webkit-backdrop-filter: blur(8px);
-                            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+                            max-width: min(90vw, 400px);
+                            padding: 18px 20px 16px;
+                            border-radius: 18px;
+                            background:
+                                linear-gradient(180deg, rgba(38, 28, 12, 0.97) 0%, rgba(15, 11, 6, 0.98) 100%);
+                            border: 1px solid rgba(255, 209, 102, 0.28);
+                            backdrop-filter: blur(14px);
+                            -webkit-backdrop-filter: blur(14px);
+                            box-shadow:
+                                0 20px 45px rgba(0, 0, 0, 0.5),
+                                0 2px 0 rgba(255, 209, 102, 0.15) inset,
+                                0 0 0 1px rgba(0, 0, 0, 0.3);
                             opacity: 0;
                             visibility: hidden;
                             pointer-events: none;
-                            transform: translate(-50%, -8px);
-                            transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
+                            transform: translate(-50%, -10px) scale(0.96);
+                            transition: opacity 0.35s cubic-bezier(.2,.8,.3,1.15),
+                                        transform 0.35s cubic-bezier(.2,.8,.3,1.15),
+                                        visibility 0.35s;
                         }}
                         .update-toast.show {{
                             opacity: 1;
                             visibility: visible;
                             pointer-events: auto;
-                            transform: translate(-50%, 0);
+                            transform: translate(-50%, 0) scale(1);
+                        }}
+                        .update-toast-glow {{
+                            position: absolute;
+                            top: -30%; left: 50%;
+                            width: 70%; height: 60%;
+                            transform: translateX(-50%);
+                            background: radial-gradient(ellipse at center, rgba(255, 209, 102, 0.35) 0%, transparent 70%);
+                            filter: blur(10px);
+                            pointer-events: none;
+                            z-index: -1;
+                        }}
+                        .update-toast-badge {{
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            font-size: 10.5px;
+                            font-weight: 800;
+                            letter-spacing: 0.04em;
+                            color: #2a1b04;
+                            background: linear-gradient(135deg, #ffe9b3 0%, #ffc94d 100%);
+                            padding: 3px 9px;
+                            border-radius: 999px;
+                            margin-bottom: 9px;
+                            box-shadow: 0 2px 8px rgba(255, 201, 77, 0.35);
                         }}
                         .update-toast-msg {{
-                            color: #ffe082;
+                            color: #f3e6cc;
                             font-size: 14px;
-                            font-weight: 700;
-                            line-height: 1.5;
+                            font-weight: 600;
+                            line-height: 1.55;
                             text-align: center;
-                            margin-bottom: 10px;
+                            margin-bottom: 14px;
+                            letter-spacing: -0.01em;
                         }}
                         .update-toast-actions {{
                             display: flex;
@@ -155,25 +190,41 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                             display: inline-flex;
                             align-items: center;
                             justify-content: center;
-                            padding: 7px 16px;
-                            border-radius: 10px;
+                            padding: 9px 18px;
+                            border-radius: 11px;
                             font-size: 13px;
                             font-weight: 700;
                             cursor: pointer;
                             text-decoration: none;
                             border: none;
+                            transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
                         }}
                         .update-toast-btn-now {{
-                            background: linear-gradient(180deg, #ffca28 0%, #ffb300 100%);
-                            color: #241a00;
+                            background: linear-gradient(180deg, #ffe9b3 0%, #ffc23d 55%, #f5a623 100%);
+                            color: #2a1b04;
+                            box-shadow:
+                                0 3px 0 #b3760e,
+                                0 6px 14px rgba(245, 166, 35, 0.4),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+                        }}
+                        .update-toast-btn-now:active {{
+                            transform: translateY(1px);
+                            box-shadow:
+                                0 2px 0 #b3760e,
+                                0 4px 10px rgba(245, 166, 35, 0.35),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.5);
                         }}
                         .update-toast-btn-disabled {{
-                            opacity: 0.5;
+                            opacity: 0.45;
                             pointer-events: none;
                         }}
                         .update-toast-btn-later {{
+                            background: rgba(255, 255, 255, 0.06);
+                            color: #cbb894;
+                            border: 1px solid rgba(255, 255, 255, 0.12);
+                        }}
+                        .update-toast-btn-later:active {{
                             background: rgba(255, 255, 255, 0.12);
-                            color: #ffe082;
                         }}
                     `;
                     doc.head.appendChild(style);
@@ -190,18 +241,32 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                 function setCookie(name, value) {{
                     doc.cookie = name + '=' + encodeURIComponent(value) + '; max-age=31536000; path=/';
                 }}
-
-                let dismissed = getCookie('dismissed_update_version');
-                if (dismissed === null) {{
-                    try {{ dismissed = window.parent.localStorage.getItem('dismissed_update_version'); }} catch (e) {{}}
+                function getStored(key) {{
+                    let v = getCookie(key);
+                    if (v === null) {{
+                        try {{ v = window.parent.localStorage.getItem(key); }} catch (e) {{}}
+                    }}
+                    return v;
                 }}
-                if (dismissed === version) return true;
+                function setStored(key, value) {{
+                    setCookie(key, value);
+                    try {{ window.parent.localStorage.setItem(key, value); }} catch (e) {{}}
+                }}
+                function todayKST() {{
+                    // KST(UTC+9) 기준 날짜 — 서버 쪽(tarot_page.py 등)과 동일한 기준을 쓴다.
+                    const t = new Date(Date.now() + 9 * 60 * 60 * 1000);
+                    return t.toISOString().slice(0, 10);
+                }}
 
-                // 화면에 노출되는 순간 "확인함"으로 기록한다 — 6초를 다 채우거나 버튼을
-                // 눌러야만 기록되면, 사용자가 그 전에 다른 탭으로 넘어갈 때마다(타이머가
-                // 취소되며) 매번 다시 뜨는 문제가 있었다.
-                setCookie('dismissed_update_version', version);
-                try {{ window.parent.localStorage.setItem('dismissed_update_version', version); }} catch (e) {{}}
+                // "지금 업데이트"를 누른 사용자는 완전히 끝(해당 버전에 대해 다시 안 뜸).
+                // 그 외(그냥 보기만 했거나 "나중에")에는 하루에 한 번은 다시 뜬다.
+                const foreverKey = 'update_ack_forever';
+                const lastShownKey = 'update_last_shown';
+
+                if (getStored(foreverKey) === version) return true;
+                if (getStored(lastShownKey) === version + ':' + todayKST()) return true;
+
+                setStored(lastShownKey, version + ':' + todayKST());
 
                 function dismiss() {{
                     toast.classList.remove('show');
@@ -215,6 +280,12 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                     laterBtn.addEventListener('click', function() {{
                         window.clearTimeout(timer);
                         dismiss();
+                    }});
+                }}
+                const nowBtn = doc.getElementById('update-toast-now-6n36s5');
+                if (nowBtn) {{
+                    nowBtn.addEventListener('click', function() {{
+                        setStored(foreverKey, version);
                     }});
                 }}
                 return true;
