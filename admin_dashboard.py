@@ -161,7 +161,30 @@ st.set_page_config(page_title="운영자 대시보드", layout="centered", initi
 st.markdown("""
 <style>
     .stApp { background-color: #0B0C10; color: #FFFFFF; font-family: 'Pretendard', sans-serif; }
-    
+
+    /* 위젯 라벨(입력창 설명글)·캡션·라디오 옵션 글씨가 어두운 배경에서 거의 안 보이던
+       문제 — 그동안 특정 섹션(marker class)에만 개별적으로 패치해왔는데, 새로 추가되는
+       섹션(예: "배포용 엑셀 재업로드", "저장할 회차")마다 계속 빠지고 있었다. 전체에
+       한 번에 적용되는 공통 규칙으로 통일한다. */
+    .stApp [data-testid="stWidgetLabel"] p,
+    .stApp [data-testid="stWidgetLabel"] label,
+    .stApp [data-testid="stCaptionContainer"] p,
+    .stApp [data-testid="stRadio"] label p,
+    .stApp [data-testid="stFileUploaderDropzone"] span,
+    .stApp [data-testid="stFileUploaderDropzone"] small,
+    .stApp [data-testid="stNumberInput"] label p {
+        color: #E8ECF2 !important;
+        font-weight: 600 !important;
+        opacity: 1 !important;
+    }
+    .stApp [data-testid="stFileUploaderDropzone"] svg {
+        fill: #E8ECF2 !important;
+        opacity: 0.9 !important;
+    }
+    .stApp [data-testid="stNumberInput"] button svg {
+        fill: #E8ECF2 !important;
+    }
+
     div[data-testid="metric-container"] { 
         background-color: #1F2330 !important; border: 2px solid #4F5B73 !important; 
         border-radius: 12px !important; padding: 20px !important; 
