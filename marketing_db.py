@@ -473,6 +473,30 @@ def get_combinations_by_auto_order_id(auto_order_id: int) -> list[dict]:
     ]
 
 
+def get_combinations_by_draw(draw_round: int) -> list[dict]:
+    """해당 회차 추출 조합 전체 (다운로드용) — win_rank 포함."""
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT id, num1, num2, num3, num4, num5, num6, win_rank
+        FROM lotto_combinations
+        WHERE draw_round = ?
+        ORDER BY id
+        """,
+        (int(draw_round),),
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "id": int(row["id"]),
+            "combo": list(_combo_nums_from_row(row)),
+            "win_rank": int(row["win_rank"]) if row["win_rank"] is not None else None,
+        }
+        for row in rows
+    ]
+
+
 def enqueue_sms(phone: str, purchase_type: str, send_status: str = "WAIT") -> int:
     """구매확정 시 문자 발송 대기열 등록 (로또 번호 저장 없음)."""
     phone = str(phone).strip()
@@ -734,6 +758,7 @@ __all__ = [
     "release_lotto_combination_allocation",
     "count_available_combinations",
     "get_combinations_by_auto_order_id",
+    "get_combinations_by_draw",
     "delete_lotto_combinations_by_draw",
     "update_win_ranks_for_draw",
     "get_win_rank_counts_by_draw",
