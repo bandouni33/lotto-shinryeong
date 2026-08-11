@@ -360,56 +360,38 @@ if st.session_state.admin_view == "home":
             st.success("저장했습니다. 사용자 화면에 즉시 반영됩니다.")
             st.rerun()
 
-    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📥 회차별 추출 조합 다운로드</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📥 최신 회차 추출 조합 다운로드</h4>", unsafe_allow_html=True)
     from marketing_db import get_draw_extraction_stats, get_combinations_by_draw
 
-    _dl_stats = get_draw_extraction_stats(limit=20)
+    _dl_stats = get_draw_extraction_stats(limit=1)
     if not _dl_stats:
         st.caption("다운로드할 회차 데이터가 없습니다.")
     else:
-        _dl_draw_options = [int(s["draw_round"]) for s in _dl_stats]
-        _dl_counts_by_round = {int(s["draw_round"]): int(s["total_count"]) for s in _dl_stats}
-        col_dl_select, col_dl_btn = st.columns([2, 1], gap="small")
-        with col_dl_select:
-            dl_draw_round = st.selectbox(
-                "다운로드할 회차",
-                _dl_draw_options,
-                key="admin_dl_draw_round_6n36s5",
-            )
-        with col_dl_btn:
-            st.write("")
-            if st.button("⬇️ 조합 준비", key="admin_dl_prepare_6n36s5", use_container_width=True):
-                combos = get_combinations_by_draw(dl_draw_round)
-                dl_df = pd.DataFrame(
-                    [
-                        {
-                            "번호1": c["combo"][0],
-                            "번호2": c["combo"][1],
-                            "번호3": c["combo"][2],
-                            "번호4": c["combo"][3],
-                            "번호5": c["combo"][4],
-                            "번호6": c["combo"][5],
-                            "당첨등수": c["win_rank"] or "",
-                        }
-                        for c in combos
-                    ]
-                )
-                st.session_state["admin_dl_csv_6n36s5"] = dl_df.to_csv(index=False).encode("utf-8-sig")
-                st.session_state["admin_dl_csv_round_6n36s5"] = dl_draw_round
-
-        if (
-            st.session_state.get("admin_dl_csv_round_6n36s5") == dl_draw_round
-            and st.session_state.get("admin_dl_csv_6n36s5")
-        ):
-            _dl_count = _dl_counts_by_round.get(dl_draw_round, 0)
-            st.download_button(
-                f"⬇️ {dl_draw_round}회차 조합 {_dl_count:,}개 CSV 다운로드",
-                data=st.session_state["admin_dl_csv_6n36s5"],
-                file_name=f"lotto_combinations_{dl_draw_round}.csv",
-                mime="text/csv",
-                key="admin_dl_download_6n36s5",
-                use_container_width=True,
-            )
+        _dl_draw_round = int(_dl_stats[0]["draw_round"])
+        _dl_count = int(_dl_stats[0]["total_count"])
+        _dl_combos = get_combinations_by_draw(_dl_draw_round)
+        _dl_df = pd.DataFrame(
+            [
+                {
+                    "번호1": c["combo"][0],
+                    "번호2": c["combo"][1],
+                    "번호3": c["combo"][2],
+                    "번호4": c["combo"][3],
+                    "번호5": c["combo"][4],
+                    "번호6": c["combo"][5],
+                    "당첨등수": c["win_rank"] or "",
+                }
+                for c in _dl_combos
+            ]
+        )
+        st.download_button(
+            f"⬇️ {_dl_draw_round}회차 조합 {_dl_count:,}개 다운로드",
+            data=_dl_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"lotto_combinations_{_dl_draw_round}.csv",
+            mime="text/csv",
+            key="admin_dl_download_6n36s5",
+            use_container_width=True,
+        )
 
 # ==========================================
 # 🔧 [통합] 3종 필터 관리 및 원스톱 조합 생성 시스템
