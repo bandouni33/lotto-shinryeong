@@ -2393,53 +2393,6 @@ def render():
                 unsafe_allow_html=True,
             )
 
-            if not is_mock and not stats_df.empty:
-                draw_options = stats_df["회차"].astype(int).tolist()
-                col_dl_select, col_dl_btn = st.columns([2, 1], gap="small")
-                with col_dl_select:
-                    dl_draw_round = st.selectbox(
-                        "다운로드할 회차",
-                        draw_options,
-                        key="auto_dl_draw_round_6n36s5",
-                        label_visibility="collapsed",
-                    )
-                with col_dl_btn:
-                    if st.button("⬇ 조합 준비", key="auto_dl_prepare_6n36s5", use_container_width=True):
-                        from marketing_db import get_combinations_by_draw
-
-                        combos = get_combinations_by_draw(dl_draw_round)
-                        dl_df = pd.DataFrame(
-                            [
-                                {
-                                    "번호1": c["combo"][0],
-                                    "번호2": c["combo"][1],
-                                    "번호3": c["combo"][2],
-                                    "번호4": c["combo"][3],
-                                    "번호5": c["combo"][4],
-                                    "번호6": c["combo"][5],
-                                    "당첨등수": c["win_rank"] or "",
-                                }
-                                for c in combos
-                            ]
-                        )
-                        st.session_state["auto_dl_csv_6n36s5"] = dl_df.to_csv(index=False).encode("utf-8-sig")
-                        st.session_state["auto_dl_csv_round_6n36s5"] = dl_draw_round
-
-                if (
-                    st.session_state.get("auto_dl_csv_round_6n36s5") == dl_draw_round
-                    and st.session_state.get("auto_dl_csv_6n36s5")
-                ):
-                    _dl_row = stats_df[stats_df["회차"] == dl_draw_round]
-                    _dl_count = int(_dl_row["추출수량"].iloc[0]) if not _dl_row.empty else 0
-                    st.download_button(
-                        f"{dl_draw_round}회차 조합 {_dl_count:,}개 CSV 다운로드",
-                        data=st.session_state["auto_dl_csv_6n36s5"],
-                        file_name=f"lotto_combinations_{dl_draw_round}.csv",
-                        mime="text/csv",
-                        key="auto_dl_download_6n36s5",
-                        use_container_width=True,
-                    )
-
     # ── 최종 레이아웃 강제 오버라이드 ──
     # Streamlit이 stVerticalBlock/stHorizontalBlock 사이에 stLayoutWrapper를 끼워 넣는
     # 버전으로 올라가면서, 위쪽에 있는 동일 내용의 CSS가 소스 순서상 밀려 적용되지 않는
