@@ -41,6 +41,44 @@ def _is_auto_deploy_window_open(now: datetime | None = None) -> bool:
     return weekday in (2, 3, 4)  # 수, 목, 금
 
 
+GUEST_ID_COOKIE_KEY = "lotto_guest_id"
+
+
+def _get_or_create_guest_id() -> str:
+    """비로그인(테스트 기간) 사용자를 앱을 껐다 켜도 같은 사람으로 알아보기 위한 식별자.
+
+    session_state만으로는 새 세션(=앱 재실행)마다 초기화돼서 구매내역이 사라진다 —
+    tarot_page.py의 일일 뽑기 제한과 동일한 이유. 쿠키에 한 번 저장해두고, 다음
+    세션 시작 시 그 쿠키 값을 읽어 이어서 쓴다.
+    """
+    if st.session_state.get("_guest_id"):
+        return st.session_state["_guest_id"]
+    cookie_val = st.context.cookies.get(GUEST_ID_COOKIE_KEY)
+    if cookie_val:
+        st.session_state["_guest_id"] = cookie_val
+        return cookie_val
+    import uuid
+
+    new_id = uuid.uuid4().hex
+    st.session_state["_guest_id"] = new_id
+    st.session_state["_guest_id_cookie_pending"] = new_id
+    return new_id
+
+
+def _sync_guest_id_cookie(guest_id: str) -> None:
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            const doc = window.parent.document;
+            doc.cookie = {GUEST_ID_COOKIE_KEY!r} + '=' + {guest_id!r} + '; max-age=31536000; path=/';
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _get_icon_base64(file_path: str = "K-325.jpg") -> str:
     if os.path.exists(file_path):
         with open(file_path, "rb") as img_file:
@@ -521,15 +559,38 @@ def _build_quick_purchase_entry(
         int(quantity),
         test_order_id,
     )
+    cost = calc_auto_cost(int(quantity))
+    purchase_type = "정기구독" if purchase_method == "월간구독" else "일반구매"
+
+    # 조합 배정은 이미 DB에 영속됐으니(lotto_combinations.auto_order_id), 여기서는
+    # 그걸 다시 찾아올 수 있도록 주문 메타데이터만 guest_id에 묶어 저장한다.
+    # 실패해도 이번 구매 자체(=조합 배정)는 이미 끝났으니 화면에는 영향 없이 넘어간다.
+    try:
+        from marketing_db import save_guest_auto_order
+
+        save_guest_auto_order(
+            _get_or_create_guest_id(),
+            test_order_id,
+            draw_round,
+            int(quantity),
+            cost,
+            purchase_method,
+            purchase_type,
+            list(sms_days),
+        )
+    except Exception:
+        pass
+
     return {
         "draw_round": draw_round,
         "combo_count": int(quantity),
-        "cost": calc_auto_cost(int(quantity)),
+        "cost": cost,
         "allocated": allocated,
         "purchase_method": purchase_method,
-        "purchase_type": "정기구독" if purchase_method == "월간구독" else "일반구매",
+        "purchase_type": purchase_type,
         "sms_days": list(sms_days),
         "order_id": -seq,
+        "combo_order_id": test_order_id,
     }
 
 
@@ -547,6 +608,14 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
                 continue
             seen_order_ids.add(int(order_id))
         items.append(entry)
+
+    # 세션에 이미 있는 항목의 실제 조합 배정 id(combo_order_id) — DB에서 다시
+    # 읽어온 항목과 같은 주문이 중복으로 나타나지 않도록 걸러내는 기준.
+    seen_combo_order_ids: set[int] = {
+        int(item["combo_order_id"])
+        for item in items
+        if item.get("combo_order_id") is not None
+    }
 
     if member_id:
         from marketing_db import get_combinations_by_auto_order_id, init_marketing_tables
@@ -592,6 +661,49 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
                     "sms_days": order.get("sms_days") or "",
                 }
             )
+    else:
+        # 비로그인(테스트 기간) — guest_id 쿠키에 묶어둔 주문 메타데이터를 읽어와서,
+        # 지금 세션에는 없는(=앱을 다시 켠 뒤의) 과거 구매내역도 이어서 보여준다.
+        from marketing_db import (
+            get_combinations_by_auto_order_id,
+            init_marketing_tables,
+            list_guest_auto_orders,
+        )
+
+        init_marketing_tables()
+        guest_orders = [
+            order
+            for order in list_guest_auto_orders(_get_or_create_guest_id(), limit=20)
+            if int(order["auto_order_id"]) not in seen_combo_order_ids
+        ]
+        candidate_rounds = [item.get("draw_round") for item in items]
+        candidate_rounds += [order.get("draw_round") for order in guest_orders]
+        kept_rounds: list = []
+        for dr in candidate_rounds:
+            if dr not in kept_rounds:
+                if len(kept_rounds) >= MAX_HISTORY_ROUNDS:
+                    continue
+                kept_rounds.append(dr)
+
+        for order in guest_orders:
+            if order.get("draw_round") not in kept_rounds:
+                continue
+            auto_order_id = int(order["auto_order_id"])
+            seen_combo_order_ids.add(auto_order_id)
+            combos = get_combinations_by_auto_order_id(auto_order_id)
+            items.append(
+                {
+                    "order_id": -auto_order_id,
+                    "draw_round": order.get("draw_round"),
+                    "combo_count": order.get("combo_count") or len(combos),
+                    "cost": order.get("cost"),
+                    "allocated": combos,
+                    "purchase_method": order.get("purchase_method"),
+                    "purchase_type": order.get("purchase_type"),
+                    "sms_days": order.get("sms_days") or [],
+                    "combo_order_id": auto_order_id,
+                }
+            )
 
     return _limit_to_recent_rounds(items)
 
@@ -600,6 +712,14 @@ def render():
     from user_scope import init_guest_scope
 
     init_guest_scope()
+
+    # 이전 렌더에서 새로 만든 guest_id가 있으면, 이 "정상" 렌더링 시점에 쿠키로
+    # 내보낸다 (곧바로 st.rerun()이 따라오면 컴포넌트가 실행되기 전에 화면이
+    # 갈아치워지는 문제가 있어서 — tarot_page.py의 쿠키 동기화와 동일한 이유).
+    _pending_guest_cookie = st.session_state.pop("_guest_id_cookie_pending", None)
+    if _pending_guest_cookie:
+        _sync_guest_id_cookie(_pending_guest_cookie)
+    _get_or_create_guest_id()
 
     st.markdown(
         """
@@ -840,8 +960,10 @@ def render():
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpanderDetails"] {
             overflow: visible !important;
             width: max-content !important;
-            min-width: 168px !important;
-            max-width: min(240px, calc(100vw - 20px)) !important;
+            /* 왼쪽으로 20% 더 넓게 — right:0로 오른쪽에 고정돼 있어서, 폭을 늘리면
+               자동으로 왼쪽으로만 확장된다(168→202px, 240→288px). */
+            min-width: 202px !important;
+            max-width: min(288px, calc(100vw - 20px)) !important;
             padding: 4px 2px !important;
             box-sizing: border-box !important;
             position: absolute !important;
@@ -856,7 +978,8 @@ def render():
         }
         .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid {
             margin: 0 !important;
-            padding: 6px 8px 8px !important;
+            /* 높이 10% — 위아래 여백을 늘려 전체 박스가 세로로 더 여유있게 보이도록 */
+            padding: 7px 9px 9px !important;
             width: fit-content !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
@@ -865,30 +988,31 @@ def render():
         .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-combos {
             display: flex !important;
             flex-direction: column !important;
-            gap: 4px !important;
+            gap: 5px !important;
             margin: 0 !important;
         }
         .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-combo {
             display: flex !important;
             flex-wrap: nowrap !important;
             align-items: center !important;
-            padding: 3px 5px !important;
-            gap: 5px !important;
+            padding: 4px 6px !important;
+            gap: 6px !important;
             border-radius: 8px !important;
         }
         .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball-row {
             display: flex !important;
             flex-wrap: nowrap !important;
             flex: 0 0 auto !important;
-            gap: 6px !important;
+            gap: 7px !important;
             min-width: 0 !important;
         }
         .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball {
             flex: 0 0 auto !important;
             width: auto !important;
-            min-width: 16px !important;
+            /* 셀이 넓어진 만큼 숫자도 그에 맞춰 커지도록 — 고정 11px 대신 셀 폭 기준으로 */
+            min-width: 20px !important;
             height: auto !important;
-            font-size: 11px !important;
+            font-size: clamp(11px, 4.6vw, 14px) !important;
             padding: 0 !important;
         }
         @keyframes autoToastFade {
@@ -1642,18 +1766,18 @@ def render():
             }
             .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-combo {
                 flex-wrap: nowrap !important;
-                padding: 3px 5px !important;
-                gap: 5px !important;
+                padding: 4px 6px !important;
+                gap: 6px !important;
             }
             .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball-row {
                 flex-wrap: nowrap !important;
-                gap: 5px !important;
+                gap: 6px !important;
             }
             .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball {
                 width: auto !important;
                 height: auto !important;
-                min-width: 14px !important;
-                font-size: 10px !important;
+                min-width: 17px !important;
+                font-size: clamp(11px, 4.6vw, 13px) !important;
             }
             .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid {
                 width: fit-content !important;

@@ -84,6 +84,28 @@ def init_marketing_tables():
         CREATE INDEX IF NOT EXISTS idx_lotto_combinations_win_rank
         ON lotto_combinations(draw_round, win_rank)
     """)
+    # 테스트 기간(AUTO_PURCHASE_SKIP_AUTH) 구매내역 — 로그인 없이도 앱을 다시 켰을 때
+    # 구매내역이 남아있도록, 쿠키로 유지되는 guest_id에 주문 메타데이터를 묶어 저장한다.
+    # 조합 자체는 이미 lotto_combinations.auto_order_id로 영속돼 있으니, 여기엔
+    # 그 auto_order_id를 다시 찾기 위한 최소한의 메타데이터만 저장한다.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS guest_auto_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guest_id TEXT NOT NULL,
+            auto_order_id INTEGER NOT NULL UNIQUE,
+            draw_round INTEGER,
+            combo_count INTEGER,
+            cost INTEGER,
+            purchase_method TEXT,
+            purchase_type TEXT,
+            sms_days TEXT,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_guest_auto_orders_guest
+        ON guest_auto_orders(guest_id, created_at)
+    """)
     _migrate_lotto_combinations(conn)
     conn.commit()
     conn.close()
@@ -481,6 +503,82 @@ def get_combinations_by_auto_order_id(auto_order_id: int) -> list[dict]:
     ]
 
 
+def save_guest_auto_order(
+    guest_id: str,
+    auto_order_id: int,
+    draw_round: int,
+    combo_count: int,
+    cost,
+    purchase_method: str,
+    purchase_type: str,
+    sms_days,
+) -> None:
+    """비로그인(테스트 기간) 구매내역 메타데이터를 guest_id에 묶어 저장한다."""
+    import json
+
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO guest_auto_orders
+            (guest_id, auto_order_id, draw_round, combo_count, cost,
+             purchase_method, purchase_type, sms_days, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(guest_id),
+            int(auto_order_id),
+            int(draw_round),
+            int(combo_count),
+            int(cost) if cost is not None else None,
+            purchase_method,
+            purchase_type,
+            json.dumps(list(sms_days or [])),
+            datetime.now().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_guest_auto_orders(guest_id: str, limit: int = 20) -> list[dict]:
+    """guest_id에 묶인 구매내역 메타데이터를 최신순으로 반환 (조합 목록은 미포함)."""
+    import json
+
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT auto_order_id, draw_round, combo_count, cost,
+               purchase_method, purchase_type, sms_days, created_at
+        FROM guest_auto_orders
+        WHERE guest_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (str(guest_id), int(limit)),
+    ).fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        try:
+            sms_days = json.loads(row["sms_days"]) if row["sms_days"] else []
+        except (TypeError, ValueError):
+            sms_days = []
+        result.append(
+            {
+                "auto_order_id": int(row["auto_order_id"]),
+                "draw_round": row["draw_round"],
+                "combo_count": row["combo_count"],
+                "cost": row["cost"],
+                "purchase_method": row["purchase_method"],
+                "purchase_type": row["purchase_type"],
+                "sms_days": sms_days,
+            }
+        )
+    return result
+
+
 def get_combinations_by_draw(draw_round: int) -> list[dict]:
     """해당 회차 추출 조합 전체 (다운로드용) — win_rank 포함."""
     conn = _connect()
@@ -800,6 +898,8 @@ __all__ = [
     "release_lotto_combination_allocation",
     "count_available_combinations",
     "get_combinations_by_auto_order_id",
+    "save_guest_auto_order",
+    "list_guest_auto_orders",
     "get_combinations_by_draw",
     "delete_lotto_combinations_by_draw",
     "update_win_ranks_for_draw",
