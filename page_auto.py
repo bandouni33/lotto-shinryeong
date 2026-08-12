@@ -307,12 +307,8 @@ def _pattern_applied_count() -> int:
     return int(count) if count is not None else 0
 
 
-def _winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
-    """해당 회차 당첨번호가 확정돼 있으면 반환 — 구매내역에서 저장된 번호와
-    자동으로 대조해 맞은 번호에 동그라미를 표시하기 위함. 아직 추첨 전이면
-    빈 집합을 반환한다(그래도 화면이 자연스럽게 "미확정" 상태로 보인다).
-    load_lotto_data 자체가 이미 파일 mtime 기준으로 캐싱되어 있어 매 렌더마다
-    엑셀을 다시 읽지 않는다."""
+@st.cache_data(show_spinner=False)
+def _winning_numbers_for_draw_cached(draw_round: int, _mtime: float) -> tuple[set[int], int | None]:
     try:
         from lotto_stats import get_draw_result_by_round
 
@@ -324,16 +320,20 @@ def _winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
     return set(int(n) for n in result.get("numbers", [])), result.get("bonus")
 
 
-def _ball_color(n: int) -> str:
-    if 1 <= n <= 10:
-        return "#f9a825"
-    if 11 <= n <= 20:
-        return "#1976d2"
-    if 21 <= n <= 30:
-        return "#e53935"
-    if 31 <= n <= 40:
-        return "#757575"
-    return "#388e3c"
+def _winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
+    """해당 회차 당첨번호가 확정돼 있으면 반환 — 구매내역에서 저장된 번호와
+    자동으로 대조해 맞은 번호에 동그라미를 표시하기 위함. 아직 추첨 전이면
+    빈 집합을 반환한다(그래도 화면이 자연스럽게 "미확정" 상태로 보인다).
+
+    구매내역엔 회차별로 여러 건이 쌓일 수 있어서, 캐싱 없이는 같은 회차를
+    항목 수만큼(내부적으로 매번 엑셀 데이터프레임을 훑으며) 반복 조회하게 된다
+    — load_lotto_data 자체는 이미 파일 mtime 기준으로 캐싱돼 있지만, 그 안에서
+    회차를 찾는 순회 자체는 캐싱되지 않았었다. mtime을 키에 포함해 admin이 파일을
+    갱신하면 바로 무효화되면서도, 평소엔 회차당 한 번만 계산하도록 캐싱한다."""
+    from lotto_stats import _xlsb_mtime, lotto_data_path
+
+    path = lotto_data_path()
+    return _winning_numbers_for_draw_cached(int(draw_round), _xlsb_mtime(path))
 
 
 def _sms_schedule_label(purchase_method: str, sms_days: list[str] | str) -> str:
@@ -362,36 +362,28 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
     win_set, bonus_number = _winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
 
     def _ball_span(n: int) -> str:
+        # 색칠된 볼 대신 순수 숫자 텍스트로 표시 — 당첨번호 대조 시 선명하게 보이도록.
+        # 맞은 번호만 테두리(동그라미)로 표시한다(배경색 없이 숫자 자체는 그대로 텍스트).
         if n in win_set:
             hit_cls = " auto-banner-ball-hit"
         elif bonus_number is not None and n == int(bonus_number):
             hit_cls = " auto-banner-ball-bonus"
         else:
             hit_cls = ""
-        return f'<span class="auto-banner-ball{hit_cls}" style="background:{_ball_color(n)};">{n:02d}</span>'
+        return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
 
     combo_rows = ""
-    for idx, item in enumerate(allocated, start=1):
+    for item in allocated:
         combo = item.get("combo") or []
         balls = "".join(_ball_span(n) for n in combo)
-        combo_rows += (
-            f'<div class="auto-banner-combo">'
-            f'<span class="auto-banner-combo-idx">{idx}</span>'
-            f'<div class="auto-banner-ball-row">{balls}</div>'
-            f"</div>"
-        )
+        combo_rows += f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div></div>'
 
     if compact:
         grid_rows = ""
-        for idx, item in enumerate(allocated[:5], start=1):
+        for item in allocated[:5]:
             combo = (item.get("combo") or [])[:6]
             balls = "".join(_ball_span(n) for n in combo)
-            grid_rows += (
-                f'<div class="auto-banner-combo">'
-                f'<span class="auto-banner-combo-idx">{idx}</span>'
-                f'<div class="auto-banner-ball-row">{balls}</div>'
-                f"</div>"
-            )
+            grid_rows += f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div></div>'
         compact_legend = (
             '<p class="auto-banner-legend">🟡 당첨번호 일치</p>' if win_set else ""
         )
@@ -461,6 +453,27 @@ def _purchase_history_entry(
     }
 
 
+MAX_HISTORY_ROUNDS = 2  # 구매내역에는 최근 이 회차 수만큼만 남긴다
+
+
+def _limit_to_recent_rounds(items: list[dict], max_rounds: int = MAX_HISTORY_ROUNDS) -> list[dict]:
+    """최근 N개 회차분만 남기고 그보다 오래된 회차는 잘라낸다.
+
+    items는 이미 최신순으로 정렬돼 있다고 가정한다. 무한정 쌓이는 걸 막아서
+    사용자가 오래된 내역까지 뒤적이며 헷갈리는 일도 없애고, 저장 공간도 아낀다.
+    """
+    seen_rounds: list = []
+    result = []
+    for item in items:
+        dr = item.get("draw_round")
+        if dr not in seen_rounds:
+            if len(seen_rounds) >= max_rounds:
+                continue
+            seen_rounds.append(dr)
+        result.append(item)
+    return result
+
+
 def _append_purchase_history(entry: dict) -> None:
     from user_scope import session_key
 
@@ -470,7 +483,7 @@ def _append_purchase_history(entry: dict) -> None:
     if order_id is not None:
         history = [item for item in history if item.get("order_id") != order_id]
     history.insert(0, entry)
-    st.session_state[hist_key] = history[:20]
+    st.session_state[hist_key] = _limit_to_recent_rounds(history)
 
 
 def _build_quick_purchase_entry(
@@ -521,7 +534,7 @@ def _build_quick_purchase_entry(
 
 
 def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
-    """세션 + DB 구매 내역 (order_id 기준 중복 제거, 최신순)."""
+    """세션 + DB 구매 내역 (order_id 기준 중복 제거, 최신순, 최근 2개 회차만)."""
     from user_scope import session_key
 
     items: list[dict] = []
@@ -541,10 +554,27 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
 
         init_wallet_tables()
         init_marketing_tables()
-        for order in list_completed_auto_orders(member_id, limit=20):
-            order_id = int(order["id"])
-            if order_id in seen_order_ids:
+        db_orders = [
+            order
+            for order in list_completed_auto_orders(member_id, limit=20)
+            if int(order["id"]) not in seen_order_ids
+        ]
+        # 어차피 최근 2개 회차분만 남길 거라, 그 안에 들지 못할 주문의 조합까지
+        # DB에서 미리 조회할 필요는 없다 — 대상 회차를 먼저 정하고, 그 안에 드는
+        # 주문에 대해서만 get_combinations_by_auto_order_id를 호출한다.
+        candidate_rounds = [item.get("draw_round") for item in items]
+        candidate_rounds += [order.get("draw_round") for order in db_orders]
+        kept_rounds: list = []
+        for dr in candidate_rounds:
+            if dr not in kept_rounds:
+                if len(kept_rounds) >= MAX_HISTORY_ROUNDS:
+                    continue
+                kept_rounds.append(dr)
+
+        for order in db_orders:
+            if order.get("draw_round") not in kept_rounds:
                 continue
+            order_id = int(order["id"])
             seen_order_ids.add(order_id)
             combos = get_combinations_by_auto_order_id(order_id)
             purchase_method = (
@@ -563,7 +593,7 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
                 }
             )
 
-    return items
+    return _limit_to_recent_rounds(items)
 
 
 def render():
@@ -846,28 +876,19 @@ def render():
             gap: 5px !important;
             border-radius: 8px !important;
         }
-        .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-combo-idx {
-            flex: 0 0 12px !important;
-            width: 12px !important;
-            min-width: 12px !important;
-            font-size: 10px !important;
-            line-height: 1 !important;
-            text-align: center !important;
-        }
         .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball-row {
             display: flex !important;
             flex-wrap: nowrap !important;
             flex: 0 0 auto !important;
-            gap: 3px !important;
+            gap: 6px !important;
             min-width: 0 !important;
         }
         .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball {
-            flex: 0 0 20px !important;
-            width: 20px !important;
-            height: 20px !important;
-            min-width: 20px !important;
-            max-width: 20px !important;
-            font-size: 9px !important;
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 16px !important;
+            height: auto !important;
+            font-size: 11px !important;
             padding: 0 !important;
         }
         @keyframes autoToastFade {
@@ -925,6 +946,17 @@ def render():
             font-size: 16px;
             line-height: 1.35;
         }
+        .auto-history-round-head {
+            margin: 14px 0 6px;
+            padding-bottom: 4px;
+            color: #ce93d8;
+            font-weight: 800;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(206, 147, 216, 0.3);
+        }
+        .auto-history-round-head:first-child {
+            margin-top: 2px;
+        }
         .auto-banner-meta {
             color: #b39ddb;
             font-size: 12px;
@@ -946,46 +978,37 @@ def render():
             background: rgba(0, 0, 0, 0.22);
             border: 1px solid rgba(179, 157, 219, 0.22);
         }
-        .auto-banner-combo-idx {
-            flex: 0 0 auto;
-            width: 22px;
-            color: #ce93d8;
-            font-weight: 800;
-            font-size: 13px;
-            text-align: center;
-        }
         .auto-banner-ball-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 5px;
+            gap: 10px;
         }
+        /* 색칠된 볼 대신 순수 숫자 텍스트 — 당첨번호와 대조할 때 눈에 더 선명하게
+           들어오도록 배경/그림자를 뺐다. */
         .auto-banner-ball {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 28px;
-            height: 28px;
-            padding: 0 4px;
-            border-radius: 50%;
-            color: #fff;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 2px;
+            color: #f1e9ff;
             font-weight: 800;
-            font-size: 12px;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-            box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.35), 0 2px 4px rgba(0, 0, 0, 0.35);
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
         }
-        /* 당첨번호가 확정되면 저장된 조합 중 맞은 번호에 자동으로 동그라미(테두리)를
-           표시해서, 일일이 손으로 대조하지 않아도 한눈에 보이게 한다. */
+        /* 당첨번호가 확정되면 맞은 번호만 동그라미(테두리)로 감싸서, 일일이 손으로
+           대조하지 않아도 한눈에 보이게 한다 — 실제 종이 로또에 펜으로 동그라미
+           치는 느낌으로, 배경을 채우지 않고 테두리만 그린다. */
         .auto-banner-ball-hit {
-            box-shadow:
-                0 0 0 3px #FFD600,
-                inset 0 1px 2px rgba(255, 255, 255, 0.35),
-                0 2px 6px rgba(255, 214, 0, 0.5);
+            border-radius: 50%;
+            border: 2px solid #FFD600;
+            color: #FFD600;
         }
         .auto-banner-ball-bonus {
-            box-shadow:
-                0 0 0 3px #B0BEC5,
-                inset 0 1px 2px rgba(255, 255, 255, 0.35),
-                0 2px 6px rgba(176, 190, 197, 0.45);
+            border-radius: 50%;
+            border: 2px solid #B0BEC5;
+            color: #B0BEC5;
         }
         .auto-banner-notice {
             margin: 12px 0 0;
@@ -1624,13 +1647,13 @@ def render():
             }
             .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball-row {
                 flex-wrap: nowrap !important;
-                gap: 3px !important;
+                gap: 5px !important;
             }
             .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball {
-                width: 20px !important;
-                height: 20px !important;
-                min-width: 20px !important;
-                font-size: 9px !important;
+                width: auto !important;
+                height: auto !important;
+                min-width: 14px !important;
+                font-size: 10px !important;
             }
             .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid {
                 width: fit-content !important;
@@ -2362,11 +2385,24 @@ def render():
                                             "아직 구매 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다."
                                         )
                                     else:
+                                        # 여러 회차 구매가 섞여 쌓일 수 있는데, 예전엔 조합
+                                        # 숫자만 보여주고 몇 회차 것인지 표시가 없어서 어떤
+                                        # 조합이 어느 회차인지, 왜 동그라미가 없는지(미추첨
+                                        # 인지 낙첨인지) 헷갈릴 수 있었다 — 회차별로 묶어서
+                                        # 머리글을 붙인다.
+                                        grouped_history: dict = {}
                                         for item in history_items:
+                                            grouped_history.setdefault(item.get("draw_round"), []).append(item)
+                                        for draw_round, items in grouped_history.items():
                                             st.markdown(
-                                                _purchase_banner_html(item, compact=True),
+                                                f'<div class="auto-history-round-head">{draw_round}회차</div>',
                                                 unsafe_allow_html=True,
                                             )
+                                            for item in items:
+                                                st.markdown(
+                                                    _purchase_banner_html(item, compact=True),
+                                                    unsafe_allow_html=True,
+                                                )
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog

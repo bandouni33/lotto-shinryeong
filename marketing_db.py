@@ -147,6 +147,14 @@ def _migrate_lotto_combinations(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_lotto_combinations_allocate
         ON lotto_combinations(draw_round, allocated_at)
     """)
+    # get_combinations_by_auto_order_id()가 auto_order_id로 조회하는데 이 컬럼엔
+    # 인덱스가 없었다 — lotto_combinations는 회차마다 수천 행씩 계속 쌓이는 테이블이라,
+    # 인덱스 없이는 구매내역을 열 때마다(주문 하나당 한 번씩) 테이블 전체를 스캔하게
+    # 되어 데이터가 쌓일수록 점점 느려지는 위험이 있었다.
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lotto_combinations_auto_order
+        ON lotto_combinations(auto_order_id)
+    """)
 
 
 def _combo_nums_from_row(row) -> tuple[int, int, int, int, int, int]:
@@ -723,6 +731,40 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
     ]
 
 
+def get_draw_purchase_conversion_stats(limit: int = 20) -> list[dict]:
+    """회차별 추출 조합 대비 실제 구매(배정)로 이어진 개수 — 관리자 대시보드용.
+
+    lotto_combinations의 allocated_at이 채워진 행 = 자동구매로 배정된 조합.
+    draw_round, allocated_at 둘 다 이미 인덱스(idx_lotto_combinations_allocate)가
+    있어서 이 GROUP BY 하나로 회차별 집계를 한 번에 가져온다(회차마다 별도
+    쿼리를 반복하지 않음)."""
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT
+            draw_round,
+            COUNT(*) AS total_count,
+            SUM(CASE WHEN allocated_at IS NOT NULL THEN 1 ELSE 0 END) AS purchased_count
+        FROM lotto_combinations
+        WHERE draw_round >= ?
+        GROUP BY draw_round
+        ORDER BY draw_round DESC
+        LIMIT ?
+        """,
+        (MIN_DISPLAY_DRAW_ROUND, int(limit)),
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "draw_round": int(row["draw_round"]),
+            "total_count": int(row["total_count"]),
+            "purchased_count": int(row["purchased_count"] or 0),
+        }
+        for row in rows
+    ]
+
+
 def get_mock_draw_extraction_stats() -> list[dict]:
     """DB 비어 있을 때 — 관리자 저장 회차(1236~1234) 요약 fallback."""
     seed = [
@@ -764,6 +806,7 @@ __all__ = [
     "get_win_rank_counts_by_draw",
     "get_combination_count_by_draw",
     "get_draw_extraction_stats",
+    "get_draw_purchase_conversion_stats",
     "get_mock_draw_extraction_stats",
     "ensure_marketing_pool_seeds",
     "import_marketing_pool_seed",

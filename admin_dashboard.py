@@ -307,6 +307,15 @@ def style_dataframe(df):
     })
 
 # ==========================================
+# 🏠 로또신령 메인(사용자 화면)으로 돌아가는 버튼 — 지금까지 없었다.
+# 사이드바가 collapsed 상태라 내비게이션 메뉴가 안 보여서, 관리자 대시보드에
+# 들어오면 메인으로 돌아갈 방법이 사실상 없었다. 모든 admin_view에서 항상
+# 보이도록 분기 위에 놓는다.
+# ==========================================
+if st.button("🏠 홈으로", key="admin_go_home_6n36s5"):
+    st.switch_page("user_page.py")
+
+# ==========================================
 # 🏠 화면 A: 대시보드 홈
 # ==========================================
 if st.session_state.admin_view == "home":
@@ -359,6 +368,30 @@ if st.session_state.admin_view == "home":
             set_update_notice(_new_version, _new_url, _new_message)
             st.success("저장했습니다. 사용자 화면에 즉시 반영됩니다.")
             st.rerun()
+
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📊 회차별 구매 전환 현황</h4>", unsafe_allow_html=True)
+    from marketing_db import get_draw_purchase_conversion_stats
+
+    _conv_stats = get_draw_purchase_conversion_stats(limit=10)
+    if not _conv_stats:
+        st.caption("데이터가 없습니다.")
+    else:
+        _conv_df = pd.DataFrame(
+            [
+                {
+                    "회차": s["draw_round"],
+                    "추출수량": s["total_count"],
+                    "구매전환": s["purchased_count"],
+                    "전환율": (
+                        f"{s['purchased_count'] / s['total_count'] * 100:.1f}%"
+                        if s["total_count"]
+                        else "0.0%"
+                    ),
+                }
+                for s in _conv_stats
+            ]
+        )
+        st.dataframe(_conv_df, use_container_width=True, hide_index=True)
 
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📥 최신 회차 추출 조합 다운로드</h4>", unsafe_allow_html=True)
     from marketing_db import get_draw_extraction_stats, get_combinations_by_draw
