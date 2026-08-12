@@ -307,6 +307,23 @@ def _pattern_applied_count() -> int:
     return int(count) if count is not None else 0
 
 
+def _winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
+    """해당 회차 당첨번호가 확정돼 있으면 반환 — 구매내역에서 저장된 번호와
+    자동으로 대조해 맞은 번호에 동그라미를 표시하기 위함. 아직 추첨 전이면
+    빈 집합을 반환한다(그래도 화면이 자연스럽게 "미확정" 상태로 보인다).
+    load_lotto_data 자체가 이미 파일 mtime 기준으로 캐싱되어 있어 매 렌더마다
+    엑셀을 다시 읽지 않는다."""
+    try:
+        from lotto_stats import get_draw_result_by_round
+
+        result = get_draw_result_by_round(int(draw_round))
+    except Exception:
+        return set(), None
+    if not result:
+        return set(), None
+    return set(int(n) for n in result.get("numbers", [])), result.get("bonus")
+
+
 def _ball_color(n: int) -> str:
     if 1 <= n <= 10:
         return "#f9a825"
@@ -340,13 +357,23 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
     schedule = _sms_schedule_label(purchase_method, sms_days)
     cost_line = f"{int(cost):,}P 차감" if cost is not None else ""
 
+    # 당첨번호가 확정된 회차면, 저장해둔 숫자를 일일이 눈으로 대조하지 않아도
+    # 되도록 맞은 번호에 자동으로 동그라미(테두리 강조)를 표시한다.
+    win_set, bonus_number = _winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
+
+    def _ball_span(n: int) -> str:
+        if n in win_set:
+            hit_cls = " auto-banner-ball-hit"
+        elif bonus_number is not None and n == int(bonus_number):
+            hit_cls = " auto-banner-ball-bonus"
+        else:
+            hit_cls = ""
+        return f'<span class="auto-banner-ball{hit_cls}" style="background:{_ball_color(n)};">{n:02d}</span>'
+
     combo_rows = ""
     for idx, item in enumerate(allocated, start=1):
         combo = item.get("combo") or []
-        balls = "".join(
-            f'<span class="auto-banner-ball" style="background:{_ball_color(n)};">{n:02d}</span>'
-            for n in combo
-        )
+        balls = "".join(_ball_span(n) for n in combo)
         combo_rows += (
             f'<div class="auto-banner-combo">'
             f'<span class="auto-banner-combo-idx">{idx}</span>'
@@ -358,22 +385,26 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
         grid_rows = ""
         for idx, item in enumerate(allocated[:5], start=1):
             combo = (item.get("combo") or [])[:6]
-            balls = "".join(
-                f'<span class="auto-banner-ball" style="background:{_ball_color(n)};">{n:02d}</span>'
-                for n in combo
-            )
+            balls = "".join(_ball_span(n) for n in combo)
             grid_rows += (
                 f'<div class="auto-banner-combo">'
                 f'<span class="auto-banner-combo-idx">{idx}</span>'
                 f'<div class="auto-banner-ball-row">{balls}</div>'
                 f"</div>"
             )
+        compact_legend = (
+            '<p class="auto-banner-legend">🟡 당첨번호 일치</p>' if win_set else ""
+        )
         return (
             '<div class="auto-purchase-banner auto-purchase-banner-compact auto-purchase-banner-history-grid">'
             f'<div class="auto-banner-combos">{grid_rows}</div>'
+            f"{compact_legend}"
             "</div>"
         )
 
+    notice_extra = (
+        '<p class="auto-banner-legend">🟡 당첨번호 일치 · ⚪ 보너스 번호 일치</p>' if win_set else ""
+    )
     notice = (
         ""
         if compact
@@ -381,6 +412,7 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
             '<p class="auto-banner-notice">'
             "현재 테스트 기간으로 문자 발송 대신 화면에서 결과를 확인하실 수 있습니다."
             "</p>"
+            f"{notice_extra}"
         )
     )
 
@@ -941,6 +973,20 @@ def render():
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
             box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.35), 0 2px 4px rgba(0, 0, 0, 0.35);
         }
+        /* 당첨번호가 확정되면 저장된 조합 중 맞은 번호에 자동으로 동그라미(테두리)를
+           표시해서, 일일이 손으로 대조하지 않아도 한눈에 보이게 한다. */
+        .auto-banner-ball-hit {
+            box-shadow:
+                0 0 0 3px #FFD600,
+                inset 0 1px 2px rgba(255, 255, 255, 0.35),
+                0 2px 6px rgba(255, 214, 0, 0.5);
+        }
+        .auto-banner-ball-bonus {
+            box-shadow:
+                0 0 0 3px #B0BEC5,
+                inset 0 1px 2px rgba(255, 255, 255, 0.35),
+                0 2px 6px rgba(176, 190, 197, 0.45);
+        }
         .auto-banner-notice {
             margin: 12px 0 0;
             padding: 10px 12px;
@@ -951,6 +997,12 @@ def render():
             font-size: 12px;
             font-weight: 600;
             line-height: 1.5;
+        }
+        .auto-banner-legend {
+            margin: 6px 0 0;
+            color: #cfd8dc;
+            font-size: 11px;
+            font-weight: 600;
         }
         div[data-testid="stRadio"] label p {
             font-weight: 700 !important;
