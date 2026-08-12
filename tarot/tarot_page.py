@@ -184,21 +184,85 @@ def _inject_base_css():
             color: #3A2E1D;
         }
         .letter-body .emphasis {
-            position: relative;
-            text-decoration: none;
+            /* 고정폭 SVG 대신 네이티브 underline을 써서, 감싼 텍스트(=진짜 임팩트 문장) 길이에
+               맞춰 형광펜 줄이 정확히 따라가도록 한다. 줄바꿈된 경우에도 각 줄마다 자연스럽게 그어진다. */
+            text-decoration-line: underline;
+            text-decoration-color: rgba(88, 196, 83, 0.55);
+            text-decoration-thickness: 0.32em;
+            text-decoration-skip-ink: none;
+            text-underline-offset: -0.06em;
         }
-        .letter-body .emphasis::after {
-            content: "";
+
+        .moment-block {
+            margin: 14px 0 4px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(120, 90, 50, 0.07);
+            border-left: 3px solid rgba(88, 196, 83, 0.55);
+            font-size: 19px;
+            line-height: 1.7;
+        }
+        .moment-icon {
+            margin-right: 4px;
+        }
+
+        .tarot-cta {
+            margin-top: 18px;
+        }
+        .tarot-cta-lead {
+            font-family: 'Gamja Flower', cursive;
+            font-size: 19px;
+            color: #6B5B44;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .tarot-cta-grid {
+            display: flex;
+            gap: 10px;
+        }
+        .st-key-tarot_page_root_6n36s5 [data-testid="stMarkdownContainer"] a.tarot-cta-card,
+        .st-key-tarot_page_root_6n36s5 [data-testid="stMarkdownContainer"] a.tarot-cta-card:link,
+        .st-key-tarot_page_root_6n36s5 [data-testid="stMarkdownContainer"] a.tarot-cta-card:visited {
+            flex: 1;
+            display: block;
+            text-decoration: none !important;
+            color: inherit !important;
+            border-radius: 14px;
+            padding: 16px 14px;
+            position: relative;
+            transition: transform 0.15s ease;
+        }
+        .tarot-cta-card.primary {
+            background: linear-gradient(135deg, #efe4ff, #f7f0ff);
+            border: 1.5px solid rgba(139, 92, 246, 0.35);
+        }
+        .tarot-cta-card.secondary {
+            background: linear-gradient(135deg, #fff6da, #fffaf0);
+            border: 1.5px solid rgba(200, 160, 40, 0.35);
+        }
+        .tarot-cta-badge {
             position: absolute;
-            left: 2px;
-            bottom: -0.14em;
-            width: 72px;
-            height: 0.5em;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 26' preserveAspectRatio='none'%3E%3Cpath d='M6,20 C10,6 14,4 20,10 C34,22 52,16 66,15 C80,14 88,6 94,3' stroke='%2358c453' stroke-width='9' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-size: 100% 100%;
-            opacity: 0.62;
-            pointer-events: none;
+            top: -9px;
+            right: 12px;
+            background: #8B5CF6;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+        .tarot-cta-icon { font-size: 26px; }
+        .tarot-cta-title {
+            font-family: 'Gamja Flower', cursive;
+            font-size: 18px;
+            color: #3A2E1D;
+            margin-top: 4px;
+        }
+        .tarot-cta-desc {
+            font-size: 12.5px;
+            color: #6B5B44;
+            margin-top: 3px;
+            line-height: 1.4;
         }
 
         /* 실제 셔플을 발생시키는 버튼은 화면에는 숨기고, 스와이프 컴포넌트가 대신 클릭한다 */
@@ -569,6 +633,15 @@ def _render_flip_component(card_key: str):
     components.html(html, height=420, scrolling=False)
 
 
+def _split_moment(moment: str) -> tuple[str, str]:
+    """moment 필드는 '감각 초대 문장. 의미(임팩트) 문장.' 2문장 구조로 작성돼 있다.
+    뒤쪽 문장이 진짜 강조할 내용이라, 그 부분만 emphasis로 감싸기 위해 나눈다."""
+    if ". " in moment:
+        lead, impact = moment.split(". ", 1)
+        return lead + ".", impact
+    return moment, ""
+
+
 def _render_result():
     cat = st.session_state["tarot_category"]
     sub = st.session_state["tarot_subcategory"]
@@ -581,6 +654,12 @@ def _render_result():
     img_b64 = _img_b64(str(img_path)) if img_path.exists() else ""
 
     name_kr = card["name_kr"] or card["name_en"]
+    moment_lead, moment_impact = _split_moment(card.get("moment", ""))
+    moment_html = (
+        f'<span class="moment-icon">🌿</span>{moment_lead} '
+        f'<span class="emphasis">{moment_impact}</span>'
+        if moment_impact else f'<span class="moment-icon">🌿</span>{moment_lead}'
+    )
 
     st.markdown(
         textwrap.dedent(f"""
@@ -597,8 +676,25 @@ def _render_result():
             </div>
             <div class="letter-intro">{card['intro']}</div>
             <div class="letter-body">
-                {card['state']}<br><span class="emphasis">{card['comfort']}</span><br>{card['acceptance']}
-                <br>{card['hope']}
+                {card['state']}<br>{card['comfort']}<br>{card['acceptance']}
+            </div>
+            <div class="moment-block">{moment_html}</div>
+            <div class="letter-body">{card['hope']}</div>
+        </div>
+        <div class="tarot-cta">
+            <div class="tarot-cta-lead">오늘 마음에 담은 카드, 번호에도 그 기운을 실어볼까요</div>
+            <div class="tarot-cta-grid">
+                <a class="tarot-cta-card primary" href="?page=auto" target="_self">
+                    <span class="tarot-cta-badge">지금 이 흐름대로</span>
+                    <div class="tarot-cta-icon">💎</div>
+                    <div class="tarot-cta-title">자동구매</div>
+                    <div class="tarot-cta-desc">고민 없이, 오늘의 조합을<br>바로 받아보세요</div>
+                </a>
+                <a class="tarot-cta-card secondary" href="?page=thunder&fresh=1" target="_self">
+                    <div class="tarot-cta-icon">⚡</div>
+                    <div class="tarot-cta-title">번개조합</div>
+                    <div class="tarot-cta-desc">전문가 분석 기반으로<br>번호를 직접 골라보세요</div>
+                </a>
             </div>
         </div>
         """),
