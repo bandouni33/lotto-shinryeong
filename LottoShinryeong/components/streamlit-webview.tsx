@@ -11,6 +11,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import CookieManager from '@react-native-cookies/cookies';
 
 import { getStreamlitPageUrl } from '@/constants/streamlit';
 
@@ -61,6 +62,27 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
     const sub = BackHandler.addEventListener('hardwareBackPress', handleNativeBack);
     return () => sub.remove();
   }, [handleNativeBack]);
+
+  // 안드로이드는 웹뷰 안에서 JS로 쓴 쿠키(document.cookie)가 곧바로 디스크에 저장되지
+  // 않고 약간의 지연 후에 저장된다 — 이 화면들은 서로 다른 라우트(app/web/[page].tsx)라
+  // 화면을 옮길 때마다 웹뷰가 통째로 파괴되고 새로 생성되는데, 그 지연 시간 안에
+  // 사용자가 다음 화면으로 넘어가버리면(예: 구매 직후 바로 메인으로) 방금 쓴 쿠키가
+  // 저장되기 전에 사라져서 — 게스트 식별자(구매내역 등)가 유실되는 문제가 있었다.
+  // 주기적으로 강제 flush해서 그 창을 최소화한다. iOS는 시스템 쿠키 저장소를 바로
+  // 쓰기 때문에 flush 자체가 필요 없다(no-op에 가까움).
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    const flush = () => {
+      CookieManager.flush().catch(() => {});
+    };
+    const interval = setInterval(flush, 2000);
+    return () => {
+      clearInterval(interval);
+      flush();
+    };
+  }, []);
 
   const onToolbarBack = () => {
     if (canGoBack && webViewRef.current) {
@@ -115,7 +137,12 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
           onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
+          onLoadEnd={() => {
+            setLoading(false);
+            if (Platform.OS === 'android') {
+              CookieManager.flush().catch(() => {});
+            }
+          }}
           onError={(e) => {
             setLoading(false);
             setError(e.nativeEvent.description || '연결 실패');
