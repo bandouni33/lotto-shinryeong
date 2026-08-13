@@ -619,144 +619,6 @@ if current_page == "main":
         </div>
         """, unsafe_allow_html=True)
 
-    # 역대 최고 당첨금 (좌: 순위+금액 박스 / 우: 더보러가기 박스, 분리)
-    main_rank_row = st.container(key="main_rank_row_6n36s5")
-    col_info, col_btn = main_rank_row.columns([2, 1])
-    with col_info:
-        st.markdown("""
-        <div style="height:32px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:0 10px; background: linear-gradient(145deg, #1c2645, #12182b); border-radius:10px; border:1px solid #2a3a60; box-shadow: 0 3px 6px rgba(0,0,0,0.35);">
-            <span style="color:#b0bec5; font-size:13px; font-weight:bold; letter-spacing:-0.3px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🏆 역대 최고 당첨 금액 순위</span>
-            <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; flex-shrink:0;">
-                <div style="background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c); width:18px; height:18px; border-radius:50%; text-align:center; line-height:18px; color:white; font-weight:bold; font-size:11px; box-shadow: 1px 2px 3px rgba(0,0,0,0.5); flex-shrink:0;">1</div>
-                <span style="color:#fff; font-weight:900; font-size:16px; letter-spacing:-0.5px; line-height:1;">407억 원</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_btn:
-        st.markdown("""
-        <div class="rank-more-wrap">
-            <button type="button" id="rank-more-btn-6n36s5" class="rank-more-btn">더 보러가기</button>
-            <div id="rank-more-toast-6n36s5" class="rank-more-toast">
-                <div class="rank-more-toast-title">🏆 역대 당첨금 TOP 5</div>
-                <div class="rank-more-toast-body">
-                    1위: 407억 (1회)<br>
-                    2위: 369억 (51회)<br>
-                    3위: 346억 (100회)
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    components.html("""
-    <script>
-    (function() {
-        const doc = window.parent.document;
-        if (!doc.getElementById('rank-more-toast-style')) {
-            const style = doc.createElement('style');
-            style.id = 'rank-more-toast-style';
-            style.textContent = `
-                @keyframes rankToastFade {
-                    0% { opacity: 0; transform: translateY(-6px); }
-                    100% { opacity: 1; transform: translateY(0); }
-                }
-                .rank-more-wrap {
-                    position: relative;
-                    display: inline-block;
-                }
-                .rank-more-btn {
-                    background: linear-gradient(145deg, #1e88e5, #1565c0) !important;
-                    background-color: #1976d2 !important;
-                    color: #ffffff !important;
-                    border: 1px solid #0d47a1 !important;
-                    border-radius: 8px !important;
-                    height: 32px !important;
-                    box-sizing: border-box !important;
-                    padding: 0 14px !important;
-                    font-weight: 700 !important;
-                    font-size: 13px !important;
-                    line-height: 1.4 !important;
-                    display: flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                    cursor: pointer !important;
-                }
-                .rank-more-toast {
-                    position: absolute;
-                    top: calc(100% + 8px);
-                    right: 0;
-                    z-index: 60;
-                    width: max-content;
-                    max-width: min(80vw, 260px);
-                    padding: 13px 16px;
-                    border-radius: 14px;
-                    border: 1px solid rgba(255, 193, 7, 0.4);
-                    background: rgba(24, 17, 9, 0.88);
-                    backdrop-filter: blur(8px);
-                    -webkit-backdrop-filter: blur(8px);
-                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-                    opacity: 0;
-                    visibility: hidden;
-                    pointer-events: none;
-                    transform: translateY(-6px);
-                    transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
-                    text-align: left;
-                }
-                .rank-more-toast.show {
-                    opacity: 1;
-                    visibility: visible;
-                    pointer-events: auto;
-                    transform: translateY(0);
-                    animation: rankToastFade 0.25s ease;
-                }
-                .rank-more-toast-title {
-                    color: #ffe082;
-                    font-weight: 900;
-                    font-size: 14px;
-                    margin-bottom: 8px;
-                }
-                .rank-more-toast-body {
-                    color: #ffffff;
-                    font-size: 13px;
-                    line-height: 1.9;
-                    font-weight: 600;
-                }
-            `;
-            doc.head.appendChild(style);
-        }
-
-        function safeVibrate() {
-            if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-                try { navigator.vibrate(70); } catch (e) {}
-            }
-        }
-
-        const btn = doc.getElementById('rank-more-btn-6n36s5');
-        const toast = doc.getElementById('rank-more-toast-6n36s5');
-        if (btn && toast && !btn.dataset.rankToastBound) {
-            btn.dataset.rankToastBound = '1';
-            let hideTimer = null;
-            btn.addEventListener('click', function() {
-                safeVibrate();
-                if (hideTimer) {
-                    clearTimeout(hideTimer);
-                    hideTimer = null;
-                }
-                const isOpen = toast.classList.contains('show');
-                if (isOpen) {
-                    toast.classList.remove('show');
-                } else {
-                    toast.classList.add('show');
-                    hideTimer = setTimeout(function() {
-                        toast.classList.remove('show');
-                        hideTimer = null;
-                    }, 5000);
-                }
-            });
-        }
-    })();
-    </script>
-    """, height=0)
-
     # 🟢 2. 하단 4버튼 메뉴 (모바일 앱 스타일, 강한 햅틱 진동 추가)
     st.markdown("""
     <style>
@@ -930,6 +792,146 @@ if current_page == "main":
         }})();
         </script>
         """, height=0)
+
+    # 역대 최고 당첨금 (좌: 순위+금액 박스 / 우: 더보러가기 박스, 분리)
+    # — 메인화면 첫인상이 어수선해 보인다는 피드백으로, 상단(최근당첨번호 바로 아래)에서
+    # 버튼 그리드(자동구매 등) 아래로 옮겼다. 다른 레이아웃·버튼 기능은 그대로다.
+    main_rank_row = st.container(key="main_rank_row_6n36s5")
+    col_info, col_btn = main_rank_row.columns([2, 1])
+    with col_info:
+        st.markdown("""
+        <div style="height:32px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:0 10px; background: linear-gradient(145deg, #1c2645, #12182b); border-radius:10px; border:1px solid #2a3a60; box-shadow: 0 3px 6px rgba(0,0,0,0.35);">
+            <span style="color:#b0bec5; font-size:13px; font-weight:bold; letter-spacing:-0.3px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🏆 역대 최고 당첨 금액 순위</span>
+            <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; flex-shrink:0;">
+                <div style="background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c); width:18px; height:18px; border-radius:50%; text-align:center; line-height:18px; color:white; font-weight:bold; font-size:11px; box-shadow: 1px 2px 3px rgba(0,0,0,0.5); flex-shrink:0;">1</div>
+                <span style="color:#fff; font-weight:900; font-size:16px; letter-spacing:-0.5px; line-height:1;">407억 원</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_btn:
+        st.markdown("""
+        <div class="rank-more-wrap">
+            <button type="button" id="rank-more-btn-6n36s5" class="rank-more-btn">더 보러가기</button>
+            <div id="rank-more-toast-6n36s5" class="rank-more-toast">
+                <div class="rank-more-toast-title">🏆 역대 당첨금 TOP 5</div>
+                <div class="rank-more-toast-body">
+                    1위: 407억 (1회)<br>
+                    2위: 369억 (51회)<br>
+                    3위: 346억 (100회)
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    components.html("""
+    <script>
+    (function() {
+        const doc = window.parent.document;
+        if (!doc.getElementById('rank-more-toast-style')) {
+            const style = doc.createElement('style');
+            style.id = 'rank-more-toast-style';
+            style.textContent = `
+                @keyframes rankToastFade {
+                    0% { opacity: 0; transform: translateY(-6px); }
+                    100% { opacity: 1; transform: translateY(0); }
+                }
+                .rank-more-wrap {
+                    position: relative;
+                    display: inline-block;
+                }
+                .rank-more-btn {
+                    background: linear-gradient(145deg, #1e88e5, #1565c0) !important;
+                    background-color: #1976d2 !important;
+                    color: #ffffff !important;
+                    border: 1px solid #0d47a1 !important;
+                    border-radius: 8px !important;
+                    height: 32px !important;
+                    box-sizing: border-box !important;
+                    padding: 0 14px !important;
+                    font-weight: 700 !important;
+                    font-size: 13px !important;
+                    line-height: 1.4 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    cursor: pointer !important;
+                }
+                .rank-more-toast {
+                    position: absolute;
+                    top: calc(100% + 8px);
+                    right: 0;
+                    z-index: 60;
+                    width: max-content;
+                    max-width: min(80vw, 260px);
+                    padding: 13px 16px;
+                    border-radius: 14px;
+                    border: 1px solid rgba(255, 193, 7, 0.4);
+                    background: rgba(24, 17, 9, 0.88);
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+                    opacity: 0;
+                    visibility: hidden;
+                    pointer-events: none;
+                    transform: translateY(-6px);
+                    transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
+                    text-align: left;
+                }
+                .rank-more-toast.show {
+                    opacity: 1;
+                    visibility: visible;
+                    pointer-events: auto;
+                    transform: translateY(0);
+                    animation: rankToastFade 0.25s ease;
+                }
+                .rank-more-toast-title {
+                    color: #ffe082;
+                    font-weight: 900;
+                    font-size: 14px;
+                    margin-bottom: 8px;
+                }
+                .rank-more-toast-body {
+                    color: #ffffff;
+                    font-size: 13px;
+                    line-height: 1.9;
+                    font-weight: 600;
+                }
+            `;
+            doc.head.appendChild(style);
+        }
+
+        function safeVibrate() {
+            if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+                try { navigator.vibrate(70); } catch (e) {}
+            }
+        }
+
+        const btn = doc.getElementById('rank-more-btn-6n36s5');
+        const toast = doc.getElementById('rank-more-toast-6n36s5');
+        if (btn && toast && !btn.dataset.rankToastBound) {
+            btn.dataset.rankToastBound = '1';
+            let hideTimer = null;
+            btn.addEventListener('click', function() {
+                safeVibrate();
+                if (hideTimer) {
+                    clearTimeout(hideTimer);
+                    hideTimer = null;
+                }
+                const isOpen = toast.classList.contains('show');
+                if (isOpen) {
+                    toast.classList.remove('show');
+                } else {
+                    toast.classList.add('show');
+                    hideTimer = setTimeout(function() {
+                        toast.classList.remove('show');
+                        hideTimer = null;
+                    }, 5000);
+                }
+            });
+        }
+    })();
+    </script>
+    """, height=0)
 
     from feedback_db import init_feedback_tables, save_feedback
     from auth_providers import current_member_id

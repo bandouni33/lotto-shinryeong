@@ -56,12 +56,13 @@ def _get_or_create_guest_id() -> str:
     cookie_val = st.context.cookies.get(GUEST_ID_COOKIE_KEY)
     if cookie_val:
         st.session_state["_guest_id"] = cookie_val
+        st.session_state["_guest_id_confirmed"] = True
         return cookie_val
     import uuid
 
     new_id = uuid.uuid4().hex
     st.session_state["_guest_id"] = new_id
-    st.session_state["_guest_id_cookie_pending"] = new_id
+    st.session_state["_guest_id_confirmed"] = False
     return new_id
 
 
@@ -552,34 +553,37 @@ def _build_quick_purchase_entry(
     seq_key = session_key("auto_purchase_seq")
     seq = int(st.session_state.get(seq_key) or 0) + 1
     st.session_state[seq_key] = seq
-    test_order_id = 9_000_000 + seq
 
-    allocated = allocate_lotto_combinations_random_sequential(
-        draw_round,
-        int(quantity),
-        test_order_id,
-    )
     cost = calc_auto_cost(int(quantity))
     purchase_type = "정기구독" if purchase_method == "월간구독" else "일반구매"
 
-    # 조합 배정은 이미 DB에 영속됐으니(lotto_combinations.auto_order_id), 여기서는
-    # 그걸 다시 찾아올 수 있도록 주문 메타데이터만 guest_id에 묶어 저장한다.
-    # 실패해도 이번 구매 자체(=조합 배정)는 이미 끝났으니 화면에는 영향 없이 넘어간다.
-    try:
-        from marketing_db import save_guest_auto_order
+    # 조합을 배정하기 전에, guest_id에 묶인 주문을 먼저 등록해서 DB의
+    # AUTOINCREMENT로 전역적으로 유일한 id를 발급받는다. 예전엔 "9_000_000 +
+    # 세션 내 순번"을 직접 계산해 썼는데, 그 순번이 세션(=앱 재시작)마다 1부터
+    # 다시 시작돼서 서로 다른 사용자의 "이번 세션 첫 구매"끼리 값이 겹쳤다 —
+    # 세션에만 의존하던 예전엔 무해했지만, 이제 이 id로 구매내역을 영속
+    # 조회하다 보니 겹친 값은 나중 저장이 조용히 무시되는 문제로 이어졌다.
+    from marketing_db import create_guest_auto_order, delete_guest_auto_order
 
-        save_guest_auto_order(
-            _get_or_create_guest_id(),
-            test_order_id,
+    guest_id = _get_or_create_guest_id()
+    test_order_id = create_guest_auto_order(
+        guest_id,
+        draw_round,
+        int(quantity),
+        cost,
+        purchase_method,
+        purchase_type,
+        list(sms_days),
+    )
+    try:
+        allocated = allocate_lotto_combinations_random_sequential(
             draw_round,
             int(quantity),
-            cost,
-            purchase_method,
-            purchase_type,
-            list(sms_days),
+            test_order_id,
         )
     except Exception:
-        pass
+        delete_guest_auto_order(test_order_id)
+        raise
 
     return {
         "draw_round": draw_round,
@@ -713,13 +717,15 @@ def render():
 
     init_guest_scope()
 
-    # 이전 렌더에서 새로 만든 guest_id가 있으면, 이 "정상" 렌더링 시점에 쿠키로
-    # 내보낸다 (곧바로 st.rerun()이 따라오면 컴포넌트가 실행되기 전에 화면이
-    # 갈아치워지는 문제가 있어서 — tarot_page.py의 쿠키 동기화와 동일한 이유).
-    _pending_guest_cookie = st.session_state.pop("_guest_id_cookie_pending", None)
-    if _pending_guest_cookie:
-        _sync_guest_id_cookie(_pending_guest_cookie)
-    _get_or_create_guest_id()
+    guest_id = _get_or_create_guest_id()
+    if not st.session_state.get("_guest_id_confirmed"):
+        # 이 세션이 시작될 때 쿠키가 아직 없었다는 뜻 — 저장이 안 됐을 수 있으니
+        # "확인될 때까지" 매 렌더마다 다시 써본다. 딱 한 번만 쓰고 끝내면, 그
+        # 직후(같은 렌더 안)에 구매 확정처럼 st.rerun()이 걸리는 경우 컴포넌트가
+        # 실행되기도 전에 화면이 갈아치워져서 쿠키가 저장 안 되는 문제가 있었다
+        # (tarot_page.py의 쿠키 동기화 버그와 동일한 원인). 매번 다시 쓰면, 그런
+        # 렌더를 하나 놓치더라도 바로 다음 렌더에서 다시 시도돼 결국은 저장된다.
+        _sync_guest_id_cookie(guest_id)
 
     st.markdown(
         """

@@ -503,30 +503,39 @@ def get_combinations_by_auto_order_id(auto_order_id: int) -> list[dict]:
     ]
 
 
-def save_guest_auto_order(
+def create_guest_auto_order(
     guest_id: str,
-    auto_order_id: int,
     draw_round: int,
     combo_count: int,
     cost,
     purchase_method: str,
     purchase_type: str,
     sms_days,
-) -> None:
-    """비로그인(테스트 기간) 구매내역 메타데이터를 guest_id에 묶어 저장한다."""
+) -> int:
+    """비로그인(테스트 기간) 구매내역 메타데이터를 guest_id에 묶어 저장하고,
+    전역적으로 유일한 id를 발급해 반환한다.
+
+    예전엔 호출부가 "9_000_000 + 세션 내 순번"으로 auto_order_id를 직접
+    계산했는데, 그 순번이 세션마다(=앱을 재시작할 때마다) 1부터 다시 시작돼서
+    서로 다른 세션·사용자의 "이번 세션 첫 구매"끼리 값이 겹칠 수 있었다.
+    session_state만 쓰던 예전엔 어차피 재시작하면 다 사라지니 무해했지만,
+    이제 이 id를 구매내역 조회 키로 영속시키다 보니 겹치면 나중 저장이
+    조용히 무시되는(INSERT OR IGNORE) 문제로 이어졌다. 그래서 DB의
+    AUTOINCREMENT로 진짜 유일한 id를 먼저 발급받고, 그 id를 그대로
+    lotto_combinations.auto_order_id로도 쓴다.
+    """
     import json
 
     conn = _connect()
-    conn.execute(
+    cur = conn.execute(
         """
-        INSERT OR IGNORE INTO guest_auto_orders
+        INSERT INTO guest_auto_orders
             (guest_id, auto_order_id, draw_round, combo_count, cost,
              purchase_method, purchase_type, sms_days, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             str(guest_id),
-            int(auto_order_id),
             int(draw_round),
             int(combo_count),
             int(cost) if cost is not None else None,
@@ -536,6 +545,20 @@ def save_guest_auto_order(
             datetime.now().isoformat(),
         ),
     )
+    new_id = int(cur.lastrowid)
+    conn.execute(
+        "UPDATE guest_auto_orders SET auto_order_id = ? WHERE id = ?",
+        (new_id, new_id),
+    )
+    conn.commit()
+    conn.close()
+    return new_id
+
+
+def delete_guest_auto_order(order_id: int) -> None:
+    """조합 배정 실패 등으로 주문이 성립되지 않았을 때, 발급해둔 placeholder를 되돌린다."""
+    conn = _connect()
+    conn.execute("DELETE FROM guest_auto_orders WHERE id = ?", (int(order_id),))
     conn.commit()
     conn.close()
 
@@ -898,7 +921,8 @@ __all__ = [
     "release_lotto_combination_allocation",
     "count_available_combinations",
     "get_combinations_by_auto_order_id",
-    "save_guest_auto_order",
+    "create_guest_auto_order",
+    "delete_guest_auto_order",
     "list_guest_auto_orders",
     "get_combinations_by_draw",
     "delete_lotto_combinations_by_draw",

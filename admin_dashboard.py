@@ -395,36 +395,54 @@ if st.session_state.admin_view == "home":
 
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📥 최신 회차 추출 조합 다운로드</h4>", unsafe_allow_html=True)
     from marketing_db import get_draw_extraction_stats, get_combinations_by_draw
+    import admin_auth_guard
 
-    _dl_stats = get_draw_extraction_stats(limit=1)
-    if not _dl_stats:
-        st.caption("다운로드할 회차 데이터가 없습니다.")
+    # 조합저장본 전체를 통째로 내보내는 기능이라, 비밀번호가 뚫리거나 세션이
+    # 탈취된 뒤 스크립트로 반복 다운로드해 긁어가는 걸 막기 위한 최소한의
+    # 방어선. 로그인 잠금(admin_auth_guard._state)과 동일하게 프로세스
+    # 전역으로 카운트해서, 짧은 시간에 여러 번 요청하면 버튼 자체를 숨긴다.
+    _DL_MAX_PER_WINDOW = 3
+    _DL_WINDOW_SECONDS = 300  # 5분
+
+    _dl_remaining = admin_auth_guard.downloads_remaining(_DL_MAX_PER_WINDOW, _DL_WINDOW_SECONDS)
+    if _dl_remaining <= 0:
+        _dl_wait = int(admin_auth_guard.seconds_until_download_slot(_DL_WINDOW_SECONDS)) + 1
+        st.warning(
+            f"다운로드 요청이 너무 잦습니다 (5분당 최대 {_DL_MAX_PER_WINDOW}회). "
+            f"{_dl_wait}초 후 다시 시도해 주세요."
+        )
     else:
-        _dl_draw_round = int(_dl_stats[0]["draw_round"])
-        _dl_count = int(_dl_stats[0]["total_count"])
-        _dl_combos = get_combinations_by_draw(_dl_draw_round)
-        _dl_df = pd.DataFrame(
-            [
-                {
-                    "번호1": c["combo"][0],
-                    "번호2": c["combo"][1],
-                    "번호3": c["combo"][2],
-                    "번호4": c["combo"][3],
-                    "번호5": c["combo"][4],
-                    "번호6": c["combo"][5],
-                    "당첨등수": c["win_rank"] or "",
-                }
-                for c in _dl_combos
-            ]
-        )
-        st.download_button(
-            f"⬇️ {_dl_draw_round}회차 조합 {_dl_count:,}개 다운로드",
-            data=_dl_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"lotto_combinations_{_dl_draw_round}.csv",
-            mime="text/csv",
-            key="admin_dl_download_6n36s5",
-            use_container_width=True,
-        )
+        _dl_stats = get_draw_extraction_stats(limit=1)
+        if not _dl_stats:
+            st.caption("다운로드할 회차 데이터가 없습니다.")
+        else:
+            _dl_draw_round = int(_dl_stats[0]["draw_round"])
+            _dl_count = int(_dl_stats[0]["total_count"])
+            _dl_combos = get_combinations_by_draw(_dl_draw_round)
+            _dl_df = pd.DataFrame(
+                [
+                    {
+                        "번호1": c["combo"][0],
+                        "번호2": c["combo"][1],
+                        "번호3": c["combo"][2],
+                        "번호4": c["combo"][3],
+                        "번호5": c["combo"][4],
+                        "번호6": c["combo"][5],
+                        "당첨등수": c["win_rank"] or "",
+                    }
+                    for c in _dl_combos
+                ]
+            )
+            _dl_clicked = st.download_button(
+                f"⬇️ {_dl_draw_round}회차 조합 {_dl_count:,}개 다운로드 (남은 시도 {_dl_remaining}/{_DL_MAX_PER_WINDOW})",
+                data=_dl_df.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"lotto_combinations_{_dl_draw_round}.csv",
+                mime="text/csv",
+                key="admin_dl_download_6n36s5",
+                use_container_width=True,
+            )
+            if _dl_clicked:
+                admin_auth_guard.record_download()
 
 # ==========================================
 # 🔧 [통합] 3종 필터 관리 및 원스톱 조합 생성 시스템
