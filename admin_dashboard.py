@@ -347,6 +347,46 @@ if st.session_state.admin_view == "home":
     with col1: st.metric("누적 가입자 수 (설치인원)", f"{_total_members:,} 명")
     with col2: st.metric("오늘 활동 인원", f"{_active_today:,} 명")
 
+    # ── 🔔 보안 알림 — 관리자 비밀번호 무차별 대입 시도, 다운로드 남용 등
+    # "침입 흔적"으로 볼 수 있는 이벤트를 admin_auth_guard가 기록해둔 걸 여기서 보여준다.
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔔 보안 알림</h4>", unsafe_allow_html=True)
+    try:
+        import security_log
+
+        _sec_recent_count = security_log.count_recent_events(hours=24)
+    except Exception as e:
+        _sec_recent_count = 0
+        st.warning(f"보안 이벤트 조회 실패: {e}")
+
+    if _sec_recent_count > 0:
+        st.error(f"🚨 최근 24시간 안에 침입 시도로 의심되는 기록이 {_sec_recent_count}건 있습니다.")
+    else:
+        st.success("최근 24시간 안에 특이사항이 없습니다.")
+
+    with st.expander(f"침입 흔적 기록 보기 (최근 {_sec_recent_count}건 · 전체 최대 50건)"):
+        try:
+            _sec_events = security_log.list_recent_events(limit=50)
+        except Exception as e:
+            _sec_events = []
+            st.warning(f"기록을 불러오지 못했습니다: {e}")
+
+        if not _sec_events:
+            st.caption("아직 기록된 이벤트가 없습니다.")
+        else:
+            _sec_df = pd.DataFrame(
+                [
+                    {
+                        "시각(KST)": ev["created_at"],
+                        "유형": security_log.EVENT_LABELS.get(ev["event_type"], ev["event_type"]),
+                        "상세": ev["detail"] or "",
+                        "IP(참고용)": ev["ip_address"] or "확인 불가",
+                    }
+                    for ev in _sec_events
+                ]
+            )
+            st.caption("※ IP는 스푸핑(위조)될 수 있어 참고용입니다 — 차단 근거로만 쓰지 마세요.")
+            st.dataframe(_sec_df, use_container_width=True, hide_index=True)
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>작업 프로세스 메뉴</h4>", unsafe_allow_html=True)
 
     # 🔥 기존의 1단계, 2단계 버튼을 완전히 없애고 이 버튼 하나로 통합했습니다.
@@ -411,7 +451,22 @@ if st.session_state.admin_view == "home":
             f"다운로드 요청이 너무 잦습니다 (5분당 최대 {_DL_MAX_PER_WINDOW}회). "
             f"{_dl_wait}초 후 다시 시도해 주세요."
         )
+        # 매 렌더마다(카운트다운 표시 중에도) 다시 기록되지 않도록, 이 "막힘" 국면에서
+        # 한 번만 남긴다 — 막힘이 풀리면(_dl_remaining > 0) 플래그가 리셋돼 다음 번
+        # 막힐 때 다시 기록된다.
+        if not st.session_state.get("_dl_block_logged"):
+            st.session_state["_dl_block_logged"] = True
+            try:
+                import security_log
+
+                security_log.log_event(
+                    "download_rate_limited",
+                    f"5분당 {_DL_MAX_PER_WINDOW}회 제한 초과",
+                )
+            except Exception:
+                pass
     else:
+        st.session_state["_dl_block_logged"] = False
         _dl_stats = get_draw_extraction_stats(limit=1)
         if not _dl_stats:
             st.caption("다운로드할 회차 데이터가 없습니다.")

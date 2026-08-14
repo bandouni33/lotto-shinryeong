@@ -919,8 +919,13 @@ def render():
             flex: 0 0 auto;
             margin: 0 !important;
             white-space: nowrap;
-            font-size: 14px;
+            font-size: 16px;
             padding: 8px 12px;
+            /* 뿌연 느낌(회색빛 낮은 대비) 해소 — 밝은 흰색으로 또렷하게, 겹치는 레이어
+               위로 확실히 올라오도록 z-index도 명시 */
+            color: #ffffff !important;
+            position: relative;
+            z-index: 2;
         }
         .auto-stats-head-row .auto-pattern-applied-note {
             flex: 0 0 auto;
@@ -929,7 +934,7 @@ def render():
             margin: 0 !important;
             text-align: left;
             color: #f1f5f9 !important;
-            font-size: 13px !important;
+            font-size: 16px !important;
             font-weight: 700 !important;
             line-height: 1.35 !important;
             white-space: normal;
@@ -1660,11 +1665,12 @@ def render():
                 max-width: 100% !important;
             }
             .auto-stats-head-row .auto-table-title {
-                font-size: 12px !important;
+                font-size: 15px !important;
                 padding: 7px 10px !important;
+                color: #ffffff !important;
             }
             .auto-stats-head-row .auto-pattern-applied-note {
-                font-size: 11px !important;
+                font-size: 15px !important;
             }
             .auto-spirit2-slot-right {
                 display: block !important;

@@ -18,11 +18,24 @@ def seconds_locked_remaining() -> float:
     return _state["locked_until"] - time.time()
 
 
+def _log_security_event(event_type: str, detail: str) -> None:
+    """침입 흔적 기록 — 실패해도 로그인 잠금 등 실제 방어 동작에 영향 주면 안 되므로
+    항상 무시 가능한 실패로 처리한다."""
+    try:
+        import security_log
+
+        security_log.log_event(event_type, detail)
+    except Exception:
+        pass
+
+
 def record_failure(max_attempts: int = 5, lockout_seconds: int = 300) -> int:
     """실패 기록. max_attempts 도달 시 lockout_seconds 만큼 잠그고 카운트를 리셋한다."""
     _state["fail_count"] += 1
+    _log_security_event("admin_login_fail", f"관리자 비밀번호 오류 (연속 {_state['fail_count']}회째)")
     if _state["fail_count"] >= max_attempts:
         _state["locked_until"] = time.time() + lockout_seconds
+        _log_security_event("admin_lockout", f"{max_attempts}회 연속 실패로 {lockout_seconds}초 잠금")
         _state["fail_count"] = 0
     return _state["fail_count"]
 

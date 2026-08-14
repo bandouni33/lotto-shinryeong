@@ -210,8 +210,9 @@ def _inject_base_css():
             margin-top: 18px;
         }
         .tarot-cta-lead {
-            font-family: 'Gamja Flower', cursive;
-            font-size: 19px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+            font-size: 18px;
+            font-weight: 700;
             color: #6B5B44;
             text-align: center;
             margin-bottom: 10px;
@@ -253,16 +254,19 @@ def _inject_base_css():
         }
         .tarot-cta-icon { font-size: 26px; }
         .tarot-cta-title {
-            font-family: 'Gamja Flower', cursive;
-            font-size: 18px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+            font-size: 21px;
+            font-weight: 900;
             color: #3A2E1D;
             margin-top: 4px;
         }
         .tarot-cta-desc {
-            font-size: 12.5px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+            font-size: 14.5px;
+            font-weight: 600;
             color: #6B5B44;
-            margin-top: 3px;
-            line-height: 1.4;
+            margin-top: 4px;
+            line-height: 1.45;
         }
 
         /* 실제 셔플을 발생시키는 버튼은 화면에는 숨기고, 스와이프 컴포넌트가 대신 클릭한다 */
@@ -449,83 +453,150 @@ def _render_draw_stage():
 
 
 def _render_shuffle_deck():
-    """탭/스와이프로 셔플하는 카드 덱. 실제 카드 확정은 숨겨진 shuffle_btn 클릭으로 서버에서 처리한다."""
+    """카드를 낙엽처럼 흩어놓고, 손가락으로 실제로 저어야(드래그 이동량 누적) 섞이는
+    인터랙션. 충분히 저으면 카드들이 다시 모이는 연출 후, 숨겨진 shuffle_btn 클릭으로
+    서버에서 실제 카드를 확정한다."""
     back_b64 = _img_b64(str(IMAGE_DIR / "card_back.svg"))
-    num_stack = 6
-    stack_html = "".join(
-        f'<div class="dcard" style="--drot:{(i - (num_stack - 1) / 2) * 2.4}deg; z-index:{i};"></div>'
-        for i in range(num_stack)
+    num_cards = 16
+    cards_html = "".join(
+        f'<div class="scard" style="--ox:{random.uniform(-108, 108):.1f}px; '
+        f'--oy:{random.uniform(-50, 50):.1f}px; '
+        f'--rot0:{random.uniform(-32, 32):.1f}deg; z-index:{i};"></div>'
+        for i in range(num_cards)
     )
 
     html = f"""
     <div class="wrap">
       <style>
         html, body {{ margin:0; padding:0; background:transparent; overflow:hidden; }}
-        .wrap {{ font-family:'Gaegu', sans-serif; text-align:center; padding-top:6px; }}
-        .hint {{ color:#8a7a5e; font-size:14px; font-weight:700; margin-bottom:16px; }}
-        .deck {{
-            position:relative; width:74px; height:110px; margin:0 auto;
-            cursor:grab; user-select:none; touch-action:none;
+        .wrap {{ font-family:'Gaegu', sans-serif; text-align:center; padding-top:4px; }}
+        .hint {{ color:#8a7a5e; font-size:14px; font-weight:700; margin-bottom:8px; }}
+        .progress-track {{
+            width:200px; height:5px; margin:0 auto 10px; border-radius:999px;
+            background:rgba(120,90,50,0.15); overflow:hidden;
         }}
-        .deck.pressed {{ cursor:grabbing; }}
-        .dcard {{
-            position:absolute; inset:0; margin:auto;
-            width:66px; height:104px; border-radius:7px;
+        .progress-fill {{
+            height:100%; width:0%; border-radius:999px;
+            background:linear-gradient(90deg,#b389e0,#f9c74f);
+            transition:width 0.15s ease-out;
+        }}
+        .pile {{
+            position:relative; width:100%; max-width:340px; height:210px;
+            margin:0 auto; touch-action:none; cursor:grab; user-select:none;
+        }}
+        .pile.pressed {{ cursor:grabbing; }}
+        .scard {{
+            position:absolute; left:50%; top:50%;
+            width:50px; height:78px; margin:-39px 0 0 -25px;
+            border-radius:6px;
             background-image:url('data:image/svg+xml;base64,{back_b64}');
             background-size:cover;
-            box-shadow:0 2px 6px rgba(0,0,0,0.35);
-            transform: rotate(var(--drot,0deg));
-            transition: transform 0.15s ease;
+            box-shadow:0 3px 8px rgba(0,0,0,0.35);
+            transform: translate(var(--ox),var(--oy)) rotate(var(--rot0));
+            transition: transform 0.28s cubic-bezier(.22,.85,.32,1.15);
+            will-change: transform;
         }}
-        .deck.shuffling .dcard {{ animation: riffle 0.55s ease; }}
-        @keyframes riffle {{
-            0%   {{ transform: rotate(var(--drot)) translate(0, 0); }}
-            30%  {{ transform: rotate(calc(var(--drot) * -2 - 10deg)) translate(var(--rx,0px), -16px); }}
-            65%  {{ transform: rotate(calc(var(--drot) * 2 + 8deg)) translate(calc(var(--rx,0px) * -1), -6px); }}
-            100% {{ transform: rotate(var(--drot)) translate(0, 0); }}
+        .pile.gathering .scard {{
+            transition: transform 0.55s cubic-bezier(.4,0,.2,1);
+            transform: translate(0,0) rotate(var(--rot0));
         }}
       </style>
-      <div class="hint">덱을 좌우로 밀거나 눌러서 섞어보세요</div>
-      <div class="deck" id="deck">{stack_html}</div>
+      <div class="hint" id="hint">🌀 카드를 손가락으로 천천히 저어보세요</div>
+      <div class="progress-track"><div class="progress-fill" id="fill"></div></div>
+      <div class="pile" id="pile">{cards_html}</div>
       <script>
-        const deck = document.getElementById('deck');
-        let pressed = false;
-        let done = false;
+      (function() {{
+        const pile = document.getElementById('pile');
+        const hint = document.getElementById('hint');
+        const fill = document.getElementById('fill');
+        const cards = Array.from(document.querySelectorAll('.scard'));
+        const THRESHOLD = 900;
+        let pressed = false, done = false, hinted = false;
+        let lastX = 0, lastY = 0, total = 0;
 
-        function triggerShuffle() {{
+        function cssNum(el, prop) {{
+            return parseFloat(getComputedStyle(el).getPropertyValue(prop)) || 0;
+        }}
+
+        function pointFromEvent(e) {{
+            const rect = pile.getBoundingClientRect();
+            return {{ x: e.clientX - rect.left - rect.width / 2, y: e.clientY - rect.top - rect.height / 2 }};
+        }}
+
+        function stirAt(x, y) {{
+            cards.forEach(function(c) {{
+                const cx = cssNum(c, '--ox'), cy = cssNum(c, '--oy');
+                const dx = cx - x, dy = cy - y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                if (dist >= 70) return;
+                const push = (70 - dist) / 70;
+                const nx = cx + (dx / dist) * push * 22 + (Math.random() * 6 - 3);
+                const ny = cy + (dy / dist) * push * 22 + (Math.random() * 6 - 3);
+                c.style.setProperty('--ox', Math.max(-118, Math.min(118, nx)).toFixed(1) + 'px');
+                c.style.setProperty('--oy', Math.max(-58, Math.min(58, ny)).toFixed(1) + 'px');
+                const rot = cssNum(c, '--rot0') + (Math.random() * 10 - 5);
+                c.style.setProperty('--rot0', Math.max(-45, Math.min(45, rot)).toFixed(1) + 'deg');
+            }});
+        }}
+
+        function updateProgress() {{
+            const pct = Math.max(0, Math.min(1, total / THRESHOLD));
+            fill.style.width = (pct * 100) + '%';
+            if (pct > 0.65 && !hinted) {{
+                hinted = true;
+                hint.textContent = '조금만 더 저어주세요…';
+            }}
+        }}
+
+        function finish() {{
             if (done) return;
             done = true;
-            document.querySelectorAll('.dcard').forEach(function(c) {{
-                c.style.setProperty('--rx', (Math.random() * 40 - 20) + 'px');
-            }});
-            deck.classList.add('shuffling');
+            hint.textContent = '카드가 잘 섞였어요 ✨';
+            fill.style.width = '100%';
+            pile.classList.add('gathering');
             setTimeout(function() {{
                 const btn = window.parent.document.querySelector('.st-key-shuffle_btn button')
                     || Array.from(window.parent.document.querySelectorAll('button'))
                         .find(function(b) {{ return b.textContent.trim() === '⟲'; }});
                 if (btn) btn.click();
-            }}, 520);
+            }}, 620);
         }}
 
-        deck.addEventListener('pointerdown', function() {{
+        pile.addEventListener('pointerdown', function(e) {{
+            if (done) return;
             pressed = true;
-            deck.classList.add('pressed');
+            pile.classList.add('pressed');
+            const p = pointFromEvent(e);
+            lastX = p.x; lastY = p.y;
+            stirAt(p.x, p.y);
         }});
-        deck.addEventListener('pointerup', function() {{
-            if (!pressed) return;
+        pile.addEventListener('pointermove', function(e) {{
+            if (!pressed || done) return;
+            const p = pointFromEvent(e);
+            const dx = p.x - lastX, dy = p.y - lastY;
+            const moved = Math.sqrt(dx * dx + dy * dy);
+            if (moved > 2) {{
+                total += moved;
+                lastX = p.x; lastY = p.y;
+                stirAt(p.x, p.y);
+                updateProgress();
+                if (total >= THRESHOLD) finish();
+            }}
+        }});
+        pile.addEventListener('pointerup', function() {{
             pressed = false;
-            deck.classList.remove('pressed');
-            triggerShuffle();
+            pile.classList.remove('pressed');
         }});
-        deck.addEventListener('pointercancel', function() {{
+        pile.addEventListener('pointercancel', function() {{
             pressed = false;
-            deck.classList.remove('pressed');
+            pile.classList.remove('pressed');
         }});
+      }})();
       </script>
     </div>
     """
 
-    components.html(html, height=170, scrolling=False)
+    components.html(html, height=270, scrolling=False)
 
 
 def _render_flip_component(card_key: str):
