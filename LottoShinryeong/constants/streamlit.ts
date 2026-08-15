@@ -9,7 +9,7 @@ export function getStreamlitBaseUrl(): string {
   if (fromEnv) {
     return fromEnv.replace(/\/$/, '');
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://127.0.0.1:8501';
@@ -18,8 +18,12 @@ export function getStreamlitBaseUrl(): string {
   return DEFAULT_URL.replace(/\/$/, '');
 }
 
-export function getStreamlitPageUrl(page: string): string {
+export function getStreamlitPageUrl(page: string, guestId?: string | null): string {
   const base = getStreamlitBaseUrl();
   const safePage = page || 'main';
-  return `${base}/?page=${encodeURIComponent(safePage)}`;
+  let url = `${base}/?page=${encodeURIComponent(safePage)}`;
+  if (guestId) {
+    url += `&gid=${encodeURIComponent(guestId)}`;
+  }
+  return url;
 }

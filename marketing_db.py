@@ -106,6 +106,18 @@ def init_marketing_tables():
         CREATE INDEX IF NOT EXISTS idx_guest_auto_orders_guest
         ON guest_auto_orders(guest_id, created_at)
     """)
+    # 타로 일일 뽑기 제한 — 예전엔 쿠키(document.cookie)에 오늘 뽑은 횟수를 저장했는데,
+    # 안드로이드 웹뷰가 화면 전환마다 새로 생성되는 구조상 쿠키가 디스크에 저장되기
+    # 전에 유실되곤 해서 "재접속하면 계속 뽑을 수 있는" 문제로 이어졌다. guest_id에
+    # 묶어 DB에 저장하면 그 타이밍 문제 자체가 없다.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS guest_tarot_draws (
+            guest_id TEXT NOT NULL,
+            draw_date TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (guest_id, draw_date)
+        )
+    """)
     _migrate_lotto_combinations(conn)
     conn.commit()
     conn.close()
@@ -553,6 +565,37 @@ def create_guest_auto_order(
     conn.commit()
     conn.close()
     return new_id
+
+
+def get_guest_tarot_draw_count(guest_id: str, draw_date: str) -> int:
+    """guest_id가 오늘(draw_date) 이미 뽑은 횟수."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT count FROM guest_tarot_draws WHERE guest_id = ? AND draw_date = ?",
+        (str(guest_id), draw_date),
+    ).fetchone()
+    conn.close()
+    return int(row[0]) if row else 0
+
+
+def register_guest_tarot_draw(guest_id: str, draw_date: str) -> int:
+    """오늘 뽑기 횟수를 1 증가시키고, 증가된 이후의 횟수를 반환한다."""
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO guest_tarot_draws (guest_id, draw_date, count)
+        VALUES (?, ?, 1)
+        ON CONFLICT(guest_id, draw_date) DO UPDATE SET count = count + 1
+        """,
+        (str(guest_id), draw_date),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT count FROM guest_tarot_draws WHERE guest_id = ? AND draw_date = ?",
+        (str(guest_id), draw_date),
+    ).fetchone()
+    conn.close()
+    return int(row[0]) if row else 0
 
 
 def delete_guest_auto_order(order_id: int) -> None:

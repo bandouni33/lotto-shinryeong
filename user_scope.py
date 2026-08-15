@@ -151,3 +151,53 @@ def _reset_hydration_flags() -> None:
 def thunder_reveal_storage_suffix() -> str:
     """iframe localStorage 키 접미사 (브라우저 프로필 내 사용자 구분)."""
     return current_birthday_scope()
+
+
+# ────────────────────────────────────────────────
+# 비로그인 게스트 식별자 (자동구매 내역, 타로 일일 제한 등 여러 페이지가 공유)
+# ────────────────────────────────────────────────
+
+GUEST_ID_COOKIE_KEY = "lotto_guest_id"
+GUEST_ID_QUERY_KEY = "gid"
+
+
+def get_or_create_guest_id() -> str:
+    """비로그인(테스트 기간) 사용자를 앱을 껐다 켜도 같은 사람으로 알아보기 위한 식별자.
+
+    네이티브 앱은 기기에 AsyncStorage로 영속시켜둔 id를 URL 쿼리 파라미터
+    (?gid=...)로 매 요청마다 실어 보내므로 그걸 최우선으로 쓴다 — 안드로이드
+    웹뷰는 화면 전환마다 새로 생성돼 쿠키 저장(document.cookie)이 디스크에
+    flush되기 전에 유실되는 경우가 있었지만, 쿼리 파라미터는 그 문제가 없다.
+    브라우저로 직접 접속하는 경우(쿼리 파라미터 없음)에는 기존 쿠키 방식으로
+    폴백한다.
+    """
+    query_gid = st.query_params.get(GUEST_ID_QUERY_KEY)
+    if query_gid:
+        st.session_state["_guest_id"] = query_gid
+        st.session_state["_guest_id_confirmed"] = True
+        return query_gid
+    if st.session_state.get("_guest_id"):
+        return st.session_state["_guest_id"]
+    cookie_val = st.context.cookies.get(GUEST_ID_COOKIE_KEY)
+    if cookie_val:
+        st.session_state["_guest_id"] = cookie_val
+        st.session_state["_guest_id_confirmed"] = True
+        return cookie_val
+    import uuid
+
+    new_id = uuid.uuid4().hex
+    st.session_state["_guest_id"] = new_id
+    st.session_state["_guest_id_confirmed"] = False
+    return new_id
+
+
+def guest_id_cookie_sync_html(guest_id: str) -> str:
+    """브라우저 폴백 경로에서만 의미 있는 쿠키 동기화 스크립트(components.html로 렌더)."""
+    return f"""
+    <script>
+    (function() {{
+        const doc = window.parent.document;
+        doc.cookie = {GUEST_ID_COOKIE_KEY!r} + '=' + {guest_id!r} + '; max-age=31536000; path=/';
+    }})();
+    </script>
+    """

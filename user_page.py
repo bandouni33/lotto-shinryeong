@@ -38,6 +38,31 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
     # 거기서 오히려 가장 잘 됐다는 피드백을 받았다. 즉 커스텀 스크립트가 메인 문서에서
     # 네이티브 줌을 가로채 더 나쁘게 만들고 있었을 가능성이 높아 제거하고 네이티브 줌
     # (streamlit-webview.tsx의 scalesPageToFit / setBuiltInZoomControls)에 맡긴다.
+    #
+    # 그런데도 실기기에서 핀치줌이 전혀 동작하지 않는다는 재현 확인 후 실제 배포된
+    # 페이지(lotto-shinryeong.streamlit.app)의 DOM을 직접 열어 확인해보니, Streamlit이
+    # 자체 번들 index.html에 <meta name="viewport" content="...,user-scalable=no">를
+    # 하드코딩하고 있었다 — 우리 코드가 아니라 Streamlit 프레임워크 자체가 심어둔
+    # 태그다. 이 속성은 브라우저 렌더링 엔진 단에서 핀치 제스처 자체를 인식하지 않게
+    # 만들어서, WebView 쪽 setBuiltInZoomControls를 아무리 켜도 무시된다. Streamlit이
+    # 만든 정적 태그라 파이썬 쪽에서 직접 고칠 수 없으니, 페이지 로드 시 JS로 그
+    # meta 태그의 user-scalable=no/maximum-scale 제약을 지워 네이티브 핀치줌이
+    # 실제로 동작하게 한다.
+    components.html(
+        """
+        <script>
+        (function() {
+            const doc = window.parent.document;
+            const meta = doc.querySelector('meta[name="viewport"]');
+            if (meta) {
+                meta.setAttribute('content', 'width=device-width, initial-scale=1, shrink-to-fit=no');
+            }
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
     from wallet_ui import render_wallet_bar
 
     render_wallet_bar()

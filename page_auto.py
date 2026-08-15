@@ -41,43 +41,12 @@ def _is_auto_deploy_window_open(now: datetime | None = None) -> bool:
     return weekday in (2, 3, 4)  # 수, 목, 금
 
 
-GUEST_ID_COOKIE_KEY = "lotto_guest_id"
-
-
-def _get_or_create_guest_id() -> str:
-    """비로그인(테스트 기간) 사용자를 앱을 껐다 켜도 같은 사람으로 알아보기 위한 식별자.
-
-    session_state만으로는 새 세션(=앱 재실행)마다 초기화돼서 구매내역이 사라진다 —
-    tarot_page.py의 일일 뽑기 제한과 동일한 이유. 쿠키에 한 번 저장해두고, 다음
-    세션 시작 시 그 쿠키 값을 읽어 이어서 쓴다.
-    """
-    if st.session_state.get("_guest_id"):
-        return st.session_state["_guest_id"]
-    cookie_val = st.context.cookies.get(GUEST_ID_COOKIE_KEY)
-    if cookie_val:
-        st.session_state["_guest_id"] = cookie_val
-        st.session_state["_guest_id_confirmed"] = True
-        return cookie_val
-    import uuid
-
-    new_id = uuid.uuid4().hex
-    st.session_state["_guest_id"] = new_id
-    st.session_state["_guest_id_confirmed"] = False
-    return new_id
+from user_scope import get_or_create_guest_id as _get_or_create_guest_id
+from user_scope import guest_id_cookie_sync_html as _guest_id_cookie_sync_html
 
 
 def _sync_guest_id_cookie(guest_id: str) -> None:
-    components.html(
-        f"""
-        <script>
-        (function() {{
-            const doc = window.parent.document;
-            doc.cookie = {GUEST_ID_COOKIE_KEY!r} + '=' + {guest_id!r} + '; max-age=31536000; path=/';
-        }})();
-        </script>
-        """,
-        height=0,
-    )
+    components.html(_guest_id_cookie_sync_html(guest_id), height=0)
 
 
 def _get_icon_base64(file_path: str = "K-325.jpg") -> str:
