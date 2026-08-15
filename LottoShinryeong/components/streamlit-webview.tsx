@@ -163,15 +163,26 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           }}
           injectedJavaScript={`
             (function() {
-              // injectedJavaScriptBeforeContentLoaded 쪽 진단이 브리지 타이밍 때문에
-              // 하나도 안 왔을 경우를 대비한 두 번째, 독립적인 확인 경로 — 페이지가
-              // 완전히 로드된 뒤(브리지가 확실히 준비된 시점) 지금 이 순간의 meta 태그
-              // 값을 그대로 보고한다.
-              var meta = document.querySelector('meta[name="viewport"]');
+              // injectedJavaScriptBeforeContentLoaded 쪽 수정이 실제로 붙었는지, 그것도
+              // "어느 문서에" 붙었는지까지 프레임별로 한 번에 보고한다 — 아래
+              // injectedJavaScriptBeforeContentLoaded의 scanFrames와 동일한 순회 로직.
+              var lines = [];
+              function visit(doc, label) {
+                var meta = doc.querySelector ? doc.querySelector('meta[name="viewport"]') : null;
+                lines.push('[' + label + ']' + (meta ? JSON.stringify(meta.getAttribute('content')) : '태그없음'));
+                var frames = doc.querySelectorAll ? doc.querySelectorAll('iframe') : [];
+                for (var i = 0; i < frames.length; i++) {
+                  try {
+                    var inner = frames[i].contentDocument;
+                    if (inner) visit(inner, label + '>f' + i);
+                  } catch (e) {
+                    lines.push('[' + label + '>f' + i + ']접근불가');
+                  }
+                }
+              }
+              visit(document, 'top');
               if (window.ReactNativeWebView) {
-                window.ReactNativeWebView.postMessage(
-                  'viewport:[로드완료시점] ' + (meta ? JSON.stringify(meta.getAttribute('content')) : '태그없음')
-                );
+                window.ReactNativeWebView.postMessage('viewport:[로드완료] ' + lines.join(' | '));
               }
             })();
             true;
@@ -204,14 +215,10 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           injectedJavaScriptBeforeContentLoaded={`
             (function() {
               // injectedJavaScriptBeforeContentLoaded 시점엔 window.ReactNativeWebView
-              // 브리지가 아직 준비 안 됐을 수 있어서(실기기에서 실제로 이것 때문에
-              // 진단 메시지가 한 번도 안 온 적이 있었다), 바로 못 보내면 큐에 쌓아뒀다가
+              // 브리지가 아직 준비 안 됐을 수 있어서, 바로 못 보내면 큐에 쌓아뒀다가
               // 브리지가 생기는 즉시(최대 5초, 100ms 간격) 순서대로 흘려보낸다.
               var pending = [];
-              function report(msg) {
-                pending.push(msg);
-                flush();
-              }
+              function report(msg) { pending.push(msg); flush(); }
               var tries = 0;
               function flush() {
                 if (!window.ReactNativeWebView) {
@@ -222,33 +229,57 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
                   window.ReactNativeWebView.postMessage('viewport:' + pending.shift());
                 }
               }
-              var fixedOnce = false;
-              function fixViewport() {
-                var meta = document.querySelector('meta[name="viewport"]');
-                if (!meta) return false;
+
+              var target = 'width=device-width, initial-scale=1, shrink-to-fit=no';
+              // 실기기 진단으로 확인해보니, 맨 위 문서만 고쳐서는 안 됐다 — Streamlit
+              // Cloud는 실제 화면(로그인/구매/타로 등 진짜 내용)을 최상위 문서가 아니라
+              // 그 안에 심어둔 iframe(주소가 "/~/+/..."인) 안에서 그린다. 최상위 문서의
+              // viewport는 그 iframe의 줌 동작과 무관해서, 최상위만 고치면 겉보기엔
+              // "수정됨"으로 보고되는데도 실제 줌은 여전히 막혀 있었다. 그래서 최상위부터
+              // 시작해 접근 가능한(같은 출처) iframe을 전부 재귀적으로 찾아 각각 고친다.
+              var watched = [];
+              function isWatched(doc) {
+                for (var i = 0; i < watched.length; i++) if (watched[i] === doc) return true;
+                return false;
+              }
+              function fixDoc(doc, label) {
+                var meta = doc.querySelector && doc.querySelector('meta[name="viewport"]');
+                if (!meta) return;
                 var before = meta.getAttribute('content');
-                var target = 'width=device-width, initial-scale=1, shrink-to-fit=no';
                 if (before !== target) {
                   meta.setAttribute('content', target);
-                  report((fixedOnce ? '재수정 ' : '최초수정 ') + JSON.stringify(before) + ' -> ' + JSON.stringify(target));
-                  fixedOnce = true;
-                } else if (!fixedOnce) {
-                  report('이미정상 ' + JSON.stringify(before));
-                  fixedOnce = true;
+                  report('[' + label + '] 수정 ' + JSON.stringify(before));
                 }
-                return meta;
+                if (!isWatched(doc)) {
+                  watched.push(doc);
+                  try {
+                    new MutationObserver(function() { fixDoc(doc, label); }).observe(doc.documentElement, {
+                      childList: true,
+                      subtree: true,
+                      attributes: true,
+                      attributeFilter: ['content'],
+                    });
+                  } catch (e) {}
+                }
               }
-              // Streamlit 쪽 스크립트가 meta 태그를 나중에 다시 만들거나 값을 되돌릴 수
-              // 있어서, 한 번 고치고 끝내지 않고 문서 전체를 계속 지켜본다 — 태그 자체가
-              // 통째로 교체되는 경우(childList)와, 같은 노드의 content 속성만 다시
-              // 바뀌는 경우(attributes) 둘 다 잡는다.
-              var meta0 = fixViewport();
-              var observer = new MutationObserver(function() { fixViewport(); });
-              observer.observe(document.documentElement, {
+              function scan(doc, label) {
+                fixDoc(doc, label);
+                var frames = doc.querySelectorAll ? doc.querySelectorAll('iframe') : [];
+                for (var i = 0; i < frames.length; i++) {
+                  (function(f, idx) {
+                    try {
+                      var inner = f.contentDocument;
+                      if (inner) scan(inner, label + '>f' + idx);
+                    } catch (e) {}
+                  })(frames[i], i);
+                }
+              }
+              scan(document, 'top');
+              // 그 iframe 자체가 아직 안 만들어졌을 수도 있어서, 최상위 문서에 새 노드가
+              // 추가될 때마다(=iframe이 그때 생겼을 수 있으므로) 다시 훑는다.
+              new MutationObserver(function() { scan(document, 'top'); }).observe(document.documentElement, {
                 childList: true,
                 subtree: true,
-                attributes: true,
-                attributeFilter: ['content'],
               });
             })();
             true;
