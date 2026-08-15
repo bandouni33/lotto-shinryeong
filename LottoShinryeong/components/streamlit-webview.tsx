@@ -25,6 +25,8 @@ type Props = {
 export default function StreamlitWebView({ page, title, showBack = true }: Props) {
   const insets = useSafeAreaInsets();
   const [guestId, setGuestId] = useState<string | null>(null);
+  const [guestIdSource, setGuestIdSource] = useState<string>('로딩중');
+  const [viewportDebug, setViewportDebug] = useState<string>('대기중');
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +34,14 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
 
   useEffect(() => {
     let cancelled = false;
-    getOrCreateGuestId().then((id) => {
+    getOrCreateGuestId().then((result) => {
       if (!cancelled) {
-        setGuestId(id);
+        setGuestId(result.id);
+        setGuestIdSource(
+          result.source === 'fallback-error'
+            ? `실패:${result.error?.slice(0, 40)}`
+            : result.source
+        );
       }
     });
     return () => {
@@ -102,6 +109,18 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
         </Text>
       </View>
 
+      {/* 임시 진단용 표시 — 구매내역/타로 제한/핀치줌이 실기기에서 왜 반영 안 되는지
+          원격으로는 확인할 방법이 없어서, 문제 원인을 좁히기 위해 잠깐 넣어둔다.
+          원인 확인되면 제거할 것. */}
+      <View style={styles.debugBar}>
+        <Text style={styles.debugText} numberOfLines={1}>
+          gid[{guestIdSource}]:{guestId ? guestId.slice(0, 10) : '-'} url:{uri.includes('&gid=') ? 'O' : 'X'}
+        </Text>
+        <Text style={styles.debugText} numberOfLines={1}>
+          viewport: {viewportDebug}
+        </Text>
+      </View>
+
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorTitle}>페이지를 불러오지 못했습니다</Text>
@@ -141,6 +160,12 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
               setError(`HTTP ${e.nativeEvent.statusCode}`);
             }
           }}
+          onMessage={(e) => {
+            const data = e.nativeEvent.data;
+            if (typeof data === 'string' && data.startsWith('viewport:')) {
+              setViewportDebug(data.slice('viewport:'.length));
+            }
+          }}
           javaScriptEnabled
           domStorageEnabled
           sharedCookiesEnabled
@@ -162,19 +187,39 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           // 바꿀 수 있다.
           injectedJavaScriptBeforeContentLoaded={`
             (function() {
-              function fixViewport() {
-                const meta = document.querySelector('meta[name="viewport"]');
-                if (meta) {
-                  meta.setAttribute('content', 'width=device-width, initial-scale=1, shrink-to-fit=no');
-                  return true;
+              function report(msg) {
+                if (window.ReactNativeWebView) {
+                  window.ReactNativeWebView.postMessage('viewport:' + msg);
                 }
-                return false;
               }
-              if (!fixViewport()) {
-                new MutationObserver(function(_muts, obs) {
-                  if (fixViewport()) obs.disconnect();
-                }).observe(document.documentElement, { childList: true, subtree: true });
+              var fixedOnce = false;
+              function fixViewport() {
+                var meta = document.querySelector('meta[name="viewport"]');
+                if (!meta) return false;
+                var before = meta.getAttribute('content');
+                var target = 'width=device-width, initial-scale=1, shrink-to-fit=no';
+                if (before !== target) {
+                  meta.setAttribute('content', target);
+                  report((fixedOnce ? '재수정 ' : '최초수정 ') + JSON.stringify(before) + ' -> ' + JSON.stringify(target));
+                  fixedOnce = true;
+                } else if (!fixedOnce) {
+                  report('이미정상 ' + JSON.stringify(before));
+                  fixedOnce = true;
+                }
+                return meta;
               }
+              // Streamlit 쪽 스크립트가 meta 태그를 나중에 다시 만들거나 값을 되돌릴 수
+              // 있어서, 한 번 고치고 끝내지 않고 문서 전체를 계속 지켜본다 — 태그 자체가
+              // 통째로 교체되는 경우(childList)와, 같은 노드의 content 속성만 다시
+              // 바뀌는 경우(attributes) 둘 다 잡는다.
+              var meta0 = fixViewport();
+              var observer = new MutationObserver(function() { fixViewport(); });
+              observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['content'],
+              });
             })();
             true;
           `}
@@ -220,6 +265,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#1c2645',
   },
+  debugBar: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    backgroundColor: '#3a2a00',
+  },
+  debugText: { color: '#ffd54f', fontSize: 10 },
   backPlaceholder: { width: 72 },
   backText: { color: '#f9a825', fontWeight: '700', fontSize: 14 },
   title: { flex: 1, color: '#e0e0e0', fontWeight: '700', fontSize: 15 },
