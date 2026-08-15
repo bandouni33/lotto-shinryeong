@@ -22,29 +22,9 @@ type Props = {
   showBack?: boolean;
 };
 
-// 임시 진단용 — viewport meta 태그를 고쳐도 실기기에서 핀치줌이 여전히 안 돼서,
-// Streamlit 콘텐츠 자체가 원인인지 아니면 네이티브 웹뷰 줌 설정(scalesPageToFit/
-// setBuiltInZoomControls) 자체가 이 빌드/기기에서 아예 안 먹는 건지를 갈라보기 위한
-// 완전히 단순한 테스트 페이지. viewport 제약이 전혀 없고 화면보다 훨씬 큰 콘텐츠라,
-// 여기서도 줌이 안 되면 원인은 Streamlit 쪽이 아니라 웹뷰 자체 설정/라이브러리다.
-const ZOOM_TEST_HTML = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0; width:2000px; height:2000px; background:
-  repeating-linear-gradient(45deg, #222 0 40px, #f9a825 40px 80px);">
-  <div style="position:fixed; top:10px; left:10px; background:#000; color:#fff;
-    font-size:24px; padding:10px;">핀치줌 테스트 페이지 (viewport 제약 없음)</div>
-</body>
-</html>
-`;
-
 export default function StreamlitWebView({ page, title, showBack = true }: Props) {
   const insets = useSafeAreaInsets();
   const [guestId, setGuestId] = useState<string | null>(null);
-  const [guestIdSource, setGuestIdSource] = useState<string>('로딩중');
-  const [viewportDebug, setViewportDebug] = useState<string>('대기중');
-  const [zoomTestMode, setZoomTestMode] = useState(false);
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,14 +32,9 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
 
   useEffect(() => {
     let cancelled = false;
-    getOrCreateGuestId().then((result) => {
+    getOrCreateGuestId().then((id) => {
       if (!cancelled) {
-        setGuestId(result.id);
-        setGuestIdSource(
-          result.source === 'fallback-error'
-            ? `실패:${result.error?.slice(0, 40)}`
-            : result.source
-        );
+        setGuestId(id);
       }
     });
     return () => {
@@ -127,29 +102,6 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
         </Text>
       </View>
 
-      {/* 임시 진단용 표시 — 구매내역/타로 제한/핀치줌이 실기기에서 왜 반영 안 되는지
-          원격으로는 확인할 방법이 없어서, 문제 원인을 좁히기 위해 잠깐 넣어둔다.
-          원인 확인되면 제거할 것. */}
-      <View style={styles.debugBar}>
-        <Text style={styles.debugText} numberOfLines={1}>
-          gid[{guestIdSource}]:{guestId ? guestId.slice(0, 10) : '-'} url-has-gid:
-          {uri.includes('&gid=') ? 'YES' : 'NO'}
-        </Text>
-        {/* 프레임별 진단이 길어서 한 줄로 자르면 정작 중요한(iframe 안쪽) 값이
-            잘려 안 보였다 — 잘라내지 않고 " | " 구분자마다 줄바꿈해서 전부 보여준다. */}
-        {viewportDebug.split(' | ').map((seg, i) => (
-          <Text key={i} style={styles.debugText}>
-            {i === 0 ? 'viewport: ' : '  '}
-            {seg}
-          </Text>
-        ))}
-        <TouchableOpacity onPress={() => setZoomTestMode((v) => !v)}>
-          <Text style={[styles.debugText, styles.debugToggle]}>
-            [{zoomTestMode ? '◀ 실제 페이지로' : 'viewport 제약 없는 단순 테스트 페이지 열기 ▶'}]
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorTitle}>페이지를 불러오지 못했습니다</Text>
@@ -173,8 +125,8 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
         // 이 프로젝트(LottoShinryeong) 재빌드가 필요한 변경이라 별도로 진행.
         <WebView
           ref={webViewRef}
-          key={zoomTestMode ? 'zoom-test' : uri}
-          source={zoomTestMode ? { html: ZOOM_TEST_HTML } : { uri }}
+          key={uri}
+          source={{ uri }}
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
           onLoadStart={() => setLoading(true)}
@@ -189,129 +141,16 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
               setError(`HTTP ${e.nativeEvent.statusCode}`);
             }
           }}
-          injectedJavaScript={`
-            (function() {
-              // injectedJavaScriptBeforeContentLoaded 쪽 수정이 실제로 붙었는지, 그것도
-              // "어느 문서에" 붙었는지까지 프레임별로 한 번에 보고한다 — 아래
-              // injectedJavaScriptBeforeContentLoaded의 scanFrames와 동일한 순회 로직.
-              var lines = [];
-              function visit(doc, label) {
-                var meta = doc.querySelector ? doc.querySelector('meta[name="viewport"]') : null;
-                lines.push('[' + label + ']' + (meta ? JSON.stringify(meta.getAttribute('content')) : '태그없음'));
-                var frames = doc.querySelectorAll ? doc.querySelectorAll('iframe') : [];
-                for (var i = 0; i < frames.length; i++) {
-                  try {
-                    var inner = frames[i].contentDocument;
-                    if (inner) visit(inner, label + '>f' + i);
-                  } catch (e) {
-                    lines.push('[' + label + '>f' + i + ']접근불가');
-                  }
-                }
-              }
-              visit(document, 'top');
-              if (window.ReactNativeWebView) {
-                window.ReactNativeWebView.postMessage('viewport:[로드완료] ' + lines.join(' | '));
-              }
-            })();
-            true;
-          `}
-          onMessage={(e) => {
-            const data = e.nativeEvent.data;
-            if (typeof data === 'string' && data.startsWith('viewport:')) {
-              setViewportDebug(data.slice('viewport:'.length));
-            }
-          }}
           javaScriptEnabled
           domStorageEnabled
           sharedCookiesEnabled
           startInLoadingState
           allowsBackForwardNavigationGestures
-          // 웹 콘텐츠 쪽에 자체 핀치 줌(frontend/components/pinch_zoom.py)을 구현해봤지만
-          // iframe(타로 카드 스프레드 등) 안까지는 이벤트가 닿지 않아 그 부분에선 오히려
-          // 네이티브 줌이 방해 없이 더 잘 동작했다 — 자체 구현을 걷어내고 네이티브 확대
-          // 옵션을 다시 켠다(핀치 줌 허용 + 확대/축소 버튼은 숨김).
-          //
-          // Streamlit이 자체 번들 index.html에 심어둔
-          // <meta name="viewport" content="...,user-scalable=no">가 네이티브 줌을 막고
-          // 있어서(user_page.py에서 st.components.html로 페이지 로드 후에 이 태그를
-          // 고쳐봤지만 실기기에서 효과 없었음 — 안드로이드 WebView는 최초 네비게이션 시
-          // 파싱한 viewport 값으로 줌 스케일 한계를 확정 짓고, 그 이후의 DOM 변경은
-          // 반영하지 않는 것으로 보인다), 문서 자체가 만들어지자마자(다른 리소스가
-          // 로드되기 전) 실행되는 이 훅에서 한 번 더 같은 수정을 시도한다 — Streamlit
-          // 쪽 스크립트보다 더 이른 시점에 개입해야 줌 스케일이 잠기기 전에 값을
-          // 바꿀 수 있다.
-          injectedJavaScriptBeforeContentLoaded={`
-            (function() {
-              // injectedJavaScriptBeforeContentLoaded 시점엔 window.ReactNativeWebView
-              // 브리지가 아직 준비 안 됐을 수 있어서, 바로 못 보내면 큐에 쌓아뒀다가
-              // 브리지가 생기는 즉시(최대 5초, 100ms 간격) 순서대로 흘려보낸다.
-              var pending = [];
-              function report(msg) { pending.push(msg); flush(); }
-              var tries = 0;
-              function flush() {
-                if (!window.ReactNativeWebView) {
-                  if (tries++ < 50) setTimeout(flush, 100);
-                  return;
-                }
-                while (pending.length) {
-                  window.ReactNativeWebView.postMessage('viewport:' + pending.shift());
-                }
-              }
-
-              var target = 'width=device-width, initial-scale=1, shrink-to-fit=no';
-              // 실기기 진단으로 확인해보니, 맨 위 문서만 고쳐서는 안 됐다 — Streamlit
-              // Cloud는 실제 화면(로그인/구매/타로 등 진짜 내용)을 최상위 문서가 아니라
-              // 그 안에 심어둔 iframe(주소가 "/~/+/..."인) 안에서 그린다. 최상위 문서의
-              // viewport는 그 iframe의 줌 동작과 무관해서, 최상위만 고치면 겉보기엔
-              // "수정됨"으로 보고되는데도 실제 줌은 여전히 막혀 있었다. 그래서 최상위부터
-              // 시작해 접근 가능한(같은 출처) iframe을 전부 재귀적으로 찾아 각각 고친다.
-              var watched = [];
-              function isWatched(doc) {
-                for (var i = 0; i < watched.length; i++) if (watched[i] === doc) return true;
-                return false;
-              }
-              function fixDoc(doc, label) {
-                var meta = doc.querySelector && doc.querySelector('meta[name="viewport"]');
-                if (!meta) return;
-                var before = meta.getAttribute('content');
-                if (before !== target) {
-                  meta.setAttribute('content', target);
-                  report('[' + label + '] 수정 ' + JSON.stringify(before));
-                }
-                if (!isWatched(doc)) {
-                  watched.push(doc);
-                  try {
-                    new MutationObserver(function() { fixDoc(doc, label); }).observe(doc.documentElement, {
-                      childList: true,
-                      subtree: true,
-                      attributes: true,
-                      attributeFilter: ['content'],
-                    });
-                  } catch (e) {}
-                }
-              }
-              function scan(doc, label) {
-                fixDoc(doc, label);
-                var frames = doc.querySelectorAll ? doc.querySelectorAll('iframe') : [];
-                for (var i = 0; i < frames.length; i++) {
-                  (function(f, idx) {
-                    try {
-                      var inner = f.contentDocument;
-                      if (inner) scan(inner, label + '>f' + idx);
-                    } catch (e) {}
-                  })(frames[i], i);
-                }
-              }
-              scan(document, 'top');
-              // 그 iframe 자체가 아직 안 만들어졌을 수도 있어서, 최상위 문서에 새 노드가
-              // 추가될 때마다(=iframe이 그때 생겼을 수 있으므로) 다시 훑는다.
-              new MutationObserver(function() { scan(document, 'top'); }).observe(document.documentElement, {
-                childList: true,
-                subtree: true,
-              });
-            })();
-            true;
-          `}
+          // 핀치 줌: getStreamlitPageUrl()이 Streamlit Cloud의 뷰어 껍데기를 건너뛰고
+          // 실제 앱이 최상위 문서로 뜨는 내부 경로("/~/+/...")로 바로 접속하기 때문에,
+          // 그 문서 자체의 viewport가 이미 줌을 막지 않는 값이라 별도 조치 없이 아래
+          // 네이티브 옵션만으로 핀치 줌이 정상 동작한다(실기기 확인 완료) — 예전엔
+          // 뷰어 껍데기 안의 중첩 iframe 구조 때문에 viewport를 아무리 고쳐도 안 됐었다.
           scalesPageToFit
           {...(Platform.OS === 'android'
             ? {
@@ -354,13 +193,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#1c2645',
   },
-  debugBar: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    backgroundColor: '#3a2a00',
-  },
-  debugText: { color: '#ffd54f', fontSize: 10 },
-  debugToggle: { color: '#80deea', textDecorationLine: 'underline', marginTop: 2 },
   backPlaceholder: { width: 72 },
   backText: { color: '#f9a825', fontWeight: '700', fontSize: 14 },
   title: { flex: 1, color: '#e0e0e0', fontWeight: '700', fontSize: 15 },
