@@ -285,6 +285,21 @@ def _today_str() -> str:
     return datetime.now(KST).strftime("%Y-%m-%d")
 
 
+def remaining_draws_today(guest_id: str) -> int:
+    """세션 상태를 건드리지 않고, 이 guest_id가 오늘 몇 회 더 뽑을 수 있는지만 조회.
+
+    메인화면의 타로 카드가 실제로 타로 페이지에 들어가기 전에 미리 "오늘은 다
+    봤어요" 안내를 보여주기 위해 쓴다 — session_state를 쓰는 _draws_remaining()과
+    달리 순수 조회 함수라 메인화면·타로 페이지 어디서 불러도 서로 상태를 오염시키지
+    않는다.
+    """
+    from marketing_db import get_guest_tarot_draw_count, init_marketing_tables
+
+    init_marketing_tables()
+    used = get_guest_tarot_draw_count(guest_id, _today_str())
+    return max(0, MAX_DAILY_DRAWS - used)
+
+
 def _draws_remaining() -> int:
     """오늘(KST) 남은 뽑기 횟수. 날짜가 바뀌면 자동으로 초기화된다.
 
@@ -343,6 +358,17 @@ def render():
     # st.container(key=...)를 쓰면 진짜로 그 안의 위젯들을 감싸는 DOM이 생긴다.
     with st.container(key="tarot_page_root_6n36s5"):
         stage = st.session_state["tarot_stage"]
+
+        # 예전엔 카테고리→소분류를 다 고른 "뽑기" 단계에서야 오늘 한도 소진을
+        # 알려줬다 — 이미 카드를 고른(card_key 있음) 결과 화면(stage=="result")이
+        # 아닌 이상, 카테고리 선택 단계부터 바로 안내해서 헛걸음하지 않게 한다.
+        if (
+            stage != "result"
+            and st.session_state.get("tarot_card_key") is None
+            and _draws_remaining() <= 0
+        ):
+            st.info("오늘은 여기까지 볼 수 있어요. 내일 다시 만나요 🌙")
+            return
 
         if stage == "category":
             _render_category_select()
@@ -412,10 +438,8 @@ def _render_draw_stage():
     card_key = st.session_state.get("tarot_card_key")
 
     if card_key is None:
+        # 한도 소진 여부는 render()에서 이 단계까지 오기 전에 이미 걸러진다.
         remaining = _draws_remaining()
-        if remaining <= 0:
-            st.info("오늘은 여기까지 볼 수 있어요. 내일 다시 만나요 🌙")
-            return
         st.caption(f"오늘 남은 뽑기: {remaining}회")
         _render_shuffle_deck()
         if st.button("⟲", key="shuffle_btn"):

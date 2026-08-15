@@ -337,6 +337,24 @@ def get_image_base64(file_path):
 icon_base64 = get_image_base64("K-325.jpg")
 
 
+def _tarot_remaining_draws_for_guest() -> int:
+    """메인화면 타로 카드에 '오늘 더 볼 수 있는지'를 실제 타로 페이지에 들어가기
+    전에 미리 보여주기 위한 조회. DB 조회가 일시적으로 실패해도 안내 문구 오류
+    때문에 정상 이용자를 막지 않도록, 실패 시엔 '이용 가능'으로 간주한다."""
+    try:
+        import sys
+
+        tarot_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tarot")
+        if tarot_dir not in sys.path:
+            sys.path.insert(0, tarot_dir)
+        import tarot_page
+        from user_scope import get_or_create_guest_id
+
+        return tarot_page.remaining_draws_today(get_or_create_guest_id())
+    except Exception:
+        return 1
+
+
 # ==========================================
 # 📺 화면 1: 메인 페이지 (Main View) - 🎨 모바일 앱 고급 UI 적용 완료
 # ==========================================
@@ -718,16 +736,32 @@ if current_page == "main":
     }
     .tarot-icon { font-size: 21px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
     .tarot-title { color: #ffffff; font-weight: 900; font-size: 13px; letter-spacing: 0.5px; }
+    .tarot-box.locked { cursor: default; opacity: 0.72; filter: grayscale(0.35); }
+    .tarot-box.locked:active { transform: none; box-shadow: 6px 8px 16px rgba(0,0,0,0.6), inset 1px 1px 2px rgba(255,255,255,0.1); }
     </style>
+    """, unsafe_allow_html=True)
 
-<div class="tarot-unit">
-    <a href="?page=tarot" target="_self" class="tarot-link" style="text-decoration:none; display:block;">
-        <div class="tarot-box" id="tarot-box-6n36s5">
-            <div class="tarot-icon">🔮</div>
-            <div class="tarot-title">삶이 지치고 힘들 때 신비로운 타로 점</div>
-        </div>
-    </a>
-</div>
+    if _tarot_remaining_draws_for_guest() > 0:
+        _tarot_card_inner = (
+            '<a href="?page=tarot" target="_self" class="tarot-link" style="text-decoration:none; display:block;">'
+            '<div class="tarot-box" id="tarot-box-6n36s5">'
+            '<div class="tarot-icon">🔮</div>'
+            '<div class="tarot-title">삶이 지치고 힘들 때 신비로운 타로 점</div>'
+            '</div></a>'
+        )
+    else:
+        # 실제 타로 페이지까지 들어가서야 "오늘은 다 봤어요"를 보여주면 이용자가
+        # 카테고리·소분류를 다 고르고 나서야 헛걸음했다는 걸 알게 된다 — 메인
+        # 화면에서 누르기 전에 미리 보여준다.
+        _tarot_card_inner = (
+            '<div class="tarot-box locked" id="tarot-box-6n36s5">'
+            '<div class="tarot-icon">🌙</div>'
+            '<div class="tarot-title">오늘의 타로는 다 봤어요, 내일 다시 만나요</div>'
+            '</div>'
+        )
+    st.markdown(f'<div class="tarot-unit">{_tarot_card_inner}</div>', unsafe_allow_html=True)
+
+    st.markdown("""
 <div class="menu-grid">
     <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box gold">
