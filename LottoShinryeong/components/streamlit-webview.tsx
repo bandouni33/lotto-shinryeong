@@ -150,6 +150,34 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           // iframe(타로 카드 스프레드 등) 안까지는 이벤트가 닿지 않아 그 부분에선 오히려
           // 네이티브 줌이 방해 없이 더 잘 동작했다 — 자체 구현을 걷어내고 네이티브 확대
           // 옵션을 다시 켠다(핀치 줌 허용 + 확대/축소 버튼은 숨김).
+          //
+          // Streamlit이 자체 번들 index.html에 심어둔
+          // <meta name="viewport" content="...,user-scalable=no">가 네이티브 줌을 막고
+          // 있어서(user_page.py에서 st.components.html로 페이지 로드 후에 이 태그를
+          // 고쳐봤지만 실기기에서 효과 없었음 — 안드로이드 WebView는 최초 네비게이션 시
+          // 파싱한 viewport 값으로 줌 스케일 한계를 확정 짓고, 그 이후의 DOM 변경은
+          // 반영하지 않는 것으로 보인다), 문서 자체가 만들어지자마자(다른 리소스가
+          // 로드되기 전) 실행되는 이 훅에서 한 번 더 같은 수정을 시도한다 — Streamlit
+          // 쪽 스크립트보다 더 이른 시점에 개입해야 줌 스케일이 잠기기 전에 값을
+          // 바꿀 수 있다.
+          injectedJavaScriptBeforeContentLoaded={`
+            (function() {
+              function fixViewport() {
+                const meta = document.querySelector('meta[name="viewport"]');
+                if (meta) {
+                  meta.setAttribute('content', 'width=device-width, initial-scale=1, shrink-to-fit=no');
+                  return true;
+                }
+                return false;
+              }
+              if (!fixViewport()) {
+                new MutationObserver(function(_muts, obs) {
+                  if (fixViewport()) obs.disconnect();
+                }).observe(document.documentElement, { childList: true, subtree: true });
+              }
+            })();
+            true;
+          `}
           scalesPageToFit
           {...(Platform.OS === 'android'
             ? {
