@@ -117,9 +117,14 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           gid[{guestIdSource}]:{guestId ? guestId.slice(0, 10) : '-'} url-has-gid:
           {uri.includes('&gid=') ? 'YES' : 'NO'}
         </Text>
-        <Text style={styles.debugText} numberOfLines={1}>
-          viewport: {viewportDebug}
-        </Text>
+        {/* 프레임별 진단이 길어서 한 줄로 자르면 정작 중요한(iframe 안쪽) 값이
+            잘려 안 보였다 — 잘라내지 않고 " | " 구분자마다 줄바꿈해서 전부 보여준다. */}
+        {viewportDebug.split(' | ').map((seg, i) => (
+          <Text key={i} style={styles.debugText}>
+            {i === 0 ? 'viewport: ' : '  '}
+            {seg}
+          </Text>
+        ))}
       </View>
 
       {error ? (
