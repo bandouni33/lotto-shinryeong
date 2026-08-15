@@ -57,6 +57,34 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
             if (meta) {
                 meta.setAttribute('content', 'width=device-width, initial-scale=1, shrink-to-fit=no');
             }
+
+            // 네이티브 앱이 최초 로드 때 URL에 실어준 ?gid=...(AsyncStorage에 저장된
+            // 게스트 식별자)는, 화면 안의 "메인으로"/메뉴 링크(page_auto.py의
+            // href="?", user_page.py의 href="?page=auto" 등 순수 HTML <a> 태그)를
+            // 누르는 순간 사라진다 — 그 링크들은 애초에 gid를 몰라서 못 붙여준다.
+            // 그러면 다음 페이지는 gid 없이 렌더링되고, 구매내역/타로 제한이
+            // (네이티브 앱이 아직 안 보내던 시절과 똑같이) 쿠키 폴백으로 되돌아가
+            // 버린다. 클릭 시점에 현재 URL의 gid를 읽어 그 링크의 href에 실시간으로
+            // 붙여줘서, 앱 안에서 어떤 링크를 눌러도 게스트 식별자가 계속 이어지게 한다.
+            function currentGid() {
+                const m = doc.location.search.match(/[?&]gid=([^&]*)/);
+                return m ? m[1] : null;
+            }
+            // 이 컴포넌트는 st.rerun()마다 다시 렌더링되는데, 매번 새 리스너를 doc에
+            // 계속 쌓지 않도록 한 세션(같은 top-level document)에는 한 번만 붙인다.
+            if (!doc.__gidLinkPatchBound) {
+                doc.__gidLinkPatchBound = true;
+                doc.addEventListener('click', function(e) {
+                    const gid = currentGid();
+                    if (!gid) return;
+                    const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+                    if (!a) return;
+                    const href = a.getAttribute('href') || '';
+                    if (!href || /^https?:\\/\\//i.test(href) || href.indexOf('gid=') !== -1) return;
+                    const sep = href.endsWith('?') ? '' : (href.indexOf('?') === -1 ? '?' : '&');
+                    a.setAttribute('href', href + sep + 'gid=' + encodeURIComponent(gid));
+                }, true);
+            }
         })();
         </script>
         """,

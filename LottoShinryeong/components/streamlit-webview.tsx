@@ -114,7 +114,8 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           원인 확인되면 제거할 것. */}
       <View style={styles.debugBar}>
         <Text style={styles.debugText} numberOfLines={1}>
-          gid[{guestIdSource}]:{guestId ? guestId.slice(0, 10) : '-'} url:{uri.includes('&gid=') ? 'O' : 'X'}
+          gid[{guestIdSource}]:{guestId ? guestId.slice(0, 10) : '-'} url-has-gid:
+          {uri.includes('&gid=') ? 'YES' : 'NO'}
         </Text>
         <Text style={styles.debugText} numberOfLines={1}>
           viewport: {viewportDebug}
@@ -160,6 +161,21 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
               setError(`HTTP ${e.nativeEvent.statusCode}`);
             }
           }}
+          injectedJavaScript={`
+            (function() {
+              // injectedJavaScriptBeforeContentLoaded 쪽 진단이 브리지 타이밍 때문에
+              // 하나도 안 왔을 경우를 대비한 두 번째, 독립적인 확인 경로 — 페이지가
+              // 완전히 로드된 뒤(브리지가 확실히 준비된 시점) 지금 이 순간의 meta 태그
+              // 값을 그대로 보고한다.
+              var meta = document.querySelector('meta[name="viewport"]');
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(
+                  'viewport:[로드완료시점] ' + (meta ? JSON.stringify(meta.getAttribute('content')) : '태그없음')
+                );
+              }
+            })();
+            true;
+          `}
           onMessage={(e) => {
             const data = e.nativeEvent.data;
             if (typeof data === 'string' && data.startsWith('viewport:')) {
@@ -187,9 +203,23 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           // 바꿀 수 있다.
           injectedJavaScriptBeforeContentLoaded={`
             (function() {
+              // injectedJavaScriptBeforeContentLoaded 시점엔 window.ReactNativeWebView
+              // 브리지가 아직 준비 안 됐을 수 있어서(실기기에서 실제로 이것 때문에
+              // 진단 메시지가 한 번도 안 온 적이 있었다), 바로 못 보내면 큐에 쌓아뒀다가
+              // 브리지가 생기는 즉시(최대 5초, 100ms 간격) 순서대로 흘려보낸다.
+              var pending = [];
               function report(msg) {
-                if (window.ReactNativeWebView) {
-                  window.ReactNativeWebView.postMessage('viewport:' + msg);
+                pending.push(msg);
+                flush();
+              }
+              var tries = 0;
+              function flush() {
+                if (!window.ReactNativeWebView) {
+                  if (tries++ < 50) setTimeout(flush, 100);
+                  return;
+                }
+                while (pending.length) {
+                  window.ReactNativeWebView.postMessage('viewport:' + pending.shift());
                 }
               }
               var fixedOnce = false;
