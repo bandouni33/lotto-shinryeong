@@ -22,11 +22,29 @@ type Props = {
   showBack?: boolean;
 };
 
+// 임시 진단용 — viewport meta 태그를 고쳐도 실기기에서 핀치줌이 여전히 안 돼서,
+// Streamlit 콘텐츠 자체가 원인인지 아니면 네이티브 웹뷰 줌 설정(scalesPageToFit/
+// setBuiltInZoomControls) 자체가 이 빌드/기기에서 아예 안 먹는 건지를 갈라보기 위한
+// 완전히 단순한 테스트 페이지. viewport 제약이 전혀 없고 화면보다 훨씬 큰 콘텐츠라,
+// 여기서도 줌이 안 되면 원인은 Streamlit 쪽이 아니라 웹뷰 자체 설정/라이브러리다.
+const ZOOM_TEST_HTML = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0; width:2000px; height:2000px; background:
+  repeating-linear-gradient(45deg, #222 0 40px, #f9a825 40px 80px);">
+  <div style="position:fixed; top:10px; left:10px; background:#000; color:#fff;
+    font-size:24px; padding:10px;">핀치줌 테스트 페이지 (viewport 제약 없음)</div>
+</body>
+</html>
+`;
+
 export default function StreamlitWebView({ page, title, showBack = true }: Props) {
   const insets = useSafeAreaInsets();
   const [guestId, setGuestId] = useState<string | null>(null);
   const [guestIdSource, setGuestIdSource] = useState<string>('로딩중');
   const [viewportDebug, setViewportDebug] = useState<string>('대기중');
+  const [zoomTestMode, setZoomTestMode] = useState(false);
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +143,11 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
             {seg}
           </Text>
         ))}
+        <TouchableOpacity onPress={() => setZoomTestMode((v) => !v)}>
+          <Text style={[styles.debugText, styles.debugToggle]}>
+            [{zoomTestMode ? '◀ 실제 페이지로' : 'viewport 제약 없는 단순 테스트 페이지 열기 ▶'}]
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {error ? (
@@ -150,8 +173,8 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
         // 이 프로젝트(LottoShinryeong) 재빌드가 필요한 변경이라 별도로 진행.
         <WebView
           ref={webViewRef}
-          key={uri}
-          source={{ uri }}
+          key={zoomTestMode ? 'zoom-test' : uri}
+          source={zoomTestMode ? { html: ZOOM_TEST_HTML } : { uri }}
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
           onLoadStart={() => setLoading(true)}
@@ -337,6 +360,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#3a2a00',
   },
   debugText: { color: '#ffd54f', fontSize: 10 },
+  debugToggle: { color: '#80deea', textDecorationLine: 'underline', marginTop: 2 },
   backPlaceholder: { width: 72 },
   backText: { color: '#f9a825', fontWeight: '700', fontSize: 14 },
   title: { flex: 1, color: '#e0e0e0', fontWeight: '700', fontSize: 15 },
