@@ -604,15 +604,28 @@ if current_page == "main":
             if 31 <= n <= 40: return "background: radial-gradient(circle at 35% 35%, #bdbdbd, #757575, #424242);"
             return "background: radial-gradient(circle at 35% 35%, #81c784, #388e3c, #1b5e20);"
 
-        balls_html = "".join([f'<div style="{get_ball_style(n)} width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:900; font-size:15px; margin-right:4px; box-shadow: 2px 3px 5px rgba(0,0,0,0.5), inset -3px -3px 5px rgba(0,0,0,0.4), inset 2px 2px 4px rgba(255,255,255,0.6); text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">{n}</div>' for n in numbers])
-        
+        # 34px 공 6개 + 보너스공 + 라벨을 고정폭으로 한 줄에 다 넣으면 합계가
+        # 약 475px에 달해, 실제 폰 화면(보통 360~412dp)에서는 항상 넘쳐서
+        # "+ 보너스공"이 화면 밖으로 잘려 안 보이는 문제가 있었다(overflow-x:hidden을
+        # 상위에 걸어둔 뒤로는 스크롤도 안 돼서 아예 안 보이기만 했다). 공 크기와
+        # 여백을 좁혀 실제 좁은 화면 폭 안에 들어오는 총합(~340px)으로 줄이고,
+        # 그래도 넘치는 극단적인 경우(글자 크게 설정 등)를 대비해 이 줄만 별도로
+        # 가로 스크롤 가능하게 만들어 최소한 잘려서 안 보이는 일은 없게 한다.
+        _ball_css = (
+            "width:24px; height:24px; border-radius:50%; display:flex; align-items:center; "
+            "justify-content:center; color:white; font-weight:900; font-size:11.5px; "
+            "flex-shrink:0; box-shadow: 2px 3px 5px rgba(0,0,0,0.5), inset -3px -3px 5px rgba(0,0,0,0.4), "
+            "inset 2px 2px 4px rgba(255,255,255,0.6); text-shadow: 1px 1px 2px rgba(0,0,0,0.8);"
+        )
+        balls_html = "".join([f'<div style="{get_ball_style(n)} {_ball_css} margin-right:3px;">{n}</div>' for n in numbers])
+
         st.markdown(f"""
-        <div style="background: linear-gradient(145deg, #1c2645, #12182b); border-radius:16px; padding:12px 10px; border: 1px solid #2a3a60; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 6px 12px rgba(0,0,0,0.5); margin-bottom: 12px;">
-            <div style="color:#ffb300; font-size:13px; font-weight:900; line-height:1; margin-right:8px; letter-spacing:-0.5px; white-space:nowrap;">최근당첨번호 <span style="color:#fff;">{draw_no}</span></div>
-            <div style="display:flex; align-items:center;">
+        <div style="background: linear-gradient(145deg, #1c2645, #12182b); border-radius:16px; padding:10px; border: 1px solid #2a3a60; display: flex; align-items: center; gap: 6px; box-shadow: 0 6px 12px rgba(0,0,0,0.5); margin-bottom: 12px; max-width: 100%; overflow-x: auto;">
+            <div style="color:#ffb300; font-size:11.5px; font-weight:900; line-height:1; letter-spacing:-0.5px; white-space:nowrap; flex-shrink:0;">최근당첨번호<br><span style="color:#fff;">{draw_no}</span></div>
+            <div style="display:flex; align-items:center; flex-shrink:0;">
                 {balls_html}
-                <span style="color:#aaa; font-weight:900; font-size:18px; margin: 0 4px;">+</span>
-                <div style="{get_ball_style(bonus_val)} width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:900; font-size:15px; box-shadow: 2px 3px 5px rgba(0,0,0,0.5), inset -3px -3px 5px rgba(0,0,0,0.4), inset 2px 2px 4px rgba(255,255,255,0.6); text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">{bonus_val}</div>
+                <span style="color:#aaa; font-weight:900; font-size:15px; margin: 0 3px; flex-shrink:0;">+</span>
+                <div style="{get_ball_style(bonus_val)} {_ball_css}">{bonus_val}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
