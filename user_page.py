@@ -132,28 +132,25 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
           # TODO(update-banner-link): 앱(React Native WebView)에서 target="_blank"가 새 탭이
           # 아니라 이 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
           # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
-          _un_body = f"""
-                <span class="update-toast-icon" aria-hidden="true">↑</span>
-                <span class="update-toast-text">
-                    <span class="update-toast-title">{_un_message}</span>
-                    <span class="update-toast-subtitle">더 나은 경험을 위해 지금 업데이트하세요.</span>
-                </span>
-                <span class="update-toast-btn">업데이트<span class="update-toast-chevron">›</span></span>
-          """
+          # 두 조각으로 나뉜 알약 모양 배지 — 왼쪽(메시지)을 누르면 "다음에"(닫기)와
+          # 동일하게 동작하고, 오른쪽(금색 버튼)만 실제 업데이트 링크로 이동한다.
           if _un_url:
-            _un_link_html = (
-                f'<a class="update-toast-link" id="update-toast-now-6n36s5" '
+            _un_btn_html = (
+                f'<a class="update-toast-btn-seg" id="update-toast-now-6n36s5" '
                 f'href="{_html.escape(_un_url, quote=True)}" target="_blank" rel="noopener">'
-                f'{_un_body}</a>'
+                f'업데이트<span class="update-toast-chevron">›</span></a>'
             )
           else:
-            _un_link_html = f'<span class="update-toast-link update-toast-link-disabled">{_un_body}</span>'
+            _un_btn_html = (
+                '<span class="update-toast-btn-seg update-toast-btn-seg-disabled">'
+                '업데이트<span class="update-toast-chevron">›</span></span>'
+            )
 
           st.markdown(
             f"""
             <div class="update-toast" id="update-toast-6n36s5">
-                <button type="button" class="update-toast-close" id="update-toast-later-6n36s5" aria-label="닫기">✕</button>
-                {_un_link_html}
+                <button type="button" class="update-toast-msg-seg" id="update-toast-later-6n36s5">{_un_message}</button>
+                {_un_btn_html}
             </div>
             """,
             unsafe_allow_html=True,
@@ -194,16 +191,12 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                             top: 14px;
                             left: 50%;
                             z-index: 9999;
+                            display: flex;
                             width: max-content;
-                            max-width: min(92vw, 360px);
-                            padding: 12px 14px;
-                            border-radius: 16px;
-                            background: linear-gradient(135deg, #1b2338 0%, #0c1120 100%);
-                            border: 1px solid rgba(255, 200, 90, 0.35);
-                            box-shadow:
-                                0 18px 40px rgba(0, 0, 0, 0.5),
-                                0 0 0 1px rgba(0, 0, 0, 0.3),
-                                0 0 22px rgba(255, 196, 77, 0.1);
+                            max-width: min(92vw, 320px);
+                            border-radius: 999px;
+                            overflow: hidden;
+                            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
                             opacity: 0;
                             visibility: hidden;
                             pointer-events: none;
@@ -218,85 +211,38 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                             pointer-events: auto;
                             transform: translate(-50%, 0) scale(1);
                         }}
-                        .update-toast-close {{
-                            position: absolute;
-                            top: 7px; right: 9px;
-                            width: 18px; height: 18px;
-                            display: flex; align-items: center; justify-content: center;
-                            background: none; border: none; padding: 0;
-                            color: rgba(255, 255, 255, 0.35);
-                            font-size: 11px; line-height: 1;
-                            cursor: pointer;
-                        }}
-                        .update-toast-link {{
+                        .update-toast-msg-seg {{
                             display: flex;
                             align-items: center;
-                            gap: 10px;
-                            text-decoration: none;
-                            cursor: pointer;
-                        }}
-                        .update-toast-link-disabled {{
-                            opacity: 0.5;
-                            pointer-events: none;
-                        }}
-                        .update-toast-icon {{
-                            flex: 0 0 auto;
-                            width: 38px; height: 38px;
-                            border-radius: 50%;
-                            display: flex; align-items: center; justify-content: center;
-                            border: 2px solid #ffc94d;
-                            color: #ffc94d;
-                            font-size: 17px;
-                            font-weight: 900;
-                            box-shadow: 0 0 12px rgba(255, 196, 77, 0.35);
-                        }}
-                        .update-toast-text {{
-                            flex: 1 1 auto;
-                            min-width: 0;
-                            display: flex;
-                            flex-direction: column;
-                            gap: 2px;
-                        }}
-                        .update-toast-title {{
-                            color: #ffd166;
+                            padding: 10px 16px;
+                            background: #efe1bd;
+                            color: #1c2540;
                             font-size: 13px;
                             font-weight: 800;
                             letter-spacing: -0.01em;
                             white-space: nowrap;
+                            border: none;
+                            cursor: pointer;
                         }}
-                        .update-toast-subtitle {{
-                            color: #a9a08a;
-                            font-size: 10.5px;
-                            font-weight: 500;
-                            white-space: nowrap;
-                            overflow: hidden;
-                            text-overflow: ellipsis;
-                        }}
-                        .update-toast-btn {{
-                            flex: 0 0 auto;
+                        .update-toast-btn-seg {{
                             display: flex;
                             align-items: center;
                             gap: 1px;
-                            padding: 8px 12px;
-                            border-radius: 10px;
-                            background: linear-gradient(180deg, #ffe9b3 0%, #ffc23d 55%, #f5a623 100%);
-                            color: #2a1b04;
-                            font-size: 12px;
+                            padding: 10px 16px;
+                            background: linear-gradient(180deg, #e8c470 0%, #d9a94f 100%);
+                            color: #1c2540;
+                            font-size: 13px;
                             font-weight: 800;
-                            box-shadow:
-                                0 3px 0 #b3760e,
-                                0 6px 14px rgba(245, 166, 35, 0.4),
-                                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+                            white-space: nowrap;
+                            text-decoration: none;
+                            cursor: pointer;
                         }}
-                        .update-toast-link:active .update-toast-btn {{
-                            transform: translateY(1px);
-                            box-shadow:
-                                0 2px 0 #b3760e,
-                                0 4px 10px rgba(245, 166, 35, 0.35),
-                                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+                        .update-toast-btn-seg-disabled {{
+                            opacity: 0.5;
+                            pointer-events: none;
                         }}
                         .update-toast-chevron {{
-                            font-size: 13px;
+                            font-size: 14px;
                         }}
                     `;
                     doc.head.appendChild(style);
