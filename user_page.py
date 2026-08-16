@@ -674,10 +674,10 @@ if current_page == "main":
     .purple { border: 2px solid rgba(171, 71, 188, 0.7); }
 
     .tarot-unit {
-        width: 78%;
-        max-width: 78%;
+        width: 88%;
+        max-width: 88%;
         margin: 35px auto 35px;
-        transform: translateX(-6%) translateX(-12px);
+        transform: translateX(-2%) translateX(-12px);
     }
     .tarot-box {
         position: relative;
