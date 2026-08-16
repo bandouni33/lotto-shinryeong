@@ -106,6 +106,18 @@ def init_marketing_tables():
         CREATE INDEX IF NOT EXISTS idx_guest_auto_orders_guest
         ON guest_auto_orders(guest_id, created_at)
     """)
+    # 업데이트 안내 배너 — "오늘 이미 봤는지"를 예전엔 쿠키/localStorage로만 판단했는데,
+    # 이 앱은 화면마다 안드로이드 웹뷰가 통째로 새로 생성되는 구조라 방금 쓴 쿠키가
+    # 디스크에 저장되기 전에 다음 화면으로 넘어가버리면 "몇 번을 눌러도 또 뜨는" 문제로
+    # 이어졌다. guest_id에 묶어 서버 DB에 기록하면 그 타이밍 문제 자체가 없다.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS guest_update_notice (
+            guest_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            last_shown_date TEXT,
+            PRIMARY KEY (guest_id, version)
+        )
+    """)
     # 타로 일일 뽑기 제한 — 예전엔 쿠키(document.cookie)에 오늘 뽑은 횟수를 저장했는데,
     # 안드로이드 웹뷰가 화면 전환마다 새로 생성되는 구조상 쿠키가 디스크에 저장되기
     # 전에 유실되곤 해서 "재접속하면 계속 뽑을 수 있는" 문제로 이어졌다. guest_id에
@@ -596,6 +608,31 @@ def register_guest_tarot_draw(guest_id: str, draw_date: str) -> int:
     ).fetchone()
     conn.close()
     return int(row[0]) if row else 0
+
+
+def was_guest_update_notice_shown_today(guest_id: str, version: str, today: str) -> bool:
+    """이 guest_id에게 오늘(today, KST) 이 버전의 업데이트 배너를 이미 보여줬는지."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT last_shown_date FROM guest_update_notice WHERE guest_id = ? AND version = ?",
+        (str(guest_id), version),
+    ).fetchone()
+    conn.close()
+    return bool(row) and row[0] == today
+
+
+def mark_guest_update_notice_shown(guest_id: str, version: str, today: str) -> None:
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO guest_update_notice (guest_id, version, last_shown_date)
+        VALUES (?, ?, ?)
+        ON CONFLICT(guest_id, version) DO UPDATE SET last_shown_date = excluded.last_shown_date
+        """,
+        (str(guest_id), version, today),
+    )
+    conn.commit()
+    conn.close()
 
 
 def delete_guest_auto_order(order_id: int) -> None:

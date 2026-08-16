@@ -84,6 +84,10 @@ def _inject_base_css():
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gamja+Flower&family=Black+Han+Sans&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
         <style>
+        html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewContainer"] > section.main {
+            overflow-x: hidden !important;
+        }
         .st-key-tarot_page_root_6n36s5 * { box-sizing: border-box; }
         .st-key-tarot_page_root_6n36s5 { font-family: 'Gaegu', sans-serif; }
 

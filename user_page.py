@@ -99,46 +99,66 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
     import html as _html
 
     _update_notice = get_update_notice()
-    if _update_notice["version"]:
-        # "이미 봤는지"는 서버(session_state/쿠키)가 아니라 브라우저 localStorage로만 판단한다.
-        # session_state는 페이지 전환·앱 재부팅마다 새 세션이 열리며 초기화되고, 쿠키도
-        # st.context.cookies가 세션 시작 시점 스냅샷이라 즉시 갱신되지 않아 신뢰할 수 없었다.
-        # localStorage는 같은 기기·같은 웹뷰인 한 세션과 무관하게 남는다.
+    # 메인화면에서만 노출한다 — 예전엔 이 블록이 모든 페이지 공통 영역에 있어서
+    # 화면을 옮길 때마다(자동구매→메인→자동구매 등) 계속 다시 떴다.
+    if current_page == "main" and _update_notice["version"]:
         _un_version = _update_notice["version"]
         _un_message = _html.escape(_update_notice["message"])
         _un_url = _update_notice["url"]
 
-        if _un_url:
+        # "오늘 이미 봤는지"를 서버 DB에서 guest_id 기준으로 먼저 확인한다 — 예전엔
+        # 클라이언트 쿠키/localStorage로만 판단했는데, 이 앱은 화면마다 안드로이드
+        # 웹뷰가 통째로 새로 생성되는 구조라 방금 쓴 쿠키가 디스크에 저장되기 전에
+        # 다음 화면으로 넘어가버리면 유실돼서 "몇 번을 눌러도 또 뜨는" 문제로
+        # 이어졌다. 구매내역·타로 제한과 동일한 guest_id+DB 방식으로 바꿔 그 타이밍
+        # 문제 자체를 없앤다.
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from user_scope import get_or_create_guest_id
+        from marketing_db import (
+            init_marketing_tables,
+            mark_guest_update_notice_shown,
+            was_guest_update_notice_shown_today,
+        )
+
+        init_marketing_tables()
+        _un_guest_id = get_or_create_guest_id()
+        _un_today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+        _un_already_shown = was_guest_update_notice_shown_today(_un_guest_id, _un_version, _un_today)
+
+        if not _un_already_shown:
+          mark_guest_update_notice_shown(_un_guest_id, _un_version, _un_today)
+
+          if _un_url:
             # TODO(update-banner-link): 앱(React Native WebView)에서 target="_blank"가 새 탭이
             # 아니라 이 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
             # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
             _un_action_html = (
                 f'<a class="update-toast-btn-now" id="update-toast-now-6n36s5" '
                 f'href="{_html.escape(_un_url, quote=True)}" target="_blank" rel="noopener">'
-                f'<span>지금 업데이트</span></a>'
+                f'<span>업데이트</span></a>'
             )
-        else:
+          else:
             _un_action_html = (
                 '<span class="update-toast-btn-now update-toast-btn-disabled">'
-                '<span>지금 업데이트</span></span>'
+                '<span>업데이트</span></span>'
             )
 
-        st.markdown(
+          st.markdown(
             f"""
             <div class="update-toast" id="update-toast-6n36s5">
                 <div class="update-toast-glow" aria-hidden="true"></div>
-                <div class="update-toast-badge">✨ NEW</div>
                 <div class="update-toast-msg">{_un_message}</div>
                 <div class="update-toast-actions">
                     {_un_action_html}
-                    <button type="button" class="update-toast-btn-later" id="update-toast-later-6n36s5">나중에</button>
+                    <button type="button" class="update-toast-btn-later" id="update-toast-later-6n36s5">다음에</button>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
-        )
+          )
 
-        components.html(
+          components.html(
             f"""
             <script>
             (function() {{
@@ -210,20 +230,6 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                             pointer-events: none;
                             z-index: -1;
                         }}
-                        .update-toast-badge {{
-                            display: inline-flex;
-                            align-items: center;
-                            gap: 4px;
-                            font-size: 10.5px;
-                            font-weight: 800;
-                            letter-spacing: 0.04em;
-                            color: #2a1b04;
-                            background: linear-gradient(135deg, #ffe9b3 0%, #ffc94d 100%);
-                            padding: 3px 9px;
-                            border-radius: 999px;
-                            margin-bottom: 9px;
-                            box-shadow: 0 2px 8px rgba(255, 201, 77, 0.35);
-                        }}
                         .update-toast-msg {{
                             color: #f3e6cc;
                             font-size: 14px;
@@ -283,10 +289,10 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                     doc.head.appendChild(style);
                 }}
 
-                // 이 앱은 화면(페이지)마다 네이티브 WebView가 새로 뜨는 구조라(streamlit-webview.tsx의
-                // key={{uri}}) localStorage는 WebView 인스턴스마다 따로 놀 수 있다 — 반면 쿠키는
-                // sharedCookiesEnabled로 명시적으로 화면 간 공유되게 해둔 값이라 더 신뢰할 수 있다.
-                // 그래서 쿠키를 1차로, localStorage를 보조로 같이 쓴다.
+                // "오늘 이미 봤는지"는 렌더링 전에 서버(guest_id+DB)에서 이미 걸러졌으니,
+                // 여기서는 "업데이트"를 눌러 완전히 끝낸 사람만 이 버전에 대해 다시 안
+                // 뜨도록 최소한으로 기록한다(최선 노력 — 외부 링크로 바로 이동하는
+                // 클릭이라 100% 보장은 못 하지만, 매번 뜨던 예전보다는 훨씬 낫다).
                 function getCookie(name) {{
                     const m = doc.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
                     return m ? decodeURIComponent(m[1]) : null;
@@ -294,32 +300,8 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                 function setCookie(name, value) {{
                     doc.cookie = name + '=' + encodeURIComponent(value) + '; max-age=31536000; path=/';
                 }}
-                function getStored(key) {{
-                    let v = getCookie(key);
-                    if (v === null) {{
-                        try {{ v = window.parent.localStorage.getItem(key); }} catch (e) {{}}
-                    }}
-                    return v;
-                }}
-                function setStored(key, value) {{
-                    setCookie(key, value);
-                    try {{ window.parent.localStorage.setItem(key, value); }} catch (e) {{}}
-                }}
-                function todayKST() {{
-                    // KST(UTC+9) 기준 날짜 — 서버 쪽(tarot_page.py 등)과 동일한 기준을 쓴다.
-                    const t = new Date(Date.now() + 9 * 60 * 60 * 1000);
-                    return t.toISOString().slice(0, 10);
-                }}
-
-                // "지금 업데이트"를 누른 사용자는 완전히 끝(해당 버전에 대해 다시 안 뜸).
-                // 그 외(그냥 보기만 했거나 "나중에")에는 하루에 한 번은 다시 뜬다.
                 const foreverKey = 'update_ack_forever';
-                const lastShownKey = 'update_last_shown';
-
-                if (getStored(foreverKey) === version) return true;
-                if (getStored(lastShownKey) === version + ':' + todayKST()) return true;
-
-                setStored(lastShownKey, version + ':' + todayKST());
+                if (getCookie(foreverKey) === version) return true;
 
                 function dismiss() {{
                     toast.classList.remove('show');
@@ -338,7 +320,7 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                 const nowBtn = doc.getElementById('update-toast-now-6n36s5');
                 if (nowBtn) {{
                     nowBtn.addEventListener('click', function() {{
-                        setStored(foreverKey, version);
+                        setCookie(foreverKey, version);
                     }});
                 }}
                 return true;
@@ -372,6 +354,10 @@ if current_page == "main":
     st.markdown("""
     <style>
         .stApp { background-color: #12182b; color: white; }
+        html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewContainer"] > section.main {
+            overflow-x: hidden !important;
+        }
         .block-container { padding-top: 5px !important; padding-bottom: 0px !important; padding-left: 12px !important; padding-right: 12px !important; max-width: 600px; }
         section[data-testid="stSidebar"] { display: none; }
         header[data-testid="stHeader"] { display: none; }
@@ -1134,6 +1120,10 @@ elif current_page == "stats":
     st.markdown("""
     <style>
         .stApp { background-color: #12182b; color: white; }
+        html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewContainer"] > section.main {
+            overflow-x: hidden !important;
+        }
         .block-container { padding: 10px !important; max-width: 600px; }
         section[data-testid="stSidebar"], header[data-testid="stHeader"] { display: none; }
         
