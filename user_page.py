@@ -129,30 +129,31 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
         if not _un_already_shown:
           mark_guest_update_notice_shown(_un_guest_id, _un_version, _un_today)
 
+          # TODO(update-banner-link): 앱(React Native WebView)에서 target="_blank"가 새 탭이
+          # 아니라 이 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
+          # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
+          _un_body = f"""
+                <span class="update-toast-icon" aria-hidden="true">↑</span>
+                <span class="update-toast-text">
+                    <span class="update-toast-title">{_un_message}</span>
+                    <span class="update-toast-subtitle">더 나은 경험을 위해 지금 업데이트하세요.</span>
+                </span>
+                <span class="update-toast-btn">업데이트<span class="update-toast-chevron">›</span></span>
+          """
           if _un_url:
-            # TODO(update-banner-link): 앱(React Native WebView)에서 target="_blank"가 새 탭이
-            # 아니라 이 웹뷰 안에서 그대로 열림 — LottoShinryeong/components/streamlit-webview.tsx
-            # 참고. update_url에 APK 직링크를 넣으면 다운로드가 안 될 수 있음.
-            _un_action_html = (
-                f'<a class="update-toast-btn-now" id="update-toast-now-6n36s5" '
+            _un_link_html = (
+                f'<a class="update-toast-link" id="update-toast-now-6n36s5" '
                 f'href="{_html.escape(_un_url, quote=True)}" target="_blank" rel="noopener">'
-                f'<span>업데이트</span></a>'
+                f'{_un_body}</a>'
             )
           else:
-            _un_action_html = (
-                '<span class="update-toast-btn-now update-toast-btn-disabled">'
-                '<span>업데이트</span></span>'
-            )
+            _un_link_html = f'<span class="update-toast-link update-toast-link-disabled">{_un_body}</span>'
 
           st.markdown(
             f"""
             <div class="update-toast" id="update-toast-6n36s5">
-                <div class="update-toast-glow" aria-hidden="true"></div>
-                <div class="update-toast-msg">{_un_message}</div>
-                <div class="update-toast-actions">
-                    {_un_action_html}
-                    <button type="button" class="update-toast-btn-later" id="update-toast-later-6n36s5">다음에</button>
-                </div>
+                <button type="button" class="update-toast-close" id="update-toast-later-6n36s5" aria-label="닫기">✕</button>
+                {_un_link_html}
             </div>
             """,
             unsafe_allow_html=True,
@@ -190,22 +191,19 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                     style.textContent = `
                         .update-toast {{
                             position: fixed;
-                            top: 16px;
+                            top: 14px;
                             left: 50%;
                             z-index: 9999;
                             width: max-content;
-                            max-width: min(90vw, 400px);
-                            padding: 18px 20px 16px;
-                            border-radius: 18px;
-                            background:
-                                linear-gradient(180deg, rgba(38, 28, 12, 0.97) 0%, rgba(15, 11, 6, 0.98) 100%);
-                            border: 1px solid rgba(255, 209, 102, 0.28);
-                            backdrop-filter: blur(14px);
-                            -webkit-backdrop-filter: blur(14px);
+                            max-width: min(92vw, 360px);
+                            padding: 12px 14px;
+                            border-radius: 16px;
+                            background: linear-gradient(135deg, #1b2338 0%, #0c1120 100%);
+                            border: 1px solid rgba(255, 200, 90, 0.35);
                             box-shadow:
-                                0 20px 45px rgba(0, 0, 0, 0.5),
-                                0 2px 0 rgba(255, 209, 102, 0.15) inset,
-                                0 0 0 1px rgba(0, 0, 0, 0.3);
+                                0 18px 40px rgba(0, 0, 0, 0.5),
+                                0 0 0 1px rgba(0, 0, 0, 0.3),
+                                0 0 22px rgba(255, 196, 77, 0.1);
                             opacity: 0;
                             visibility: hidden;
                             pointer-events: none;
@@ -220,70 +218,85 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                             pointer-events: auto;
                             transform: translate(-50%, 0) scale(1);
                         }}
-                        .update-toast-glow {{
+                        .update-toast-close {{
                             position: absolute;
-                            top: -30%; left: 50%;
-                            width: 70%; height: 60%;
-                            transform: translateX(-50%);
-                            background: radial-gradient(ellipse at center, rgba(255, 209, 102, 0.35) 0%, transparent 70%);
-                            filter: blur(10px);
-                            pointer-events: none;
-                            z-index: -1;
-                        }}
-                        .update-toast-msg {{
-                            color: #f3e6cc;
-                            font-size: 14px;
-                            font-weight: 600;
-                            line-height: 1.55;
-                            text-align: center;
-                            margin-bottom: 14px;
-                            letter-spacing: -0.01em;
-                        }}
-                        .update-toast-actions {{
-                            display: flex;
-                            gap: 8px;
-                            justify-content: center;
-                        }}
-                        .update-toast-btn-now,
-                        .update-toast-btn-later {{
-                            display: inline-flex;
-                            align-items: center;
-                            justify-content: center;
-                            padding: 9px 18px;
-                            border-radius: 11px;
-                            font-size: 13px;
-                            font-weight: 700;
+                            top: 7px; right: 9px;
+                            width: 18px; height: 18px;
+                            display: flex; align-items: center; justify-content: center;
+                            background: none; border: none; padding: 0;
+                            color: rgba(255, 255, 255, 0.35);
+                            font-size: 11px; line-height: 1;
                             cursor: pointer;
-                            text-decoration: none;
-                            border: none;
-                            transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
                         }}
-                        .update-toast-btn-now {{
+                        .update-toast-link {{
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                            text-decoration: none;
+                            cursor: pointer;
+                        }}
+                        .update-toast-link-disabled {{
+                            opacity: 0.5;
+                            pointer-events: none;
+                        }}
+                        .update-toast-icon {{
+                            flex: 0 0 auto;
+                            width: 38px; height: 38px;
+                            border-radius: 50%;
+                            display: flex; align-items: center; justify-content: center;
+                            border: 2px solid #ffc94d;
+                            color: #ffc94d;
+                            font-size: 17px;
+                            font-weight: 900;
+                            box-shadow: 0 0 12px rgba(255, 196, 77, 0.35);
+                        }}
+                        .update-toast-text {{
+                            flex: 1 1 auto;
+                            min-width: 0;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 2px;
+                        }}
+                        .update-toast-title {{
+                            color: #ffd166;
+                            font-size: 13px;
+                            font-weight: 800;
+                            letter-spacing: -0.01em;
+                            white-space: nowrap;
+                        }}
+                        .update-toast-subtitle {{
+                            color: #a9a08a;
+                            font-size: 10.5px;
+                            font-weight: 500;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }}
+                        .update-toast-btn {{
+                            flex: 0 0 auto;
+                            display: flex;
+                            align-items: center;
+                            gap: 1px;
+                            padding: 8px 12px;
+                            border-radius: 10px;
                             background: linear-gradient(180deg, #ffe9b3 0%, #ffc23d 55%, #f5a623 100%);
                             color: #2a1b04;
+                            font-size: 12px;
+                            font-weight: 800;
                             box-shadow:
                                 0 3px 0 #b3760e,
                                 0 6px 14px rgba(245, 166, 35, 0.4),
                                 inset 0 1px 0 rgba(255, 255, 255, 0.5);
                         }}
-                        .update-toast-btn-now:active {{
+                        .update-toast-link:active .update-toast-btn {{
                             transform: translateY(1px);
                             box-shadow:
                                 0 2px 0 #b3760e,
                                 0 4px 10px rgba(245, 166, 35, 0.35),
                                 inset 0 1px 0 rgba(255, 255, 255, 0.5);
                         }}
-                        .update-toast-btn-disabled {{
-                            opacity: 0.45;
-                            pointer-events: none;
-                        }}
-                        .update-toast-btn-later {{
-                            background: rgba(255, 255, 255, 0.06);
-                            color: #cbb894;
-                            border: 1px solid rgba(255, 255, 255, 0.12);
-                        }}
-                        .update-toast-btn-later:active {{
-                            background: rgba(255, 255, 255, 0.12);
+                        .update-toast-chevron {{
+                            font-size: 13px;
                         }}
                     `;
                     doc.head.appendChild(style);
