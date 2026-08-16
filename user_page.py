@@ -1336,6 +1336,29 @@ elif current_page == "stats":
         unsafe_allow_html=True,
     )
 
+# ==========================================================
+# 📋 개인정보 처리방침 — Play 스토어 등 외부 제출용 단독 URL
+# (앱 안 "회원 고지·약관" 아코디언과 같은 내용이지만, 앱을 열거나 로그인하지
+#  않고도 바로 볼 수 있는 독립된 페이지가 필요해서 별도 경로로 뺐다.)
+# ==========================================================
+elif current_page == "privacy":
+    st.markdown(
+        """
+        <style>
+        .stApp { background-color: #12182b; color: white; }
+        .block-container { max-width: 680px; padding: 24px 20px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    from legal_notices import NOTICES
+
+    st.markdown("## 개인정보 처리방침")
+    st.markdown(NOTICES["privacy"]["body"])
+    st.markdown("---")
+    st.markdown("## 사업자 정보")
+    st.markdown(NOTICES["business"]["body"])
+
 
 # ==========================================================
 # 📋 메인 화면 — 회원 고지·약관 (운영자 미리보기, 관리자 메뉴 바로 위)
