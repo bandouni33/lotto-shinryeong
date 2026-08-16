@@ -674,10 +674,10 @@ if current_page == "main":
     .purple { border: 2px solid rgba(171, 71, 188, 0.7); }
 
     .tarot-unit {
-        width: 70%;
-        max-width: 70%;
+        width: 78%;
+        max-width: 78%;
         margin: 35px auto 35px;
-        transform: translateX(-10%) translateX(-12px);
+        transform: translateX(-6%) translateX(-12px);
     }
     .tarot-box {
         position: relative;
@@ -781,12 +781,12 @@ if current_page == "main":
                         position: absolute;
                         top: 50%;
                         right: -28px;
-                        width: 38px;
+                        width: 36px;
                         height: auto;
                         border-radius: 6px;
                         border: 1px solid rgba(255, 193, 7, 0.4);
                         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-                        transform: translateY(-50%) rotate(8deg);
+                        transform: translateY(-50%) rotate(13deg);
                         z-index: 5;
                         pointer-events: none;
                     }}
