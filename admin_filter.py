@@ -362,6 +362,10 @@ if recent_nums:
 
 st.markdown("""
 <style>
+    html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] > section.main {
+        overflow-x: hidden !important;
+    }
     /* ── Trading Desk Dark Palette ── */
     :root {
         --af-bg-deep: #050508;

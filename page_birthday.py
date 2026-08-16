@@ -37,6 +37,10 @@ def render():
     # ─── 커스텀 CSS ───
     st.markdown("""
     <style>
+    html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] > section.main {
+        overflow-x: hidden !important;
+    }
     .birthday-title {
         text-align: center;
         font-size: 1.4rem;

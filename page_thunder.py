@@ -96,6 +96,10 @@ def render(admin_lucky=None):
     # ─── 커스텀 CSS ───
     st.markdown("""
         <style>
+        html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewContainer"] > section.main {
+            overflow-x: hidden !important;
+        }
         /* PC 녹화용: 480px 이상 뷰포트에서만 폭 제한 (모바일 <480px 미적용) */
         @media (min-width: 480px) {
             .block-container {
