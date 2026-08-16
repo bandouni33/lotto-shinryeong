@@ -1355,9 +1355,8 @@ elif current_page == "privacy":
 
     st.markdown("## 개인정보 처리방침")
     st.markdown(NOTICES["privacy"]["body"])
-    st.markdown("---")
-    st.markdown("## 사업자 정보")
-    st.markdown(NOTICES["business"]["body"])
+    # 사업자 정보는 사업자등록 완료 전까지는 미기재 항목이 그대로 노출되므로,
+    # 실제 값이 채워지기 전까지 이 공개 페이지에는 넣지 않는다.
 
 
 # ==========================================================
