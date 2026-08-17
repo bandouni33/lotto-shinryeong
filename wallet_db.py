@@ -399,7 +399,7 @@ def activate_paid_advanced_sub(member_id: int, days: int) -> bool:
 
 
 THUNDER_COST_PER_GAME = 10
-HEDGE_COST_PER_COMBO = 50
+HEDGE_COST_PER_COMBO = 10
 AUTO_COST_PER_UNIT = 100
 TAROT_EXTRA_DRAW_COST = 50  # 하루 1회 무료 이후 추가 뽑기 1회당
 
