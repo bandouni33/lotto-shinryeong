@@ -23,65 +23,6 @@ THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
 THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
 THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
 
-_THUNDER_RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
-
-
-def _thunder_winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
-    """자동구매 구매내역과 동일한 방식 — 당첨번호가 확정된 회차면 맞은 번호에
-    동그라미를 칠 수 있도록 당첨번호 집합/보너스번호를 반환한다."""
-    try:
-        from lotto_stats import get_draw_result_by_round
-
-        result = get_draw_result_by_round(int(draw_round))
-    except Exception:
-        return set(), None
-    if not result:
-        return set(), None
-    return set(int(n) for n in result.get("numbers", [])), result.get("bonus")
-
-
-def _thunder_history_batch_html(batch: dict) -> str:
-    """자동구매 구매내역(_purchase_banner_html)과 동일한 카드 형식 — 순수 숫자 볼 +
-    당첨번호 일치 시 테두리 동그라미. 사용자 요청에 따라 구매내역 화면을 그대로 가져온다."""
-    draw_round = batch.get("draw_round", "")
-    win_set, bonus_number = _thunder_winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
-
-    def _ball_span(n: int) -> str:
-        n = int(n)
-        if n in win_set:
-            hit_cls = " auto-banner-ball-hit"
-        elif bonus_number is not None and n == int(bonus_number):
-            hit_cls = " auto-banner-ball-bonus"
-        else:
-            hit_cls = ""
-        return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
-
-    combos = batch.get("combos") or []
-    combo_rows = ""
-    for item in combos:
-        combo = item.get("combo") or []
-        balls = "".join(_ball_span(n) for n in combo)
-        rank = item.get("win_rank")
-        rank_badge = (
-            f'<span class="th-banner-rank-badge">{_THUNDER_RANK_LABELS[rank]}</span>'
-            if rank in _THUNDER_RANK_LABELS
-            else ""
-        )
-        combo_rows += (
-            f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div>{rank_badge}</div>'
-        )
-
-    legend = '<p class="auto-banner-legend">🟡 당첨번호 일치 · ⚪ 보너스 번호 일치</p>' if win_set else ""
-
-    return (
-        '<div class="auto-purchase-banner">'
-        f'<div class="auto-banner-title">{draw_round}회차</div>'
-        f'<div class="auto-banner-combos">{combo_rows}</div>'
-        f"{legend}"
-        "</div>"
-    )
-
-
 def render(admin_lucky=None):
     init_guest_scope()
     # ─── 데이터 로드 및 행운수 계산 ───
@@ -267,125 +208,9 @@ def render(admin_lucky=None):
         .st-key-th_nav_bday_6n36s5 div[data-testid="stButton"] > button p {
             font-weight: 900 !important;
         }
-        /* 저장내역 — 자동구매 구매내역과 같은 구조(묶음별 카드 + 회차 헤더 +
-           방금 저장 시 카드가 잠깐 반짝이는 연출)를 번개조합 자체 색상(골드)으로 맞춘다. */
-        .st-key-th_history_zone_6n36s5 div[data-testid="stExpander"] summary p {
-            font-size: 16px !important;
-            font-weight: 800 !important;
-            color: #1E293B !important;
-        }
-        /* 아래 .auto-* 클래스들은 자동구매 구매내역(page_auto.py) 카드와 동일한 정의를
-           그대로 옮겨왔다 — 사용자 요청대로 "구매내역 저장화면 그대로" 재사용. */
-        .auto-purchase-banner {
-            margin: 14px 0 18px;
-            padding: 16px 14px 14px;
-            border-radius: 16px;
-            border: 1px solid rgba(206, 147, 216, 0.55);
-            background: linear-gradient(155deg, rgba(74, 20, 140, 0.92) 0%, rgba(26, 34, 56, 0.96) 55%, rgba(18, 24, 43, 0.98) 100%);
-            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(179, 157, 219, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        }
-        .auto-banner-title {
-            color: #f3e5f5;
-            font-weight: 800;
-            font-size: 16px;
-            line-height: 1.35;
-            margin-bottom: 12px;
-        }
-        .auto-banner-combos {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .auto-banner-combo {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: fit-content;
-            max-width: 100%;
-            padding: 8px 12px;
-            border-radius: 12px;
-            background: rgba(0, 0, 0, 0.22);
-            border: 1px solid rgba(179, 157, 219, 0.22);
-        }
-        .auto-banner-ball-row {
-            display: flex;
-            flex-wrap: nowrap;
-            gap: 10px;
-        }
-        .auto-banner-ball {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 24px;
-            height: 24px;
-            padding: 0 2px;
-            color: #f1e9ff;
-            font-weight: 800;
-            font-size: 15px;
-            font-variant-numeric: tabular-nums;
-        }
-        .th-banner-rank-badge {
-            display: inline-block;
-            flex-shrink: 0;
-            padding: 3px 9px;
-            border-radius: 999px;
-            background: linear-gradient(145deg, #ffd54f, #ffb800);
-            color: #4a2f00;
-            font-weight: 900;
-            font-size: 11px;
-            white-space: nowrap;
-        }
-        .auto-banner-ball-hit {
-            border-radius: 50%;
-            border: 2px solid #FFD600;
-            color: #FFD600;
-        }
-        .auto-banner-ball-bonus {
-            border-radius: 50%;
-            border: 2px solid #B0BEC5;
-            color: #B0BEC5;
-        }
-        .auto-banner-legend {
-            margin: 6px 0 0;
-            color: #cfd8dc;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        @keyframes thHistoryBlink {
-            0%, 100% {
-                box-shadow: 0 0 0 0 rgba(255, 184, 0, 0);
-                background: #ffffff !important;
-            }
-            50% {
-                box-shadow: 0 0 0 5px rgba(255, 184, 0, 0.9), 0 0 22px rgba(255, 152, 0, 0.55);
-                background: #fff8e1 !important;
-            }
-        }
-        @keyframes thHistoryCardPulse {
-            0%, 100% {
-                transform: scale(1);
-                border-color: rgba(255, 152, 0, 0.35) !important;
-            }
-            50% {
-                transform: scale(1.015);
-                border-color: rgba(255, 152, 0, 0.9) !important;
-                box-shadow: 0 0 24px rgba(255, 184, 0, 0.4) !important;
-            }
-        }
-        .st-key-th_history_zone_6n36s5:has(.th-history-just-saved-marker) div[data-testid="stExpander"] {
-            animation: thHistoryCardPulse 0.95s ease-in-out 7 !important;
-            border: 2px solid rgba(255, 152, 0, 0.75) !important;
-        }
-        .st-key-th_history_zone_6n36s5:has(.th-history-just-saved-marker) div[data-testid="stExpander"] > details > summary {
-            animation: thHistoryBlink 0.95s ease-in-out 7 !important;
-            font-weight: 900 !important;
-        }
-        .th-history-just-saved-marker {
-            display: none !important;
-            height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
+        /* 저장내역 카드 CSS(.auto-purchase-banner 등)는 combo_history_ui.history_css()가
+           렌더링 시점에 별도로 주입한다 — 다른 페이지와 공유하는 정의라 여기서 중복
+           정의하지 않는다. */
         /* 결과저장 — components.html iframe 안에서는 브라우저 sandbox 정책상 최상위
            문서를 이동시킬 수 없어서(allow-top-navigation 권한이 없음), 진짜 <a> 링크를
            iframe 밖(진짜 Streamlit 영역)에 두고 iframe은 그 href만 갱신한다. */
@@ -1485,36 +1310,15 @@ def render(admin_lucky=None):
         height=0,
     )
 
-    # ─── 저장내역 (구매내역과 동일한 패턴: 저장 즉시 반짝임 + 회차별 묶음 표시) ───
-    try:
-        from lotto_stats import sync_generated_combo_win_ranks
+    # ─── 저장내역 (구매내역과 동일한 카드 디자인 — combo_history_ui 공용 모듈) ───
+    from combo_history_ui import render_history_section
 
-        sync_generated_combo_win_ranks()
-    except Exception:
-        pass
-
-    from marketing_db import init_marketing_tables, list_guest_generated_combos
-
-    init_marketing_tables()
-    th_history_blink = bool(st.session_state.pop("thunder_history_blink", False))
-    with st.container(key="th_history_zone_6n36s5"):
-        if th_history_blink:
-            st.markdown(
-                '<div class="th-history-just-saved-marker" aria-hidden="true"></div>',
-                unsafe_allow_html=True,
-            )
-        with st.expander("저장내역", expanded=th_history_blink):
-            batches = list_guest_generated_combos(
-                get_or_create_guest_id(), source="thunder", limit=10
-            )
-            if not batches:
-                st.caption("아직 저장한 조합이 없습니다. 결과저장 버튼을 누르면 이곳에 저장됩니다.")
-            else:
-                for batch in batches:
-                    st.markdown(
-                        _thunder_history_batch_html(batch),
-                        unsafe_allow_html=True,
-                    )
+    render_history_section(
+        container_key="th_history_zone_6n36s5",
+        guest_id=get_or_create_guest_id(),
+        sources=["thunder"],
+        blink_flag_key="thunder_history_blink",
+    )
 
 # 호출 확인
 if __name__ == "__main__":
