@@ -130,6 +130,34 @@ def init_marketing_tables():
             PRIMARY KEY (guest_id, draw_date)
         )
     """)
+    # 번개조합/안티조합/액땜조합 등 "그 자리에서 생성"된 조합 저장 — lotto_combinations는
+    # 자동구매 재고풀(allocated_at IS NULL = 미배정 재고)로 쓰이는 테이블이라, 여기에
+    # 그냥 섞어 넣으면 재고 수량 집계와 자동구매 통계(get_draw_extraction_stats)가
+    # 오염된다. 그래서 완전히 별도 테이블로 분리한다.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS guest_generated_combos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guest_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            draw_round INTEGER NOT NULL,
+            num1 INTEGER NOT NULL,
+            num2 INTEGER NOT NULL,
+            num3 INTEGER NOT NULL,
+            num4 INTEGER NOT NULL,
+            num5 INTEGER NOT NULL,
+            num6 INTEGER NOT NULL,
+            win_rank INTEGER NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_guest_generated_combos_guest
+        ON guest_generated_combos(guest_id, created_at)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_guest_generated_combos_draw
+        ON guest_generated_combos(draw_round, win_rank)
+    """)
     _migrate_lotto_combinations(conn)
     conn.commit()
     conn.close()
@@ -635,6 +663,119 @@ def mark_guest_update_notice_shown(guest_id: str, version: str, today: str) -> N
     conn.close()
 
 
+def save_guest_generated_combos(
+    guest_id: str,
+    source: str,
+    draw_round: int,
+    combos,
+) -> str:
+    """번개조합 등에서 한 번에 생성된 조합 묶음을 저장하고, 그 묶음을 묶는 batch_id를 반환한다.
+
+    lotto_combinations의 자동구매 주문처럼 별도 "주문" 테이블 없이, 같은 저장
+    시각(created_at)을 공유하는 행들을 하나의 묶음으로 취급한다 — 이 테이블은
+    한 guest_id의 한 번 저장 클릭이 한 번의 INSERT로 끝나므로 충분하다.
+    """
+    created_at = datetime.now().isoformat()
+    conn = _connect()
+    conn.executemany(
+        """
+        INSERT INTO guest_generated_combos
+            (guest_id, source, draw_round, num1, num2, num3, num4, num5, num6, win_rank, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+        """,
+        [
+            (str(guest_id), source, int(draw_round), *[int(n) for n in combo], created_at)
+            for combo in combos
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return created_at
+
+
+def list_guest_generated_combos(guest_id: str, source: str | None = None, limit: int = 20) -> list[dict]:
+    """guest_id가 저장한 생성조합을 저장 묶음(batch) 단위로 최신순 반환."""
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    query = """
+        SELECT source, draw_round, num1, num2, num3, num4, num5, num6, win_rank, created_at
+        FROM guest_generated_combos
+        WHERE guest_id = ?
+    """
+    params: list = [str(guest_id)]
+    if source:
+        query += " AND source = ?"
+        params.append(source)
+    query += " ORDER BY created_at DESC"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    batches: dict[tuple, dict] = {}
+    order: list[tuple] = []
+    for row in rows:
+        key = (row["created_at"], row["draw_round"], row["source"])
+        if key not in batches:
+            batches[key] = {
+                "batch_id": row["created_at"],
+                "source": row["source"],
+                "draw_round": int(row["draw_round"]),
+                "created_at": row["created_at"],
+                "combos": [],
+            }
+            order.append(key)
+        batches[key]["combos"].append(
+            {
+                "combo": list(_combo_nums_from_row(row)),
+                "win_rank": int(row["win_rank"]) if row["win_rank"] is not None else None,
+            }
+        )
+    return [batches[k] for k in order[:limit]]
+
+
+def get_generated_combo_pending_draw_rounds() -> list[int]:
+    """win_rank가 아직 비어 있는 생성조합이 존재하는 회차 목록 — 당첨마킹 동기화 대상."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT DISTINCT draw_round FROM guest_generated_combos WHERE win_rank IS NULL"
+    ).fetchall()
+    conn.close()
+    return [int(row[0]) for row in rows]
+
+
+def update_win_ranks_for_generated_draw(
+    draw_round: int,
+    winning_numbers: list[int],
+    bonus_number: int,
+) -> int:
+    """생성조합(guest_generated_combos) vs 당첨번호 — 1~5등 win_rank 일괄 갱신."""
+    from lotto_stats import calc_lotto_win_rank
+
+    draw_round = int(draw_round)
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT id, num1, num2, num3, num4, num5, num6
+        FROM guest_generated_combos
+        WHERE draw_round = ?
+        """,
+        (draw_round,),
+    ).fetchall()
+    payload = []
+    for row in rows:
+        combo = _combo_nums_from_row(row)
+        rank = calc_lotto_win_rank(combo, winning_numbers, bonus_number)
+        payload.append((rank, int(row["id"])))
+    if payload:
+        conn.executemany(
+            "UPDATE guest_generated_combos SET win_rank = ? WHERE id = ?",
+            payload,
+        )
+    conn.commit()
+    conn.close()
+    return len(payload)
+
+
 def delete_guest_auto_order(order_id: int) -> None:
     """조합 배정 실패 등으로 주문이 성립되지 않았을 때, 발급해둔 placeholder를 되돌린다."""
     conn = _connect()
@@ -1004,6 +1145,10 @@ __all__ = [
     "create_guest_auto_order",
     "delete_guest_auto_order",
     "list_guest_auto_orders",
+    "save_guest_generated_combos",
+    "list_guest_generated_combos",
+    "get_generated_combo_pending_draw_rounds",
+    "update_win_ranks_for_generated_draw",
     "get_combinations_by_draw",
     "delete_lotto_combinations_by_draw",
     "update_win_ranks_for_draw",

@@ -457,3 +457,24 @@ def sync_marketing_win_ranks_for_db_draws(filepath: str = DATA_FILE) -> list[dic
         if outcome.get("synced"):
             synced.append(outcome)
     return synced
+
+
+def sync_generated_combo_win_ranks(filepath: str = DATA_FILE) -> list[dict]:
+    """번개조합 등에서 저장한 생성조합 — 추첨 완료 회차 win_rank 반영."""
+    from marketing_db import (
+        get_generated_combo_pending_draw_rounds,
+        init_marketing_tables,
+        update_win_ranks_for_generated_draw,
+    )
+
+    init_marketing_tables()
+    synced: list[dict] = []
+    for draw_round in get_generated_combo_pending_draw_rounds():
+        result = get_draw_result_by_round(draw_round, filepath)
+        if not result:
+            continue
+        updated = update_win_ranks_for_generated_draw(
+            draw_round, result["numbers"], int(result["bonus"])
+        )
+        synced.append({"draw_round": draw_round, "updated": updated})
+    return synced

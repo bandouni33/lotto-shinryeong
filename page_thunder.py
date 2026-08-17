@@ -7,7 +7,12 @@ import json
 import uuid
 
 from auth_kakao import current_member_id
-from user_scope import current_birthday_scope, init_guest_scope, thunder_reveal_storage_suffix
+from user_scope import (
+    current_birthday_scope,
+    get_or_create_guest_id,
+    init_guest_scope,
+    thunder_reveal_storage_suffix,
+)
 from wallet_db import calc_thunder_cost
 from wallet_ui import deduct_after_result, points_notice_dialog
 
@@ -17,6 +22,40 @@ from wallet_ui import deduct_after_result, points_notice_dialog
 THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
 THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
 THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
+
+# 로또볼 색상 — user_page.py 메인화면 최근당첨번호와 동일한 구간별 그라디언트를
+# 그대로 재사용한다(앱 전체에서 번호 색상이 항상 같아 보이도록 통일).
+_THUNDER_RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
+
+
+def _lotto_ball_style(n: int) -> str:
+    if 1 <= n <= 10:
+        return "background: radial-gradient(circle at 35% 35%, #ffeb3b, #f9a825, #f57f17);"
+    if 11 <= n <= 20:
+        return "background: radial-gradient(circle at 35% 35%, #4fc3f7, #1976d2, #0d47a1);"
+    if 21 <= n <= 30:
+        return "background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c);"
+    if 31 <= n <= 40:
+        return "background: radial-gradient(circle at 35% 35%, #bdbdbd, #757575, #424242);"
+    return "background: radial-gradient(circle at 35% 35%, #81c784, #388e3c, #1b5e20);"
+
+
+def _thunder_history_batch_html(batch: dict) -> str:
+    combo_rows = ""
+    for item in batch.get("combos") or []:
+        combo = item.get("combo") or []
+        balls = "".join(
+            f'<span class="th-banner-ball" style="{_lotto_ball_style(int(n))}">{int(n)}</span>'
+            for n in combo
+        )
+        rank = item.get("win_rank")
+        badge = (
+            f'<span class="th-banner-rank-badge">{_THUNDER_RANK_LABELS[rank]}</span>'
+            if rank in _THUNDER_RANK_LABELS
+            else ""
+        )
+        combo_rows += f'<div class="th-banner-combo"><div class="th-banner-ball-row">{balls}{badge}</div></div>'
+    return f'<div class="th-purchase-banner">{combo_rows}</div>'
 
 
 def render(admin_lucky=None):
@@ -74,6 +113,30 @@ def render(admin_lucky=None):
                 st.error("적립금 차감에 실패했습니다.")
         cur_ver = st.session_state.get("thunder_reveal_version", 1)
         st.session_state["thunder_reveal_version"] = (cur_ver % 3) + 1
+        st.rerun()
+
+    if st.query_params.get("th_save"):
+        raw = st.query_params.get("th_save") or ""
+        if "th_save" in st.query_params:
+            del st.query_params["th_save"]
+        combos = []
+        for group in raw.split(","):
+            parts = group.split("-")
+            if len(parts) != 6:
+                continue
+            try:
+                combos.append(tuple(int(n) for n in parts))
+            except ValueError:
+                continue
+        if combos:
+            from auto_purchase_service import _next_draw_round
+            from marketing_db import init_marketing_tables, save_guest_generated_combos
+
+            init_marketing_tables()
+            save_guest_generated_combos(
+                get_or_create_guest_id(), "thunder", _next_draw_round(), combos
+            )
+            st.session_state["thunder_history_blink"] = True
         st.rerun()
 
     if st.session_state.get("open_thunder_dialog"):
@@ -180,6 +243,104 @@ def render(admin_lucky=None):
         .st-key-th_nav_bday_6n36s5 div[data-testid="stButton"] > button p {
             font-weight: 900 !important;
         }
+        /* 저장내역 — 자동구매 구매내역과 같은 구조(묶음별 카드 + 회차 헤더 +
+           방금 저장 시 카드가 잠깐 반짝이는 연출)를 번개조합 자체 색상(골드)으로 맞춘다. */
+        .st-key-th_history_zone_6n36s5 div[data-testid="stExpander"] summary p {
+            font-size: 16px !important;
+            font-weight: 800 !important;
+            color: #1E293B !important;
+        }
+        .th-purchase-banner {
+            margin: 10px 0;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: linear-gradient(145deg, #ffffff 0%, #fff8e1 100%);
+            border: 1px solid #ffe082;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+        }
+        .th-history-round-head {
+            margin: 14px 0 6px;
+            padding-bottom: 4px;
+            color: #b8860b;
+            font-weight: 800;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(255, 184, 0, 0.35);
+        }
+        .th-history-round-head:first-child { margin-top: 2px; }
+        .th-banner-combo {
+            display: flex;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .th-banner-ball-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .th-banner-ball {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            color: #fff;
+            font-weight: 900;
+            font-size: 12px;
+            flex-shrink: 0;
+            box-shadow:
+                2px 3px 5px rgba(0, 0, 0, 0.35),
+                inset -2px -2px 4px rgba(0, 0, 0, 0.3),
+                inset 1px 1px 3px rgba(255, 255, 255, 0.5);
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6);
+        }
+        .th-banner-rank-badge {
+            display: inline-block;
+            margin-left: 4px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: linear-gradient(145deg, #ffd54f, #ffb800);
+            color: #4a2f00;
+            font-weight: 900;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        @keyframes thHistoryBlink {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(255, 184, 0, 0);
+                background: #ffffff !important;
+            }
+            50% {
+                box-shadow: 0 0 0 5px rgba(255, 184, 0, 0.9), 0 0 22px rgba(255, 152, 0, 0.55);
+                background: #fff8e1 !important;
+            }
+        }
+        @keyframes thHistoryCardPulse {
+            0%, 100% {
+                transform: scale(1);
+                border-color: rgba(255, 152, 0, 0.35) !important;
+            }
+            50% {
+                transform: scale(1.015);
+                border-color: rgba(255, 152, 0, 0.9) !important;
+                box-shadow: 0 0 24px rgba(255, 184, 0, 0.4) !important;
+            }
+        }
+        .st-key-th_history_zone_6n36s5:has(.th-history-just-saved-marker) div[data-testid="stExpander"] {
+            animation: thHistoryCardPulse 0.95s ease-in-out 7 !important;
+            border: 2px solid rgba(255, 152, 0, 0.75) !important;
+        }
+        .st-key-th_history_zone_6n36s5:has(.th-history-just-saved-marker) div[data-testid="stExpander"] > details > summary {
+            animation: thHistoryBlink 0.95s ease-in-out 7 !important;
+            font-weight: 900 !important;
+        }
+        .th-history-just-saved-marker {
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -212,6 +373,15 @@ def render(admin_lucky=None):
             u.searchParams.set('page', 'thunder');
             u.searchParams.set('th_deduct', String(d.count));
             window.parent.location.href = u.toString();
+        }
+        if (d.type === 'save_lotto') {
+            const games = d.results || [];
+            if (games.length > 0) {
+                const u = new URL(window.parent.location.href);
+                u.searchParams.set('page', 'thunder');
+                u.searchParams.set('th_save', games.map(g => g.join('-')).join(','));
+                window.parent.location.href = u.toString();
+            }
         }
     });
     </script>
@@ -1217,7 +1387,6 @@ def render(admin_lucky=None):
                     type: 'save_lotto',
                     results: currentResults
                 }}, '*');
-                alert('결과가 저장되었습니다!');
             }}
 
             window.addEventListener('message', function(e) {{
@@ -1241,6 +1410,45 @@ def render(admin_lucky=None):
     """
 
     components.html(thunder_ui_html, height=820, scrolling=True)
+
+    # ─── 저장내역 (구매내역과 동일한 패턴: 저장 즉시 반짝임 + 회차별 묶음 표시) ───
+    try:
+        from lotto_stats import sync_generated_combo_win_ranks
+
+        sync_generated_combo_win_ranks()
+    except Exception:
+        pass
+
+    from marketing_db import init_marketing_tables, list_guest_generated_combos
+
+    init_marketing_tables()
+    th_history_blink = bool(st.session_state.pop("thunder_history_blink", False))
+    with st.container(key="th_history_zone_6n36s5"):
+        if th_history_blink:
+            st.markdown(
+                '<div class="th-history-just-saved-marker" aria-hidden="true"></div>',
+                unsafe_allow_html=True,
+            )
+        with st.expander("저장내역", expanded=th_history_blink):
+            batches = list_guest_generated_combos(
+                get_or_create_guest_id(), source="thunder", limit=10
+            )
+            if not batches:
+                st.caption("아직 저장한 조합이 없습니다. 결과저장 버튼을 누르면 이곳에 저장됩니다.")
+            else:
+                grouped: dict = {}
+                for batch in batches:
+                    grouped.setdefault(batch["draw_round"], []).append(batch)
+                for draw_round, items in grouped.items():
+                    st.markdown(
+                        f'<div class="th-history-round-head">{draw_round}회차</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for batch in items:
+                        st.markdown(
+                            _thunder_history_batch_html(batch),
+                            unsafe_allow_html=True,
+                        )
 
 # 호출 확인
 if __name__ == "__main__":
