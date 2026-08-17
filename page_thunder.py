@@ -341,6 +341,30 @@ def render(admin_lucky=None):
             margin: 0 !important;
             padding: 0 !important;
         }
+        /* 결과저장 — components.html iframe 안에서는 브라우저 sandbox 정책상 최상위
+           문서를 이동시킬 수 없어서(allow-top-navigation 권한이 없음), 진짜 <a> 링크를
+           iframe 밖(진짜 Streamlit 영역)에 두고 iframe은 그 href만 갱신한다. */
+        .th-save-real-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+            height: 46px;
+            margin: -6px 0 18px;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #65a30d 0%, #3F6212 55%, #365314 100%);
+            color: #FFFFFF !important;
+            font-family: 'Noto Sans KR', sans-serif;
+            font-weight: 900;
+            font-size: 15px;
+            text-decoration: none !important;
+            box-shadow:
+                0 4px 0 #1a2e05,
+                0 7px 14px rgba(63, 98, 18, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .th-save-real-btn:active { transform: scale(0.97); }
         </style>
     """, unsafe_allow_html=True)
 
@@ -357,41 +381,13 @@ def render(admin_lucky=None):
             st.query_params["page"] = "birthday"
             st.rerun()
 
-    components.html("""
-    <script>
-    // 이 스크립트 자체가 components.html이 만든 별도 iframe 안에서 실행되기 때문에,
-    // 여기서 그냥 window.addEventListener를 쓰면 "이 iframe 자신"에 등록되는 것이라
-    // window.parent(=실제 최상위 문서)로 보낸 메시지를 절대 받을 수 없다(형제 iframe의
-    // window와 window.parent는 서로 다른 객체). 반드시 window.parent에 리스너를 걸어야
-    // saveResults()/generateCombination() 등이 보내는 메시지를 실제로 받을 수 있다 —
-    // 실기기 테스트에서 저장내역이 계속 비어있던 원인이 바로 이것이었다.
-    window.parent.addEventListener('message', function(e) {
-        const d = e.data || {};
-        if (d.type === 'thunder_generate') {
-            const u = new URL(window.parent.location.href);
-            u.searchParams.set('page', 'thunder');
-            u.searchParams.set('th_action', 'gen');
-            u.searchParams.set('th_games', String(d.count));
-            window.parent.location.href = u.toString();
-        }
-        if (d.type === 'thunder_complete') {
-            const u = new URL(window.parent.location.href);
-            u.searchParams.set('page', 'thunder');
-            u.searchParams.set('th_deduct', String(d.count));
-            window.parent.location.href = u.toString();
-        }
-        if (d.type === 'save_lotto') {
-            const games = d.results || [];
-            if (games.length > 0) {
-                const u = new URL(window.parent.location.href);
-                u.searchParams.set('page', 'thunder');
-                u.searchParams.set('th_save', games.map(g => g.join('-')).join(','));
-                window.parent.location.href = u.toString();
-            }
-        }
-    });
-    </script>
-    """, height=0)
+    # 예전엔 여기서 postMessage + window.parent.location.href로 iframe 밖(최상위 문서)을
+    # 내비게이션 시키려 했는데, Streamlit의 components.html iframe은 sandbox에
+    # allow-top-navigation(-by-user-activation) 권한이 아예 없어서 실제 사용자 클릭에서
+    # 바로 호출돼도 브라우저가 SecurityError로 무조건 막는다(실기기 콘솔에서 직접 확인).
+    # 그래서 "결과저장"은 실제 최상위 문서에 진짜 <a> 링크를 두고 iframe은 그 href만
+    # 갱신하는 방식(아래 th_save_sync)으로, "조합시작" 포인트 차감은 아예 iframe 밖의
+    # 진짜 Streamlit 버튼(points_notice_dialog의 "확인 후 진행") 클릭 시점으로 옮겼다.
 
     components.html("""
     <script>
@@ -429,7 +425,10 @@ def render(admin_lucky=None):
                 --th-lucky: {THUNDER_COLOR_LUCKY};
                 --th-mode-btn-h: 35px;
             }}
-            body {{ background-color: #0F172A; color: #F8FAFC; margin: 0 auto; padding: 10px; overflow-x: hidden; width: 100%; max-width: 480px; }}
+            /* 레이아웃 전체 10% 축소 — transform:scale은 텍스트가 별도 레이어로 래스터라이즈되며
+               번져 보이는 문제가 있어서(위에서 겪은 문제와 동일 원인), 대신 zoom을 쓴다. zoom은
+               실제 레이아웃 재계산을 거쳐 텍스트를 새 크기로 다시 그리므로 번짐이 없다. */
+            body {{ background-color: #0F172A; color: #F8FAFC; margin: 0 auto; padding: 10px; overflow-x: hidden; width: 100%; max-width: 480px; zoom: 0.9; }}
 
             /* PC: 부모 창 너비 기준 (iframe 내부 media query는 iframe 폭만 보므로 JS로 pc-layout 부여) */
             html.pc-layout .number-grid {{
@@ -517,7 +516,6 @@ def render(admin_lucky=None):
                 -webkit-font-smoothing: antialiased;
                 -moz-osx-font-smoothing: grayscale;
                 text-rendering: optimizeLegibility;
-                transform: translateZ(0);
                 opacity: 1;
             }}
             .tab.active {{
@@ -598,7 +596,7 @@ def render(admin_lucky=None):
                     inset 0 1px 0 rgba(255, 255, 255, 0.35);
             }}
             
-            .control-panel {{ display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; margin-top: 20px; position: relative; z-index: 8; isolation: isolate; }}
+            .control-panel {{ display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; margin-top: 20px; position: relative; z-index: 8; isolation: isolate; }}
             .select-game {{
                 background: linear-gradient(180deg, #334155 0%, #1E293B 100%);
                 color: #F8FAFC; border: 2px solid #334155;
@@ -615,8 +613,7 @@ def render(admin_lucky=None):
                     inset 0 1px 0 rgba(255, 255, 255, 0.1);
             }}
             .select-game:active {{ transform: scale(0.97); }}
-            .action-btn.btn-start,
-            .action-btn.btn-save {{
+            .action-btn.btn-start {{
                 box-sizing: border-box;
                 height: var(--th-mode-btn-h);
                 min-height: var(--th-mode-btn-h);
@@ -642,20 +639,17 @@ def render(admin_lucky=None):
                 -webkit-font-smoothing: antialiased;
                 -moz-osx-font-smoothing: grayscale;
                 text-rendering: optimizeLegibility;
-                transform: translateZ(0);
                 color: #FFFFFF;
                 opacity: 1;
                 text-shadow: none;
             }}
-            .action-btn.btn-start:hover,
-            .action-btn.btn-save:hover {{
+            .action-btn.btn-start:hover {{
                 box-shadow:
                     0 5px 0 rgba(0, 0, 0, 0.38),
                     0 9px 18px rgba(0, 0, 0, 0.32),
                     inset 0 1px 0 rgba(255, 255, 255, 0.3);
             }}
-            .action-btn.btn-start:active,
-            .action-btn.btn-save:active {{ transform: scale(0.97); }}
+            .action-btn.btn-start:active {{ transform: scale(0.97); }}
             .btn-start {{
                 background: linear-gradient(180deg, #22d3ee 0%, #06B6D4 55%, #0891b2 100%);
                 box-shadow:
@@ -663,14 +657,6 @@ def render(admin_lucky=None):
                     0 7px 14px rgba(6, 182, 212, 0.4),
                     inset 0 1px 0 rgba(255, 255, 255, 0.3);
             }}
-            .btn-save {{
-                background: linear-gradient(180deg, #65a30d 0%, #3F6212 55%, #365314 100%);
-                box-shadow:
-                    0 4px 0 #1a2e05,
-                    0 7px 14px rgba(63, 98, 18, 0.4),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-            }}
-            
             .result-area {{ margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }}
             .result-row {{
                 background: linear-gradient(145deg, #0A0A0F 0%, #050508 55%, #0D0D1A 100%);
@@ -831,7 +817,6 @@ def render(admin_lucky=None):
                 <option value="20">20게임</option>
             </select>
             <button class="action-btn btn-start" onclick="generateCombination()">조\u200b합시작</button>
-            <button class="action-btn btn-save" onclick="saveResults()">결\u200b과저장</button>
         </div>
 
         <div class="result-area" id="resultArea"></div>
@@ -849,7 +834,10 @@ def render(admin_lucky=None):
             const thunderFilter = {js_filter_config};
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
-            let currentResults = [];
+            // 최상위 문서(iframe 밖)의 결과저장 동기화 스크립트가 same-origin으로 읽어가야
+            // 하므로, let이 아니라 window의 프로퍼티로 선언한다(let은 이 iframe의 window에도
+            // 안 붙어서 외부에서 읽을 수 없다).
+            window.currentResults = [];
             const activeRevealVersion = {reveal_version_js};
             const REVEAL_STORE = 'thunder_reveal_cycle_{reveal_scope_js}';
             let runRevealVersion = activeRevealVersion;
@@ -1386,15 +1374,6 @@ def render(admin_lucky=None):
                 scrollResultsIntoView(row);
             }}
 
-            function saveResults() {{
-                safeVibrate();
-                if (currentResults.length === 0) return;
-                window.parent.postMessage({{
-                    type: 'save_lotto',
-                    results: currentResults
-                }}, '*');
-            }}
-
             window.addEventListener('message', function(e) {{
                 if (e.data.type === 'nav') {{
                     // Streamlit reruns on query param change
@@ -1415,7 +1394,46 @@ def render(admin_lucky=None):
     </html>
     """
 
-    components.html(thunder_ui_html, height=820, scrolling=True)
+    with st.container(key="th_main_iframe_wrap_6n36s5"):
+        components.html(thunder_ui_html, height=738, scrolling=True)
+
+    # 실제 클릭이 여기(진짜 최상위 문서 <a>)에서 일어나야 브라우저가 이동을 허용한다.
+    # href는 아래 동기화 스크립트가 iframe의 window.currentResults를 same-origin으로
+    # 읽어와 미리 채워둔다 — 클릭 시점에 iframe에서 postMessage로 값을 넘기려던 예전
+    # 방식은 sandbox 정책 때문에 항상 실패했다.
+    st.markdown(
+        '<a id="th_save_real_link" class="th-save-real-btn" href="?page=thunder">💾 결과저장</a>',
+        unsafe_allow_html=True,
+    )
+    components.html(
+        """
+        <script>
+        (function() {
+            const doc = window.parent.document;
+            function sync() {
+                const wrap = doc.querySelector('.st-key-th_main_iframe_wrap_6n36s5');
+                const link = doc.getElementById('th_save_real_link');
+                if (!wrap || !link) return;
+                const ifr = wrap.querySelector('iframe');
+                if (!ifr) return;
+                let results;
+                try { results = ifr.contentWindow.currentResults; } catch (e) { return; }
+                if (!results || results.length === 0) return;
+                const u = new URL(doc.location.href);
+                u.searchParams.set('page', 'thunder');
+                u.searchParams.set('th_save', results.map(function(g) { return g.join('-'); }).join(','));
+                link.setAttribute('href', u.pathname + u.search);
+            }
+            if (!doc.__thSaveSyncBound) {
+                doc.__thSaveSyncBound = true;
+                setInterval(sync, 800);
+            }
+            sync();
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
     # ─── 저장내역 (구매내역과 동일한 패턴: 저장 즉시 반짝임 + 회차별 묶음 표시) ───
     try:
