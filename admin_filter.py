@@ -77,8 +77,6 @@ def _sync_settings_saved_state() -> None:
     """저장 후 값이 바뀌면 저장 상태 무효화."""
     if st.session_state.get("trigger_step1") or st.session_state.get("trigger_step2"):
         return
-    if st.session_state.get("af_show_step1_points") or st.session_state.get("af_show_step2_points"):
-        return
     if not st.session_state.get("settings_saved"):
         return
     if st.session_state.get("saved_settings") != _collect_premium_settings():
@@ -1810,6 +1808,57 @@ with st.container(key="af_bottom_center"):
     st.markdown('<div class="af-results-zone" aria-hidden="true"></div>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="af-step1-run-wrap" aria-hidden="true"></div>', unsafe_allow_html=True)
+
+    from auth_kakao import current_member_id
+    from wallet_db import get_subscription_expiry, has_active_subscription
+
+    _af_mid = current_member_id()
+    _af_subscribed = bool(_af_mid) and has_active_subscription(_af_mid)
+
+    if _af_subscribed:
+        _af_expiry = get_subscription_expiry(_af_mid)
+        _af_expiry_label = _af_expiry.split(" ")[0] if _af_expiry else "-"
+        st.success(f"✅ 고급필터 구독 중 (만료: {_af_expiry_label})")
+    else:
+        st.markdown(
+            """
+            <div style="
+                background-color: rgba(139, 92, 246, 0.12);
+                border: 1px solid rgba(139, 92, 246, 0.4);
+                padding: 15px;
+                border-radius: 8px;
+                color: #FFFFFF !important;
+                font-size: 15px !important;
+                font-weight: 700 !important;
+                text-align: center;
+                margin-bottom: 10px;
+            ">
+                🔒 고급필터는 구독 후 이용 가능합니다 (월 1,200P · 3개월 3,000P)
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("💎 구독하기", use_container_width=True, type="primary", key="af_subscribe_btn_6n36s5"):
+            from wallet_ui import ensure_member_or_banner
+
+            if ensure_member_or_banner(
+                resume="af_show_subscribe",
+                reason="고급필터 구독을 위해 간편인증이 필요합니다.",
+            ):
+                st.session_state["af_show_subscribe"] = True
+                st.rerun()
+
+        if st.session_state.get("af_show_subscribe"):
+            from wallet_ui import advanced_subscription_dialog
+
+            _af_sub_result = advanced_subscription_dialog()
+            if _af_sub_result == "confirm":
+                st.session_state["af_show_subscribe"] = False
+                st.success("구독이 완료되었습니다!")
+                st.rerun()
+            elif _af_sub_result == "cancel":
+                st.session_state["af_show_subscribe"] = False
+
     if not st.session_state.get("settings_saved"):
         warning_html = """
         <div style="
@@ -1827,29 +1876,19 @@ with st.container(key="af_bottom_center"):
         </div>
         """
         st.markdown(warning_html, unsafe_allow_html=True)
-    if st.button("⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실행", use_container_width=True, type="primary", key="af_step1_run_6n36s5"):
-        from wallet_ui import ensure_member_or_banner
-
-        if ensure_member_or_banner(
-            resume="af_show_step1_points",
-            reason="고급필터 1단계 연산을 위해 간편인증이 필요합니다.",
-        ):
-            st.session_state["af_show_step1_points"] = True
-
-    if st.session_state.get("af_show_step1_points"):
-        from wallet_ui import points_notice_dialog
-
-        r = points_notice_dialog("advanced")
-        if r == "confirm":
-            st.session_state["af_show_step1_points"] = False
-            snapshot = _collect_premium_settings()
-            st.session_state.saved_settings = snapshot
-            st.session_state.settings_saved = True
-            _save_premium_settings_to_disk(snapshot)
-            st.session_state["trigger_step1"] = True
-            st.rerun()
-        elif r == "cancel":
-            st.session_state["af_show_step1_points"] = False
+    if st.button(
+        "⚡ [1단계 공정] 상단 프리미엄 패턴 전수 연산 실행",
+        use_container_width=True,
+        type="primary",
+        key="af_step1_run_6n36s5",
+        disabled=not _af_subscribed,
+    ):
+        snapshot = _collect_premium_settings()
+        st.session_state.saved_settings = snapshot
+        st.session_state.settings_saved = True
+        _save_premium_settings_to_disk(snapshot)
+        st.session_state["trigger_step1"] = True
+        st.rerun()
 
     if st.session_state.get("trigger_step1"):
         if not st.session_state.get("saved_settings"):
@@ -1926,25 +1965,13 @@ with st.container(key="af_bottom_center"):
         _save_advanced_filter_to_disk(edited_df)
         st.session_state["af_advanced_filter_df"] = edited_df
 
-        if st.button("🚀 2단계: 1단계 결과물에 고급필터 적용하기", key="af_step2_apply_6n36s5"):
-            from wallet_ui import ensure_member_or_banner
-
-            if ensure_member_or_banner(
-                resume="af_show_step2_points",
-                reason="고급필터 2단계 적용을 위해 간편인증이 필요합니다.",
-            ):
-                st.session_state["af_show_step2_points"] = True
-
-        if st.session_state.get("af_show_step2_points"):
-            from wallet_ui import points_notice_dialog
-
-            r = points_notice_dialog("advanced")
-            if r == "confirm":
-                st.session_state["af_show_step2_points"] = False
-                st.session_state["af_run_step2"] = True
-                st.rerun()
-            elif r == "cancel":
-                st.session_state["af_show_step2_points"] = False
+        if st.button(
+            "🚀 2단계: 1단계 결과물에 고급필터 적용하기",
+            key="af_step2_apply_6n36s5",
+            disabled=not _af_subscribed,
+        ):
+            st.session_state["af_run_step2"] = True
+            st.rerun()
 
         if st.session_state.get("af_run_step2"):
             st.session_state["af_run_step2"] = False
@@ -1971,14 +1998,8 @@ with st.container(key="af_bottom_center"):
 
                     if len(final_df) > 0:
                         final_count = len(final_df)
-                        from auth_kakao import current_member_id
-                        from wallet_ui import deduct_after_result
-                        import uuid
-
-                        mid = current_member_id()
-                        if mid:
-                            ref = f"advanced:step2:{mid}:{uuid.uuid4().hex[:10]}"
-                            deduct_after_result(mid, "advanced", ref)
+                        # 구독형으로 바뀌면서 실행당 과금은 없앴다 — 구독 자체가
+                        # af_bottom_center 상단에서 이미 결제/게이트를 처리한다.
                         success_html = f"""
                         <div style="
                             background-color: rgba(46, 204, 113, 0.15);

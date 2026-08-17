@@ -267,6 +267,22 @@ def record_consent(member_id: int, notice_version: str) -> None:
     conn.close()
 
 
+def get_subscription_expiry(member_id: int, product: str = ADVANCED_PRODUCT) -> str | None:
+    """현재 유효한 구독의 만료일시(ISO 문자열)를 반환. 없으면 None."""
+    conn = _connect()
+    now = _now_iso()
+    row = conn.execute(
+        """
+        SELECT expires_at FROM subscriptions
+        WHERE member_id = ? AND product = ? AND expires_at > ?
+        ORDER BY expires_at DESC LIMIT 1
+        """,
+        (member_id, product, now),
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
 def has_active_subscription(member_id: int, product: str = ADVANCED_PRODUCT) -> bool:
     conn = _connect()
     now = _now_iso()
