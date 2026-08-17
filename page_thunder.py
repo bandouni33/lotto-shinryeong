@@ -1250,14 +1250,15 @@ def render(admin_lucky=None):
     """
 
     # components.html iframe은 이 Streamlit 버전에서 "streamlit:setFrameHeight"
-    # postMessage로 높이를 동적으로 알려줘도 반영되지 않는다(실측 확인 — 아무
-    # 반응 없음) — 그래서 결과 없이 그리드만 보이는 기본 상태는 짧게, 결제 확인 직후
-    # 자동으로 조합이 생성되는 시점(th_auto_run)만 그 게임 수만큼 미리 넉넉하게 잡는다
-    # (zoom 0.9 기준 결과 한 줄당 약 84px 실측).
-    if th_auto_run:
-        thunder_iframe_height = 500 + int(th_auto_run) * 84
-    else:
-        thunder_iframe_height = 500
+    # postMessage로 높이를 동적으로 알려줘도 반영되지 않지만(실측 확인 — 아무
+    # 반응 없음), Streamlit 프론트엔드 자체가 iframe 콘텐츠 실제 크기를 감시해서
+    # "커지는 방향"으로는 알아서 자동 확장해준다(실측 확인). 그래서 결과 생성 직후
+    # 게임 수만큼 미리 크게 잡아뒀었는데(500 + count*84), 그러면 시작부터 화면이
+    # 실제 콘텐츠보다 훨씬 크게 확보돼서 결과가 하나씩 나타날 때마다 실행되는
+    # scrollResultsIntoView가 그 빈 공간까지 과도하게 스크롤해버려 정작 방금 나온
+    # 결과가 화면 위로 밀려나 안 보이는 문제가 있었다(신고 확인) — 항상 짧게
+    # 잡아두고 자동 확장에 맡긴다.
+    thunder_iframe_height = 500
 
     with st.container(key="th_main_iframe_wrap_6n36s5"):
         components.html(thunder_ui_html, height=thunder_iframe_height, scrolling=True)
