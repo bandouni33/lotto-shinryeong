@@ -698,7 +698,7 @@ def list_guest_generated_combos(guest_id: str, source: str | None = None, limit:
     conn = _connect()
     conn.row_factory = sqlite3.Row
     query = """
-        SELECT source, draw_round, num1, num2, num3, num4, num5, num6, win_rank, created_at
+        SELECT id, source, draw_round, num1, num2, num3, num4, num5, num6, win_rank, created_at
         FROM guest_generated_combos
         WHERE guest_id = ?
     """
@@ -706,7 +706,11 @@ def list_guest_generated_combos(guest_id: str, source: str | None = None, limit:
     if source:
         query += " AND source = ?"
         params.append(source)
-    query += " ORDER BY created_at DESC"
+    # created_at은 한 저장(batch) 안의 모든 행이 완전히 같은 값을 공유해서, DESC 정렬만
+    # 걸면 같은 값끼리의 순서가 보장되지 않는다(SQLite가 동점 행을 생성 순서의 역순으로
+    # 돌려줄 수 있음 — 실제로 화면에 보인 생성 순서와 저장내역 카드 순서가 뒤집혀
+    # 보이던 원인). id ASC를 2차 정렬 기준으로 추가해 저장(=생성) 순서를 보장한다.
+    query += " ORDER BY created_at DESC, id ASC"
     rows = conn.execute(query, params).fetchall()
     conn.close()
 
