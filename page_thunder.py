@@ -41,6 +41,20 @@ def render(admin_lucky=None):
     js_filter_config = json.dumps(get_thunder_filter_config())
     has_birthdays = bool(birthdays)
 
+    # 결과저장 — 실제 클릭이 최상위 문서의 진짜 <a>에서 일어나야 브라우저가 이동을
+    # 허용한다(components.html iframe은 sandbox에 allow-top-navigation 권한이 아예
+    # 없어서 스크립트로 대신 눌러주는 건 불가능 — 실기기 콘솔에서 직접 확인된 제약).
+    # href는 아래 동기화 스크립트가 iframe의 window.currentResults를 same-origin으로
+    # 읽어와 미리 채워둔다.
+    #
+    # (진단 기록) "결과저장을 눌러도 저장이 안 되고 화면만 멈춘다"는 신고의 실제
+    # 원인은 이 동기화 스크립트에 있었다 — "한 번만 setInterval 걸기" 플래그를
+    # 최상위 document(재생성돼도 안 사라짐)에 저장해서, 결제 확인 후 rerun으로 이
+    # 폴링 iframe이 통째로 다시 만들어지면 "이미 걸려있네" 하고 새 인터벌을 안
+    # 걸어버렸다. 그 사이 이전 iframe(과 그 인터벌)은 이미 사라진 상태라, 조합이
+    # 다 생성된 후에도 href가 계속 빈 상태(?page=thunder)로 멈춰 있었던 것 — 그래서
+    # 클릭해도 아무것도 저장되지 않은 채 그냥 재로딩만 됐다. 아래에서는 이 폴링
+    # iframe이 새로 만들어질 때마다 매번 자기 인터벌을 새로 건다.
     if st.query_params.get("th_save"):
         raw = st.query_params.get("th_save") or ""
         if "th_save" in st.query_params:
@@ -148,6 +162,20 @@ def render(admin_lucky=None):
                 0 4px 8px rgba(0, 0, 0, 0.22),
                 inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
         }
+        /* 모바일 좁은 화면에서 st.columns()가 기본적으로 세로로 쌓이는 문제 — 이
+           페이지 전역에서 가로 배치를 강제한다(홈/생일행운수관리 버튼 2개, 게임수
+           선택+조합시작 버튼 2개 모두 한 줄 유지 목적. 공간이 좁은 모바일에서
+           불필요하게 세로로 쌓이면 스크롤이 길어진다). */
+        div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            flex: 1 1 0 !important;
+            width: auto !important;
+            min-width: 0 !important;
+        }
         /* 상단 네비 2버튼만: 글자 한 단계 + iframe 레이어 위로 */
         div[data-testid="stHorizontalBlock"]:has(.st-key-th_nav_home_6n36s5) {
             position: relative !important;
@@ -239,8 +267,9 @@ def render(admin_lucky=None):
     # allow-top-navigation(-by-user-activation) 권한이 아예 없어서 실제 사용자 클릭에서
     # 바로 호출돼도 브라우저가 SecurityError로 무조건 막는다(실기기 콘솔에서 직접 확인).
     # 그래서 "결과저장"은 실제 최상위 문서에 진짜 <a> 링크를 두고 iframe은 그 href만
-    # 갱신하는 방식(아래 th_save_sync)으로, "조합시작" 포인트 차감은 아예 iframe 밖의
-    # 진짜 Streamlit 버튼(points_notice_dialog의 "확인 후 진행") 클릭 시점으로 옮겼다.
+    # 갱신하는 방식(아래 결과저장 동기화 스크립트)으로, "조합시작" 포인트 차감은 iframe
+    # 밖의 진짜 Streamlit 버튼(points_notice_dialog의 "확인 후 진행") 클릭 시점으로
+    # 처리한다.
 
     st.markdown('<div class="th-generate-label">게임 수를 고른 뒤 조합시작을 누르세요</div>', unsafe_allow_html=True)
     gcol1, gcol2 = st.columns([1, 1.6])
@@ -654,6 +683,9 @@ def render(admin_lucky=None):
             // 하므로, let이 아니라 window의 프로퍼티로 선언한다(let은 이 iframe의 window에도
             // 안 붙어서 외부에서 읽을 수 없다).
             window.currentResults = [];
+            // 게임이 2초 간격으로 하나씩 순차 추가되므로, 목표 게임 수를 같이 노출해서
+            // 자동저장 스크립트가 "다 채워졌는지" 판단할 수 있게 한다.
+            window.expectedGameCount = selectedGameCount;
             const activeRevealVersion = {reveal_version_js};
             const REVEAL_STORE = 'thunder_reveal_cycle_{reveal_scope_js}';
             let runRevealVersion = activeRevealVersion;
@@ -1210,13 +1242,19 @@ def render(admin_lucky=None):
     </html>
     """
 
-    with st.container(key="th_main_iframe_wrap_6n36s5"):
-        components.html(thunder_ui_html, height=738, scrolling=True)
+    # components.html iframe은 이 Streamlit 버전에서 "streamlit:setFrameHeight"
+    # postMessage로 높이를 동적으로 알려줘도 반영되지 않는다(실측 확인 — 아무
+    # 반응 없음) — 그래서 결과 없이 그리드만 보이는 기본 상태는 짧게, 결제 확인 직후
+    # 자동으로 조합이 생성되는 시점(th_auto_run)만 그 게임 수만큼 미리 넉넉하게 잡는다
+    # (zoom 0.9 기준 결과 한 줄당 약 84px 실측).
+    if th_auto_run:
+        thunder_iframe_height = 500 + int(th_auto_run) * 84
+    else:
+        thunder_iframe_height = 500
 
-    # 실제 클릭이 여기(진짜 최상위 문서 <a>)에서 일어나야 브라우저가 이동을 허용한다.
-    # href는 아래 동기화 스크립트가 iframe의 window.currentResults를 same-origin으로
-    # 읽어와 미리 채워둔다 — 클릭 시점에 iframe에서 postMessage로 값을 넘기려던 예전
-    # 방식은 sandbox 정책 때문에 항상 실패했다.
+    with st.container(key="th_main_iframe_wrap_6n36s5"):
+        components.html(thunder_ui_html, height=thunder_iframe_height, scrolling=True)
+
     st.markdown(
         '<a id="th_save_real_link" class="th-save-real-btn" href="?page=thunder">💾 결과저장</a>',
         unsafe_allow_html=True,
@@ -1232,18 +1270,28 @@ def render(admin_lucky=None):
                 if (!wrap || !link) return;
                 const ifr = wrap.querySelector('iframe');
                 if (!ifr) return;
-                let results;
-                try { results = ifr.contentWindow.currentResults; } catch (e) { return; }
-                if (!results || results.length === 0) return;
+                let results, expected;
+                try {
+                    results = ifr.contentWindow.currentResults;
+                    expected = ifr.contentWindow.expectedGameCount;
+                } catch (e) { return; }
+                // 게임이 하나씩 순차로(2초 간격) currentResults에 쌓이는 도중에 href를
+                // 갱신해 버리면 일부만 저장되므로, 목표 게임 수(expectedGameCount)만큼
+                // 다 찼을 때만 갱신한다.
+                if (!results || !expected || results.length < expected) return;
                 const u = new URL(doc.location.href);
                 u.searchParams.set('page', 'thunder');
                 u.searchParams.set('th_save', results.map(function(g) { return g.join('-'); }).join(','));
                 link.setAttribute('href', u.pathname + u.search);
             }
-            if (!doc.__thSaveSyncBound) {
-                doc.__thSaveSyncBound = true;
-                setInterval(sync, 800);
-            }
+            // 이 작은 폴링 iframe은 Streamlit이 rerun될 때마다 통째로 새로 만들어지는데,
+            // 예전엔 "한 번만 setInterval 걸기" 플래그를 최상위 document(재생성돼도 안
+            // 사라짐)에 저장해서, 결제 확인 후 rerun으로 이 iframe이 다시 만들어지면
+            // "이미 걸려있네" 하고 자기 인터벌을 안 걸어버렸다(그 사이 이전 iframe과 그
+            // 인터벌은 이미 사라진 상태 — href가 계속 빈 상태로 멈춰있던 진짜 원인).
+            // 매번 새로 만들어지는 이 iframe마다 항상 자기 인터벌을 새로 건다(이전
+            // iframe의 인터벌은 그 iframe이 사라지며 자동으로 멎는다).
+            setInterval(sync, 800);
             sync();
         })();
         </script>

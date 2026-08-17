@@ -130,9 +130,53 @@ def render():
                 0 7px 14px rgba(63, 98, 18, 0.4),
                 inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
         }
-        /* 번호 그리드 — st.checkbox를 번개조합 숫자 그리드처럼 원형 버튼으로 보이게 */
-        /* st.columns가 좁은 화면에서는 기본적으로 세로로 쌓이므로, 번호 그리드만은
-           강제로 가로 배치를 유지시킨다(7칸씩 한 줄). */
+        /* 모드 토글 — 요청받은 목업처럼 어두운 알약(pill) 모양 세그먼트, 선택된
+           쪽만 안티조합=보라 / 액땜조합=초록으로 강조. */
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] > div[role="radiogroup"] {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 6px !important;
+            background: linear-gradient(180deg, #243044 0%, #1E293B 100%) !important;
+            border-radius: 999px !important;
+            padding: 5px !important;
+        }
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label {
+            flex: 1 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border-radius: 999px !important;
+            padding: 8px 10px !important;
+            margin: 0 !important;
+            cursor: pointer !important;
+            transition: background 0.15s ease !important;
+        }
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label > div:first-child {
+            display: none !important;
+        }
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label [data-testid="stWidgetLabel"] p {
+            color: #94a3b8 !important;
+            font-weight: 800 !important;
+            font-size: 14px !important;
+        }
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:nth-of-type(1):has(input:checked) {
+            background: linear-gradient(145deg, #A78BFA, #7C3AED) !important;
+        }
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:nth-of-type(2):has(input:checked) {
+            background: linear-gradient(145deg, #4ADE80, #16A34A) !important;
+        }
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
+            color: #0F172A !important;
+        }
+        /* 번호 그리드 — 어두운 카드 안에 흰색 둥근사각 버튼(목업 참고). st.columns가
+           좁은 화면에서는 기본적으로 세로로 쌓이므로, 번호 그리드만은 강제로 가로
+           배치를 유지시킨다(7칸씩 한 줄). */
+        .st-key-hedge_num_grid_wrap {
+            background: linear-gradient(180deg, #243044 0%, #1E293B 100%) !important;
+            border-radius: 16px !important;
+            padding: 12px !important;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3) !important;
+        }
         .st-key-hedge_num_grid_wrap div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
@@ -155,10 +199,10 @@ def render():
             width: 100% !important;
             aspect-ratio: 1 !important;
             padding: 0 !important;
-            border-radius: 50% !important;
+            border-radius: 10px !important;
             background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
             border: 2px solid transparent !important;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18) !important;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.28) !important;
             cursor: pointer !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) {
@@ -181,6 +225,24 @@ def render():
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
             color: #FFFFFF !important;
         }
+        /* 입력한 줄 / 액땜 풀 미리보기 — 목업처럼 어두운 카드에 숫자만 나열 */
+        .hedge-line-row {
+            background: linear-gradient(180deg, #243044 0%, #1E293B 100%);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 8px;
+            color: #F8FAFC;
+            font-weight: 800;
+            font-size: 1rem;
+            letter-spacing: 0.12em;
+            text-align: center;
+            word-break: break-word;
+        }
+        .hedge-line-row.hedge-line-row-empty {
+            color: #475569;
+            font-weight: 600;
+            background: linear-gradient(180deg, #1B2536 0%, #16202E 100%);
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -199,13 +261,14 @@ def render():
         unsafe_allow_html=True,
     )
 
-    mode = st.radio(
-        "모드",
-        ["안티조합", "액땜조합"],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="hedge_mode",
-    )
+    with st.container(key="hedge_mode_toggle"):
+        mode = st.radio(
+            "모드",
+            ["안티조합", "액땜조합"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="hedge_mode",
+        )
     if mode == "안티조합":
         st.caption("입력한 5줄 각각과 따로따로 비교해서, 각 줄과 크게 안 겹치는 조합을 만들어요.")
     else:
@@ -228,12 +291,8 @@ def render():
                     with col:
                         st.checkbox(str(n), key=f"{prefix}{n}", label_visibility="visible")
 
-    def _balls_html(combo) -> str:
-        return (
-            '<div class="auto-banner-combo"><div class="auto-banner-ball-row">'
-            + "".join(f'<span class="auto-banner-ball">{n:02d}</span>' for n in combo)
-            + "</div></div>"
-        )
+    def _line_row_html(combo) -> str:
+        return '<div class="hedge-line-row">' + " ".join(f"{n:02d}" for n in combo) + "</div>"
 
     lines: list[tuple[int, ...]] = []
 
@@ -264,12 +323,14 @@ def render():
             for i, line in enumerate(committed):
                 lcol, dcol = st.columns([5, 1])
                 with lcol:
-                    st.markdown(_balls_html(sorted(line)), unsafe_allow_html=True)
+                    st.markdown(_line_row_html(sorted(line)), unsafe_allow_html=True)
                 with dcol:
                     if st.button("✕", key=f"hedge_del_line_{i}", use_container_width=True):
                         committed.pop(i)
                         st.session_state["hedge_committed_lines"] = committed
                         st.rerun()
+            for _ in range(MAX_LINES - len(committed)):
+                st.markdown('<div class="hedge-line-row hedge-line-row-empty">- - - - - -</div>', unsafe_allow_html=True)
 
         lines = [tuple(sorted(line)) for line in committed]
 
@@ -279,6 +340,8 @@ def render():
         pool = _grid_selected("hedge_aek_num_")
         st.caption(f"{len(pool)}개 선택됨" + (" · 6개 이상 선택해 주세요" if pool and len(pool) < 6 else ""))
         if pool:
+            st.markdown('<div class="hedge-section-label">선택한 번호</div>', unsafe_allow_html=True)
+            st.markdown(_line_row_html(pool), unsafe_allow_html=True)
             lines = [tuple(pool)]
 
     count = st.selectbox("생성할 조합 수", [5, 10, 15, 20], index=0, key="hedge_count")
@@ -335,16 +398,8 @@ def render():
     results = st.session_state.get("hedge_results")
     if results:
         st.markdown('<div class="hedge-section-label">생성 결과</div>', unsafe_allow_html=True)
-        rows = "".join(
-            '<div class="auto-banner-combo"><div class="auto-banner-ball-row">'
-            + "".join(f'<span class="auto-banner-ball">{n:02d}</span>' for n in combo)
-            + "</div></div>"
-            for combo in results
-        )
-        st.markdown(
-            f'<div class="auto-purchase-banner"><div class="auto-banner-combos">{rows}</div></div>',
-            unsafe_allow_html=True,
-        )
+        rows = "".join(_line_row_html(combo) for combo in results)
+        st.markdown(rows, unsafe_allow_html=True)
         if st.button("💾 결과저장", type="primary", use_container_width=True, key="hedge_save_btn"):
             from auto_purchase_service import _next_draw_round
             from marketing_db import init_marketing_tables, save_guest_generated_combos
