@@ -188,15 +188,28 @@ def render():
             width: auto !important;
             min-width: 0 !important;
         }
-        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] {
-            margin-bottom: 6px !important;
+        /* Streamlit이 stElementContainer(체크박스 위젯을 감싸는 바깥 래퍼)를 콘텐츠
+           크기(16px)로만 만들어서, 그 안의 stCheckbox/label에 width:100%를 줘도
+           16px 기준 100%라 그대로 작게 나온다(실측 확인된 문제) — 래퍼부터 폭을
+           채워야 한다. */
+        .st-key-hedge_num_grid_wrap div[data-testid="stElementContainer"] {
+            width: 100% !important;
         }
-        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label {
+        /* Streamlit 내장 체크박스 스타일이 !important + 나중에 삽입되는 순서로
+           width:16px 같은 고정값을 계속 덮어써서, 클래스를 두 번 겹쳐 써
+           명시도(specificity)를 인위적으로 더 높여야 이긴다(실측 확인된 문제). */
+        .st-key-hedge_num_grid_wrap.st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] {
+            margin-bottom: 6px !important;
+            width: 100% !important;
+            flex: 1 1 auto !important;
+        }
+        .st-key-hedge_num_grid_wrap.st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label {
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
             width: 100% !important;
+            height: auto !important;
             aspect-ratio: 1 !important;
             padding: 0 !important;
             border-radius: 10px !important;
@@ -210,7 +223,7 @@ def render():
             border-color: #C4B5FD !important;
             box-shadow: 0 0 10px rgba(139, 92, 246, 0.55) !important;
         }
-        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] [data-baseweb="checkbox"] > span:first-of-type {
+        .st-key-hedge_num_grid_wrap.st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label > div:not([data-testid="stWidgetLabel"]) {
             display: none !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] {
