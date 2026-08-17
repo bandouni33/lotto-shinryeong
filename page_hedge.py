@@ -171,17 +171,24 @@ def render():
         /* 번호 그리드 — 어두운 카드 안에 흰색 둥근사각 버튼(목업 참고). st.columns가
            좁은 화면에서는 기본적으로 세로로 쌓이므로, 번호 그리드만은 강제로 가로
            배치를 유지시킨다(7칸씩 한 줄). */
+        /* 번개조합 .number-grid와 완전히 동일한 값(그라디언트·그림자·여백)을 그대로
+           맞춘다 — 번개조합은 순수 HTML(iframe)로 그리고 여긴 st.checkbox 위젯이라
+           만드는 방식은 다르지만, 최종 CSS 수치는 픽셀 단위로 동일하게. */
         .st-key-hedge_num_grid_wrap {
             background: linear-gradient(180deg, #243044 0%, #1E293B 100%) !important;
             border-radius: 16px !important;
-            padding: 12px !important;
-            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3) !important;
+            padding: 15px !important;
+            box-shadow:
+                0 6px 0 #0b1220,
+                0 10px 20px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 4px !important;
+            gap: 8px !important;
+            margin-bottom: 8px !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
             flex: 1 1 0 !important;
@@ -199,7 +206,6 @@ def render():
            width:16px 같은 고정값을 계속 덮어써서, 클래스를 두 번 겹쳐 써
            명시도(specificity)를 인위적으로 더 높여야 이긴다(실측 확인된 문제). */
         .st-key-hedge_num_grid_wrap.st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] {
-            margin-bottom: 6px !important;
             width: 100% !important;
             flex: 1 1 auto !important;
         }
@@ -212,16 +218,24 @@ def render():
             height: auto !important;
             aspect-ratio: 1 !important;
             padding: 0 !important;
-            border-radius: 10px !important;
+            border-radius: 8px !important;
             background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
             border: 2px solid transparent !important;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.28) !important;
+            box-shadow:
+                0 3px 0 #94a3b8,
+                0 5px 10px rgba(0, 0, 0, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.55) !important;
+            transition: transform 0.12s ease, box-shadow 0.12s ease !important;
             cursor: pointer !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) {
-            background: linear-gradient(145deg, #8B5CF6, #6D28D9) !important;
-            border-color: #C4B5FD !important;
-            box-shadow: 0 0 10px rgba(139, 92, 246, 0.55) !important;
+            background: linear-gradient(145deg, #A855F7, #7C3AED) !important;
+            border-color: #A855F7 !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35) !important;
+            box-shadow:
+                0 3px 0 #6b21a8,
+                0 5px 10px rgba(168, 85, 247, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
         }
         .st-key-hedge_num_grid_wrap.st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label > div:not([data-testid="stWidgetLabel"]) {
             display: none !important;
@@ -232,8 +246,8 @@ def render():
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {
             margin: 0 !important;
             color: #0F172A !important;
-            font-weight: 800 !important;
-            font-size: 13px !important;
+            font-weight: 900 !important;
+            font-size: 14px !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
             color: #FFFFFF !important;
