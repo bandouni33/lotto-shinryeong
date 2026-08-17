@@ -126,11 +126,43 @@ def init_wallet_tables() -> None:
             FOREIGN KEY (member_id) REFERENCES members(id)
         );
         CREATE INDEX IF NOT EXISTS idx_auto_orders_member ON auto_orders(member_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS guest_member_links (
+            guest_id TEXT PRIMARY KEY,
+            member_id INTEGER NOT NULL,
+            linked_at TEXT NOT NULL,
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        );
         """
     )
     conn.commit()
     conn.close()
     _WALLET_TABLES_READY = True
+
+
+def link_guest_to_member(guest_id: str, member_id: int) -> None:
+    """로그인 성공 시 기기 식별자(guest_id, 네이티브 앱이면 재실행해도 유지됨)를
+    회원과 연결해둔다 — 다음에 세션이 끊겼다가 재연결될 때(백그라운드 전환, 네트워크
+    끊김 등) 이 연결로 자동 재로그인시켜서, 매번 간편인증 화면이 다시 뜨는 걸 막는다."""
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO guest_member_links (guest_id, member_id, linked_at) VALUES (?, ?, ?)
+        ON CONFLICT(guest_id) DO UPDATE SET member_id = excluded.member_id, linked_at = excluded.linked_at
+        """,
+        (str(guest_id), int(member_id), _now_iso()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_member_for_guest(guest_id: str) -> int | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT member_id FROM guest_member_links WHERE guest_id = ?", (str(guest_id),)
+    ).fetchone()
+    conn.close()
+    return int(row["member_id"]) if row else None
 
 
 def get_or_create_member(provider: str, provider_user_id: str) -> tuple[int, bool]:
@@ -366,7 +398,7 @@ def activate_paid_advanced_sub(member_id: int, days: int) -> bool:
     return True
 
 
-THUNDER_COST_PER_GAME = 50
+THUNDER_COST_PER_GAME = 10
 HEDGE_COST_PER_COMBO = 50
 AUTO_COST_PER_UNIT = 100
 TAROT_EXTRA_DRAW_COST = 50  # 하루 1회 무료 이후 추가 뽑기 1회당

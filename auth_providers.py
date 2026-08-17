@@ -107,9 +107,10 @@ def finalize_login(provider: str, provider_user_id: str) -> tuple[int, bool, boo
     st.session_state.member_id = member_id
     st.session_state.oauth_provider = provider
     st.session_state.oauth_hash_display = oauth_hash(provider, provider_user_id)[:8] + "…"
-    from user_scope import bind_identity_on_login
+    from user_scope import bind_identity_on_login, get_or_create_guest_id
 
     bind_identity_on_login(member_id)
+    _link_guest_to_member_safe(get_or_create_guest_id(), member_id)
     if bonus:
         st.session_state.wallet_toast = f"간편인증 완료! 적립금 {SIGNUP_BONUS:,}P가 지급되었습니다."
     else:
@@ -125,12 +126,43 @@ def mock_provider_login(provider: str) -> tuple[int, bool, bool]:
     st.session_state.member_id = member_id
     st.session_state.oauth_provider = provider
     st.session_state.oauth_hash_display = oauth_hash(provider, fake_id)[:8] + "…"
-    from user_scope import bind_identity_on_login
+    from user_scope import bind_identity_on_login, get_or_create_guest_id
 
     bind_identity_on_login(member_id)
+    _link_guest_to_member_safe(get_or_create_guest_id(), member_id)
     msg = f"{SIGNUP_BONUS:,}P 지급 완료!" if bonus else "로그인 완료"
     st.session_state.wallet_toast = f"{provider.upper()} {msg}"
     return member_id, is_new, bonus
+
+
+def _link_guest_to_member_safe(guest_id: str, member_id: int) -> None:
+    """guest_id(기기 식별자)와 회원을 연결 — 세션이 끊겨도 자동 재로그인시키기 위함
+    (restore_member_from_guest 참고). 연결 자체가 로그인 성공을 막아선 안 되니
+    실패해도 조용히 넘어간다."""
+    try:
+        from wallet_db import link_guest_to_member
+
+        link_guest_to_member(guest_id, member_id)
+    except Exception:
+        pass
+
+
+def restore_member_from_guest() -> int | None:
+    """세션이 끊겼다 재연결됐을 때(백그라운드 전환·네트워크 끊김 등) member_id가
+    사라져 매번 간편인증 배너가 다시 뜨는 문제 — 이 기기(guest_id)가 이미 로그인한
+    적 있는 회원과 연결돼 있으면 조용히 다시 로그인시킨다(인증 절차 없이)."""
+    if st.session_state.get("member_id"):
+        return None
+    from user_scope import bind_identity_on_login, get_or_create_guest_id
+    from wallet_db import get_member_for_guest, init_wallet_tables
+
+    init_wallet_tables()
+    guest_id = get_or_create_guest_id()
+    member_id = get_member_for_guest(guest_id)
+    if not member_id:
+        return None
+    bind_identity_on_login(member_id)
+    return member_id
 
 
 def mock_kakao_login() -> tuple[int, bool, bool]:

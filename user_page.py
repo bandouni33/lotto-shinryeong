@@ -19,7 +19,7 @@ st.set_page_config(page_title="로\u200b또신령", page_icon="K-325.jpg", layou
 from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
 from birthday_db import init_birthday_table
-from auth_providers import handle_oauth_callback
+from auth_providers import handle_oauth_callback, restore_member_from_guest
 from user_scope import init_guest_scope
 
 init_wallet_tables()
@@ -28,10 +28,14 @@ init_birthday_table()
 if handle_oauth_callback():
     st.rerun()
 init_guest_scope()
+# 세션이 끊겼다 재연결되면(모바일 백그라운드 전환·네트워크 끊김 등) member_id가
+# 사라져서 기능을 쓸 때마다 간편인증 배너가 다시 뜨는 문제가 있었다 — 이 기기
+# (guest_id)가 이미 로그인한 적 있으면 인증 절차 없이 조용히 다시 로그인시킨다.
+restore_member_from_guest()
 
 current_page = st.query_params.get("page", "main")
 
-if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot"):
+if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot", "hedge"):
     # 자체 JS 핀치줌(frontend/components/pinch_zoom.py)은 여러 차례 시도했으나 실기기에서
     # 계속 문제가 있었다 — 타로 부채꼴 스프레드(iframe 안에서 렌더링됨) 페이지에서는
     # 이 커스텀 스크립트가 닿지 못해 네이티브 WebView 줌이 방해 없이 그대로 동작했는데,
