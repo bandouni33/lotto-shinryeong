@@ -72,6 +72,20 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                 doc.head.appendChild(noTranslate);
             }
 
+            // 안드로이드 웹뷰의 강제 다크모드가 색을 직접 지정 안 한 요소(흰 배경
+            // 버튼·셀렉트박스 등)를 임의로 반전시켜, 실기기에서 페이지 일부가
+            // 텍스트/배경이 뒤섞여 안 보이거나 빈 공간처럼 보이는 문제가 있었다
+            // (page_thunder.py 안 iframe에는 이미 적용했지만, 안티/액땜조합처럼
+            // iframe 없이 순수 Streamlit 위젯으로만 만든 화면은 이 최상위 문서
+            // 자체에 걸어야 한다). 앱 전체를 항상 라이트 배색으로 고정한다.
+            doc.documentElement.style.colorScheme = 'light';
+            if (!doc.querySelector('meta[name="color-scheme"]')) {
+                const colorScheme = doc.createElement('meta');
+                colorScheme.setAttribute('name', 'color-scheme');
+                colorScheme.setAttribute('content', 'light');
+                doc.head.appendChild(colorScheme);
+            }
+
             // 네이티브 앱이 최초 로드 때 URL에 실어준 ?gid=...(AsyncStorage에 저장된
             // 게스트 식별자)는, 화면 안의 "메인으로"/메뉴 링크(page_auto.py의
             // href="?", user_page.py의 href="?page=auto" 등 순수 HTML <a> 태그)를

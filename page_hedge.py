@@ -211,63 +211,83 @@ def render():
     else:
         st.caption("입력한 번호를 전부 하나로 모아, 그 전체와 크게 안 겹치는 조합을 만들어요.")
 
-    st.markdown('<div class="hedge-section-label">이미 구매한 번호 입력 (줄당 6개, 터치로 선택)</div>', unsafe_allow_html=True)
+    def _grid_selected(prefix: str) -> list[int]:
+        return sorted(n for n in range(1, 46) if st.session_state.get(f"{prefix}{n}"))
 
-    active_line = st.radio(
-        "줄 선택",
-        list(range(1, MAX_LINES + 1)),
-        format_func=lambda n: f"{n}번째 줄",
-        horizontal=True,
-        key="hedge_active_line",
-        label_visibility="collapsed",
-    )
-    def _line_selected_nums(line: int) -> list[int]:
-        return sorted(n for n in range(1, 46) if st.session_state.get(f"hedge_num_{line}_{n}"))
+    def _render_num_grid(prefix: str) -> None:
+        # st.multiselect/st.pills는 이 세션에서 한 번도 안 쓰인 위젯이라, 실기기(느린
+        # 모바일 네트워크)에서 그 전용 JS 청크를 새로 받아오다가 응답이 없으면 화면이
+        # "불러오는 중"에서 멈추는 문제가 있었다(재현·확인됨) — 앱 전체에서 이미 여러
+        # 번 쓰여서 항상 로드돼 있는 st.checkbox + st.columns 조합으로 대신한다.
+        with st.container(key="hedge_num_grid_wrap"):
+            nums = list(range(1, 46))
+            cols_per_row = 7
+            for row_start in range(0, len(nums), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for col, n in zip(cols, nums[row_start : row_start + cols_per_row]):
+                    with col:
+                        st.checkbox(str(n), key=f"{prefix}{n}", label_visibility="visible")
 
-    summary = " · ".join(
-        f"{i}줄 " + ("✓" if len(_line_selected_nums(i)) == 6 else f"{len(_line_selected_nums(i))}/6")
-        for i in range(1, MAX_LINES + 1)
-    )
-    st.caption(summary)
+    def _balls_html(combo) -> str:
+        return (
+            '<div class="auto-banner-combo"><div class="auto-banner-ball-row">'
+            + "".join(f'<span class="auto-banner-ball">{n:02d}</span>' for n in combo)
+            + "</div></div>"
+        )
 
-    # st.multiselect/st.pills는 이 세션에서 한 번도 안 쓰인 위젯이라, 실기기(느린
-    # 모바일 네트워크)에서 그 전용 JS 청크를 새로 받아오다가 응답이 없으면 화면이
-    # "불러오는 중"에서 멈추는 문제가 있었다(재현·확인됨) — 앱 전체에서 이미 여러 번
-    # 쓰여서 항상 로드돼 있는 st.checkbox + st.columns 조합으로 번호 그리드를 대신
-    # 만든다(번개조합 그리드와 비슷하게 CSS로 원형 버튼처럼 보이게).
-    with st.container(key="hedge_num_grid_wrap"):
-        nums = list(range(1, 46))
-        cols_per_row = 7
-        for row_start in range(0, len(nums), cols_per_row):
-            cols = st.columns(cols_per_row)
-            for col, n in zip(cols, nums[row_start : row_start + cols_per_row]):
-                with col:
-                    st.checkbox(str(n), key=f"hedge_num_{active_line}_{n}", label_visibility="visible")
+    lines: list[tuple[int, ...]] = []
 
-    active_sel = _line_selected_nums(active_line)
-    if active_sel and len(active_sel) != 6:
-        st.caption(f"{len(active_sel)}/6개 선택됨 · 6개를 선택해 주세요")
+    if mode == "안티조합":
+        committed = st.session_state.setdefault("hedge_committed_lines", [])
 
-    line_selections = [_line_selected_nums(i) for i in range(1, MAX_LINES + 1)]
+        if len(committed) < MAX_LINES:
+            st.markdown(
+                f'<div class="hedge-section-label">{len(committed) + 1}번째 줄 선택 중 · '
+                "6개를 선택하면 자동으로 다음 줄로 넘어가요</div>",
+                unsafe_allow_html=True,
+            )
+            _render_num_grid("hedge_anti_num_")
+            current = _grid_selected("hedge_anti_num_")
+            if len(current) == 6:
+                committed.append(current)
+                for n in current:
+                    st.session_state.pop(f"hedge_anti_num_{n}", None)
+                st.session_state["hedge_committed_lines"] = committed
+                st.rerun()
+            elif current:
+                st.caption(f"{len(current)}/6개 선택됨")
+        else:
+            st.success(f"{MAX_LINES}줄 모두 입력했습니다. 아래 조합시작을 눌러주세요.")
+
+        if committed:
+            st.markdown('<div class="hedge-section-label">입력한 줄</div>', unsafe_allow_html=True)
+            for i, line in enumerate(committed):
+                lcol, dcol = st.columns([5, 1])
+                with lcol:
+                    st.markdown(_balls_html(sorted(line)), unsafe_allow_html=True)
+                with dcol:
+                    if st.button("✕", key=f"hedge_del_line_{i}", use_container_width=True):
+                        committed.pop(i)
+                        st.session_state["hedge_committed_lines"] = committed
+                        st.rerun()
+
+        lines = [tuple(sorted(line)) for line in committed]
+
+    else:
+        st.markdown('<div class="hedge-section-label">이미 구매한 번호를 최대한 많이 선택하세요</div>', unsafe_allow_html=True)
+        _render_num_grid("hedge_aek_num_")
+        pool = _grid_selected("hedge_aek_num_")
+        st.caption(f"{len(pool)}개 선택됨" + (" · 6개 이상 선택해 주세요" if pool and len(pool) < 6 else ""))
+        if pool:
+            lines = [tuple(pool)]
 
     count = st.selectbox("생성할 조합 수", [5, 10, 15, 20], index=0, key="hedge_count")
 
     if st.button("조합시작", type="primary", use_container_width=True, key="hedge_generate_btn"):
-        lines = []
-        line_errors = []
-        for i, sel in enumerate(line_selections, start=1):
-            if not sel:
-                continue
-            if len(sel) != 6:
-                line_errors.append(f"{i}번째 줄은 6개를 선택해야 합니다 (현재 {len(sel)}개).")
-            else:
-                lines.append(tuple(sel))
-
-        if not lines:
-            st.error("최소 1줄 이상 번호를 선택해 주세요.")
-        elif line_errors:
-            for err in line_errors:
-                st.error(err)
+        if mode == "안티조합" and not lines:
+            st.error("최소 1줄 이상 입력해 주세요 (6개씩 선택).")
+        elif mode == "액땜조합" and (not lines or len(lines[0]) < 6):
+            st.error("번호를 6개 이상 선택해 주세요.")
         else:
             from wallet_ui import ensure_member_or_banner
 
@@ -335,6 +355,11 @@ def render():
             save_guest_generated_combos(guest_id, source, _next_draw_round(), results)
             st.session_state.pop("hedge_results", None)
             st.session_state.pop("hedge_results_mode", None)
+            # 다음 입력을 위해 줄/풀 선택 상태도 같이 비운다.
+            st.session_state.pop("hedge_committed_lines", None)
+            for n in range(1, 46):
+                st.session_state.pop(f"hedge_anti_num_{n}", None)
+                st.session_state.pop(f"hedge_aek_num_{n}", None)
             st.session_state["hedge_history_blink"] = True
             st.rerun()
 

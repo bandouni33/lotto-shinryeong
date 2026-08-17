@@ -234,15 +234,6 @@ def render(admin_lucky=None):
             st.query_params["page"] = "birthday"
             st.rerun()
 
-    if st.button(
-        "🛡️ 안티조합 · 액땜조합 — 이미 산 번호와 안 겹치는 조합 만들기",
-        key="th_nav_hedge_6n36s5",
-        use_container_width=True,
-    ):
-        st.query_params.clear()
-        st.query_params["page"] = "hedge"
-        st.rerun()
-
     # 예전엔 여기서 postMessage + window.parent.location.href로 iframe 밖(최상위 문서)을
     # 내비게이션 시키려 했는데, Streamlit의 components.html iframe은 sandbox에
     # allow-top-navigation(-by-user-activation) 권한이 아예 없어서 실제 사용자 클릭에서
@@ -1259,6 +1250,18 @@ def render(admin_lucky=None):
         """,
         height=0,
     )
+
+    # 상단 게임수 선택~조합시작 사이에 끼어있던 걸 여기(결과/저장내역 근처의 빈
+    # 공간)로 옮겼다 — 번개조합 고유 흐름(홈/생일행운수관리 → 게임수 → 조합시작)을
+    # 방해하지 않으면서, iframe 아래 비어 보이던 공간을 채운다.
+    if st.button(
+        "🛡️ 안티조합 · 액땜조합 — 이미 산 번호와 안 겹치는 조합 만들기",
+        key="th_nav_hedge_6n36s5",
+        use_container_width=True,
+    ):
+        st.query_params.clear()
+        st.query_params["page"] = "hedge"
+        st.rerun()
 
     # ─── 저장내역 (구매내역과 동일한 카드 디자인 — combo_history_ui 공용 모듈) ───
     from combo_history_ui import render_history_section
