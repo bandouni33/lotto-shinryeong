@@ -112,19 +112,30 @@ def _finish_auth_success() -> None:
     st.rerun()
 
 
+def _testing_period_active() -> bool:
+    """[출시 전 테스트 기간 한정] 실제 카카오 인증·PG 결제가 아직 연동되지 않은
+    동안엔 True — 인증/적립금/구독 안내 배너를 전부 숨기고 조용히 통과시키는
+    데 쓴다(사용자 요청: "테스트기간엔 인증,적립금,결제,충전 안내배너창 다
+    숨기기"). kakao_configured()가 켜지는 순간(=실제 연동 완료) 이 우회는
+    자동으로 꺼지고 원래의 배너/안내창 흐름으로 돌아간다.
+
+    [숙제 — 정식 출시 시 결정 필요] 지금은 전부 숨겼지만, 실제로 포인트가
+    깎이는 정식 서비스에서는 사용자가 "왜 깎였는지" 알 방법이 아예 없어지면
+    안 된다. 매번 안내창을 띄우던 예전 방식은 번거로워 이탈을 유발했으니,
+    예를 들어 "처음 한 번만 안내 + 이후엔 상단에 잔액과 이번 차감액을 작게
+    표시" 같은 절충안을 검토할 것."""
+    return _dev_mock_enabled() and not kakao_configured()
+
+
 def ensure_member_or_banner(*, resume: str, reason: str, resume_data: dict | None = None) -> bool:
     """로그인됐으면 True. 아니면 배너만 띄우고 False.
 
-    [출시 전 테스트 기간 한정] 카카오 인증이 실제로 연동되기 전까지는, 로그인
-    안 된 상태에서도 "카카오로 시작하기" 배너를 띄우는 대신 조용히 로그인시키고
-    바로 진행한다 — 실사용자 입장에서 "이미 인증했는데 조합할 때마다 인증 화면이
-    또 뜬다"는 게 아니라, 매번 화면 자체가 아예 안 뜨고 적립금 안내창만 보이게
-    하려는 것(사용자 요청). 실제 카카오 연동(kakao_configured())이 켜지면 이
-    조용한 우회는 자동으로 꺼지고 원래 배너 흐름으로 돌아간다.
+    테스트 기간엔 "카카오로 시작하기" 배너를 띄우는 대신 조용히 로그인시키고
+    바로 진행한다 — _testing_period_active() 참고.
     """
     if current_member_id():
         return True
-    if _dev_mock_enabled() and not kakao_configured():
+    if _testing_period_active():
         mock_kakao_login()
         return True
     open_auth_banner(reason=reason, resume=resume, resume_data=resume_data)
@@ -341,7 +352,16 @@ def points_notice_dialog(
     지금은 실제 카카오 인증·PG 결제가 연결되지 않은 테스트 기간이라, 적립금 부족
     등의 이유로 사용자를 막지 않는다 — 안내만 보여주고 취소/확인 어느 쪽을 눌러도
     기능은 그대로 이용할 수 있게 통과시킨다(on_close(True/False)는 실제 차감
-    시도 여부를 호출부에 알려줄 뿐, 통과 여부를 막는 용도가 아니다)."""
+    시도 여부를 호출부에 알려줄 뿐, 통과 여부를 막는 용도가 아니다).
+
+    테스트 기간엔(_testing_period_active) 이 안내창 자체를 아예 안 띄우고
+    바로 확인 처리한다 — 매번 조합 만들 때마다 안내창이 뜨는 게 번거롭다는
+    사용자 요청. 정식 출시 시 어떻게 다시 노출할지는 _testing_period_active
+    독스트링의 "숙제" 참고."""
+    if _testing_period_active():
+        on_close(True)
+        st.rerun()
+        return
     member_id = current_member_id()
     balance = get_balance(member_id) if member_id else 0
 
@@ -372,7 +392,18 @@ def advanced_subscription_dialog(*, on_close) -> None:
     """구독 활성화까지 여기서 끝내고 on_close()를 호출한 뒤 st.rerun()한다 — 반환값을
     호출부가 받아 처리하는 방식은 st.dialog 안에서 실제로 동작하지 않는다(위
     points_notice_dialog와 동일한 이유). 여기는 (타로·번개 등과 달리) 진짜 잠금이라
-    "취소"를 눌러도 구독이 되지는 않는다 — 그냥 닫기만 한다."""
+    "취소"를 눌러도 구독이 되지는 않는다 — 그냥 닫기만 한다.
+
+    테스트 기간엔(_testing_period_active) 이 안내창도 안 띄우고, 유료 결제 없이
+    바로 장기 구독을 활성화해서 고급필터를 막힘없이 쓸 수 있게 한다 — 정식
+    출시 시 어떻게 다시 노출할지는 _testing_period_active 독스트링 참고."""
+    if _testing_period_active():
+        member_id = current_member_id()
+        if member_id:
+            activate_paid_advanced_sub(member_id, 3650)
+        on_close()
+        st.rerun()
+        return
     member_id = current_member_id()
     if not member_id:
         on_close()
