@@ -23,39 +23,72 @@ THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
 THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
 THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
 
-# 로또볼 색상 — user_page.py 메인화면 최근당첨번호와 동일한 구간별 그라디언트를
-# 그대로 재사용한다(앱 전체에서 번호 색상이 항상 같아 보이도록 통일).
 _THUNDER_RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
 
 
-def _lotto_ball_style(n: int) -> str:
-    if 1 <= n <= 10:
-        return "background: radial-gradient(circle at 35% 35%, #ffeb3b, #f9a825, #f57f17);"
-    if 11 <= n <= 20:
-        return "background: radial-gradient(circle at 35% 35%, #4fc3f7, #1976d2, #0d47a1);"
-    if 21 <= n <= 30:
-        return "background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c);"
-    if 31 <= n <= 40:
-        return "background: radial-gradient(circle at 35% 35%, #bdbdbd, #757575, #424242);"
-    return "background: radial-gradient(circle at 35% 35%, #81c784, #388e3c, #1b5e20);"
+def _thunder_winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
+    """자동구매 구매내역과 동일한 방식 — 당첨번호가 확정된 회차면 맞은 번호에
+    동그라미를 칠 수 있도록 당첨번호 집합/보너스번호를 반환한다."""
+    try:
+        from lotto_stats import get_draw_result_by_round
+
+        result = get_draw_result_by_round(int(draw_round))
+    except Exception:
+        return set(), None
+    if not result:
+        return set(), None
+    return set(int(n) for n in result.get("numbers", [])), result.get("bonus")
 
 
 def _thunder_history_batch_html(batch: dict) -> str:
+    """자동구매 구매내역(_purchase_banner_html)과 동일한 카드 형식 — 순수 숫자 볼 +
+    당첨번호 일치 시 테두리 동그라미. 사용자 요청에 따라 구매내역 화면을 그대로 가져온다."""
+    draw_round = batch.get("draw_round", "")
+    win_set, bonus_number = _thunder_winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
+
+    def _ball_span(n: int) -> str:
+        n = int(n)
+        if n in win_set:
+            hit_cls = " auto-banner-ball-hit"
+        elif bonus_number is not None and n == int(bonus_number):
+            hit_cls = " auto-banner-ball-bonus"
+        else:
+            hit_cls = ""
+        return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
+
+    combos = batch.get("combos") or []
     combo_rows = ""
-    for item in batch.get("combos") or []:
+    for item in combos:
         combo = item.get("combo") or []
-        balls = "".join(
-            f'<span class="th-banner-ball" style="{_lotto_ball_style(int(n))}">{int(n)}</span>'
-            for n in combo
-        )
+        balls = "".join(_ball_span(n) for n in combo)
+        combo_rows += f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div></div>'
+
+    rank_counts: dict[int, int] = {}
+    for item in combos:
         rank = item.get("win_rank")
-        badge = (
-            f'<span class="th-banner-rank-badge">{_THUNDER_RANK_LABELS[rank]}</span>'
-            if rank in _THUNDER_RANK_LABELS
-            else ""
-        )
-        combo_rows += f'<div class="th-banner-combo"><div class="th-banner-ball-row">{balls}{badge}</div></div>'
-    return f'<div class="th-purchase-banner">{combo_rows}</div>'
+        if rank in _THUNDER_RANK_LABELS:
+            rank_counts[rank] = rank_counts.get(rank, 0) + 1
+    rank_summary = " · ".join(
+        f"{_THUNDER_RANK_LABELS[r]} {c}개" for r, c in sorted(rank_counts.items())
+    )
+    meta_parts = [f"{len(combos)}개 조합"]
+    if rank_summary:
+        meta_parts.append(rank_summary)
+    meta = " · ".join(meta_parts)
+    legend = '<p class="auto-banner-legend">🟡 당첨번호 일치 · ⚪ 보너스 번호 일치</p>' if win_set else ""
+
+    return (
+        '<div class="auto-purchase-banner">'
+        '<div class="auto-banner-head">'
+        '<span class="auto-banner-badge">⚡</span>'
+        "<div>"
+        f'<div class="auto-banner-title">번개조합 저장 · {draw_round}회차</div>'
+        f'<div class="auto-banner-meta">{meta}</div>'
+        "</div></div>"
+        f'<div class="auto-banner-combos">{combo_rows}</div>'
+        f"{legend}"
+        "</div>"
+    )
 
 
 def render(admin_lucky=None):
@@ -250,61 +283,104 @@ def render(admin_lucky=None):
             font-weight: 800 !important;
             color: #1E293B !important;
         }
-        .th-purchase-banner {
-            margin: 10px 0;
-            padding: 12px 14px;
-            border-radius: 14px;
-            background: linear-gradient(145deg, #ffffff 0%, #fff8e1 100%);
-            border: 1px solid #ffe082;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+        /* 아래 .auto-* 클래스들은 자동구매 구매내역(page_auto.py) 카드와 동일한 정의를
+           그대로 옮겨왔다 — 사용자 요청대로 "구매내역 저장화면 그대로" 재사용. */
+        .auto-purchase-banner {
+            margin: 14px 0 18px;
+            padding: 16px 14px 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(206, 147, 216, 0.55);
+            background: linear-gradient(155deg, rgba(74, 20, 140, 0.92) 0%, rgba(26, 34, 56, 0.96) 55%, rgba(18, 24, 43, 0.98) 100%);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(179, 157, 219, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+        .auto-banner-head {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .auto-banner-badge {
+            flex: 0 0 auto;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 14px;
+            color: #4a148c;
+            background: linear-gradient(145deg, #e1bee7, #ce93d8);
+            box-shadow: 0 2px 8px rgba(206, 147, 216, 0.35);
+        }
+        .auto-banner-title {
+            color: #f3e5f5;
+            font-weight: 800;
+            font-size: 16px;
+            line-height: 1.35;
         }
         .th-history-round-head {
             margin: 14px 0 6px;
             padding-bottom: 4px;
-            color: #b8860b;
+            color: #ce93d8;
             font-weight: 800;
             font-size: 13px;
-            border-bottom: 1px solid rgba(255, 184, 0, 0.35);
+            border-bottom: 1px solid rgba(206, 147, 216, 0.3);
         }
         .th-history-round-head:first-child { margin-top: 2px; }
-        .th-banner-combo {
+        .auto-banner-meta {
+            color: #b39ddb;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 4px;
+            line-height: 1.45;
+        }
+        .auto-banner-combos {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .auto-banner-combo {
             display: flex;
             align-items: center;
-            padding: 4px 0;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.22);
+            border: 1px solid rgba(179, 157, 219, 0.22);
         }
-        .th-banner-ball-row {
+        .auto-banner-ball-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
+            gap: 10px;
         }
-        .th-banner-ball {
+        .auto-banner-ball {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            color: #fff;
-            font-weight: 900;
-            font-size: 12px;
-            flex-shrink: 0;
-            box-shadow:
-                2px 3px 5px rgba(0, 0, 0, 0.35),
-                inset -2px -2px 4px rgba(0, 0, 0, 0.3),
-                inset 1px 1px 3px rgba(255, 255, 255, 0.5);
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6);
+            min-width: 22px;
+            height: 22px;
+            padding: 0 2px;
+            color: #f1e9ff;
+            font-weight: 800;
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
         }
-        .th-banner-rank-badge {
-            display: inline-block;
-            margin-left: 4px;
-            padding: 3px 9px;
-            border-radius: 999px;
-            background: linear-gradient(145deg, #ffd54f, #ffb800);
-            color: #4a2f00;
-            font-weight: 900;
+        .auto-banner-ball-hit {
+            border-radius: 50%;
+            border: 2px solid #FFD600;
+            color: #FFD600;
+        }
+        .auto-banner-ball-bonus {
+            border-radius: 50%;
+            border: 2px solid #B0BEC5;
+            color: #B0BEC5;
+        }
+        .auto-banner-legend {
+            margin: 6px 0 0;
+            color: #cfd8dc;
             font-size: 11px;
-            white-space: nowrap;
+            font-weight: 600;
         }
         @keyframes thHistoryBlink {
             0%, 100% {
@@ -416,8 +492,13 @@ def render(admin_lucky=None):
     <html>
     <head>
         <meta charset="UTF-8">
+        <meta name="color-scheme" content="light">
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
         <style>
+            /* 안드로이드 웹뷰의 "강제 다크모드"가 색을 정의하지 않은 걸로 판단해 흰색
+               번호 버튼 등을 임의로 어둡게 반전시키는 문제 — color-scheme을 명시해서
+               이 페이지는 항상 라이트 배색이라고 웹뷰에 알려준다. */
+            :root {{ color-scheme: light; }}
             * {{ font-family: 'Noto Sans KR', sans-serif; box-sizing: border-box; }}
             :root {{
                 --th-delete: {THUNDER_COLOR_DELETE};
