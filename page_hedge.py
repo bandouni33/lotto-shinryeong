@@ -111,12 +111,6 @@ def render():
             color: #1E293B;
             margin: 14px 0 6px;
         }
-        .hedge-line-label {
-            font-size: 0.78rem;
-            font-weight: 700;
-            color: #64748B;
-            margin: 10px 0 2px;
-        }
         div[data-testid="stButton"] > button {
             background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
             border: none !important;
@@ -167,23 +161,35 @@ def render():
         st.caption("입력한 번호를 전부 하나로 모아, 그 전체와 크게 안 겹치는 조합을 만들어요.")
 
     st.markdown('<div class="hedge-section-label">이미 구매한 번호 입력 (줄당 6개, 터치로 선택)</div>', unsafe_allow_html=True)
-    line_selections = []
-    for i in range(1, MAX_LINES + 1):
-        st.markdown(f'<div class="hedge-line-label">{i}번째 줄</div>', unsafe_allow_html=True)
-        sel = st.pills(
-            f"{i}번째 줄 번호",
-            options=list(range(1, 46)),
-            selection_mode="multi",
-            key=f"hedge_line_pills_{i}",
-            label_visibility="collapsed",
-        )
-        sel = sorted(sel or [])
-        if sel:
-            hint = f"{len(sel)}/6개 선택됨"
-            if len(sel) != 6:
-                hint += " · 6개를 선택해 주세요"
-            st.caption(hint)
-        line_selections.append(sel)
+
+    active_line = st.radio(
+        "줄 선택",
+        list(range(1, MAX_LINES + 1)),
+        format_func=lambda n: f"{n}번째 줄",
+        horizontal=True,
+        key="hedge_active_line",
+        label_visibility="collapsed",
+    )
+    summary = " · ".join(
+        f"{i}줄 " + ("✓" if len(st.session_state.get(f"hedge_line_pills_{i}") or []) == 6 else f"{len(st.session_state.get(f'hedge_line_pills_{i}') or [])}/6")
+        for i in range(1, MAX_LINES + 1)
+    )
+    st.caption(summary)
+
+    active_sel = st.pills(
+        f"{active_line}번째 줄 번호",
+        options=list(range(1, 46)),
+        selection_mode="multi",
+        key=f"hedge_line_pills_{active_line}",
+        label_visibility="collapsed",
+    )
+    active_sel = sorted(active_sel or [])
+    if active_sel and len(active_sel) != 6:
+        st.caption(f"{len(active_sel)}/6개 선택됨 · 6개를 선택해 주세요")
+
+    line_selections = [
+        sorted(st.session_state.get(f"hedge_line_pills_{i}") or []) for i in range(1, MAX_LINES + 1)
+    ]
 
     count = st.selectbox("생성할 조합 수", [5, 10, 15, 20], index=0, key="hedge_count")
 
