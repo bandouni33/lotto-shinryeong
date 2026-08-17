@@ -75,10 +75,7 @@ def _thunder_history_batch_html(batch: dict) -> str:
 
     return (
         '<div class="auto-purchase-banner">'
-        '<div class="auto-banner-head">'
-        '<span class="auto-banner-badge">⚡</span>'
         f'<div class="auto-banner-title">{draw_round}회차</div>'
-        "</div>"
         f'<div class="auto-banner-combos">{combo_rows}</div>'
         f"{legend}"
         "</div>"
@@ -287,31 +284,12 @@ def render(admin_lucky=None):
             background: linear-gradient(155deg, rgba(74, 20, 140, 0.92) 0%, rgba(26, 34, 56, 0.96) 55%, rgba(18, 24, 43, 0.98) 100%);
             box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(179, 157, 219, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
-        .auto-banner-head {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-        .auto-banner-badge {
-            flex: 0 0 auto;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 900;
-            font-size: 14px;
-            color: #4a148c;
-            background: linear-gradient(145deg, #e1bee7, #ce93d8);
-            box-shadow: 0 2px 8px rgba(206, 147, 216, 0.35);
-        }
         .auto-banner-title {
             color: #f3e5f5;
             font-weight: 800;
             font-size: 16px;
             line-height: 1.35;
+            margin-bottom: 12px;
         }
         .auto-banner-combos {
             display: flex;
