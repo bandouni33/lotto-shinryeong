@@ -131,6 +131,19 @@ def render():
                 inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
         }
         /* 번호 그리드 — st.checkbox를 번개조합 숫자 그리드처럼 원형 버튼으로 보이게 */
+        /* st.columns가 좁은 화면에서는 기본적으로 세로로 쌓이므로, 번호 그리드만은
+           강제로 가로 배치를 유지시킨다(7칸씩 한 줄). */
+        .st-key-hedge_num_grid_wrap div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 4px !important;
+        }
+        .st-key-hedge_num_grid_wrap div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            flex: 1 1 0 !important;
+            width: auto !important;
+            min-width: 0 !important;
+        }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] {
             margin-bottom: 6px !important;
         }
