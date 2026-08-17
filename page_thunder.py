@@ -61,30 +61,24 @@ def _thunder_history_batch_html(batch: dict) -> str:
     for item in combos:
         combo = item.get("combo") or []
         balls = "".join(_ball_span(n) for n in combo)
-        combo_rows += f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div></div>'
-
-    rank_counts: dict[int, int] = {}
-    for item in combos:
         rank = item.get("win_rank")
-        if rank in _THUNDER_RANK_LABELS:
-            rank_counts[rank] = rank_counts.get(rank, 0) + 1
-    rank_summary = " · ".join(
-        f"{_THUNDER_RANK_LABELS[r]} {c}개" for r, c in sorted(rank_counts.items())
-    )
-    meta_parts = [f"{len(combos)}개 조합"]
-    if rank_summary:
-        meta_parts.append(rank_summary)
-    meta = " · ".join(meta_parts)
+        rank_badge = (
+            f'<span class="th-banner-rank-badge">{_THUNDER_RANK_LABELS[rank]}</span>'
+            if rank in _THUNDER_RANK_LABELS
+            else ""
+        )
+        combo_rows += (
+            f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div>{rank_badge}</div>'
+        )
+
     legend = '<p class="auto-banner-legend">🟡 당첨번호 일치 · ⚪ 보너스 번호 일치</p>' if win_set else ""
 
     return (
         '<div class="auto-purchase-banner">'
         '<div class="auto-banner-head">'
         '<span class="auto-banner-badge">⚡</span>'
-        "<div>"
-        f'<div class="auto-banner-title">번개조합 저장 · {draw_round}회차</div>'
-        f'<div class="auto-banner-meta">{meta}</div>'
-        "</div></div>"
+        f'<div class="auto-banner-title">{draw_round}회차</div>'
+        "</div>"
         f'<div class="auto-banner-combos">{combo_rows}</div>'
         f"{legend}"
         "</div>"
@@ -295,7 +289,7 @@ def render(admin_lucky=None):
         }
         .auto-banner-head {
             display: flex;
-            align-items: flex-start;
+            align-items: center;
             gap: 10px;
             margin-bottom: 12px;
         }
@@ -319,22 +313,6 @@ def render(admin_lucky=None):
             font-size: 16px;
             line-height: 1.35;
         }
-        .th-history-round-head {
-            margin: 14px 0 6px;
-            padding-bottom: 4px;
-            color: #ce93d8;
-            font-weight: 800;
-            font-size: 13px;
-            border-bottom: 1px solid rgba(206, 147, 216, 0.3);
-        }
-        .th-history-round-head:first-child { margin-top: 2px; }
-        .auto-banner-meta {
-            color: #b39ddb;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 4px;
-            line-height: 1.45;
-        }
         .auto-banner-combos {
             display: flex;
             flex-direction: column;
@@ -344,27 +322,40 @@ def render(admin_lucky=None):
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 10px;
+            width: fit-content;
+            max-width: 100%;
+            padding: 8px 12px;
             border-radius: 12px;
             background: rgba(0, 0, 0, 0.22);
             border: 1px solid rgba(179, 157, 219, 0.22);
         }
         .auto-banner-ball-row {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             gap: 10px;
         }
         .auto-banner-ball {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 22px;
-            height: 22px;
+            min-width: 24px;
+            height: 24px;
             padding: 0 2px;
             color: #f1e9ff;
             font-weight: 800;
-            font-size: 13px;
+            font-size: 15px;
             font-variant-numeric: tabular-nums;
+        }
+        .th-banner-rank-badge {
+            display: inline-block;
+            flex-shrink: 0;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: linear-gradient(145deg, #ffd54f, #ffb800);
+            color: #4a2f00;
+            font-weight: 900;
+            font-size: 11px;
+            white-space: nowrap;
         }
         .auto-banner-ball-hit {
             border-radius: 50%;
@@ -1541,19 +1532,11 @@ def render(admin_lucky=None):
             if not batches:
                 st.caption("아직 저장한 조합이 없습니다. 결과저장 버튼을 누르면 이곳에 저장됩니다.")
             else:
-                grouped: dict = {}
                 for batch in batches:
-                    grouped.setdefault(batch["draw_round"], []).append(batch)
-                for draw_round, items in grouped.items():
                     st.markdown(
-                        f'<div class="th-history-round-head">{draw_round}회차</div>',
+                        _thunder_history_batch_html(batch),
                         unsafe_allow_html=True,
                     )
-                    for batch in items:
-                        st.markdown(
-                            _thunder_history_batch_html(batch),
-                            unsafe_allow_html=True,
-                        )
 
 # 호출 확인
 if __name__ == "__main__":
