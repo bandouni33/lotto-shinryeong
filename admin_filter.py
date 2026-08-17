@@ -1851,13 +1851,10 @@ with st.container(key="af_bottom_center"):
         if st.session_state.get("af_show_subscribe"):
             from wallet_ui import advanced_subscription_dialog
 
-            _af_sub_result = advanced_subscription_dialog()
-            if _af_sub_result == "confirm":
+            def _af_subscribe_close() -> None:
                 st.session_state["af_show_subscribe"] = False
-                st.success("구독이 완료되었습니다!")
-                st.rerun()
-            elif _af_sub_result == "cancel":
-                st.session_state["af_show_subscribe"] = False
+
+            advanced_subscription_dialog(on_close=_af_subscribe_close)
 
     if not st.session_state.get("settings_saved"):
         warning_html = """

@@ -357,25 +357,24 @@ def _render_extra_draw_gate():
             st.rerun()
 
     if st.session_state.get("open_tarot_dialog"):
-        from auth_kakao import current_member_id
-        from wallet_db import TAROT_EXTRA_DRAW_COST, deduct_points
         from wallet_ui import points_notice_dialog
 
-        result = points_notice_dialog("tarot")
-        if result == "confirm":
+        def _tarot_dialog_close(confirmed: bool) -> None:
             st.session_state["open_tarot_dialog"] = False
-            mid = current_member_id()
-            if mid:
-                import uuid
+            if confirmed:
+                from auth_kakao import current_member_id
+                from wallet_db import TAROT_EXTRA_DRAW_COST, deduct_points
 
-                ref = f"tarot:{mid}:{uuid.uuid4().hex[:10]}"
-                if deduct_points(mid, TAROT_EXTRA_DRAW_COST, "tarot:extra_draw", ref):
-                    st.session_state["tarot_paid_extra_unlocked"] = True
-                else:
-                    st.error("적립금 차감에 실패했습니다.")
-            st.rerun()
-        elif result == "cancel":
-            st.session_state["open_tarot_dialog"] = False
+                mid = current_member_id()
+                if mid:
+                    import uuid
+
+                    ref = f"tarot:{mid}:{uuid.uuid4().hex[:10]}"
+                    deduct_points(mid, TAROT_EXTRA_DRAW_COST, "tarot:extra_draw", ref)
+            # 테스트 기간이라 취소를 눌러도 추가 뽑기를 그대로 열어준다.
+            st.session_state["tarot_paid_extra_unlocked"] = True
+
+        points_notice_dialog("tarot", on_close=_tarot_dialog_close)
 
     if st.button("처음으로", use_container_width=True, key="tarot_extra_gate_home"):
         _reset()

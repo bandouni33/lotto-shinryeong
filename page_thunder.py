@@ -67,20 +67,20 @@ def render(admin_lucky=None):
 
     if st.session_state.get("open_thunder_dialog"):
         g = int(st.session_state.get("open_thunder_dialog_games", 5))
-        result = points_notice_dialog("thunder", game_count=g)
-        if result == "confirm":
+
+        def _thunder_dialog_close(confirmed: bool, g: int = g) -> None:
             st.session_state["open_thunder_dialog"] = False
-            mid = current_member_id()
-            if mid:
-                ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
-                if deduct_after_result(mid, "thunder", ref, game_count=g):
-                    st.session_state["thunder_approved"] = True
-                    st.session_state["thunder_auto_run"] = g
-                else:
-                    st.error("적립금 차감에 실패했습니다.")
-            st.rerun()
-        elif result == "cancel":
-            st.session_state["open_thunder_dialog"] = False
+            if confirmed:
+                mid = current_member_id()
+                if mid:
+                    ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
+                    deduct_after_result(mid, "thunder", ref, game_count=g)
+            # 지금은 실제 인증·결제가 연결되지 않은 테스트 기간이라, 취소를 눌러도
+            # (차감 성공 여부와 무관하게) 그대로 조합 생성을 진행시킨다.
+            st.session_state["thunder_approved"] = True
+            st.session_state["thunder_auto_run"] = g
+
+        points_notice_dialog("thunder", game_count=g, on_close=_thunder_dialog_close)
 
     th_auto_run = st.session_state.pop("thunder_auto_run", None)
     th_approved_js = "true" if st.session_state.get("thunder_approved") else "false"

@@ -2514,43 +2514,59 @@ def render():
                         from auth_providers import current_member_id
                         from auto_purchase_service import process_auto_purchase
 
-                        result = points_notice_dialog("auto", quantity=selected_quantity)
-                        if result == "confirm":
+                        def _auto_dialog_close(
+                            confirmed: bool,
+                            selected_quantity=selected_quantity,
+                            phone=phone,
+                            purchase_method=purchase_method,
+                        ) -> None:
                             st.session_state["auto_show_points"] = False
+                            if not confirmed:
+                                return
                             if not _is_auto_deploy_window_open():
-                                st.markdown(
-                                    f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
-                                    unsafe_allow_html=True,
+                                st.session_state["auto_purchase_notice"] = AUTO_DEPLOY_WINDOW_BANNER
+                                return
+                            if not phone.strip():
+                                st.session_state["auto_purchase_error"] = "수신 번호를 입력해 주세요."
+                                return
+                            mid = current_member_id()
+                            if not mid:
+                                return
+                            outcome = process_auto_purchase(
+                                mid,
+                                selected_quantity,
+                                purchase_method,
+                                phone,
+                                st.session_state.get("auto_sms_days", []),
+                            )
+                            if outcome.get("ok"):
+                                entry = _purchase_history_entry(
+                                    outcome,
+                                    purchase_method,
+                                    st.session_state.get("auto_sms_days", []),
                                 )
-                            elif not phone.strip():
-                                st.error("수신 번호를 입력해 주세요.")
+                                _append_purchase_history(entry)
+                                st.session_state["auto_history_blink"] = True
+                            elif outcome.get("error") == "insufficient_balance":
+                                st.session_state["auto_purchase_error"] = "적립금이 부족합니다."
+                            elif outcome.get("error") == "next_draw_pool_missing":
+                                st.session_state["auto_purchase_error"] = (
+                                    outcome.get("message") or NEXT_DRAW_POOL_BANNER
+                                )
                             else:
-                                mid = current_member_id()
-                                if mid:
-                                    outcome = process_auto_purchase(
-                                        mid,
-                                        selected_quantity,
-                                        purchase_method,
-                                        phone,
-                                        st.session_state.get("auto_sms_days", []),
-                                    )
-                                    if outcome.get("ok"):
-                                        entry = _purchase_history_entry(
-                                            outcome,
-                                            purchase_method,
-                                            st.session_state.get("auto_sms_days", []),
-                                        )
-                                        _append_purchase_history(entry)
-                                        st.session_state["auto_history_blink"] = True
-                                        st.rerun()
-                                    elif outcome.get("error") == "insufficient_balance":
-                                        st.error("적립금이 부족합니다.")
-                                    elif outcome.get("error") == "next_draw_pool_missing":
-                                        st.error(outcome.get("message") or NEXT_DRAW_POOL_BANNER)
-                                    else:
-                                        st.error("구매 처리에 실패했습니다.")
-                        elif result == "cancel":
-                            st.session_state["auto_show_points"] = False
+                                st.session_state["auto_purchase_error"] = "구매 처리에 실패했습니다."
+
+                        points_notice_dialog("auto", quantity=selected_quantity, on_close=_auto_dialog_close)
+
+                    _auto_purchase_notice = st.session_state.pop("auto_purchase_notice", None)
+                    if _auto_purchase_notice:
+                        st.markdown(
+                            f'<div class="auto-next-draw-pool-banner">{_auto_purchase_notice}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    _auto_purchase_error = st.session_state.pop("auto_purchase_error", None)
+                    if _auto_purchase_error:
+                        st.error(_auto_purchase_error)
 
             with col_visual:
                 pass

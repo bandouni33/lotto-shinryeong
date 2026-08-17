@@ -328,51 +328,53 @@ def points_notice_dialog(
     *,
     game_count: int = 5,
     quantity: int = 5,
-) -> str | None:
-    """Returns 'confirm' | 'cancel' | None (closed). service: thunder/hedge/auto/tarot."""
+    on_close,
+) -> None:
+    """service: thunder/hedge/auto/tarot. on_close(confirmed: bool)를 누른 버튼에 맞춰
+    호출한 뒤 st.rerun()한다 — 반환값을 호출부가 받아 처리하는 방식은 st.dialog
+    안에서 실제로 동작하지 않아(버튼을 눌러도 다음 단계로 못 넘어가고 같은 화면이
+    반복되는 문제로 실기기에서 확인됨) 콜백 방식으로 바꿨다.
+
+    지금은 실제 카카오 인증·PG 결제가 연결되지 않은 테스트 기간이라, 적립금 부족
+    등의 이유로 사용자를 막지 않는다 — 안내만 보여주고 취소/확인 어느 쪽을 눌러도
+    기능은 그대로 이용할 수 있게 통과시킨다(on_close(True/False)는 실제 차감
+    시도 여부를 호출부에 알려줄 뿐, 통과 여부를 막는 용도가 아니다)."""
     member_id = current_member_id()
     balance = get_balance(member_id) if member_id else 0
 
-    if not member_id:
-        return "cancel"
-
     if service == "thunder":
         st.markdown(format_thunder_points_notice(game_count, balance))
-        cost = calc_thunder_cost(game_count)
     elif service == "hedge":
         st.markdown(format_hedge_points_notice(quantity, balance))
-        cost = calc_hedge_cost(quantity)
     elif service == "auto":
         st.markdown(format_auto_points_notice(quantity, balance))
-        cost = calc_auto_cost(quantity)
     elif service == "tarot":
         st.markdown(format_tarot_points_notice(balance))
-        cost = TAROT_EXTRA_DRAW_COST
     else:
         st.error("알 수 없는 서비스")
-        return "cancel"
-
-    if cost > 0 and balance < cost:
-        st.error(f"적립금이 부족합니다. (필요 {cost:,}P / 보유 {balance:,}P)")
-        return "cancel"
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("취소", use_container_width=True):
-            return "cancel"
+        if st.button("취소", use_container_width=True, key=f"pn_cancel_{service}"):
+            on_close(False)
+            st.rerun()
     with c2:
-        if st.button("확인 후 진행", type="primary", use_container_width=True):
-            return "confirm"
-    return None
+        if st.button("확인 후 진행", type="primary", use_container_width=True, key=f"pn_confirm_{service}"):
+            on_close(True)
+            st.rerun()
 
 
 @_dialog_decorator("고급필터 구독")
-def advanced_subscription_dialog() -> str | None:
-    """Returns 'confirm' | 'cancel' | None (closed). 확인 시 실제 결제/구독 활성화까지 처리한다
-    (thunder/auto처럼 "결과 생성 후 차감"이 아니라 "구독 시작 시점에 바로 차감"이라 여기서 끝낸다)."""
+def advanced_subscription_dialog(*, on_close) -> None:
+    """구독 활성화까지 여기서 끝내고 on_close()를 호출한 뒤 st.rerun()한다 — 반환값을
+    호출부가 받아 처리하는 방식은 st.dialog 안에서 실제로 동작하지 않는다(위
+    points_notice_dialog와 동일한 이유). 여기는 (타로·번개 등과 달리) 진짜 잠금이라
+    "취소"를 눌러도 구독이 되지는 않는다 — 그냥 닫기만 한다."""
     member_id = current_member_id()
     if not member_id:
-        return "cancel"
+        on_close()
+        st.rerun()
+        return
 
     balance = get_balance(member_id)
     free_ok = ADVANCED_FILTER_FIRST_SUB_FREE and eligible_free_advanced_sub(member_id)
@@ -393,28 +395,26 @@ def advanced_subscription_dialog() -> str | None:
 
     if cost > 0 and balance < cost:
         st.error(f"적립금이 부족합니다. (필요 {cost:,}P / 보유 {balance:,}P)")
-        return "cancel"
 
     c1, c2 = st.columns(2)
     with c1:
         if st.button("취소", use_container_width=True, key="adv_sub_cancel"):
-            return "cancel"
+            on_close()
+            st.rerun()
     with c2:
-        if st.button("구독하기", type="primary", use_container_width=True, key="adv_sub_confirm"):
+        if st.button("구독하기", type="primary", use_container_width=True, key="adv_sub_confirm", disabled=cost > 0 and balance < cost):
             if plan == "free":
                 ok = activate_free_advanced_sub(member_id)
             else:
-                import uuid
-
                 ref = f"advanced:{plan}:{member_id}:{uuid.uuid4().hex[:10]}"
                 days = FREE_SUB_DAYS if plan == "monthly" else ADVANCED_3MONTH_DAYS
                 ok = deduct_points(member_id, cost, f"advanced:{plan}", ref) and activate_paid_advanced_sub(
                     member_id, days
                 )
-            if ok:
-                return "confirm"
-            st.error("구독 처리에 실패했습니다.")
-            return "cancel"
+            if not ok:
+                st.error("구독 처리에 실패했습니다.")
+            on_close()
+            st.rerun()
     return None
 
 
