@@ -130,6 +130,44 @@ def render():
                 0 7px 14px rgba(63, 98, 18, 0.4),
                 inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
         }
+        /* 번호 그리드 — st.checkbox를 번개조합 숫자 그리드처럼 원형 버튼으로 보이게 */
+        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] {
+            margin-bottom: 6px !important;
+        }
+        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            aspect-ratio: 1 !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
+            border: 2px solid transparent !important;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18) !important;
+            cursor: pointer !important;
+        }
+        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) {
+            background: linear-gradient(145deg, #8B5CF6, #6D28D9) !important;
+            border-color: #C4B5FD !important;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.55) !important;
+        }
+        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] [data-baseweb="checkbox"] > span:first-of-type {
+            display: none !important;
+        }
+        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] {
+            margin: 0 !important;
+        }
+        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {
+            margin: 0 !important;
+            color: #0F172A !important;
+            font-weight: 800 !important;
+            font-size: 13px !important;
+        }
+        .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
+            color: #FFFFFF !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -170,26 +208,34 @@ def render():
         key="hedge_active_line",
         label_visibility="collapsed",
     )
+    def _line_selected_nums(line: int) -> list[int]:
+        return sorted(n for n in range(1, 46) if st.session_state.get(f"hedge_num_{line}_{n}"))
+
     summary = " · ".join(
-        f"{i}줄 " + ("✓" if len(st.session_state.get(f"hedge_line_pills_{i}") or []) == 6 else f"{len(st.session_state.get(f'hedge_line_pills_{i}') or [])}/6")
+        f"{i}줄 " + ("✓" if len(_line_selected_nums(i)) == 6 else f"{len(_line_selected_nums(i))}/6")
         for i in range(1, MAX_LINES + 1)
     )
     st.caption(summary)
 
-    active_sel = st.multiselect(
-        f"{active_line}번째 줄 번호",
-        options=list(range(1, 46)),
-        key=f"hedge_line_pills_{active_line}",
-        label_visibility="collapsed",
-        placeholder="번호 6개를 선택하세요 (터치)",
-    )
-    active_sel = sorted(active_sel or [])
+    # st.multiselect/st.pills는 이 세션에서 한 번도 안 쓰인 위젯이라, 실기기(느린
+    # 모바일 네트워크)에서 그 전용 JS 청크를 새로 받아오다가 응답이 없으면 화면이
+    # "불러오는 중"에서 멈추는 문제가 있었다(재현·확인됨) — 앱 전체에서 이미 여러 번
+    # 쓰여서 항상 로드돼 있는 st.checkbox + st.columns 조합으로 번호 그리드를 대신
+    # 만든다(번개조합 그리드와 비슷하게 CSS로 원형 버튼처럼 보이게).
+    with st.container(key="hedge_num_grid_wrap"):
+        nums = list(range(1, 46))
+        cols_per_row = 7
+        for row_start in range(0, len(nums), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for col, n in zip(cols, nums[row_start : row_start + cols_per_row]):
+                with col:
+                    st.checkbox(str(n), key=f"hedge_num_{active_line}_{n}", label_visibility="visible")
+
+    active_sel = _line_selected_nums(active_line)
     if active_sel and len(active_sel) != 6:
         st.caption(f"{len(active_sel)}/6개 선택됨 · 6개를 선택해 주세요")
 
-    line_selections = [
-        sorted(st.session_state.get(f"hedge_line_pills_{i}") or []) for i in range(1, MAX_LINES + 1)
-    ]
+    line_selections = [_line_selected_nums(i) for i in range(1, MAX_LINES + 1)]
 
     count = st.selectbox("생성할 조합 수", [5, 10, 15, 20], index=0, key="hedge_count")
 

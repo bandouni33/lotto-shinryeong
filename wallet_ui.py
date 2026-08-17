@@ -167,10 +167,12 @@ div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) {
     padding: 8px 10px 4px 10px !important;
     margin-bottom: 10px !important;
 }
-div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) label p {
+div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) label p,
+.auth-banner-consent-item {
     color: #cfd8dc !important;
     font-size: 11.5px !important;
     line-height: 1.4 !important;
+    margin: 2px 0 !important;
 }
 .st-key-auth_banner_kakao a,
 .st-key-auth_banner_kakao button[kind="primary"] {
@@ -209,54 +211,47 @@ def _render_auth_banner_form() -> None:
 
     with st.container():
         st.markdown('<div class="auth-banner-consent-marker"></div>', unsafe_allow_html=True)
-        checks = [st.checkbox(item, key=f"auth_banner_consent_{i}") for i, item in enumerate(AUTH_CONSENT_ITEMS)]
-    all_agreed = all(checks)
+        # 체크박스로 하나씩 동의받던 걸 안내 문구로 바꿨다 — 지금은 테스트 기간이라
+        # 사용자 요청대로 "카카오로 시작하기"를 바로 누를 수 있어야 한다. 항목
+        # 자체는(적립금 지급/환불 불가 등 고지 목적) 계속 텍스트로 보여준다.
+        for item in AUTH_CONSENT_ITEMS:
+            st.markdown(f'<p class="auth-banner-consent-item">· {html.escape(item)}</p>', unsafe_allow_html=True)
 
     return_page = st.query_params.get("page", "main")
 
-    if all_agreed:
-        if kakao_configured():
-            with st.container(key="auth_banner_kakao"):
-                st.link_button(
-                    "카카오로 시작하기",
-                    get_kakao_authorize_url(return_page),
-                    use_container_width=True,
-                    type="primary",
-                )
-            st.caption("카카오 로그인 후 이 페이지로 돌아옵니다.")
-        elif _dev_mock_enabled():
-            with st.container(key="auth_banner_kakao"):
-                if st.button(
-                    "카카오로 시작하기",
-                    use_container_width=True,
-                    type="primary",
-                    key="auth_banner_kakao_mock",
-                ):
-                    mock_kakao_login()
-                    _finish_auth_success()
-            st.caption("개발 모드 · Mock 간편인증")
-        else:
-            with st.container(key="auth_banner_kakao"):
-                st.button(
-                    "카카오로 시작하기",
-                    use_container_width=True,
-                    disabled=True,
-                    key="auth_banner_kakao_unconfigured",
-                )
-            st.error(
-                "카카오 로그인 연동이 아직 설정되지 않았습니다. "
-                "`.env`에 `KAKAO_REST_API_KEY`를 넣거나, "
-                "개발 중이면 `LOTTO_DEV_MOCK_AUTH=1`로 설정 후 서버를 재시작하세요."
+    if kakao_configured():
+        with st.container(key="auth_banner_kakao"):
+            st.link_button(
+                "카카오로 시작하기",
+                get_kakao_authorize_url(return_page),
+                use_container_width=True,
+                type="primary",
             )
+        st.caption("카카오 로그인 후 이 페이지로 돌아옵니다.")
+    elif _dev_mock_enabled():
+        with st.container(key="auth_banner_kakao"):
+            if st.button(
+                "카카오로 시작하기",
+                use_container_width=True,
+                type="primary",
+                key="auth_banner_kakao_mock",
+            ):
+                mock_kakao_login()
+                _finish_auth_success()
+        st.caption("개발 모드 · Mock 간편인증")
     else:
         with st.container(key="auth_banner_kakao"):
             st.button(
                 "카카오로 시작하기",
                 use_container_width=True,
                 disabled=True,
-                key="auth_banner_kakao_locked",
+                key="auth_banner_kakao_unconfigured",
             )
-        st.caption("필수 동의를 모두 체크한 뒤 카카오로 시작할 수 있습니다.")
+        st.error(
+            "카카오 로그인 연동이 아직 설정되지 않았습니다. "
+            "`.env`에 `KAKAO_REST_API_KEY`를 넣거나, "
+            "개발 중이면 `LOTTO_DEV_MOCK_AUTH=1`로 설정 후 서버를 재시작하세요."
+        )
 
     with st.container(key="auth_banner_close"):
         if st.button("닫기", use_container_width=True, key="auth_banner_dismiss", type="secondary"):
