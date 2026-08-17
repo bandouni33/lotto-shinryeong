@@ -195,8 +195,8 @@ def render():
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 8px !important;
-            margin-bottom: 8px !important;
+            gap: 5px !important;
+            margin-bottom: 5px !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
             flex: 1 1 0 !important;
@@ -217,6 +217,8 @@ def render():
             width: 100% !important;
             flex: 1 1 auto !important;
         }
+        /* 로또용지 느낌의 고급스러운 버튼 — 흰 플라스틱 버튼 대신 아이보리 종이 질감
+           + 금색 테두리로, 선택되면 보라(안티)/금 링 조합으로 포인트를 준다. */
         .st-key-hedge_num_grid_wrap.st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label {
             display: flex !important;
             flex-direction: column !important;
@@ -227,24 +229,25 @@ def render():
             height: auto !important;
             aspect-ratio: 1 !important;
             padding: 0 !important;
-            border-radius: 8px !important;
-            background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
-            border: 2px solid transparent !important;
+            border-radius: 9px !important;
+            background: linear-gradient(160deg, #fffdf7 0%, #f3ead2 60%, #e8dcb8 100%) !important;
+            border: 1px solid rgba(191, 155, 66, 0.55) !important;
             box-shadow:
-                0 3px 0 #94a3b8,
-                0 5px 10px rgba(0, 0, 0, 0.22),
-                inset 0 1px 0 rgba(255, 255, 255, 0.55) !important;
+                0 3px 0 #a9895a,
+                0 5px 10px rgba(41, 27, 5, 0.32),
+                inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
             transition: transform 0.12s ease, box-shadow 0.12s ease !important;
             cursor: pointer !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) {
-            background: linear-gradient(145deg, #A855F7, #7C3AED) !important;
-            border-color: #A855F7 !important;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35) !important;
+            background: linear-gradient(145deg, #A855F7, #6D28D9) !important;
+            border: 1px solid #FFD966 !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
             box-shadow:
-                0 3px 0 #6b21a8,
-                0 5px 10px rgba(168, 85, 247, 0.45),
-                inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+                0 3px 0 #5b21b6,
+                0 5px 12px rgba(168, 85, 247, 0.5),
+                0 0 0 1px rgba(255, 217, 102, 0.55),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
         }
         .st-key-hedge_num_grid_wrap.st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label > div:not([data-testid="stWidgetLabel"]) {
             display: none !important;
@@ -254,9 +257,9 @@ def render():
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {
             margin: 0 !important;
-            color: #0F172A !important;
+            color: #241a06 !important;
             font-weight: 900 !important;
-            font-size: 18px !important;
+            font-size: 15px !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
             color: #FFFFFF !important;
@@ -320,7 +323,10 @@ def render():
         # 번 쓰여서 항상 로드돼 있는 st.checkbox + st.columns 조합으로 대신한다.
         with st.container(key="hedge_num_grid_wrap"):
             nums = list(range(1, 46))
-            cols_per_row = 7
+            # 로또용지처럼 한 줄에 10개씩 5줄(마지막 줄만 5개) — 7개씩 쓰던 것보다
+            # 줄 수가 줄어서 세로 공간을 아껴, 그리드 밑의 "입력한 줄" 카드가 스크롤
+            # 없이 바로 보이게 한다(요청: "밑 입력창 안보이니까 완전 깜깜이").
+            cols_per_row = 10
             for row_start in range(0, len(nums), cols_per_row):
                 cols = st.columns(cols_per_row)
                 for col, n in zip(cols, nums[row_start : row_start + cols_per_row]):
