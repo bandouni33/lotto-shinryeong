@@ -267,15 +267,23 @@ def render():
         /* 입력한 줄 / 액땜 풀 미리보기 — 목업처럼 어두운 카드에 숫자만 나열 */
         .hedge-line-row {
             background: linear-gradient(180deg, #243044 0%, #1E293B 100%);
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin-bottom: 8px;
+            border-radius: 10px;
+            padding: 6px 12px;
+            margin-bottom: 4px;
             color: #F8FAFC;
             font-weight: 800;
-            font-size: 1rem;
-            letter-spacing: 0.12em;
+            font-size: 0.9rem;
+            letter-spacing: 0.1em;
             text-align: center;
             word-break: break-word;
+            line-height: 1.4;
+        }
+        /* "입력한 줄" 옆 삭제(✕) 버튼도 줄 높이에 맞춰 낮춘다 — 기본 st.button
+           높이가 커서 줄 카드가 불필요하게 늘어져 보였다. hedge_del_line_* 키를
+           가진 버튼만 정확히 골라서(다른 버튼에 안 번지게) 낮춘다. */
+        div[class*="st-key-hedge_del_line_"] div[data-testid="stButton"] > button {
+            min-height: 0 !important;
+            padding: 4px 0 !important;
         }
         .hedge-line-row.hedge-line-row-empty {
             color: #475569;
