@@ -359,7 +359,13 @@ def render(admin_lucky=None):
 
     components.html("""
     <script>
-    window.addEventListener('message', function(e) {
+    // 이 스크립트 자체가 components.html이 만든 별도 iframe 안에서 실행되기 때문에,
+    // 여기서 그냥 window.addEventListener를 쓰면 "이 iframe 자신"에 등록되는 것이라
+    // window.parent(=실제 최상위 문서)로 보낸 메시지를 절대 받을 수 없다(형제 iframe의
+    // window와 window.parent는 서로 다른 객체). 반드시 window.parent에 리스너를 걸어야
+    // saveResults()/generateCombination() 등이 보내는 메시지를 실제로 받을 수 있다 —
+    // 실기기 테스트에서 저장내역이 계속 비어있던 원인이 바로 이것이었다.
+    window.parent.addEventListener('message', function(e) {
         const d = e.data || {};
         if (d.type === 'thunder_generate') {
             const u = new URL(window.parent.location.href);
