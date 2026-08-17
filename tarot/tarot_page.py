@@ -342,6 +342,46 @@ def _reset():
         st.session_state.pop(k, None)
 
 
+def _render_extra_draw_gate():
+    """오늘 무료 뽑기(1회)를 다 쓴 상태 — 적립금 결제로 추가 1회를 열어준다."""
+    st.info("오늘 무료 뽑기를 이미 사용했어요. 적립금으로 한 번 더 뽑을 수 있어요.")
+
+    if st.button("✨ 50P로 한 번 더 뽑기", type="primary", use_container_width=True, key="tarot_extra_draw_btn"):
+        from wallet_ui import ensure_member_or_banner
+
+        if ensure_member_or_banner(
+            resume="open_tarot_dialog",
+            reason="타로 추가 뽑기를 위해 간편인증이 필요합니다.",
+        ):
+            st.session_state["open_tarot_dialog"] = True
+            st.rerun()
+
+    if st.session_state.get("open_tarot_dialog"):
+        from auth_kakao import current_member_id
+        from wallet_db import TAROT_EXTRA_DRAW_COST, deduct_points
+        from wallet_ui import points_notice_dialog
+
+        result = points_notice_dialog("tarot")
+        if result == "confirm":
+            st.session_state["open_tarot_dialog"] = False
+            mid = current_member_id()
+            if mid:
+                import uuid
+
+                ref = f"tarot:{mid}:{uuid.uuid4().hex[:10]}"
+                if deduct_points(mid, TAROT_EXTRA_DRAW_COST, "tarot:extra_draw", ref):
+                    st.session_state["tarot_paid_extra_unlocked"] = True
+                else:
+                    st.error("적립금 차감에 실패했습니다.")
+            st.rerun()
+        elif result == "cancel":
+            st.session_state["open_tarot_dialog"] = False
+
+    if st.button("처음으로", use_container_width=True, key="tarot_extra_gate_home"):
+        _reset()
+        st.rerun()
+
+
 # ────────────────────────────────────────────────
 # 메인 렌더 함수
 # ────────────────────────────────────────────────
@@ -370,8 +410,9 @@ def render():
             stage != "result"
             and st.session_state.get("tarot_card_key") is None
             and _draws_remaining() <= 0
+            and not st.session_state.get("tarot_paid_extra_unlocked")
         ):
-            st.info("오늘은 여기까지 볼 수 있어요. 내일 다시 만나요 🌙")
+            _render_extra_draw_gate()
             return
 
         if stage == "category":
@@ -449,7 +490,12 @@ def _render_draw_stage():
         if st.button("⟲", key="shuffle_btn"):
             key, _card = _draw_card()
             st.session_state["tarot_card_key"] = key
-            _register_draw()
+            if st.session_state.pop("tarot_paid_extra_unlocked", False):
+                # 유료로 연 추가 1회 — 오늘 무료 한도 카운터는 그대로 두고(이미 소진),
+                # 이번 건은 결제로 이미 처리됐으니 별도 등록 없이 언락 플래그만 소모한다.
+                pass
+            else:
+                _register_draw()
             st.rerun()
         return
 
@@ -782,16 +828,15 @@ def _render_result():
     )
 
     remaining = _draws_remaining()
-    if remaining <= 0:
-        st.info("오늘은 여기까지 볼 수 있어요. 내일 다시 만나요 🌙")
-        if st.button("처음으로", use_container_width=True):
-            _reset()
-            st.rerun()
+    extra_unlocked = st.session_state.get("tarot_paid_extra_unlocked", False)
+    if remaining <= 0 and not extra_unlocked:
+        _render_extra_draw_gate()
         return
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button(f"🔄 다시 뽑기 ({remaining}회 남음)", use_container_width=True):
+        label = "🔄 한 번 더 뽑기" if extra_unlocked else f"🔄 다시 뽑기 ({remaining}회 남음)"
+        if st.button(label, use_container_width=True):
             st.session_state.pop("tarot_card_key", None)
             st.session_state["tarot_stage"] = "draw"
             st.rerun()
