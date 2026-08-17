@@ -9,10 +9,9 @@
 import random
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from combo_history_ui import render_history_section
-from user_scope import get_or_create_guest_id, guest_id_cookie_sync_html, init_guest_scope
+from user_scope import get_or_create_guest_id, init_guest_scope
 
 MAX_LINES = 5
 _NUMS = range(1, 46)
@@ -85,13 +84,14 @@ def _render_nav_html() -> str:
 def render():
     init_guest_scope()
     guest_id = get_or_create_guest_id()
-    # 게스트 식별자를 쿠키로도 남겨둔다(자동구매/타로 페이지엔 이미 있던 동기화인데
-    # 안티/액땜조합엔 빠져 있었다) — 네이티브 앱은 ?gid= 쿼리파라미터로 항상 정확한
-    # 값을 실어주지만, 모바일 브라우저로 직접 접속하는 경우엔 이게 없으면 "홈"으로
-    # 갔다가 다시 들어올 때 게스트 식별자가 매번 새로 생성돼 저장내역이 안 보이던
-    # 원인이었다.
-    if not st.session_state.get("_guest_id_confirmed"):
-        components.html(guest_id_cookie_sync_html(guest_id), height=0)
+    # 게스트 식별자 쿠키 동기화(components.html 1줄)를 여기 추가했었는데, 구글
+    # 비공개 테스트 앱에서 이 페이지가 "불러오는 중"에 멈춘 채 흐릿하게만 보이는
+    # 신고가 들어왔다 — 이 화면은 원래(문서 맨 위 설명대로) iframe을 아예 안 써서
+    # 그 부류의 멈춤 문제 자체가 없게 설계했었는데, 그 예외를 만든 게 원인일
+    # 가능성이 높아 되돌린다. 게스트 식별자 쿠키 동기화는 네이티브 앱(항상 ?gid=를
+    # 실어줌)에는 애초에 필요 없고, 모바일 브라우저 직접 접속 폴백에서만 의미가
+    # 있었던 부가 기능이라 — 화면이 아예 안 열리는 것보다는 이 편의 기능을 포기하는
+    # 쪽이 낫다.
 
     st.markdown(
         """
