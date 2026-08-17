@@ -1312,6 +1312,21 @@ def render(admin_lucky=None):
             // iframe의 인터벌은 그 iframe이 사라지며 자동으로 멎는다).
             setInterval(sync, 800);
             sync();
+            // 모바일 OS는 앱이 백그라운드로 가면(전화 받기, 다른 앱 전환 등)
+            // setInterval을 강하게 쓰로틀링하거나 아예 멈출 수 있다 — 그 상태에서
+            // 게임 생성이 끝나버리면 다시 포그라운드로 돌아와도 폴링이 한동안(또는
+            // 영영) 안 도는 채로 남을 수 있다. 화면이 다시 보이는/포커스되는 시점에
+            // 한 번 더 확실히 동기화한다(PC에서는 되는데 모바일에서만 결과저장이
+            // 이따금 안 된다는 신고의 유력한 원인 중 하나로 보고 방어적으로 추가).
+            // 이 리스너는 (setInterval과 달리) 최상위 document에 등록돼서 iframe이
+            // 재생성돼도 사라지지 않으니, rerun마다 계속 쌓이지 않도록 한 번만 건다.
+            if (!doc.__thVisibilitySyncBound) {
+                doc.__thVisibilitySyncBound = true;
+                doc.addEventListener('visibilitychange', function() {
+                    if (doc.visibilityState === 'visible') sync();
+                });
+                (doc.defaultView || window).addEventListener('focus', sync);
+            }
         })();
         </script>
         """,
