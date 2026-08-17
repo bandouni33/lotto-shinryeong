@@ -11,7 +11,6 @@ from user_scope import (
     current_birthday_scope,
     get_or_create_guest_id,
     init_guest_scope,
-    thunder_reveal_storage_suffix,
 )
 from wallet_ui import deduct_after_result, points_notice_dialog
 
@@ -104,7 +103,12 @@ def render(admin_lucky=None):
     th_approved_js = "true" if st.session_state.get("thunder_approved") else "false"
     th_auto_run_js = str(th_auto_run) if th_auto_run else "null"
     reveal_version_js = str(st.session_state.get("thunder_reveal_version", 1))
-    reveal_scope_js = thunder_reveal_storage_suffix().replace("\\", "\\\\").replace("'", "\\'")
+    # 연출 타입 순환 저장 키는 member_id(로그인 스코프) 대신 guest_id를 쓴다 — 개발용
+    # Mock 카카오 로그인은 누를 때마다 매번 새 member_id를 발급하고(uuid4), 모바일에서는
+    # Streamlit 세션 재연결(백그라운드 전환·네트워크 끊김 등)로 재로그인이 잦은데, 그때마다
+    # 순환 저장 키가 바뀌어서 매번 1번 타입으로 리셋되는 게 "한 타입만 계속 보임" 신고의
+    # 원인이었다. guest_id는 기기에 영속되도록 이미 설계돼 있어 이 문제가 없다.
+    reveal_scope_js = get_or_create_guest_id().replace("\\", "\\\\").replace("'", "\\'")
 
     # ─── 커스텀 CSS ───
     st.markdown("""
