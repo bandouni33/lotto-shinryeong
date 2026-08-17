@@ -294,7 +294,7 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 # ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️
 # 앞 번호일수록 유력한 순서로 입력 (예: 44가 가장 유력, 7이 가장 약함)
 # ⚠️⚠️⚠️ 다른 코드는 건드리지 말고 이 줄의 숫자만 바꾸세요 ⚠️⚠️⚠️
-lucky_display = [26, 17, 33, 32, 23, 5]
+lucky_display = [41, 26, 17, 33, 32, 5]
 # ===============================================================================
 
 def get_image_base64(file_path):
@@ -1047,6 +1047,10 @@ elif current_page == "thunder":
 elif current_page == "birthday":
     import page_birthday
     page_birthday.render()
+
+elif current_page == "hedge":
+    import page_hedge
+    page_hedge.render()
 
 # ==========================================
 # 💎 화면: 자동조합 상세 (Auto Combination View)

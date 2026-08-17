@@ -251,6 +251,15 @@ def render(admin_lucky=None):
             st.query_params["page"] = "birthday"
             st.rerun()
 
+    if st.button(
+        "🛡️ 안티조합 · 액땜조합 — 이미 산 번호와 안 겹치는 조합 만들기",
+        key="th_nav_hedge_6n36s5",
+        use_container_width=True,
+    ):
+        st.query_params.clear()
+        st.query_params["page"] = "hedge"
+        st.rerun()
+
     # 예전엔 여기서 postMessage + window.parent.location.href로 iframe 밖(최상위 문서)을
     # 내비게이션 시키려 했는데, Streamlit의 components.html iframe은 sandbox에
     # allow-top-navigation(-by-user-activation) 권한이 아예 없어서 실제 사용자 클릭에서
