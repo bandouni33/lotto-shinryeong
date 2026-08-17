@@ -33,7 +33,6 @@ from wallet_db import (
     CHARGE_WON_AMOUNTS,
     FREE_SUB_DAYS,
     SIGNUP_BONUS,
-    TAROT_EXTRA_DRAW_COST,
     activate_free_advanced_sub,
     activate_paid_advanced_sub,
     calc_auto_cost,
@@ -43,7 +42,6 @@ from wallet_db import (
     deduct_points,
     eligible_free_advanced_sub,
     get_balance,
-    has_active_subscription,
     pg_configured,
     won_to_points,
 )
@@ -260,8 +258,7 @@ def _render_auth_banner_form() -> None:
             st.session_state.pop(AUTH_RESUME_DATA, None)
             st.rerun()
 
-    if all_agreed:
-        st.caption("PASS·금융인증서는 사업자 연동 계약 후 순차 제공 예정입니다.")
+    st.caption("PASS·금융인증서는 사업자 연동 계약 후 순차 제공 예정입니다.")
 
 
 def render_auth_banner() -> None:
