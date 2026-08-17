@@ -185,7 +185,7 @@ def render():
         .st-key-hedge_num_grid_wrap {
             background: linear-gradient(180deg, #243044 0%, #1E293B 100%) !important;
             border-radius: 16px !important;
-            padding: 15px !important;
+            padding: 10px !important;
             box-shadow:
                 0 6px 0 #0b1220,
                 0 10px 20px rgba(0, 0, 0, 0.35),
@@ -195,8 +195,8 @@ def render():
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 5px !important;
-            margin-bottom: 5px !important;
+            gap: 3px !important;
+            margin-bottom: 2px !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
             flex: 1 1 0 !important;
