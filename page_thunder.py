@@ -10,6 +10,7 @@ from auth_kakao import current_member_id
 from user_scope import (
     current_birthday_scope,
     get_or_create_guest_id,
+    guest_id_cookie_sync_html,
     init_guest_scope,
 )
 from wallet_ui import deduct_after_result, points_notice_dialog
@@ -23,6 +24,12 @@ THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
 
 def render(admin_lucky=None):
     init_guest_scope()
+    # 게스트 식별자를 쿠키로도 남겨둔다(자동구매/타로 페이지엔 이미 있던 동기화인데
+    # 번개조합엔 빠져 있었다) — 네이티브 앱은 ?gid= 쿼리파라미터로 항상 정확한 값을
+    # 실어주지만, 모바일 브라우저로 직접 접속하는 경우엔 이게 없으면 "홈"으로 갔다가
+    # 다시 들어올 때 게스트 식별자가 매번 새로 생성돼 저장내역이 안 보이던 원인이었다.
+    if not st.session_state.get("_guest_id_confirmed"):
+        components.html(guest_id_cookie_sync_html(get_or_create_guest_id()), height=0)
     # ─── 데이터 로드 및 행운수 계산 ───
     if admin_lucky is None:
         admin_lucky = []
