@@ -221,10 +221,14 @@ def _marketing_db():
 def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
     rows = []
     for item in stats:
+        pattern_count = item.get("pattern_count")
         rows.append(
             {
                 "회차": item["draw_round"],
                 "추출수량": item["total_count"],
+                # 그 회차 조합을 추출한 "그 순간" 필터 규칙 수(draw_pattern_counts) —
+                # 이 기록이 생기기 전에 추출된 옛 회차는 기록이 없어 "—"로 표시한다.
+                "적용패턴수": f"{pattern_count:,}" if pattern_count is not None else "—",
                 "1등": item["rank_1"],
                 "2등": item["rank_2"],
                 "3등": item["rank_3"],
@@ -2589,7 +2593,7 @@ def render():
                 f"""
             <div class="auto-stats-head-row">
                 <div class="auto-table-title">회차별 당\u200b첨번호 배출</div>
-                <div class="auto-pattern-applied-note">당 회차 필터링에 {pattern_count:,}개의 패턴이 적용되었습니다</div>
+                <div class="auto-pattern-applied-note">현재 설정된 필터 규칙 {pattern_count:,}개 (다음 추출 시 적용 예정 · 각 회차 실제 적용값은 표의 "적용패턴수" 열 참고)</div>
             </div>
             """,
                 unsafe_allow_html=True,

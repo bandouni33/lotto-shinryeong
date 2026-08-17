@@ -562,8 +562,9 @@ elif st.session_state.admin_view == "filter_manage":
                     st.caption(f"… 외 {len(val_errors) - 20}건")
             else:
                 st.success("✅ 필터 업로드·검증 성공! 데이터가 시스템에 안전하게 저장되었습니다.")
+            total_rows = sum(int(v) for v in val_summary.values())
             cap = " · ".join(f"{k}={v}" for k, v in val_summary.items())
-            st.caption(cap)
+            st.caption(f"총 {total_rows:,}개 패턴 — {cap}")
         except Exception as e:
             st.error(f"❌ 시트명 또는 양식 오류: {e}")
 
@@ -790,9 +791,35 @@ elif st.session_state.admin_view == "filter_manage":
                 init_marketing_tables,
                 parse_combination_rows_from_dataframe,
                 parse_combination_rows_from_text,
+                record_draw_pattern_count,
             )
 
             init_marketing_tables()
+
+            def _current_filter_pattern_count() -> int | None:
+                """지금 저장돼 있는 3종필터(saved_filters.pkl)의 활성 규칙 수 합계 —
+                조합을 방금 추출한 이 순간 값을 회차에 기록해두기 위함(회차별 당첨번호
+                배출 화면에서 회차마다 같은 값이 나오던 문제의 수정: 추출 시점 값을
+                고정 기록해서 나중에 필터가 바뀌어도 그 회차는 당시 값을 유지한다)."""
+                if not os.path.exists(FILTER_SAVE_FILE):
+                    return None
+                try:
+                    from filter_sheet_validation import (
+                        normalize_three_filter_data,
+                        validate_three_filter_sheets,
+                    )
+
+                    with open(FILTER_SAVE_FILE, "rb") as f:
+                        saved = normalize_three_filter_data(pickle.load(f))
+                    _, summary = validate_three_filter_sheets(saved)
+                    total = (
+                        int(summary.get("basic_rows", 0))
+                        + int(summary.get("absolute_rows", 0))
+                        + int(summary.get("interval_rows", 0))
+                    )
+                    return total if total > 0 else None
+                except Exception:
+                    return None
 
             def _admin_dialog(title: str):
                 if hasattr(st, "dialog"):
@@ -821,6 +848,9 @@ elif st.session_state.admin_view == "filter_manage":
                     delete_lotto_combinations_by_draw(draw_round)
                 saved_count = bulk_insert_lotto_combinations(draw_round, rows)
                 total_in_db = get_combination_count_by_draw(draw_round)
+                pattern_count = _current_filter_pattern_count()
+                if pattern_count is not None:
+                    record_draw_pattern_count(draw_round, pattern_count)
                 st.success(
                     f"회차 {draw_round}: {saved_count:,}개 조합 저장 완료 "
                     f"(해당 회차 DB 누적 {total_in_db:,}개)"

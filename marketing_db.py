@@ -84,6 +84,16 @@ def init_marketing_tables():
         CREATE INDEX IF NOT EXISTS idx_lotto_combinations_win_rank
         ON lotto_combinations(draw_round, win_rank)
     """)
+    # 회차별 조합을 추출(저장)한 "그 순간" 관리자 3종필터에 몇 개 규칙이 켜져 있었는지
+    # 기록해둔다 — 필터는 이후에도 계속 바뀌는데, 예전엔 "지금 필터 규칙 수"를 모든
+    # 회차에 똑같이 보여줘서 회차가 달라도 항상 같은 숫자가 나오는 문제가 있었다.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS draw_pattern_counts (
+            draw_round INTEGER PRIMARY KEY,
+            pattern_count INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL
+        )
+    """)
     # 테스트 기간(AUTO_PURCHASE_SKIP_AUTH) 구매내역 — 로그인 없이도 앱을 다시 켰을 때
     # 구매내역이 남아있도록, 쿠키로 유지되는 guest_id에 주문 메타데이터를 묶어 저장한다.
     # 조합 자체는 이미 lotto_combinations.auto_order_id로 영속돼 있으니, 여기엔
@@ -962,6 +972,36 @@ def bulk_insert_lotto_combinations(
     return len(payload)
 
 
+def record_draw_pattern_count(draw_round: int, pattern_count: int) -> None:
+    """이 회차 조합을 방금 추출한 시점의 3종필터 규칙 수를 기록한다(bulk_insert_
+    lotto_combinations 직후 호출). 같은 회차를 나중에 다시 추출(삭제후 재저장)하면
+    그 시점 값으로 덮어써서, 항상 "그 회차의 현재 저장된 조합이 만들어진 시점"의
+    값을 유지한다."""
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO draw_pattern_counts (draw_round, pattern_count, recorded_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(draw_round) DO UPDATE SET
+            pattern_count = excluded.pattern_count,
+            recorded_at = excluded.recorded_at
+        """,
+        (int(draw_round), int(pattern_count), datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_pattern_count_for_draw(draw_round: int) -> int | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT pattern_count FROM draw_pattern_counts WHERE draw_round = ?",
+        (int(draw_round),),
+    ).fetchone()
+    conn.close()
+    return int(row[0]) if row else None
+
+
 def update_win_ranks_for_draw(
     draw_round: int,
     winning_numbers: list[int],
@@ -1041,23 +1081,29 @@ def get_combination_count_by_draw(draw_round: int) -> int:
 
 
 def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
-    """회차별 추출 수량 및 1~5등 당첨 건수 (draw_round DESC)."""
+    """회차별 추출 수량 및 1~5등 당첨 건수 (draw_round DESC).
+
+    pattern_count는 그 회차 조합을 추출한 "그 순간"에 기록해둔 필터 규칙 수
+    (draw_pattern_counts, record_draw_pattern_count 참고) — 이 기록이 생기기
+    전에 추출된 옛 회차는 None(관리자 화면에서 "기록 없음"으로 표시)."""
     conn = _connect()
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """
         SELECT
-            draw_round,
+            lc.draw_round,
             COUNT(*) AS total_count,
-            SUM(CASE WHEN win_rank = 1 THEN 1 ELSE 0 END) AS rank_1,
-            SUM(CASE WHEN win_rank = 2 THEN 1 ELSE 0 END) AS rank_2,
-            SUM(CASE WHEN win_rank = 3 THEN 1 ELSE 0 END) AS rank_3,
-            SUM(CASE WHEN win_rank = 4 THEN 1 ELSE 0 END) AS rank_4,
-            SUM(CASE WHEN win_rank = 5 THEN 1 ELSE 0 END) AS rank_5
-        FROM lotto_combinations
-        WHERE draw_round >= ?
-        GROUP BY draw_round
-        ORDER BY draw_round DESC
+            SUM(CASE WHEN lc.win_rank = 1 THEN 1 ELSE 0 END) AS rank_1,
+            SUM(CASE WHEN lc.win_rank = 2 THEN 1 ELSE 0 END) AS rank_2,
+            SUM(CASE WHEN lc.win_rank = 3 THEN 1 ELSE 0 END) AS rank_3,
+            SUM(CASE WHEN lc.win_rank = 4 THEN 1 ELSE 0 END) AS rank_4,
+            SUM(CASE WHEN lc.win_rank = 5 THEN 1 ELSE 0 END) AS rank_5,
+            MAX(dpc.pattern_count) AS pattern_count
+        FROM lotto_combinations lc
+        LEFT JOIN draw_pattern_counts dpc ON dpc.draw_round = lc.draw_round
+        WHERE lc.draw_round >= ?
+        GROUP BY lc.draw_round
+        ORDER BY lc.draw_round DESC
         LIMIT ?
         """,
         (MIN_DISPLAY_DRAW_ROUND, int(limit)),
@@ -1072,6 +1118,7 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
             "rank_3": int(row["rank_3"] or 0),
             "rank_4": int(row["rank_4"] or 0),
             "rank_5": int(row["rank_5"] or 0),
+            "pattern_count": int(row["pattern_count"]) if row["pattern_count"] is not None else None,
         }
         for row in rows
     ]
@@ -1127,6 +1174,7 @@ def get_mock_draw_extraction_stats() -> list[dict]:
             "rank_3": r3,
             "rank_4": r4,
             "rank_5": r5,
+            "pattern_count": None,
         }
         for r, total, r1, r2, r3, r4, r5 in seed
     ]
@@ -1139,6 +1187,8 @@ __all__ = [
     "parse_combination_rows_from_text",
     "parse_combination_rows_from_dataframe",
     "bulk_insert_lotto_combinations",
+    "record_draw_pattern_count",
+    "get_pattern_count_for_draw",
     "build_number_frequency_map",
     "combo_priority_score",
     "allocate_lotto_combinations",
