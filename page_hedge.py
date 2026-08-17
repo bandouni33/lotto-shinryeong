@@ -214,7 +214,8 @@ def render():
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
-            width: 100% !important;
+            width: 90% !important;
+            margin: 0 auto !important;
             height: auto !important;
             aspect-ratio: 1 !important;
             padding: 0 !important;
@@ -247,7 +248,7 @@ def render():
             margin: 0 !important;
             color: #0F172A !important;
             font-weight: 900 !important;
-            font-size: 14px !important;
+            font-size: 18px !important;
         }
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
             color: #FFFFFF !important;
@@ -332,12 +333,17 @@ def render():
                 "6개를 선택하면 자동으로 다음 줄로 넘어가요</div>",
                 unsafe_allow_html=True,
             )
-            _render_num_grid("hedge_anti_num_")
-            current = _grid_selected("hedge_anti_num_")
+            # 줄마다 프리픽스를 다르게 줘서(hedge_anti_num_{줄번호}_N) 매번 완전히 새
+            # 체크박스 위젯을 쓴다 — 예전엔 모든 줄이 같은 키(hedge_anti_num_N)를
+            # 재사용해서, 줄이 넘어갈 때 session_state.pop()으로 체크 해제를
+            # 시도했는데 브라우저 쪽 체크박스는 여전히 눌려있는 상태라 다음 rerun에
+            # 그 값이 되살아나 같은 6개로 계속 다음 줄이 자동 커밋되는 문제가 있었다
+            # (줄이 안 늘어야 하는데 계속 늘어나며 조합시작이 제대로 안 눌리던 원인).
+            line_prefix = f"hedge_anti_num_{len(committed)}_"
+            _render_num_grid(line_prefix)
+            current = _grid_selected(line_prefix)
             if len(current) == 6:
                 committed.append(current)
-                for n in current:
-                    st.session_state.pop(f"hedge_anti_num_{n}", None)
                 st.session_state["hedge_committed_lines"] = committed
                 st.rerun()
             elif current:
@@ -439,8 +445,10 @@ def render():
             st.session_state.pop("hedge_results_mode", None)
             # 다음 입력을 위해 줄/풀 선택 상태도 같이 비운다.
             st.session_state.pop("hedge_committed_lines", None)
+            for line_idx in range(MAX_LINES):
+                for n in range(1, 46):
+                    st.session_state.pop(f"hedge_anti_num_{line_idx}_{n}", None)
             for n in range(1, 46):
-                st.session_state.pop(f"hedge_anti_num_{n}", None)
                 st.session_state.pop(f"hedge_aek_num_{n}", None)
             st.session_state["hedge_history_blink"] = True
             st.rerun()

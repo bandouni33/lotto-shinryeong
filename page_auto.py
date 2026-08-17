@@ -2595,7 +2595,7 @@ def render():
                 f"""
             <div class="auto-stats-head-row">
                 <div class="auto-table-title">회차별 당\u200b첨번호 배출</div>
-                <div class="auto-pattern-applied-note">현재 설정된 필터 규칙 {pattern_count:,}개 (다음 추출 시 적용 예정 · 각 회차 실제 적용값은 표의 "적용패턴수" 열 참고)</div>
+                <div class="auto-pattern-applied-note">당 회차에는 {pattern_count:,}개의 필터 규칙이 적용되었습니다</div>
             </div>
             """,
                 unsafe_allow_html=True,
