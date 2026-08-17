@@ -12,6 +12,9 @@ DB_PATH = "lotto.db"
 SIGNUP_BONUS = 5000
 ADVANCED_PRODUCT = "advanced_filter_monthly"
 FREE_SUB_DAYS = 30
+ADVANCED_MONTHLY_COST = 1200
+ADVANCED_3MONTH_COST = 3000  # 3개월분 묶음 가격(월 1,200P 대비 할인)
+ADVANCED_3MONTH_DAYS = 90
 
 KST = timezone(timedelta(hours=9))
 
@@ -312,14 +315,58 @@ def activate_free_advanced_sub(member_id: int) -> bool:
     return True
 
 
+def activate_paid_advanced_sub(member_id: int, days: int) -> bool:
+    """유료 구독 등록 — 이미 유효기간이 남아있으면 그 만료일부터 이어서 연장한다."""
+    conn = _connect()
+    now = datetime.now(KST)
+    now_iso = _now_iso()
+    row = conn.execute(
+        """
+        SELECT expires_at FROM subscriptions
+        WHERE member_id = ? AND product = ? AND expires_at > ?
+        ORDER BY expires_at DESC LIMIT 1
+        """,
+        (member_id, ADVANCED_PRODUCT, now_iso),
+    ).fetchone()
+    base = now
+    if row and row[0]:
+        try:
+            current_expiry = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=KST)
+            if current_expiry > base:
+                base = current_expiry
+        except ValueError:
+            pass
+    starts = now.strftime("%Y-%m-%d %H:%M:%S.%f")
+    expires = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S.%f")
+    conn.execute(
+        """
+        INSERT INTO subscriptions (member_id, product, starts_at, expires_at, is_free_promo)
+        VALUES (?, ?, ?, ?, 0)
+        """,
+        (member_id, ADVANCED_PRODUCT, starts, expires),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+THUNDER_COST_PER_GAME = 50
+HEDGE_COST_PER_COMBO = 50
+AUTO_COST_PER_UNIT = 100
+TAROT_EXTRA_DRAW_COST = 50  # 하루 1회 무료 이후 추가 뽑기 1회당
+
+
 def calc_thunder_cost(game_count: int) -> int:
-    n = max(1, int(game_count))
-    return ((n + 4) // 5) * 1000
+    return THUNDER_COST_PER_GAME * max(1, int(game_count))
+
+
+def calc_hedge_cost(combo_count: int) -> int:
+    """안티조합/액땜조합 — 생성 조합 수에 비례."""
+    return HEDGE_COST_PER_COMBO * max(1, int(combo_count))
 
 
 def calc_auto_cost(quantity: int) -> int:
-    table = {5: 1000, 10: 2000, 15: 3000, 20: 4000}
-    return table.get(int(quantity), ((int(quantity) + 4) // 5) * 1000)
+    return AUTO_COST_PER_UNIT * max(1, int(quantity))
 
 
 def pg_configured() -> bool:
@@ -328,7 +375,13 @@ def pg_configured() -> bool:
     return bool(os.environ.get("PG_MERCHANT_ID", "").strip())
 
 
-CHARGE_AMOUNTS = (5000, 10000, 20000, 50000)
+# 1만원 충전 시 1,000점 지급 — 10원당 1점.
+WON_PER_POINT = 10
+CHARGE_WON_AMOUNTS = (10000, 30000, 50000, 100000)
+
+
+def won_to_points(won: int) -> int:
+    return int(won) // WON_PER_POINT
 
 
 def charge_points(member_id: int, amount: int, pg_ref_id: str) -> bool:

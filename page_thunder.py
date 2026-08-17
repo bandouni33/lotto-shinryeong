@@ -13,7 +13,6 @@ from user_scope import (
     init_guest_scope,
     thunder_reveal_storage_suffix,
 )
-from wallet_db import calc_thunder_cost
 from wallet_ui import deduct_after_result, points_notice_dialog
 
 # ── 번개조합 선택 색상 단일 정의 (삭제수/고정수/행운수) ──
@@ -41,44 +40,6 @@ def render(admin_lucky=None):
     js_admin_lucky_array = json.dumps(list(reversed(admin_lucky)))
     js_filter_config = json.dumps(get_thunder_filter_config())
     has_birthdays = bool(birthdays)
-
-    if st.query_params.get("th_action") == "gen":
-        try:
-            g = int(st.query_params.get("th_games", 5))
-        except ValueError:
-            g = 5
-        for k in ("th_action", "th_games"):
-            if k in st.query_params:
-                del st.query_params[k]
-        from wallet_ui import ensure_member_or_banner
-
-        if ensure_member_or_banner(
-            resume="open_thunder_dialog",
-            reason="번개조합 생성을 위해 간편인증이 필요합니다.",
-            resume_data={"games": g},
-        ):
-            st.session_state["open_thunder_dialog"] = True
-            st.session_state["open_thunder_dialog_games"] = g
-        st.rerun()
-
-    if st.query_params.get("th_deduct"):
-        try:
-            g = int(st.query_params.get("th_deduct"))
-        except ValueError:
-            g = 5
-        if "th_deduct" in st.query_params:
-            del st.query_params["th_deduct"]
-        st.session_state.pop("thunder_approved", None)
-        mid = current_member_id()
-        if mid:
-            ref = f"thunder:done:{mid}:{uuid.uuid4().hex[:10]}"
-            if deduct_after_result(mid, "thunder", ref, game_count=g):
-                st.success(f"조합 완료 · {calc_thunder_cost(g):,}P 차감되었습니다.")
-            else:
-                st.error("적립금 차감에 실패했습니다.")
-        cur_ver = st.session_state.get("thunder_reveal_version", 1)
-        st.session_state["thunder_reveal_version"] = (cur_ver % 3) + 1
-        st.rerun()
 
     if st.query_params.get("th_save"):
         raw = st.query_params.get("th_save") or ""
@@ -109,8 +70,14 @@ def render(admin_lucky=None):
         result = points_notice_dialog("thunder", game_count=g)
         if result == "confirm":
             st.session_state["open_thunder_dialog"] = False
-            st.session_state["thunder_approved"] = True
-            st.session_state["thunder_auto_run"] = g
+            mid = current_member_id()
+            if mid:
+                ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
+                if deduct_after_result(mid, "thunder", ref, game_count=g):
+                    st.session_state["thunder_approved"] = True
+                    st.session_state["thunder_auto_run"] = g
+                else:
+                    st.error("적립금 차감에 실패했습니다.")
             st.rerun()
         elif result == "cancel":
             st.session_state["open_thunder_dialog"] = False
@@ -235,6 +202,22 @@ def render(admin_lucky=None):
                 inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
         .th-save-real-btn:active { transform: scale(0.97); }
+        /* 조합시작 — 결제 확인창(points_notice_dialog)을 거쳐야 해서, 이 버튼도
+           iframe 밖 진짜 Streamlit 버튼으로 둔다(같은 이유, 위 주석 참고). */
+        .th-generate-label {
+            font-size: 13px;
+            font-weight: 800;
+            color: #1E293B;
+            margin: 4px 0 6px;
+        }
+        .st-key-th_generate_btn div[data-testid="stButton"] > button {
+            background: linear-gradient(180deg, #22d3ee 0%, #06B6D4 55%, #0891b2 100%) !important;
+            color: #FFFFFF !important;
+            box-shadow:
+                0 4px 0 #0e7490,
+                0 7px 14px rgba(6, 182, 212, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -267,6 +250,34 @@ def render(admin_lucky=None):
     # 그래서 "결과저장"은 실제 최상위 문서에 진짜 <a> 링크를 두고 iframe은 그 href만
     # 갱신하는 방식(아래 th_save_sync)으로, "조합시작" 포인트 차감은 아예 iframe 밖의
     # 진짜 Streamlit 버튼(points_notice_dialog의 "확인 후 진행") 클릭 시점으로 옮겼다.
+
+    st.markdown('<div class="th-generate-label">게임 수를 고른 뒤 조합시작을 누르세요</div>', unsafe_allow_html=True)
+    gcol1, gcol2 = st.columns([1, 1.6])
+    with gcol1:
+        selected_game_count = st.selectbox(
+            "게임 수",
+            [5, 10, 15, 20],
+            index=0,
+            key="th_game_count_select",
+            label_visibility="collapsed",
+        )
+    with gcol2:
+        if st.button(
+            "⚡ 조합시작",
+            type="primary",
+            use_container_width=True,
+            key="th_generate_btn",
+        ):
+            from wallet_ui import ensure_member_or_banner
+
+            if ensure_member_or_banner(
+                resume="open_thunder_dialog",
+                reason="번개조합 생성을 위해 간편인증이 필요합니다.",
+                resume_data={"games": selected_game_count},
+            ):
+                st.session_state["open_thunder_dialog"] = True
+                st.session_state["open_thunder_dialog_games"] = selected_game_count
+                st.rerun()
 
     components.html("""
     <script>
@@ -331,7 +342,6 @@ def render(admin_lucky=None):
                 font-size: 13px;
             }}
             html.pc-layout .tab-container,
-            html.pc-layout .control-panel,
             html.pc-layout .result-area {{
                 max-width: 360px;
                 margin-left: auto;
@@ -480,67 +490,6 @@ def render(admin_lucky=None):
                     inset 0 1px 0 rgba(255, 255, 255, 0.35);
             }}
             
-            .control-panel {{ display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; margin-top: 20px; position: relative; z-index: 8; isolation: isolate; }}
-            .select-game {{
-                background: linear-gradient(180deg, #334155 0%, #1E293B 100%);
-                color: #F8FAFC; border: 2px solid #334155;
-                box-sizing: border-box;
-                height: 39px;
-                min-height: 39px;
-                max-height: 39px;
-                padding: 0 10px;
-                border-radius: 12px; font-weight: 900; outline: none;
-                transition: box-shadow 0.12s ease, transform 0.12s ease;
-                box-shadow:
-                    0 4px 0 #0b1220,
-                    0 6px 12px rgba(0, 0, 0, 0.28),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-            }}
-            .select-game:active {{ transform: scale(0.97); }}
-            .action-btn.btn-start {{
-                box-sizing: border-box;
-                height: var(--th-mode-btn-h);
-                min-height: var(--th-mode-btn-h);
-                max-height: var(--th-mode-btn-h);
-                padding: 0 10px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: 12px; border: none;
-                font-family: 'Noto Sans KR', sans-serif;
-                font-weight: 900;
-                font-size: 15px;
-                line-height: 1.25;
-                cursor: pointer;
-                transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
-                box-shadow:
-                    0 4px 0 rgba(0, 0, 0, 0.35),
-                    0 7px 14px rgba(0, 0, 0, 0.28),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.25);
-                position: relative;
-                z-index: 9;
-                isolation: isolate;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
-                text-rendering: optimizeLegibility;
-                color: #FFFFFF;
-                opacity: 1;
-                text-shadow: none;
-            }}
-            .action-btn.btn-start:hover {{
-                box-shadow:
-                    0 5px 0 rgba(0, 0, 0, 0.38),
-                    0 9px 18px rgba(0, 0, 0, 0.32),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-            }}
-            .action-btn.btn-start:active {{ transform: scale(0.97); }}
-            .btn-start {{
-                background: linear-gradient(180deg, #22d3ee 0%, #06B6D4 55%, #0891b2 100%);
-                box-shadow:
-                    0 4px 0 #0e7490,
-                    0 7px 14px rgba(6, 182, 212, 0.4),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-            }}
             .result-area {{ margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }}
             .result-row {{
                 background: linear-gradient(145deg, #0A0A0F 0%, #050508 55%, #0D0D1A 100%);
@@ -693,15 +642,6 @@ def render(admin_lucky=None):
 
         <div class="number-grid" id="numberGrid"></div>
 
-        <div class="control-panel">
-            <select class="select-game" id="gameCount">
-                <option value="5">5게임</option>
-                <option value="10">10게임</option>
-                <option value="15">15게임</option>
-                <option value="20">20게임</option>
-            </select>
-            <button class="action-btn btn-start" onclick="generateCombination()">조\u200b합시작</button>
-        </div>
 
         <div class="result-area" id="resultArea"></div>
 
@@ -709,6 +649,7 @@ def render(admin_lucky=None):
             // ── 1) 초기 상태: 삭제수 탭, 모든 선택 비움, DB 행운수는 보관만 ──
             let thunderApproved = {th_approved_js};
             const autoRunCount = {th_auto_run_js};
+            let selectedGameCount = autoRunCount || 5;
 
             let selectedDelete = new Set();
             let selectedFixed = new Set();
@@ -1045,7 +986,7 @@ def render(admin_lucky=None):
 
                 runRevealVersion = consumeRevealVersion();
 
-                const count = parseInt(document.getElementById('gameCount').value, 10);
+                const count = parseInt(selectedGameCount, 10);
                 if (isNaN(count) || count < 1) {{
                     isGenerating = false;
                     setStartButtonEnabled(true);
@@ -1267,7 +1208,7 @@ def render(admin_lucky=None):
             // ── 4) 최초 렌더: setMode 호출 없이 빈 격자만 그림 ──
             initGrid();
             if (autoRunCount) {{
-                document.getElementById('gameCount').value = autoRunCount;
+                selectedGameCount = autoRunCount;
                 thunderApproved = true;
                 setTimeout(() => {{
                     if (!isGenerating) generateCombination();

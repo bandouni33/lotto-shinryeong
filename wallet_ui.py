@@ -21,13 +21,22 @@ from legal_notices import (
     NOTICE_VERSION,
     format_advanced_points_notice,
     format_auto_points_notice,
+    format_hedge_points_notice,
+    format_tarot_points_notice,
     format_thunder_points_notice,
     ADVANCED_FILTER_FIRST_SUB_FREE,
 )
 from wallet_db import (
-    CHARGE_AMOUNTS,
+    ADVANCED_3MONTH_COST,
+    ADVANCED_3MONTH_DAYS,
+    ADVANCED_MONTHLY_COST,
+    CHARGE_WON_AMOUNTS,
+    FREE_SUB_DAYS,
+    TAROT_EXTRA_DRAW_COST,
     activate_free_advanced_sub,
+    activate_paid_advanced_sub,
     calc_auto_cost,
+    calc_hedge_cost,
     calc_thunder_cost,
     charge_points,
     deduct_points,
@@ -35,6 +44,7 @@ from wallet_db import (
     get_balance,
     has_active_subscription,
     pg_configured,
+    won_to_points,
 )
 
 
@@ -82,6 +92,11 @@ def _resume_after_auth() -> None:
     elif resume == "open_thunder_dialog":
         st.session_state["open_thunder_dialog"] = True
         st.session_state["open_thunder_dialog_games"] = int(data.get("games", 5))
+    elif resume == "open_hedge_dialog":
+        st.session_state["open_hedge_dialog"] = True
+        st.session_state["hedge_pending_lines"] = data.get("lines") or []
+        st.session_state["hedge_pending_count"] = int(data.get("count", 5))
+        st.session_state["hedge_pending_mode"] = data.get("mode", "안티조합")
     elif resume == "af_show_step1_points":
         st.session_state["af_show_step1_points"] = True
     elif resume == "af_show_step2_points":
@@ -278,12 +293,13 @@ def charge_dialog() -> None:
 
     balance = get_balance(member_id)
     st.markdown(f"현재 잔액 **{balance:,}P**")
-    amount = st.radio(
+    won_amount = st.radio(
         "충전 금액",
-        CHARGE_AMOUNTS,
-        format_func=lambda x: f"{x:,}P",
+        CHARGE_WON_AMOUNTS,
+        format_func=lambda w: f"{w:,}원 → {won_to_points(w):,}P",
         horizontal=True,
     )
+    points = won_to_points(won_amount)
 
     if pg_configured():
         st.info("PG 결제창 연동은 계약 후 활성화됩니다. (카드정보는 서버에 저장하지 않습니다.)")
@@ -297,8 +313,8 @@ def charge_dialog() -> None:
         st.caption("PG 미연동 · 테스트는 Mock 결제를 이용하세요.")
         if st.button("Mock 결제 (테스트)", type="primary", use_container_width=True):
             ref = f"pg:mock:{member_id}:{uuid.uuid4().hex[:10]}"
-            if charge_points(member_id, int(amount), ref):
-                st.session_state.wallet_toast = f"{int(amount):,}P 충전 완료"
+            if charge_points(member_id, points, ref):
+                st.session_state.wallet_toast = f"{won_amount:,}원 · {points:,}P 충전 완료"
                 st.rerun()
             st.error("충전에 실패했습니다.")
 
@@ -310,7 +326,7 @@ def points_notice_dialog(
     game_count: int = 5,
     quantity: int = 5,
 ) -> str | None:
-    """Returns 'confirm' | 'cancel' | None (closed)."""
+    """Returns 'confirm' | 'cancel' | None (closed). service: thunder/hedge/auto/tarot."""
     member_id = current_member_id()
     balance = get_balance(member_id) if member_id else 0
 
@@ -320,14 +336,15 @@ def points_notice_dialog(
     if service == "thunder":
         st.markdown(format_thunder_points_notice(game_count, balance))
         cost = calc_thunder_cost(game_count)
+    elif service == "hedge":
+        st.markdown(format_hedge_points_notice(quantity, balance))
+        cost = calc_hedge_cost(quantity)
     elif service == "auto":
         st.markdown(format_auto_points_notice(quantity, balance))
         cost = calc_auto_cost(quantity)
-    elif service == "advanced":
-        free_ok = ADVANCED_FILTER_FIRST_SUB_FREE and eligible_free_advanced_sub(member_id)
-        active = has_active_subscription(member_id)
-        st.markdown(format_advanced_points_notice(has_free_sub=free_ok and not active, balance=balance))
-        cost = 0 if (free_ok or active) else 15000
+    elif service == "tarot":
+        st.markdown(format_tarot_points_notice(balance))
+        cost = TAROT_EXTRA_DRAW_COST
     else:
         st.error("알 수 없는 서비스")
         return "cancel"
@@ -343,6 +360,58 @@ def points_notice_dialog(
     with c2:
         if st.button("확인 후 진행", type="primary", use_container_width=True):
             return "confirm"
+    return None
+
+
+@_dialog_decorator("고급필터 구독")
+def advanced_subscription_dialog() -> str | None:
+    """Returns 'confirm' | 'cancel' | None (closed). 확인 시 실제 결제/구독 활성화까지 처리한다
+    (thunder/auto처럼 "결과 생성 후 차감"이 아니라 "구독 시작 시점에 바로 차감"이라 여기서 끝낸다)."""
+    member_id = current_member_id()
+    if not member_id:
+        return "cancel"
+
+    balance = get_balance(member_id)
+    free_ok = ADVANCED_FILTER_FIRST_SUB_FREE and eligible_free_advanced_sub(member_id)
+
+    if free_ok:
+        st.markdown(format_advanced_points_notice(has_free_sub=True, balance=balance))
+        plan = "free"
+        cost = 0
+    else:
+        plan = st.radio(
+            "구독 기간",
+            ["monthly", "3month"],
+            format_func=lambda p: f"1개월 · {ADVANCED_MONTHLY_COST:,}P" if p == "monthly" else f"3개월 · {ADVANCED_3MONTH_COST:,}P",
+            horizontal=True,
+        )
+        st.markdown(format_advanced_points_notice(plan=plan, balance=balance))
+        cost = ADVANCED_MONTHLY_COST if plan == "monthly" else ADVANCED_3MONTH_COST
+
+    if cost > 0 and balance < cost:
+        st.error(f"적립금이 부족합니다. (필요 {cost:,}P / 보유 {balance:,}P)")
+        return "cancel"
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("취소", use_container_width=True, key="adv_sub_cancel"):
+            return "cancel"
+    with c2:
+        if st.button("구독하기", type="primary", use_container_width=True, key="adv_sub_confirm"):
+            if plan == "free":
+                ok = activate_free_advanced_sub(member_id)
+            else:
+                import uuid
+
+                ref = f"advanced:{plan}:{member_id}:{uuid.uuid4().hex[:10]}"
+                days = FREE_SUB_DAYS if plan == "monthly" else ADVANCED_3MONTH_DAYS
+                ok = deduct_points(member_id, cost, f"advanced:{plan}", ref) and activate_paid_advanced_sub(
+                    member_id, days
+                )
+            if ok:
+                return "confirm"
+            st.error("구독 처리에 실패했습니다.")
+            return "cancel"
     return None
 
 
@@ -442,18 +511,14 @@ def deduct_after_result(
     game_count: int = 5,
     quantity: int = 5,
 ) -> bool:
-    if service == "advanced":
-        if has_active_subscription(member_id):
-            return True
-        if ADVANCED_FILTER_FIRST_SUB_FREE and eligible_free_advanced_sub(member_id):
-            return activate_free_advanced_sub(member_id)
-        cost = 15000
-        reason = "advanced:monthly"
-        return deduct_points(member_id, cost, reason, ref_id)
-
+    """thunder/hedge/auto — 결과 생성 성공 후 차감. 고급필터는 구독형이라
+    advanced_subscription_dialog()가 구독 시작 시점에 별도로 처리한다."""
     if service == "thunder":
         cost = calc_thunder_cost(game_count)
         reason = f"thunder:{game_count}games"
+    elif service == "hedge":
+        cost = calc_hedge_cost(quantity)
+        reason = f"hedge:{quantity}combos"
     elif service == "auto":
         cost = calc_auto_cost(quantity)
         reason = f"auto:{quantity}qty"

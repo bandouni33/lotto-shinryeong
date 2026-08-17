@@ -25,24 +25,22 @@ AUTH_CONSENT_ITEMS = [
 
 # ── 적립금 요금 (차감: 결과 생성 성공 후) ──
 PRICING = {
-    "thunder_per_5": 1000,
-    "thunder_per_10": 2000,
-    "auto_per_5": 1000,
-    "auto_per_10": 2000,
-    "auto_per_15": 3000,
-    "auto_per_20": 4000,
-    "advanced_monthly": 15000,
+    "thunder_per_game": 50,
+    "hedge_per_combo": 50,
+    "auto_per_unit": 100,
+    "tarot_extra_draw": 50,
+    "advanced_monthly": 1200,
+    "advanced_3month": 3000,
 }
 
 ADVANCED_FILTER_FIRST_SUB_FREE = True  # 첫 구독 1회 무료 (마케팅)
 
 # ── 유료 버튼 클릭 시 안내 멘트 템플릿 ──
 def format_thunder_points_notice(game_count: int, balance: int | None = None) -> str:
-    amount = (game_count // 5) * 1000 if game_count >= 5 else 1000
-    if game_count % 5 != 0:
-        amount = ((game_count + 4) // 5) * 1000
+    per = PRICING["thunder_per_game"]
+    amount = per * max(1, game_count)
     lines = [
-        f"**선택: {game_count}게임** → 필요 적립금 **{amount:,}P** (5게임당 1,000P)",
+        f"**선택: {game_count}게임** → 필요 적립금 **{amount:,}P** (1게임당 {per}P)",
         "**※ 조합 결과가 표시된 후** 적립금이 차감됩니다.",
     ]
     if balance is not None:
@@ -50,11 +48,34 @@ def format_thunder_points_notice(game_count: int, balance: int | None = None) ->
     return "\n\n".join(lines)
 
 
-def format_auto_points_notice(quantity: int, balance: int | None = None) -> str:
-    table = {5: 1000, 10: 2000, 15: 3000, 20: 4000}
-    amount = table.get(quantity, (quantity // 5) * 1000)
+def format_hedge_points_notice(combo_count: int, balance: int | None = None) -> str:
+    per = PRICING["hedge_per_combo"]
+    amount = per * max(1, combo_count)
     lines = [
-        f"**선택: {quantity}개** → 필요 적립금 **{amount:,}P**",
+        f"**선택: {combo_count}개 조합 생성** → 필요 적립금 **{amount:,}P** (1개당 {per}P)",
+        "**※ 조합 결과가 표시된 후** 적립금이 차감됩니다.",
+    ]
+    if balance is not None:
+        lines.append(f"현재 잔액: **{balance:,}P**")
+    return "\n\n".join(lines)
+
+
+def format_tarot_points_notice(balance: int | None = None) -> str:
+    amount = PRICING["tarot_extra_draw"]
+    lines = [
+        "오늘 무료 뽑기 1회를 이미 사용하셨습니다.",
+        f"**추가 뽑기** → 필요 적립금 **{amount:,}P**",
+    ]
+    if balance is not None:
+        lines.append(f"현재 잔액: **{balance:,}P**")
+    return "\n\n".join(lines)
+
+
+def format_auto_points_notice(quantity: int, balance: int | None = None) -> str:
+    per = PRICING["auto_per_unit"]
+    amount = per * max(1, quantity)
+    lines = [
+        f"**선택: {quantity}개** → 필요 적립금 **{amount:,}P** (1개당 {per}P)",
         "**※ 추출·발송 처리 완료(결과 생성) 후** 적립금이 차감됩니다.",
         "본 서비스는 **현금 직접 결제를 지원하지 않습니다.** (적립금 충전 후 이용)",
     ]
@@ -63,13 +84,19 @@ def format_auto_points_notice(quantity: int, balance: int | None = None) -> str:
     return "\n\n".join(lines)
 
 
-def format_advanced_points_notice(has_free_sub: bool = False, balance: int | None = None) -> str:
+def format_advanced_points_notice(
+    plan: str = "monthly",
+    has_free_sub: bool = False,
+    balance: int | None = None,
+) -> str:
     lines = []
     if ADVANCED_FILTER_FIRST_SUB_FREE and has_free_sub:
         lines.append("**고급필터: 첫 구독 1회 무료** (마케팅) 혜택이 적용됩니다.")
+    elif plan == "3month":
+        lines.append(f"**고급필터 3개월 이용권: {PRICING['advanced_3month']:,}P**")
     else:
         lines.append(f"**고급필터 월간 이용: {PRICING['advanced_monthly']:,}P**")
-    lines.append("**※ 최종 조합 산출 성공 후** (또는 구독 갱신 시) 적립금이 차감됩니다.")
+    lines.append("**※ 결제 확정 시 즉시** 적립금이 차감되고 이용 기간이 시작됩니다.")
     if balance is not None:
         lines.append(f"현재 잔액: **{balance:,}P**")
     return "\n\n".join(lines)
@@ -98,7 +125,7 @@ NOTICES = {
 1. 로또신령은 번호 조합·필터·통계 **참고 서비스**이며 당첨을 보장하지 않습니다.
 2. 결제는 **적립금**으로만 이루어지며, **현금 환불·전환 불가**합니다.
 3. 조합·추출 **결과 생성 성공 후** 요금표에 따라 적립금이 차감됩니다.
-4. 고급필터 **첫 구독 1회 무료** 후 월 15,000P 등 정책이 적용됩니다.
+4. 고급필터 **첫 구독 1회 무료** 후 월 1,200P(3개월 3,000P) 등 정책이 적용됩니다.
 5. **만 19세 미만은 이용할 수 없습니다.** (본인인증 단계에서 확인)
 6. **청약철회 관련**: 적립금은 충전 후 실제 서비스(추출·SMS 등) 이용 전까지는 전자상거래법에
    따라 철회를 요청할 수 있습니다. 단, 결과 생성 등 디지털 콘텐츠 제공이 **이미 시작된 부분**은
@@ -126,8 +153,8 @@ NOTICES = {
         "body": """
 - 최초 간편인증: **5,000P 1회** 지급
 - **현금 환불 불가**
-- 번개/자동: 5단위 **1,000P**, 10단위 **2,000P** …
-- 고급필터: **첫 구독 1회 무료**, 이후 월 **15,000P**
+- 번개조합·안티/액땜조합: **1개당 50P**, 자동구매: **1개당 100P**, 타로점: 1일 1회 무료 후 **추가 1회당 50P**
+- 고급필터: **첫 구독 1회 무료**, 이후 월 **1,200P** (3개월권 **3,000P**)
 - 차감 시점: **결과 생성 성공 후** (실패·0건 시 미차감)
 - **유효기간**: 지급일로부터 **1년**. 만료 7일 전 앱 내 알림으로 별도 안내합니다.
 - **부정 취득 회수**: 중복가입·어뷰징 등으로 부정하게 지급받은 적립금은 사전 통지 후 회수될 수 있습니다.

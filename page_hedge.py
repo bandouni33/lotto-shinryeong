@@ -207,13 +207,51 @@ def render():
             for err in line_errors:
                 st.error(err)
         else:
-            if mode == "안티조합":
-                results = generate_anti_combinations(lines, count)
-            else:
-                results = generate_aekddaem_combinations(lines, count)
-            st.session_state["hedge_results"] = results
-            st.session_state["hedge_results_mode"] = mode
+            from wallet_ui import ensure_member_or_banner
+
+            if ensure_member_or_banner(
+                resume="open_hedge_dialog",
+                reason="조합 생성을 위해 간편인증이 필요합니다.",
+                resume_data={"lines": lines, "count": count, "mode": mode},
+            ):
+                st.session_state["open_hedge_dialog"] = True
+                st.session_state["hedge_pending_lines"] = lines
+                st.session_state["hedge_pending_count"] = count
+                st.session_state["hedge_pending_mode"] = mode
+                st.rerun()
+
+    if st.session_state.get("open_hedge_dialog"):
+        from wallet_ui import points_notice_dialog
+
+        pending_count = int(st.session_state.get("hedge_pending_count", 5))
+        dialog_result = points_notice_dialog("hedge", quantity=pending_count)
+        if dialog_result == "confirm":
+            st.session_state["open_hedge_dialog"] = False
+            from auth_kakao import current_member_id
+            from wallet_ui import deduct_after_result
+
+            mid = current_member_id()
+            pending_lines = st.session_state.pop("hedge_pending_lines", None) or []
+            pending_mode = st.session_state.pop("hedge_pending_mode", mode)
+            st.session_state.pop("hedge_pending_count", None)
+            if mid:
+                import uuid
+
+                ref = f"hedge:{mid}:{uuid.uuid4().hex[:10]}"
+                if deduct_after_result(mid, "hedge", ref, quantity=pending_count):
+                    if pending_mode == "안티조합":
+                        results = generate_anti_combinations(pending_lines, pending_count)
+                    else:
+                        results = generate_aekddaem_combinations(pending_lines, pending_count)
+                    st.session_state["hedge_results"] = results
+                    st.session_state["hedge_results_mode"] = pending_mode
+                else:
+                    st.error("적립금 차감에 실패했습니다.")
             st.rerun()
+        elif dialog_result == "cancel":
+            st.session_state["open_hedge_dialog"] = False
+            for key in ("hedge_pending_lines", "hedge_pending_count", "hedge_pending_mode"):
+                st.session_state.pop(key, None)
 
     results = st.session_state.get("hedge_results")
     if results:
