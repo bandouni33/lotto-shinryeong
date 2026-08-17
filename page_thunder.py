@@ -77,6 +77,10 @@ def render(admin_lucky=None):
                 get_or_create_guest_id(), "thunder", _next_draw_round(), combos
             )
             st.session_state["thunder_history_blink"] = True
+            # 저장 후 페이지가 맨 위로 리로드되는데, 저장내역은 화면 맨 아래(스크롤
+            # 필요)에 있어서 저장이 됐는지 안 됐는지 알기 어렵다는 신고가 있었다 —
+            # 스크롤 없이 바로 보이는 위치(제목 바로 아래)에 저장 완료 안내를 띄운다.
+            st.session_state["thunder_save_toast"] = True
         st.rerun()
 
     if st.session_state.get("open_thunder_dialog"):
@@ -250,6 +254,9 @@ def render(admin_lucky=None):
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="main-title">⚡ 번\u200b\u200b개조합</div>', unsafe_allow_html=True)
+
+    if st.session_state.pop("thunder_save_toast", False):
+        st.success("✅ 결과가 저장됐어요! 아래로 스크롤하면 저장내역에서 확인할 수 있어요.")
 
     ncol1, ncol2 = st.columns(2)
     with ncol1:
