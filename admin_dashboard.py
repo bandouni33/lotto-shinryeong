@@ -812,10 +812,12 @@ elif st.session_state.admin_view == "filter_manage":
                     with open(FILTER_SAVE_FILE, "rb") as f:
                         saved = normalize_three_filter_data(pickle.load(f))
                     _, summary = validate_three_filter_sheets(saved)
+                    # ①②③ 탭에 보이는 "N 규칙" 숫자와 반드시 같은 값이어야 하므로, 그
+                    # 탭이 쓰는 것과 동일한 폴백(summary에 키가 없으면 원본 행 수)을 쓴다.
                     total = (
-                        int(summary.get("basic_rows", 0))
-                        + int(summary.get("absolute_rows", 0))
-                        + int(summary.get("interval_rows", 0))
+                        int(summary.get("basic_rows", len(saved["basic"])))
+                        + int(summary.get("absolute_rows", len(saved["absolute"])))
+                        + int(summary.get("interval_rows", len(saved["interval"])))
                     )
                     return total if total > 0 else None
                 except Exception:
