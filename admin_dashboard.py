@@ -797,29 +797,23 @@ elif st.session_state.admin_view == "filter_manage":
             init_marketing_tables()
 
             def _current_filter_pattern_count() -> int | None:
-                """지금 저장돼 있는 3종필터(saved_filters.pkl)의 활성 규칙 수 합계 —
-                조합을 방금 추출한 이 순간 값을 회차에 기록해두기 위함(회차별 당첨번호
-                배출 화면에서 회차마다 같은 값이 나오던 문제의 수정: 추출 시점 값을
-                고정 기록해서 나중에 필터가 바뀌어도 그 회차는 당시 값을 유지한다)."""
-                if not os.path.exists(FILTER_SAVE_FILE):
-                    return None
+                """"로또최근당첨내역.xlsb" 첫 시트("당번") N5 셀 — 조합을 방금 추출한
+                이 순간 값을 회차에 기록해두기 위함(회차별 당첨번호 배출 화면에서
+                회차마다 같은 값이 나오던 문제의 수정: 추출 시점 값을 고정 기록해서
+                나중에 이 셀이 바뀌어도 그 회차는 당시 값을 유지한다). 사용자 요청대로
+                saved_filters.pkl 재계산이 아니라 관리자가 직접 관리하는 이 셀을
+                그대로 읽어온다."""
                 try:
-                    from filter_sheet_validation import (
-                        normalize_three_filter_data,
-                        validate_three_filter_sheets,
-                    )
+                    from lotto_stats import lotto_data_path
 
-                    with open(FILTER_SAVE_FILE, "rb") as f:
-                        saved = normalize_three_filter_data(pickle.load(f))
-                    _, summary = validate_three_filter_sheets(saved)
-                    # ①②③ 탭에 보이는 "N 규칙" 숫자와 반드시 같은 값이어야 하므로, 그
-                    # 탭이 쓰는 것과 동일한 폴백(summary에 키가 없으면 원본 행 수)을 쓴다.
-                    total = (
-                        int(summary.get("basic_rows", len(saved["basic"])))
-                        + int(summary.get("absolute_rows", len(saved["absolute"])))
-                        + int(summary.get("interval_rows", len(saved["interval"])))
-                    )
-                    return total if total > 0 else None
+                    path = lotto_data_path()
+                    if not os.path.exists(path):
+                        return None
+                    df = pd.read_excel(path, sheet_name=0, header=None, engine="pyxlsb", nrows=6, usecols="N")
+                    val = df.iloc[4, 0]
+                    if pd.isna(val):
+                        return None
+                    return int(val)
                 except Exception:
                     return None
 

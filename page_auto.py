@@ -277,47 +277,36 @@ def _load_stats_table_cached(_admin_combo_csv_mtime: float) -> tuple[pd.DataFram
     return _load_stats_table()
 
 
-def _saved_filters_mtime() -> float:
-    try:
-        return os.path.getmtime("saved_filters.pkl")
-    except OSError:
-        return 0.0
-
-
 @st.cache_data(ttl=120, show_spinner=False)
-def _load_pattern_count_from_n5(_saved_filters_pkl_mtime: float) -> int | None:
-    """관리자 3종필터(saved_filters.pkl) — 기본·절대·이격수 활성 규칙 합계.
+def _load_pattern_count_from_n5(_xlsb_mtime_val: float) -> int | None:
+    """"로또최근당첨내역.xlsb"의 첫 시트("당번") N5 셀 — 당 회차에 적용된 필터
+    규칙 수. 이 시트는 최신 회차가 맨 위(5행)에 오도록 관리자가 직접 관리하는
+    표라, N5는 항상 "지금 회차" 값을 가리킨다(예전엔 saved_filters.pkl을 다시
+    계산해서 보여줬는데, 관리자가 실제로 관리하는 원본 수치와 안 맞을 수 있어서
+    요청대로 이 셀을 그대로 읽어오는 방식으로 되돌림).
 
-    이 파일이 350KB 정도라 매 렌더마다(버튼 클릭 하나하나마다) unpickle +
-    검증을 다시 하면 약 1.9초가 걸렸다 — _load_stats_table_cached와 동일하게
-    파일 mtime을 키로 캐싱해서, 파일이 실제로 바뀌었을 때만 다시 계산한다.
-    """
-    import pickle
+    pyxlsb가 한글 시트 이름을 깨진 문자로 반환해서(인코딩 문제) 이름으로 못
+    찾으니, 첫 번째 시트(index 0)를 그대로 쓴다."""
+    from lotto_stats import lotto_data_path
 
-    path = "saved_filters.pkl"
+    path = lotto_data_path()
     if not os.path.exists(path):
         return None
     try:
-        from filter_sheet_validation import normalize_three_filter_data, validate_three_filter_sheets
-
-        with open(path, "rb") as f:
-            saved = normalize_three_filter_data(pickle.load(f))
-        _, summary = validate_three_filter_sheets(saved)
-        # 관리자 대시보드 ①②③ 탭에 보이는 "N 규칙" 숫자와 반드시 같은 값이어야 하므로,
-        # 그 탭이 쓰는 것과 동일한 폴백(summary에 키가 없으면 원본 행 수)을 쓴다.
-        total = (
-            int(summary.get("basic_rows", len(saved["basic"])))
-            + int(summary.get("absolute_rows", len(saved["absolute"])))
-            + int(summary.get("interval_rows", len(saved["interval"])))
-        )
-        return total if total > 0 else None
+        df = pd.read_excel(path, sheet_name=0, header=None, engine="pyxlsb", nrows=6, usecols="N")
+        val = df.iloc[4, 0]  # N5 (0-indexed: 5행 → index 4)
+        if pd.isna(val):
+            return None
+        return int(val)
     except Exception:
         return None
 
 
 def _pattern_applied_count() -> int:
-    """3종 필터 규칙 합계 (없으면 0)."""
-    count = _load_pattern_count_from_n5(_saved_filters_mtime())
+    """당 회차 필터 규칙 수 (로또최근당첨내역.xlsb N5, 없으면 0)."""
+    from lotto_stats import _xlsb_mtime, lotto_data_path
+
+    count = _load_pattern_count_from_n5(_xlsb_mtime(lotto_data_path()))
     return int(count) if count is not None else 0
 
 
