@@ -303,8 +303,22 @@ def _load_pattern_count_from_n5(_xlsb_mtime_val: float) -> int | None:
 
 
 def _pattern_applied_count() -> int:
-    """당 회차 필터 규칙 수 (로또최근당첨내역.xlsb N5, 없으면 0)."""
+    """당 회차(가장 최근에 실제로 조합을 추출한 회차)에 적용된 필터 규칙 수.
+
+    N5 셀은 관리자가 "다음에 추출할 회차"용으로 미리 입력해두는 값이라, 조합을
+    추출하는 순간의 값을 그 회차에 고정 기록해둔다(record_draw_pattern_count,
+    admin_dashboard.py) — 그래야 나중에 N5가 다음 회차 값으로 바뀌어도 이미
+    추출된 회차의 "당 회차 적용 수량"은 그대로 유지된다. 아직 그 회차가 한
+    번도 추출 안 됐으면(기록이 없으면) N5를 그대로 보여준다."""
     from lotto_stats import _xlsb_mtime, lotto_data_path
+    from marketing_db import get_draw_extraction_stats, get_pattern_count_for_draw, init_marketing_tables
+
+    init_marketing_tables()
+    latest = get_draw_extraction_stats(limit=1)
+    if latest:
+        locked = get_pattern_count_for_draw(latest[0]["draw_round"])
+        if locked is not None:
+            return locked
 
     count = _load_pattern_count_from_n5(_xlsb_mtime(lotto_data_path()))
     return int(count) if count is not None else 0
