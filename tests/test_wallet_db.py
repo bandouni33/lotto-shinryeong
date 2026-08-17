@@ -15,9 +15,9 @@ def test_signup_bonus_once():
             mid, new = wdb.get_or_create_member("kakao", "user123")
             assert new
             assert wdb.grant_signup_bonus(mid)
-            assert wdb.get_balance(mid) == 5000
+            assert wdb.get_balance(mid) == wdb.SIGNUP_BONUS
             assert not wdb.grant_signup_bonus(mid)
-            assert wdb.get_balance(mid) == 5000
+            assert wdb.get_balance(mid) == wdb.SIGNUP_BONUS
         finally:
             wdb.DB_PATH = old
 
@@ -31,10 +31,10 @@ def test_deduct_idempotent():
             wdb.init_wallet_tables()
             mid, _ = wdb.get_or_create_member("kakao", "u2")
             wdb.grant_signup_bonus(mid)
-            assert wdb.deduct_points(mid, 1000, "test", "ref:1")
-            assert wdb.get_balance(mid) == 4000
-            assert wdb.deduct_points(mid, 1000, "test", "ref:1")
-            assert wdb.get_balance(mid) == 4000
+            assert wdb.deduct_points(mid, 100, "test", "ref:1")
+            assert wdb.get_balance(mid) == wdb.SIGNUP_BONUS - 100
+            assert wdb.deduct_points(mid, 100, "test", "ref:1")
+            assert wdb.get_balance(mid) == wdb.SIGNUP_BONUS - 100
             assert not wdb.deduct_points(mid, 99999, "test", "ref:2")
         finally:
             wdb.DB_PATH = old
@@ -66,9 +66,9 @@ def test_charge_points():
             mid, _ = wdb.get_or_create_member("kakao", "u4")
             wdb.grant_signup_bonus(mid)
             assert wdb.charge_points(mid, 10000, "pg:mock:1")
-            assert wdb.get_balance(mid) == 15000
+            assert wdb.get_balance(mid) == wdb.SIGNUP_BONUS + 10000
             assert wdb.charge_points(mid, 10000, "pg:mock:1")
-            assert wdb.get_balance(mid) == 15000
+            assert wdb.get_balance(mid) == wdb.SIGNUP_BONUS + 10000
         finally:
             wdb.DB_PATH = old
 
@@ -107,7 +107,7 @@ def test_auto_order_flow():
             assert outcome["combo_count"] == 5
             assert outcome["draw_round"] == draw_round
             assert len(outcome["combo_ids"]) == 5
-            assert wdb.get_balance(mid) == before - 1000
+            assert wdb.get_balance(mid) == before - wdb.calc_auto_cost(5)
             assert mdb.get_combination_count_by_draw(draw_round) == 6
             assert mdb.count_available_combinations(draw_round) == 1
             conn = mdb._connect()

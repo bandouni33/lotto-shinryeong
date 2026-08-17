@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import db_turso
 
 DB_PATH = "lotto.db"
-SIGNUP_BONUS = 5000
+SIGNUP_BONUS = 500  # 5,000원 상당 (10원=1점 환산)
 ADVANCED_PRODUCT = "advanced_filter_monthly"
 FREE_SUB_DAYS = 30
 ADVANCED_MONTHLY_COST = 1200

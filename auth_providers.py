@@ -10,7 +10,7 @@ import requests
 import streamlit as st
 
 from legal_notices import NOTICE_VERSION
-from wallet_db import grant_signup_bonus, init_wallet_tables, oauth_hash, record_consent
+from wallet_db import SIGNUP_BONUS, grant_signup_bonus, init_wallet_tables, oauth_hash, record_consent
 
 KAKAO_AUTH_URL = "https://kauth.kakao.com/oauth/authorize"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
@@ -111,7 +111,7 @@ def finalize_login(provider: str, provider_user_id: str) -> tuple[int, bool, boo
 
     bind_identity_on_login(member_id)
     if bonus:
-        st.session_state.wallet_toast = "간편인증 완료! 적립금 5,000P가 지급되었습니다."
+        st.session_state.wallet_toast = f"간편인증 완료! 적립금 {SIGNUP_BONUS:,}P가 지급되었습니다."
     else:
         st.session_state.wallet_toast = "로그인되었습니다."
     return member_id, is_new, bonus
@@ -128,7 +128,7 @@ def mock_provider_login(provider: str) -> tuple[int, bool, bool]:
     from user_scope import bind_identity_on_login
 
     bind_identity_on_login(member_id)
-    msg = "5,000P 지급 완료!" if bonus else "로그인 완료"
+    msg = f"{SIGNUP_BONUS:,}P 지급 완료!" if bonus else "로그인 완료"
     st.session_state.wallet_toast = f"{provider.upper()} {msg}"
     return member_id, is_new, bonus
 

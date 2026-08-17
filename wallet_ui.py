@@ -32,6 +32,7 @@ from wallet_db import (
     ADVANCED_MONTHLY_COST,
     CHARGE_WON_AMOUNTS,
     FREE_SUB_DAYS,
+    SIGNUP_BONUS,
     TAROT_EXTRA_DRAW_COST,
     activate_free_advanced_sub,
     activate_paid_advanced_sub,
@@ -199,7 +200,7 @@ def _render_auth_banner_form() -> None:
         f'<div class="lotto-auth-banner">'
         f'<p class="auth-banner-title">간편인증</p>'
         f'<p class="auth-banner-sub">{reason_html}</p>'
-        f'<p class="auth-banner-bonus">최초 인증 시 적립금 5,000P 지급 · 현금 환불 불가</p>'
+        f'<p class="auth-banner-bonus">최초 인증 시 적립금 {SIGNUP_BONUS:,}P 지급 · 현금 환불 불가</p>'
         f"</div>",
         unsafe_allow_html=True,
     )
