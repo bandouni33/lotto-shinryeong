@@ -21,22 +21,6 @@ _MAX_ATTEMPTS = 30000
 _OVERLAP_STEPS = (2, 3)
 
 
-def _parse_line(text: str) -> tuple[int, ...] | None:
-    """"1,7,13,22,31,45" 같은 텍스트를 6개 고유 1~45 숫자 튜플로 파싱. 실패하면 None."""
-    if not text.strip():
-        return None
-    parts = [p for p in text.replace(",", " ").split(" ") if p.strip()]
-    try:
-        nums = [int(p) for p in parts]
-    except ValueError:
-        return None
-    if len(nums) != 6 or len(set(nums)) != 6:
-        return None
-    if any(n < 1 or n > 45 for n in nums):
-        return None
-    return tuple(sorted(nums))
-
-
 def _random_combo() -> tuple[int, ...]:
     return tuple(sorted(random.sample(_NUMS, 6)))
 
@@ -127,6 +111,12 @@ def render():
             color: #1E293B;
             margin: 14px 0 6px;
         }
+        .hedge-line-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #64748B;
+            margin: 10px 0 2px;
+        }
         div[data-testid="stButton"] > button {
             background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
             border: none !important;
@@ -160,7 +150,7 @@ def render():
     st.markdown(_render_nav_html(), unsafe_allow_html=True)
     st.markdown('<div class="hedge-title">🛡️ 안티조합 · 액땜조합</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="hedge-subtitle">이미 산 번호를 입력하면, 그 번호들과 최대한 안 겹치는 새 조합을 만들어드려요</div>',
+        '<div class="hedge-subtitle">구매한 복권 숫자를 입력하고 또 다른 결과를 확인해 보세요</div>',
         unsafe_allow_html=True,
     )
 
@@ -176,33 +166,40 @@ def render():
     else:
         st.caption("입력한 번호를 전부 하나로 모아, 그 전체와 크게 안 겹치는 조합을 만들어요.")
 
-    st.markdown('<div class="hedge-section-label">이미 구매한 번호 입력 (줄당 6개)</div>', unsafe_allow_html=True)
-    line_values = []
+    st.markdown('<div class="hedge-section-label">이미 구매한 번호 입력 (줄당 6개, 터치로 선택)</div>', unsafe_allow_html=True)
+    line_selections = []
     for i in range(1, MAX_LINES + 1):
-        val = st.text_input(
-            f"{i}번째 줄",
-            key=f"hedge_line_{i}",
-            placeholder=f"{i}번째 줄 · 예: 1 7 13 22 31 45",
+        st.markdown(f'<div class="hedge-line-label">{i}번째 줄</div>', unsafe_allow_html=True)
+        sel = st.pills(
+            f"{i}번째 줄 번호",
+            options=list(range(1, 46)),
+            selection_mode="multi",
+            key=f"hedge_line_pills_{i}",
             label_visibility="collapsed",
         )
-        line_values.append(val)
+        sel = sorted(sel or [])
+        if sel:
+            hint = f"{len(sel)}/6개 선택됨"
+            if len(sel) != 6:
+                hint += " · 6개를 선택해 주세요"
+            st.caption(hint)
+        line_selections.append(sel)
 
     count = st.selectbox("생성할 조합 수", [5, 10, 15, 20], index=0, key="hedge_count")
 
-    if st.button("조합 생성", type="primary", use_container_width=True, key="hedge_generate_btn"):
+    if st.button("조합시작", type="primary", use_container_width=True, key="hedge_generate_btn"):
         lines = []
         line_errors = []
-        for i, val in enumerate(line_values, start=1):
-            if not val.strip():
+        for i, sel in enumerate(line_selections, start=1):
+            if not sel:
                 continue
-            parsed = _parse_line(val)
-            if parsed is None:
-                line_errors.append(f"{i}번째 줄 형식이 올바르지 않습니다 (중복 없는 1~45 숫자 6개).")
+            if len(sel) != 6:
+                line_errors.append(f"{i}번째 줄은 6개를 선택해야 합니다 (현재 {len(sel)}개).")
             else:
-                lines.append(parsed)
+                lines.append(tuple(sel))
 
         if not lines:
-            st.error("최소 1줄 이상 번호를 입력해 주세요.")
+            st.error("최소 1줄 이상 번호를 선택해 주세요.")
         elif line_errors:
             for err in line_errors:
                 st.error(err)
@@ -286,8 +283,6 @@ def render():
         blink_flag_key="hedge_history_blink",
         label_for_source={"anti": "안티조합", "aekddaem": "액땜조합"},
     )
-
-    st.markdown(_render_nav_html(), unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

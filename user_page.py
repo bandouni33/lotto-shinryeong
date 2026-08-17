@@ -58,6 +58,20 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                 meta.setAttribute('content', 'width=device-width, initial-scale=1, shrink-to-fit=no');
             }
 
+            // 안티조합·액땜조합 페이지처럼 iframe 없이 순수 네이티브 Streamlit 위젯만으로
+            // 만든 화면에서, 안드로이드 웹뷰/크롬이 "번개조합"·"액땜조합" 같은 신조어를
+            // 자동번역 대상으로 오인해 영어로 번역했다가 다시 이상한 한국어로 표시하는
+            // 현상이 있었다(예: "액땜조합"→"액용조합", "조합 생성"→"구성성분 생성").
+            // 번역 자체를 아예 걸지 않도록 막는다.
+            doc.documentElement.setAttribute('lang', 'ko');
+            doc.documentElement.setAttribute('translate', 'no');
+            if (!doc.querySelector('meta[name="google"]')) {
+                const noTranslate = doc.createElement('meta');
+                noTranslate.setAttribute('name', 'google');
+                noTranslate.setAttribute('content', 'notranslate');
+                doc.head.appendChild(noTranslate);
+            }
+
             // 네이티브 앱이 최초 로드 때 URL에 실어준 ?gid=...(AsyncStorage에 저장된
             // 게스트 식별자)는, 화면 안의 "메인으로"/메뉴 링크(page_auto.py의
             // href="?", user_page.py의 href="?page=auto" 등 순수 HTML <a> 태그)를
