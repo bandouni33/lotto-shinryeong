@@ -704,6 +704,38 @@ if current_page == "main":
     .blue { border: 2px solid rgba(41, 182, 246, 0.7); }
     .green { border: 2px solid rgba(102, 187, 106, 0.7); }
     .purple { border: 2px solid rgba(171, 71, 188, 0.7); }
+    /* 안티조합·액땜조합 — 방패 아이콘에 은은한 금빛 광채를 더해 고급스러운 느낌 */
+    .shield { border: 2px solid rgba(226, 194, 120, 0.75); }
+    .menu-box.shield .menu-icon {
+        filter: drop-shadow(0 0 7px rgba(255, 221, 150, 0.65)) drop-shadow(2px 4px 6px rgba(0,0,0,0.5));
+    }
+
+    /* 통계센터 — 4박스 그리드에서 빼서 타로 배너와 같은 폭의 알약형 단독 줄로 */
+    .stats-unit { width: 88%; max-width: 88%; margin: 12px auto 0; }
+    .stats-box {
+        background: linear-gradient(145deg, #142a22, #0f1c22);
+        border: 2px solid rgba(102, 187, 106, 0.6);
+        border-radius: 20px;
+        padding: 9px 8px;
+        min-height: 48px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        text-align: center;
+        box-shadow: 6px 8px 16px rgba(0,0,0,0.6), inset 1px 1px 2px rgba(255,255,255,0.1);
+        cursor: pointer;
+        transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .stats-box:active {
+        transform: scale(0.93) translateY(4px);
+        box-shadow: 2px 3px 6px rgba(0,0,0,0.6), inset 4px 6px 12px rgba(0,0,0,0.8), inset -2px -2px 6px rgba(255,255,255,0.05);
+    }
+    .stats-icon { font-size: 21px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
+    .stats-title { color: #ffffff; font-weight: 900; font-size: 13px; letter-spacing: 0.5px; }
 
     .tarot-unit {
         width: 88%;
@@ -769,11 +801,19 @@ if current_page == "main":
             <div class="menu-sub">자동 발송</div>
         </div>
     </a>
-    <a href="?page=stats" target="_self" style="text-decoration:none; display:block;">
-        <div class="menu-box green">
-            <div class="menu-icon">📊</div>
-            <div class="menu-title">통계센터</div>
-            <div class="menu-sub">데이터분석</div>
+    <a href="?page=hedge" target="_self" style="text-decoration:none; display:block;">
+        <div class="menu-box shield">
+            <div class="menu-icon">🛡️</div>
+            <div class="menu-title">안티조합 · 액땜조합</div>
+            <div class="menu-sub">안 겹치는 조합</div>
+        </div>
+    </a>
+</div>
+<div class="stats-unit">
+    <a href="?page=stats" target="_self" class="stats-link" style="text-decoration:none; display:block;">
+        <div class="stats-box">
+            <div class="stats-icon">📊</div>
+            <div class="stats-title">통계센터 · 데이터분석</div>
         </div>
     </a>
 </div>
@@ -789,7 +829,7 @@ if current_page == "main":
         }
         const doc = window.parent.document;
 
-        doc.querySelectorAll('.menu-grid a, .tarot-link').forEach(function(el) {
+        doc.querySelectorAll('.menu-grid a, .tarot-link, .stats-link').forEach(function(el) {
             if (el.dataset.mainVibrateBound) return;
             el.dataset.mainVibrateBound = '1';
             el.addEventListener('click', safeVibrate, { passive: true });
