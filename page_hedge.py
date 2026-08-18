@@ -310,26 +310,22 @@ def render():
         .st-key-hedge_num_grid_wrap div[data-testid="stCheckbox"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
             color: #FFFFFF !important;
         }
-        /* 입력한 줄 / 액땜 풀 미리보기 — 목업처럼 어두운 카드에 숫자만 나열 */
+        /* 입력한 줄 / 액땜 풀 미리보기 — 목업처럼 어두운 카드에 숫자만 나열.
+           삭제(✕) 버튼 줄을 없애서 번호 줄만 촘촘히 쌓이게 하고, 그만큼 생긴
+           여유로 숫자 자체는 크게 키운다(작은 화면에서 정보 밀도 최대화 — 항상
+           지켜야 하는 기준). */
         .hedge-line-row {
             background: linear-gradient(180deg, #243044 0%, #1E293B 100%);
             border-radius: 10px;
-            padding: 6px 12px;
-            margin-bottom: 4px;
+            padding: 8px 12px;
+            margin-bottom: 3px;
             color: #F8FAFC;
             font-weight: 800;
-            font-size: 0.9rem;
-            letter-spacing: 0.1em;
+            font-size: 1.25rem;
+            letter-spacing: 0.08em;
             text-align: center;
             word-break: break-word;
-            line-height: 1.4;
-        }
-        /* "입력한 줄" 옆 삭제(✕) 버튼도 줄 높이에 맞춰 낮춘다 — 기본 st.button
-           높이가 커서 줄 카드가 불필요하게 늘어져 보였다. hedge_del_line_* 키를
-           가진 버튼만 정확히 골라서(다른 버튼에 안 번지게) 낮춘다. */
-        div[class*="st-key-hedge_del_line_"] div[data-testid="stButton"] > button {
-            min-height: 0 !important;
-            padding: 4px 0 !important;
+            line-height: 1.3;
         }
         .hedge-line-row.hedge-line-row-empty {
             color: #475569;
@@ -427,17 +423,12 @@ def render():
 
         if committed:
             st.markdown('<div class="hedge-section-label">입력한 줄</div>', unsafe_allow_html=True)
-            for i, line in enumerate(committed):
-                lcol, dcol = st.columns([5, 1])
-                with lcol:
-                    st.markdown(_line_row_html(sorted(line)), unsafe_allow_html=True)
-                with dcol:
-                    if st.button("✕", key=f"hedge_del_line_{i}", use_container_width=True):
-                        committed.pop(i)
-                        st.session_state["hedge_committed_lines"] = committed
-                        st.rerun()
-            for _ in range(MAX_LINES - len(committed)):
-                st.markdown('<div class="hedge-line-row hedge-line-row-empty">- - - - - -</div>', unsafe_allow_html=True)
+            rows = "".join(_line_row_html(sorted(line)) for line in committed)
+            rows += "".join(
+                '<div class="hedge-line-row hedge-line-row-empty">- - - - - -</div>'
+                for _ in range(MAX_LINES - len(committed))
+            )
+            st.markdown(rows, unsafe_allow_html=True)
 
         lines = [tuple(sorted(line)) for line in committed]
 
