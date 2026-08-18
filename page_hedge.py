@@ -517,13 +517,17 @@ def render():
             save_guest_generated_combos(guest_id, source, _next_draw_round(), results)
             st.session_state.pop("hedge_results", None)
             st.session_state.pop("hedge_results_mode", None)
-            # 다음 입력을 위해 줄/풀 선택 상태도 같이 비운다.
-            st.session_state.pop("hedge_committed_lines", None)
-            for line_idx in range(MAX_LINES):
+            # 방금 저장한 모드의 입력 상태만 비운다 — 두 모드 다 비우면, QR 스캔 한 번으로
+            # 안티조합 저장 후 이어서 액땜조합도 만들려는 흐름에서 액땜용 번호 풀까지
+            # 같이 날아가 다시 스캔해야 하는 문제가 있었다(사용자 확인, 2026-08-19).
+            if saved_mode == "안티조합":
+                st.session_state.pop("hedge_committed_lines", None)
+                for line_idx in range(MAX_LINES):
+                    for n in range(1, 46):
+                        st.session_state.pop(f"hedge_anti_num_{line_idx}_{n}", None)
+            else:
                 for n in range(1, 46):
-                    st.session_state.pop(f"hedge_anti_num_{line_idx}_{n}", None)
-            for n in range(1, 46):
-                st.session_state.pop(f"hedge_aek_num_{n}", None)
+                    st.session_state.pop(f"hedge_aek_num_{n}", None)
             st.session_state["hedge_history_blink"] = True
             st.rerun()
 
