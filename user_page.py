@@ -654,8 +654,8 @@ if current_page == "main":
 
         st.markdown(f"""
         <div style="background: linear-gradient(145deg, #1c2645, #12182b); border-radius:16px; padding:10px 12px; border: 1px solid #2a3a60; box-shadow: 0 6px 12px rgba(0,0,0,0.5); margin-bottom: 12px; max-width: 100%; box-sizing: border-box;">
-            <div style="color:#ffb300; font-size:12.5px; font-weight:900; line-height:1; letter-spacing:-0.3px; margin-bottom: 8px;">최근당첨번호 <span style="color:#fff;">{draw_no}</span></div>
-            <div style="display:flex; align-items:center; max-width: 100%; overflow-x: auto;">
+            <div style="color:#ffb300; font-size:12.5px; font-weight:900; line-height:1; letter-spacing:-0.3px; margin-bottom: 8px; text-align:center;">최근당첨번호 <span style="color:#fff;">{draw_no}</span></div>
+            <div style="display:flex; align-items:center; justify-content:center; max-width: 100%; overflow-x: auto;">
                 {balls_html}
                 <span style="color:#aaa; font-weight:900; font-size:16px; margin: 0 4px; flex-shrink:0;">+</span>
                 <div style="{get_ball_style(bonus_val)} {_ball_css}">{bonus_val}</div>
@@ -780,20 +780,6 @@ if current_page == "main":
     </a>
 </div>
 <div class="menu-grid">
-    <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
-        <div class="menu-box gold">
-            <div class="menu-icon">⚡</div>
-            <div class="menu-title">번\u200b\u200b개조합</div>
-            <div class="menu-sub">빠른 조합</div>
-        </div>
-    </a>
-    <a href="?page=advanced" target="_self" style="text-decoration:none; display:block;">
-        <div class="menu-box blue">
-            <div class="menu-icon">👑</div>
-            <div class="menu-title">고급필터</div>
-            <div class="menu-sub">전문가 분석용</div>
-        </div>
-    </a>
     <a href="?page=auto" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box purple">
             <div class="menu-icon">💎</div>
@@ -801,11 +787,25 @@ if current_page == "main":
             <div class="menu-sub">자동 발송</div>
         </div>
     </a>
+    <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
+        <div class="menu-box gold">
+            <div class="menu-icon">⚡</div>
+            <div class="menu-title">번\u200b\u200b개조합</div>
+            <div class="menu-sub">빠른 조합</div>
+        </div>
+    </a>
     <a href="?page=hedge" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box shield">
             <div class="menu-icon">🛡️</div>
             <div class="menu-title">안티조합 · 액땜조합</div>
             <div class="menu-sub">안 겹치는 조합</div>
+        </div>
+    </a>
+    <a href="?page=advanced" target="_self" style="text-decoration:none; display:block;">
+        <div class="menu-box blue">
+            <div class="menu-icon">👑</div>
+            <div class="menu-title">고급필터</div>
+            <div class="menu-sub">전문가 분석용</div>
         </div>
     </a>
 </div>
