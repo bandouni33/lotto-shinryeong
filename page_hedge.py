@@ -96,6 +96,10 @@ def render():
     st.markdown(
         """
         <style>
+        /* 안드로이드 강제 다크모드 대응 — iframe(JS) 방식보다 먼저 적용되도록 일반
+           CSS로도 걸어둔다(page_thunder.py와 동일 이유, "결과저장" 등 진짜 새로고침
+           직후 화면이 잠깐 반전됐다 정상으로 돌아오는 현상 완화). */
+        :root { color-scheme: light !important; }
         html, body, #root, .stApp, [data-testid="stAppViewContainer"],
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;

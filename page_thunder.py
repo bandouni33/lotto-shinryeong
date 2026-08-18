@@ -120,6 +120,16 @@ def render(admin_lucky=None):
     # ─── 커스텀 CSS ───
     st.markdown("""
         <style>
+        /* 안드로이드 웹뷰 강제 다크모드 대응 — 예전엔 최상위 문서에 이 처리를
+           components.html(JS)로만 걸어놨는데, 그건 별도 iframe이 새로 만들어지고
+           로드·실행되는 시간만큼 늦게 적용된다. "결과저장" 버튼은 진짜 페이지
+           새로고침(navigate)을 거치는데, 그 새로고침 순간 강제 다크모드가 먼저
+           반영되고 나서야 이 CSS/JS가 뒤따라와 화면이 잠깐 반전됐다가 정상으로
+           돌아오는 "이상한 화면" 신고로 이어졌다. 이 <style> 태그는 iframe을
+           안 거치고 최상위 문서 자체에 바로 얹히는 일반 CSS라 좀 더 일찍 적용된다.
+           (참고: 이것만으로 깜빡임이 완전히 없어진다는 보장은 없다 — 강제 다크모드가
+           최초 페인트 시점에 한 번만 판단하는 기기라면 그 찰나는 여전히 남을 수 있다.) */
+        :root { color-scheme: light !important; }
         html, body, #root, .stApp, [data-testid="stAppViewContainer"],
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
