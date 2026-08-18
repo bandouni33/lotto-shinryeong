@@ -123,6 +123,7 @@ def render():
             for line in parsed:
                 for n in line:
                     st.session_state[f"hedge_aek_num_{n}"] = True
+            st.session_state["hedge_aek_from_qr"] = True
             st.session_state["hedge_qr_loaded"] = len(parsed)
         else:
             st.session_state["hedge_qr_error"] = True
@@ -433,9 +434,17 @@ def render():
         lines = [tuple(sorted(line)) for line in committed]
 
     else:
-        st.markdown('<div class="hedge-section-label">이미 구매한 번호를 최대한 많이 선택하세요</div>', unsafe_allow_html=True)
-        _render_num_grid("hedge_aek_num_")
         pool = _grid_selected("hedge_aek_num_")
+        # QR 스캔으로 이미 6개 이상 채워져 있으면 번호판을 또 보여줄 필요가 없다 —
+        # 안티조합 저장 후 이어서 액땜조합도 스캔 한 번으로 바로 만들 수 있어야 한다는
+        # 요청. 직접 고치고 싶으면 다시 스캔하면 되므로 별도 "직접입력" 전환은 안 둔다.
+        from_qr = bool(st.session_state.get("hedge_aek_from_qr")) and len(pool) >= 6
+        if from_qr:
+            st.success(f"QR로 불러온 {len(pool)}개 번호로 바로 조합할 수 있어요.")
+        else:
+            st.markdown('<div class="hedge-section-label">이미 구매한 번호를 최대한 많이 선택하세요</div>', unsafe_allow_html=True)
+            _render_num_grid("hedge_aek_num_")
+            pool = _grid_selected("hedge_aek_num_")
         st.caption(f"{len(pool)}개 선택됨" + (" · 6개 이상 선택해 주세요" if pool and len(pool) < 6 else ""))
         if pool:
             st.markdown('<div class="hedge-section-label">선택한 번호</div>', unsafe_allow_html=True)
@@ -519,6 +528,7 @@ def render():
             else:
                 for n in range(1, 46):
                     st.session_state.pop(f"hedge_aek_num_{n}", None)
+                st.session_state.pop("hedge_aek_from_qr", None)
             st.session_state["hedge_history_blink"] = True
             st.rerun()
 
