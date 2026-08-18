@@ -18,7 +18,11 @@ export function getStreamlitBaseUrl(): string {
   return DEFAULT_URL.replace(/\/$/, '');
 }
 
-export function getStreamlitPageUrl(page: string, guestId?: string | null): string {
+export function getStreamlitPageUrl(
+  page: string,
+  guestId?: string | null,
+  extraParams?: Record<string, string>
+): string {
   const base = getStreamlitBaseUrl();
   const safePage = page || 'main';
   // Streamlit Community Cloud는 실제 앱을 최상위 문서가 아니라, 자체 "뷰어" 껍데기
@@ -35,6 +39,11 @@ export function getStreamlitPageUrl(page: string, guestId?: string | null): stri
   let url = `${base}${path}?page=${encodeURIComponent(safePage)}`;
   if (guestId) {
     url += `&gid=${encodeURIComponent(guestId)}`;
+  }
+  if (extraParams) {
+    for (const [key, value] of Object.entries(extraParams)) {
+      url += `&${key}=${encodeURIComponent(value)}`;
+    }
   }
   return url;
 }

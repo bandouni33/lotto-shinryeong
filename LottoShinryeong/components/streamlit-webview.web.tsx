@@ -9,11 +9,12 @@ type Props = {
   page: string;
   title?: string;
   showBack?: boolean;
+  extraParams?: Record<string, string>;
 };
 
-export default function StreamlitWebView({ page, title, showBack = true }: Props) {
+export default function StreamlitWebView({ page, title, showBack = true, extraParams }: Props) {
   const insets = useSafeAreaInsets();
-  const uri = getStreamlitPageUrl(page);
+  const uri = getStreamlitPageUrl(page, undefined, extraParams);
 
   const frameStyle = useMemo(
     () =>

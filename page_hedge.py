@@ -7,6 +7,7 @@
 """
 
 import random
+import re
 
 import streamlit as st
 
@@ -19,6 +20,27 @@ _MAX_ATTEMPTS = 30000
 # 0~2개 허용으로 시도해보고 부족하면 0~3개까지만 완화한다(4개부터는 "안티/액땜"의
 # 의미가 퇴색된다는 게 사용자와 합의된 기준) — 이 필터 자체는 UI에 노출하지 않는다.
 _OVERLAP_STEPS = (2, 3)
+
+# 동행복권 로또 용지 QR의 v= 값 포맷: {회차4자리}({모드글자1}{번호6개를 2자리씩
+# 이어붙인 12자리}) 이 최대 5번 반복. 글자(수동/자동 구분으로 추정) 자체의 의미는
+# 우리한테 필요 없어서 그냥 "글자 하나 + 정확히 12자리"만 정규식으로 뽑아낸다 —
+# 뒤에 체크섬 등 여분 문자가 더 붙어있어도 자동으로 무시된다. 실물 티켓 여러 장
+# (1235~1237회)으로 대조 검증 완료(2026-08).
+_QR_LINE_RE = re.compile(r"[A-Za-z](\d{12})")
+
+
+def _parse_qr_lines(raw: str) -> list[tuple[int, ...]] | None:
+    """스캔된 로또 QR 문자열(전체 URL 또는 v= 값)에서 최대 5줄의 번호를 뽑아낸다."""
+    if not raw:
+        return None
+    if "v=" in raw:
+        raw = raw.split("v=", 1)[1].split("&", 1)[0]
+    lines: list[tuple[int, ...]] = []
+    for block in _QR_LINE_RE.findall(raw)[:MAX_LINES]:
+        nums = tuple(sorted(int(block[i : i + 2]) for i in range(0, 12, 2)))
+        if len(set(nums)) == 6 and all(1 <= n <= 45 for n in nums):
+            lines.append(nums)
+    return lines or None
 
 
 def _random_combo() -> tuple[int, ...]:
@@ -84,6 +106,26 @@ def _render_nav_html() -> str:
 def render():
     init_guest_scope()
     guest_id = get_or_create_guest_id()
+
+    # 네이티브 앱에서 QR 촬영 화면을 거쳐 들어오면 스캔된 문자열이 ?qr=로 실려온다.
+    # 1회성 파라미터라 읽자마자 지운다(다음 rerun에서 또 덮어쓰지 않도록, th_save와
+    # 동일한 패턴). 안티조합용 committed_lines와 액땜조합용 풀 체크박스 둘 다 채워둬서
+    # 스캔 한 번으로 두 모드를 이어서 쓸 수 있게 한다(사용자 요청 시나리오: 안티 조합
+    # 생성 후 바로 이어서 액땜 조합도 생성).
+    qr_raw = st.query_params.get("qr")
+    if qr_raw:
+        del st.query_params["qr"]
+        parsed = _parse_qr_lines(qr_raw)
+        if parsed:
+            st.session_state["hedge_committed_lines"] = parsed
+            for n in range(1, 46):
+                st.session_state.pop(f"hedge_aek_num_{n}", None)
+            for line in parsed:
+                for n in line:
+                    st.session_state[f"hedge_aek_num_{n}"] = True
+            st.session_state["hedge_qr_loaded"] = len(parsed)
+        else:
+            st.session_state["hedge_qr_error"] = True
     # 게스트 식별자 쿠키 동기화(components.html 1줄)를 여기 추가했었는데, 구글
     # 비공개 테스트 앱에서 이 페이지가 "불러오는 중"에 멈춘 채 흐릿하게만 보이는
     # 신고가 들어왔다 — 이 화면은 원래(문서 맨 위 설명대로) iframe을 아예 안 써서
@@ -311,6 +353,12 @@ def render():
         '<div class="hedge-subtitle">구매한 복권 숫자를 입력하고 또 다른 결과를 확인해 보세요</div>',
         unsafe_allow_html=True,
     )
+
+    qr_loaded = st.session_state.pop("hedge_qr_loaded", None)
+    if qr_loaded:
+        st.success(f"✅ QR로 {qr_loaded}줄 번호를 불러왔어요. 아래에서 확인하고 조합시작을 눌러주세요.")
+    if st.session_state.pop("hedge_qr_error", False):
+        st.error("QR 인식에 실패했어요. 로또 용지 QR이 맞는지 확인 후 다시 시도하거나 직접 입력해 주세요.")
 
     with st.container(key="hedge_mode_toggle"):
         mode = st.radio(

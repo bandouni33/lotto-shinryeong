@@ -20,9 +20,11 @@ type Props = {
   title?: string;
   /** 메인(홈) Streamlit — 뒤로가기 숨김, 히스토리 없을 때 앱 종료 */
   showBack?: boolean;
+  /** getStreamlitPageUrl에 그대로 실어보낼 추가 쿼리파라미터(예: QR 스캔 결과) */
+  extraParams?: Record<string, string>;
 };
 
-export default function StreamlitWebView({ page, title, showBack = true }: Props) {
+export default function StreamlitWebView({ page, title, showBack = true, extraParams }: Props) {
   const insets = useSafeAreaInsets();
   const [guestId, setGuestId] = useState<string | null>(null);
   const webViewRef = useRef<WebView>(null);
@@ -42,10 +44,23 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
     };
   }, []);
 
-  const uri = getStreamlitPageUrl(page, guestId);
+  const uri = getStreamlitPageUrl(page, guestId, extraParams);
 
   const onNavigationStateChange = useCallback((navState: { canGoBack: boolean }) => {
     setCanGoBack(navState.canGoBack);
+  }, []);
+
+  // "안티조합·액땜조합" 진입 링크(?page=hedge&qrscan=1)만 골라서 실제 웹뷰 로드를
+  // 취소하고 네이티브 QR 촬영 화면으로 대신 보낸다. qrscan=1은 이 진입 링크에만
+  // 쓰이는 마커라 그 외의 정상 로드(초기 로드, QR 스캔 후 ?qr=...로 돌아오는 로드,
+  // "직접입력" 폴백으로 넘어가는 순수 ?page=hedge 로드)와는 절대 겹치지 않는다 —
+  // 그래서 로딩 유형(클릭/최초로드 등)을 구분할 필요 없이 이 문자열 하나만 보면 된다.
+  const onShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
+    if (request.url.includes('qrscan=1')) {
+      router.push({ pathname: '/qr-scan', params: { target: 'hedge' } });
+      return false;
+    }
+    return true;
   }, []);
 
   const goToStreamlitHome = useCallback(() => {
@@ -129,6 +144,7 @@ export default function StreamlitWebView({ page, title, showBack = true }: Props
           source={{ uri }}
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
+          onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onError={(e) => {

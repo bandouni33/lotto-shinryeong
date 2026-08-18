@@ -12,7 +12,13 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 export default function StreamlitPageScreen() {
-  const { page } = useLocalSearchParams<{ page: string }>();
+  const { page, qr } = useLocalSearchParams<{ page: string; qr?: string }>();
   const key = typeof page === 'string' ? page : 'main';
-  return <StreamlitWebView page={key} title={PAGE_TITLES[key] ?? key} />;
+  return (
+    <StreamlitWebView
+      page={key}
+      title={PAGE_TITLES[key] ?? key}
+      extraParams={typeof qr === 'string' && qr ? { qr } : undefined}
+    />
+  );
 }
