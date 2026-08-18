@@ -599,6 +599,55 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
         if item.get("combo_order_id") is not None
     }
 
+    # 지금은 실제 구매(구매확정)가 로그인 여부와 무관하게 전부 create_guest_auto_order로만
+    # 기록된다(guest_auto_orders 테이블, guest_id 기준) — member_id 기준 auto_orders
+    # 테이블에 실제로 쓰는 경로는 아직 없다(실결제 연동 전이라 보류된 기능). 그런데 최근
+    # 테스트 기간엔 인증 배너를 건너뛰고 조용히 로그인시키다 보니 member_id가 거의 항상
+    # 채워져 있어서, 예전 "if member_id: (member 기준) else: (guest 기준)" 분기가 대부분
+    # 실제로 채워진 적 없는 member 기준 조회만 타면서 "구매내역이 안 보인다"는 문제로
+    # 이어졌다 — guest 기준 조회는 로그인 여부와 무관하게 항상 실행하고, member 기준은
+    # (실결제 연동 후를 대비해) 로그인 시 추가로 합쳐서 보여준다.
+    from marketing_db import (
+        get_combinations_by_auto_order_id,
+        init_marketing_tables,
+        list_guest_auto_orders,
+    )
+
+    init_marketing_tables()
+    guest_orders = [
+        order
+        for order in list_guest_auto_orders(_get_or_create_guest_id(), limit=20)
+        if int(order["auto_order_id"]) not in seen_combo_order_ids
+    ]
+    candidate_rounds = [item.get("draw_round") for item in items]
+    candidate_rounds += [order.get("draw_round") for order in guest_orders]
+    kept_rounds: list = []
+    for dr in candidate_rounds:
+        if dr not in kept_rounds:
+            if len(kept_rounds) >= MAX_HISTORY_ROUNDS:
+                continue
+            kept_rounds.append(dr)
+
+    for order in guest_orders:
+        if order.get("draw_round") not in kept_rounds:
+            continue
+        auto_order_id = int(order["auto_order_id"])
+        seen_combo_order_ids.add(auto_order_id)
+        combos = get_combinations_by_auto_order_id(auto_order_id)
+        items.append(
+            {
+                "order_id": -auto_order_id,
+                "draw_round": order.get("draw_round"),
+                "combo_count": order.get("combo_count") or len(combos),
+                "cost": order.get("cost"),
+                "allocated": combos,
+                "purchase_method": order.get("purchase_method"),
+                "purchase_type": order.get("purchase_type"),
+                "sms_days": order.get("sms_days") or "",
+                "combo_order_id": auto_order_id,
+            }
+        )
+
     if member_id:
         from marketing_db import get_combinations_by_auto_order_id, init_marketing_tables
         from wallet_db import calc_auto_cost, init_wallet_tables, list_completed_auto_orders
@@ -643,50 +692,6 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
                     "sms_days": order.get("sms_days") or "",
                 }
             )
-    else:
-        # 비로그인(테스트 기간) — guest_id 쿠키에 묶어둔 주문 메타데이터를 읽어와서,
-        # 지금 세션에는 없는(=앱을 다시 켠 뒤의) 과거 구매내역도 이어서 보여준다.
-        from marketing_db import (
-            get_combinations_by_auto_order_id,
-            init_marketing_tables,
-            list_guest_auto_orders,
-        )
-
-        init_marketing_tables()
-        guest_orders = [
-            order
-            for order in list_guest_auto_orders(_get_or_create_guest_id(), limit=20)
-            if int(order["auto_order_id"]) not in seen_combo_order_ids
-        ]
-        candidate_rounds = [item.get("draw_round") for item in items]
-        candidate_rounds += [order.get("draw_round") for order in guest_orders]
-        kept_rounds: list = []
-        for dr in candidate_rounds:
-            if dr not in kept_rounds:
-                if len(kept_rounds) >= MAX_HISTORY_ROUNDS:
-                    continue
-                kept_rounds.append(dr)
-
-        for order in guest_orders:
-            if order.get("draw_round") not in kept_rounds:
-                continue
-            auto_order_id = int(order["auto_order_id"])
-            seen_combo_order_ids.add(auto_order_id)
-            combos = get_combinations_by_auto_order_id(auto_order_id)
-            items.append(
-                {
-                    "order_id": -auto_order_id,
-                    "draw_round": order.get("draw_round"),
-                    "combo_count": order.get("combo_count") or len(combos),
-                    "cost": order.get("cost"),
-                    "allocated": combos,
-                    "purchase_method": order.get("purchase_method"),
-                    "purchase_type": order.get("purchase_type"),
-                    "sms_days": order.get("sms_days") or [],
-                    "combo_order_id": auto_order_id,
-                }
-            )
-
     return _limit_to_recent_rounds(items)
 
 
