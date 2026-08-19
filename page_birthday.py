@@ -37,6 +37,11 @@ def render():
     # ─── 커스텀 CSS ───
     st.markdown("""
     <style>
+    /* 이 페이지만 .stApp에 어두운 배경을 안 걸어놔서, 다른 페이지들과 달리
+       Streamlit 기본 밝은 배경(연보라)이 그대로 보였다 — 어두운 네이티브 앱
+       틀 안에서 위쪽이 텅 빈 밝은 사각형처럼 보이는 원인이었다(실측: DOM 여백
+       자체는 정상이라 "빈 공간"이 아니라 배경색 불일치 문제였음). */
+    .stApp { background-color: #12182b; }
     html, body, #root, .stApp, [data-testid="stAppViewContainer"],
     [data-testid="stAppViewContainer"] > section.main {
         overflow-x: hidden !important;
