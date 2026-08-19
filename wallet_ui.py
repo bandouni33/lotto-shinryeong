@@ -500,36 +500,59 @@ def render_wallet_bar() -> int | None:
                     st.rerun()
         return None
 
+    # 예전엔 이 정보(적립금/ID/로그아웃)를 화면마다 상단에 항상 띄워뒀는데, 페이지를
+    # 옮길 때마다 계속 보여서 거슬린다는 요청 — 화면 맨 아래 "내정보" 버튼을 눌러야만
+    # 뜨는 창으로 옮긴다. 로그아웃도 요즘 앱들처럼 앱을 완전히 닫으면 세션이 알아서
+    # 끊기니 상시 노출할 필요가 없다는 게 사용자 판단(자동 로그아웃 로직 자체를
+    # 새로 만든 건 아니고, 기존 세션 유지 방식은 그대로 둠).
     st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
-    col_a, col_b = st.columns([1.2, 1])
-    with col_a:
-        if zp_uid:
-            bal = int(st.session_state.get("zp_point_balance", 0))
-            tag = zp_uid if len(zp_uid) <= 16 else zp_uid[:12] + "…"
-            st.markdown(f"**현재 보유 적립금: {bal:,}점** · ID `{tag}`")
-        else:
-            bal = get_balance(member_id)
-            tag = st.session_state.get("oauth_hash_display", "ID")
-            st.markdown(f"**적립금 {bal:,}P** · ID `{tag}` · v{NOTICE_VERSION}")
-    with col_b:
-        if zp_uid:
-            if st.button("로그아웃", key="zp_logout_btn", use_container_width=True, type="secondary"):
-                from user_scope import clear_user_session
+    with st.container(key="my_info_trigger_wrap"):
+        if st.button("👤 내정보", key="my_info_trigger_btn", use_container_width=True):
+            st.session_state["my_info_dialog_open"] = True
+            st.rerun()
 
-                for key in ("zp_user_id", "zp_point_balance", "zp_is_premium"):
-                    st.session_state.pop(key, None)
-                clear_user_session()
-                st.rerun()
-        else:
-            bc1, bc2 = st.columns(2)
-            with bc1:
-                if st.button("충전", key="wallet_charge_btn", use_container_width=True, type="secondary"):
-                    charge_dialog()
-            with bc2:
-                if st.button("로그아웃", key="wallet_logout_btn", use_container_width=True, type="secondary"):
-                    logout()
-                    st.rerun()
+    if st.session_state.get("my_info_dialog_open"):
+        _my_info_dialog(zp_uid=zp_uid, member_id=member_id)
+
     return member_id
+
+
+@_dialog_decorator("내정보")
+def _my_info_dialog(*, zp_uid: str | None, member_id: int | None) -> None:
+    if zp_uid:
+        bal = int(st.session_state.get("zp_point_balance", 0))
+        tag = zp_uid if len(zp_uid) <= 16 else zp_uid[:12] + "…"
+        st.markdown(f"**현재 보유 적립금: {bal:,}점** · ID `{tag}`")
+        if st.button("로그아웃", key="zp_logout_btn", use_container_width=True, type="secondary"):
+            from user_scope import clear_user_session
+
+            for key in ("zp_user_id", "zp_point_balance", "zp_is_premium"):
+                st.session_state.pop(key, None)
+            clear_user_session()
+            st.session_state["my_info_dialog_open"] = False
+            st.rerun()
+    else:
+        bal = get_balance(member_id)
+        tag = st.session_state.get("oauth_hash_display", "ID")
+        st.markdown(f"**적립금 {bal:,}P** · ID `{tag}` · v{NOTICE_VERSION}")
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            if st.button("충전", key="wallet_charge_btn", use_container_width=True, type="secondary"):
+                # charge_dialog()를 여기서 바로 부르면 이미 열려있는 dialog 위에
+                # 또 다른 dialog를 겹쳐 여는 셈이라, 기존 코드 다른 곳에서 쓰던
+                # 방식(플래그를 세워두고 다음 렌더에서 별도로 열기) 그대로 따른다.
+                st.session_state["my_info_dialog_open"] = False
+                st.session_state["wallet_show_charge"] = True
+                st.rerun()
+        with bc2:
+            if st.button("로그아웃", key="wallet_logout_btn", use_container_width=True, type="secondary"):
+                logout()
+                st.session_state["my_info_dialog_open"] = False
+                st.rerun()
+
+    if st.button("닫기", key="my_info_dialog_close_btn", use_container_width=True):
+        st.session_state["my_info_dialog_open"] = False
+        st.rerun()
 
 
 def require_auth_or_prompt() -> int | None:

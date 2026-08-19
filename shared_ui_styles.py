@@ -46,7 +46,7 @@ def _key_selectors(keys: list[str], suffix: str = "") -> str:
 
 
 def wallet_bar_button_css() -> str:
-    """상단 지갑 바 — 로그인 후 충전·로그아웃만."""
+    """내정보 다이얼로그 안 충전·로그아웃 버튼 + 화면 우하단 고정 "내정보" 트리거."""
     secondary_keys = [
         "wallet_logout_btn",
         "zp_logout_btn",
@@ -64,6 +64,28 @@ def wallet_bar_button_css() -> str:
 }}
 {s_hover} {{
     {_SECONDARY_HOVER}
+}}
+/* 예전엔 모든 화면 맨 위에 적립금/ID/로그아웃 줄이 항상 떠 있었는데, 화면을
+   옮길 때마다 반복 노출돼 거슬린다는 요청으로 우하단 작은 버튼 뒤로 숨겼다
+   (탭하면 dialog로 뜸). 화면 콘텐츠를 가리지 않게 최대한 작게, 구석에 둔다. */
+.st-key-my_info_trigger_wrap {{
+    position: fixed !important;
+    right: 12px !important;
+    bottom: 14px !important;
+    z-index: 999 !important;
+    width: auto !important;
+}}
+.st-key-my_info_trigger_wrap div[data-testid="stButton"] > button {{
+    background: rgba(28, 28, 56, 0.9) !important;
+    color: #CBD5E1 !important;
+    font-weight: 700 !important;
+    font-size: 11px !important;
+    border: 1px solid rgba(100, 116, 139, 0.4) !important;
+    border-radius: 999px !important;
+    padding: 4px 12px !important;
+    min-height: 0 !important;
+    height: auto !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
 }}
 </style>
 """
