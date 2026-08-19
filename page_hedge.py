@@ -226,7 +226,7 @@ def render():
             padding: 8px 6px;
             font-weight: 800;
             font-size: 13px;
-            color: #b8a679;
+            color: #FFFFFF;
             text-decoration: none;
             box-sizing: border-box;
             white-space: nowrap;
