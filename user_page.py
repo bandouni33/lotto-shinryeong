@@ -814,7 +814,7 @@ if current_page == "main":
             <div class="menu-sub">빠른 조합</div>
         </div>
     </a>
-    <a href="?page=hedge&qrscan=1" target="_self" style="text-decoration:none; display:block;">
+    <a href="?page=hedge" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box shield">
             <div class="menu-icon">🛡️</div>
             <div class="menu-title">안티조합 · 액땜조합</div>

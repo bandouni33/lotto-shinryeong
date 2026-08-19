@@ -103,6 +103,20 @@ def _render_nav_html() -> str:
     """
 
 
+def _render_input_mode_html() -> str:
+    # 메인 화면에서 이 페이지로 들어오면 예전엔 곧장 QR 카메라 화면이 떴는데,
+    # 사용자 없이 갑자기 카메라부터 열리면 당황할 수 있다는 판단으로 이 페이지에
+    # 먼저 착지시키고, 여기서 "QR스캔"을 직접 고를 때만 카메라를 열게 바꿨다.
+    # qrscan=1은 streamlit-webview.tsx의 onShouldStartLoadWithRequest가 그대로
+    # 가로채 네이티브 카메라 화면으로 보낸다(어느 페이지에서 걸든 동일하게 동작).
+    return """
+    <div class="hedge-input-toggle">
+        <a href="?page=hedge&qrscan=1" class="hedge-input-pill">📷 QR스캔</a>
+        <div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>
+    </div>
+    """
+
+
 def render():
     init_guest_scope()
     guest_id = get_or_create_guest_id()
@@ -184,6 +198,36 @@ def render():
                 0 4px 0 #1a2e05,
                 0 7px 14px rgba(63, 98, 18, 0.4),
                 inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+        }
+        /* 입력방법(QR스캔/직접입력) — 모드 토글과 같은 알약 모양이지만 실제
+           라디오가 아니라 링크 2개다("QR스캔"을 누르면 실제 페이지 이동이
+           일어나야 네이티브 카메라 인터셉트가 걸리기 때문 — st.radio는 그냥
+           rerun이라 안 걸림). "직접입력"은 지금 이 페이지 자체가 그 상태라
+           눌러도 할 일이 없어 그냥 강조 표시만 한다. */
+        .hedge-input-toggle {
+            display: flex;
+            gap: 6px;
+            background: linear-gradient(180deg, #243044 0%, #1E293B 100%);
+            border-radius: 999px;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+        .hedge-input-pill {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 8px 10px;
+            font-weight: 800;
+            font-size: 14px;
+            color: #94a3b8;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .hedge-input-pill-active {
+            background: linear-gradient(145deg, #A78BFA, #7C3AED);
+            color: #FFFFFF;
         }
         /* 모드 토글 — 요청받은 목업처럼 어두운 알약(pill) 모양 세그먼트, 선택된
            쪽만 안티조합=보라 / 액땜조합=초록으로 강조. */
@@ -359,6 +403,7 @@ def render():
         '<div class="hedge-subtitle">구매한 복권 숫자를 입력하고 또 다른 결과를 확인해 보세요</div>',
         unsafe_allow_html=True,
     )
+    st.markdown(_render_input_mode_html(), unsafe_allow_html=True)
 
     qr_loaded = st.session_state.pop("hedge_qr_loaded", None)
     if qr_loaded:
