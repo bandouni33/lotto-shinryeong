@@ -78,12 +78,36 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 쓰이는 마커라 그 외의 정상 로드(초기 로드, QR 스캔 후 ?qr=...로 돌아오는 로드,
   // "직접입력" 폴백으로 넘어가는 순수 ?page=hedge 로드)와는 절대 겹치지 않는다 —
   // 그래서 로딩 유형(클릭/최초로드 등)을 구분할 필요 없이 이 문자열 하나만 보면 된다.
+  // (2026-08-19: 메인 화면 진입 링크에서는 이 방식이 잘 됐는데, 안티/액땜 상세페이지
+  // 자체에 새로 넣은 "QR스캔" 버튼(같은 페이지 안에서 쿼리파라미터만 바뀌는 링크)을
+  // 누르면 실기기에서 인터셉트가 안 걸리고 그냥 페이지가 다시 로드되는 문제가
+  // 보고됐다 — 안드로이드 웹뷰가 "같은 경로, 쿼리만 다른" 네비게이션을 이 콜백
+  // 없이 처리하는 경우가 있는 것으로 보인다. 원인을 완전히 못 좁혀서, 네비게이션
+  // 가로채기에 기대는 대신 postMessage로 직접 신호를 보내는 더 확실한 방식을
+  // onMessage 핸들러에 추가했다 — 이 콜백은 혹시 몰라 그대로 남겨둔다.
   const onShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
     if (request.url.includes('qrscan=1')) {
       router.push({ pathname: '/qr-scan', params: { target: 'hedge' } });
       return false;
     }
     return true;
+  }, []);
+
+  // 안티/액땜 상세페이지 안의 "QR스캔" 버튼이 쓰는 확실한 경로 — 페이지 이동을
+  // 가로채는 대신, 버튼 클릭 시 웹뷰 JS가 곧장 네이티브로 메시지를 보내고 여기서
+  // 받아서 카메라 화면으로 이동시킨다(page_hedge.py의 _render_input_mode_html
+  // 참고). window.ReactNativeWebView가 없는 일반 브라우저에서는 그 버튼이 그냥
+  // 평소 링크로 동작하도록 페이지 쪽에서 이미 분기해뒀다.
+  const onMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    let payload: { type?: string; target?: string } | null = null;
+    try {
+      payload = JSON.parse(event.nativeEvent.data);
+    } catch {
+      return;
+    }
+    if (payload?.type === 'openQrScan') {
+      router.push({ pathname: '/qr-scan', params: { target: payload.target || 'hedge' } });
+    }
   }, []);
 
   const goToStreamlitHome = useCallback(() => {
@@ -168,6 +192,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+          onMessage={onMessage}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onError={(e) => {

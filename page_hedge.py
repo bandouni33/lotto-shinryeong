@@ -106,11 +106,24 @@ def _render_input_mode_html() -> str:
     # 메인 화면에서 이 페이지로 들어오면 예전엔 곧장 QR 카메라 화면이 떴는데,
     # 사용자 없이 갑자기 카메라부터 열리면 당황할 수 있다는 판단으로 이 페이지에
     # 먼저 착지시키고, 여기서 "QR스캔"을 직접 고를 때만 카메라를 열게 바꿨다.
-    # qrscan=1은 streamlit-webview.tsx의 onShouldStartLoadWithRequest가 그대로
-    # 가로채 네이티브 카메라 화면으로 보낸다(어느 페이지에서 걸든 동일하게 동작).
+    #
+    # href의 qrscan=1은 streamlit-webview.tsx의 onShouldStartLoadWithRequest가
+    # 가로채 네이티브 카메라 화면으로 보내는 용도였는데, 메인 화면 진입 링크에서는
+    # 잘 됐지만 이 페이지 "안"에서(같은 경로, 쿼리만 다른 링크) 누르면 실기기에서
+    # 안 걸리고 페이지만 다시 로드되는 문제가 보고됐다(2026-08-19) — 안드로이드
+    # 웹뷰가 그런 네비게이션을 이 콜백 없이 처리하는 경우가 있는 것으로 보인다.
+    # 더 확실한 postMessage 방식을 우선 시도하고(네이티브 앱 안에서만
+    # window.ReactNativeWebView가 존재), 실패해도 href가 폴백으로 남아있다 —
+    # 일반 브라우저(테스트 환경)에서는 이 메시지 API 자체가 없어 그냥 평소 링크로
+    # 동작한다.
     return """
     <div class="hedge-input-toggle">
-        <a href="?page=hedge&qrscan=1" class="hedge-input-pill">📷 QR스캔</a>
+        <a href="?page=hedge&qrscan=1" class="hedge-input-pill" onclick="
+            if (window.ReactNativeWebView) {
+                event.preventDefault();
+                window.ReactNativeWebView.postMessage(JSON.stringify({type: 'openQrScan', target: 'hedge'}));
+            }
+        ">📷 QR스캔</a>
         <div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>
     </div>
     """
