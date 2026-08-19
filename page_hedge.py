@@ -166,8 +166,9 @@ def render():
             color: #1E293B;
             margin: 14px 0 6px;
         }
-        /* 모드 설명 — 그냥 캡션 텍스트 대신 카드 박스로, 위 모드 토글의 색(안티=보라/
-           액땜=초록)과 왼쪽 accent 테두리로 이어지게 한다. */
+        /* 모드 설명 — 안티/액땜 두 규칙을 매번 토글에 따라 하나씩만 보여줬었는데,
+           선택하기 전에 둘 다 비교해볼 수 있게 항상 같이 보여달라는 요청으로 바꿈.
+           각 줄 앞의 점 색으로 위 모드 토글(안티=보라/액땜=초록)과 시각적으로 잇는다. */
         .hedge-mode-desc {
             display: block !important;
             width: 100% !important;
@@ -185,11 +186,26 @@ def render():
             font-size: 0.85rem;
             line-height: 1.4;
         }
-        .hedge-mode-desc-anti {
-            border-left: 4px solid #7C3AED;
+        .hedge-mode-desc-line {
+            display: flex !important;
+            align-items: flex-start;
+            gap: 7px;
         }
-        .hedge-mode-desc-aek {
-            border-left: 4px solid #16A34A;
+        .hedge-mode-desc-line + .hedge-mode-desc-line {
+            margin-top: 6px;
+        }
+        .hedge-mode-desc-dot {
+            flex: 0 0 auto;
+            width: 9px;
+            height: 9px;
+            margin-top: 4px;
+            border-radius: 50%;
+        }
+        .hedge-mode-desc-anti .hedge-mode-desc-dot {
+            background: #A78BFA;
+        }
+        .hedge-mode-desc-aek .hedge-mode-desc-dot {
+            background: #4ADE80;
         }
         div[data-testid="stButton"] > button {
             background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
@@ -481,16 +497,15 @@ def render():
                     label_visibility="collapsed",
                     key="hedge_mode",
                 )
-    if mode == "안티조합":
-        st.markdown(
-            '<div class="hedge-mode-desc hedge-mode-desc-anti">구매복권 5줄과 상반된 반전조합 5줄 생성.</div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<div class="hedge-mode-desc hedge-mode-desc-aek">구매복권 전체숫자와 상반된 반전조합 5줄 생성.</div>',
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        '<div class="hedge-mode-desc">'
+        '<div class="hedge-mode-desc-line hedge-mode-desc-anti"><span class="hedge-mode-desc-dot"></span>'
+        "안티조합: 구매복권 5줄과 상반된 반전조합 5줄 생성.</div>"
+        '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'
+        "액땜조합: 구매복권 전체숫자와 상반된 반전조합 5줄 생성.</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     def _grid_selected(prefix: str) -> list[int]:
         return sorted(n for n in range(1, 46) if st.session_state.get(f"{prefix}{n}"))
