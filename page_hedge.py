@@ -91,11 +91,10 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
 
 
 def _render_nav_html() -> str:
+    # 번개조합에서 파생된 하위 화면이던 시절의 흔적("← 번개조합")은 이제 독립
+    # 기능(메인에서 바로 진입)이 됐으니 없앤다 — "🏠 메인"만 남긴다.
     return """
     <div style="display:flex;gap:10px;margin-bottom:12px;">
-        <a href="?page=thunder" style="flex:1;text-align:center;background:#fff;color:#1E293B;
-           border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;
-           display:flex;align-items:center;justify-content:center;box-sizing:border-box;">← 번개조합</a>
         <a href="?" style="flex:1;text-align:center;background:#fff;color:#1E293B;
            border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;
            display:flex;align-items:center;justify-content:center;box-sizing:border-box;">🏠 메인</a>
@@ -161,24 +160,36 @@ def render():
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
         }
-        .hedge-title {
-            text-align: center;
-            font-size: 1.5rem;
-            font-weight: 900;
-            color: #FFB800;
-            margin-bottom: 4px;
-        }
-        .hedge-subtitle {
-            text-align: center;
-            font-size: 0.8rem;
-            color: #64748B;
-            margin-bottom: 16px;
-        }
         .hedge-section-label {
             font-size: 0.85rem;
             font-weight: 800;
             color: #1E293B;
             margin: 14px 0 6px;
+        }
+        /* 모드 설명 — 그냥 캡션 텍스트 대신 카드 박스로, 위 모드 토글의 색(안티=보라/
+           액땜=초록)과 왼쪽 accent 테두리로 이어지게 한다. */
+        .hedge-mode-desc {
+            display: block !important;
+            width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            white-space: normal !important;
+            box-sizing: border-box !important;
+            background: linear-gradient(180deg, #243044 0%, #1E293B 100%);
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin: 10px 0 14px;
+            color: #E2E8F0;
+            font-weight: 700;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+        .hedge-mode-desc-anti {
+            border-left: 4px solid #7C3AED;
+        }
+        .hedge-mode-desc-aek {
+            border-left: 4px solid #16A34A;
         }
         div[data-testid="stButton"] > button {
             background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%) !important;
@@ -210,6 +221,8 @@ def render():
             display: flex;
             gap: 6px;
             height: 100%;
+            width: 85%;
+            margin: 0 auto;
             background: linear-gradient(180deg, #241f14 0%, #17130c 100%);
             border: 1px solid rgba(212, 175, 55, 0.4);
             border-radius: 999px;
@@ -225,8 +238,14 @@ def render():
             border-radius: 999px;
             padding: 8px 6px;
             font-weight: 800;
-            font-size: 13px;
+            font-size: 14px;
+            line-height: 20px;
             color: #FFFFFF;
+            /* 안드로이드 웹뷰 강제 다크모드가 <a> 링크 글자색은 유독 별도로
+               재해석해서 색을 지정해도 무시하고 뒤집는 경우가 있다(이 프로젝트에서
+               이미 여러 번 겪은 패턴) — text-fill-color까지 같이 못박아 강제
+               다크모드의 링크 색 재해석을 무력화한다. */
+            -webkit-text-fill-color: #FFFFFF;
             text-decoration: none;
             box-sizing: border-box;
             white-space: nowrap;
@@ -253,14 +272,33 @@ def render():
             min-width: 0 !important;
         }
         /* 모드 토글 — 요청받은 목업처럼 어두운 알약(pill) 모양 세그먼트, 선택된
-           쪽만 안티조합=보라 / 액땜조합=초록으로 강조. */
+           쪽만 안티조합=보라 / 액땜조합=초록으로 강조.
+           label_visibility="collapsed"로 숨긴 "모드" 라벨이 실제로는 자리를
+           그대로 차지하고 있었다(stWidgetLabel 높이 36.8px 실측 — Streamlit이
+           collapsed에서도 레이아웃 공간은 안 없앰). 그 여백 때문에 옆 QR스캔
+           토글까지 늘어난 칸 안에서 위쪽에 붕 떠 보이던 원인이라, 라벨을 아예
+           display:none으로 지운다. 라디오그룹도 폭을 100%로 채워야 옆 QR스캔
+           토글과 실측 너비가 같아진다(원래는 내용 크기만큼만 좁게 잡혀 있었음). */
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
+            display: none !important;
+        }
+        /* stElementContainer/stRadio가 내용 크기(144px)로만 잡혀서 radiogroup의
+           width:100%가 무의미했다 — 실측으로 확인(번호 그리드 체크박스 때와
+           같은 패턴). 컬럼 폭까지 명시적으로 채워야 한다. */
+        .st-key-hedge_mode_toggle div[data-testid="stElementContainer"],
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] {
+            width: 100% !important;
+        }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] > div[role="radiogroup"] {
             display: flex !important;
             flex-direction: row !important;
+            width: 85% !important;
+            margin: 0 auto !important;
             gap: 6px !important;
             background: linear-gradient(180deg, #243044 0%, #1E293B 100%) !important;
             border-radius: 999px !important;
             padding: 5px !important;
+            box-sizing: border-box !important;
         }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label {
             flex: 1 !important;
@@ -288,7 +326,9 @@ def render():
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label [data-testid="stMarkdownContainer"] p {
             color: #FFFFFF !important;
             font-weight: 800 !important;
-            font-size: 13px !important;
+            font-size: 14px !important;
+            line-height: 20px !important;
+            margin: 0 !important;
         }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:nth-of-type(1):has(input:checked) {
             background: linear-gradient(145deg, #A78BFA, #7C3AED) !important;
@@ -421,11 +461,6 @@ def render():
     st.markdown(history_css("hedge_history_zone_6n36s5"), unsafe_allow_html=True)
 
     st.markdown(_render_nav_html(), unsafe_allow_html=True)
-    st.markdown('<div class="hedge-title">안티조합 · 액땜조합</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="hedge-subtitle">구매한 복권 숫자를 입력하고 또 다른 결과를 확인해 보세요</div>',
-        unsafe_allow_html=True,
-    )
     qr_loaded = st.session_state.pop("hedge_qr_loaded", None)
     if qr_loaded:
         st.success(f"✅ QR로 {qr_loaded}줄 번호를 불러왔어요. 아래에서 확인하고 조합시작을 눌러주세요.")
@@ -447,9 +482,15 @@ def render():
                     key="hedge_mode",
                 )
     if mode == "안티조합":
-        st.caption("입력한 5줄 각각과 따로따로 비교해서, 각 줄과 크게 안 겹치는 조합을 만들어요.")
+        st.markdown(
+            '<div class="hedge-mode-desc hedge-mode-desc-anti">구매복권 5줄과 상반된 반전조합 5줄 생성.</div>',
+            unsafe_allow_html=True,
+        )
     else:
-        st.caption("입력한 번호를 전부 하나로 모아, 그 전체와 크게 안 겹치는 조합을 만들어요.")
+        st.markdown(
+            '<div class="hedge-mode-desc hedge-mode-desc-aek">구매복권 전체숫자와 상반된 반전조합 5줄 생성.</div>',
+            unsafe_allow_html=True,
+        )
 
     def _grid_selected(prefix: str) -> list[int]:
         return sorted(n for n in range(1, 46) if st.session_state.get(f"{prefix}{n}"))
@@ -523,7 +564,6 @@ def render():
         if from_qr:
             st.success(f"QR로 불러온 {len(pool)}개 번호로 바로 조합할 수 있어요.")
         else:
-            st.markdown('<div class="hedge-section-label">이미 구매한 번호를 최대한 많이 선택하세요</div>', unsafe_allow_html=True)
             _render_num_grid("hedge_aek_num_")
             pool = _grid_selected("hedge_aek_num_")
         st.caption(f"{len(pool)}개 선택됨" + (" · 6개 이상 선택해 주세요" if pool and len(pool) < 6 else ""))
