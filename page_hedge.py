@@ -199,35 +199,58 @@ def render():
                 0 7px 14px rgba(63, 98, 18, 0.4),
                 inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
         }
-        /* 입력방법(QR스캔/직접입력) — 모드 토글과 같은 알약 모양이지만 실제
-           라디오가 아니라 링크 2개다("QR스캔"을 누르면 실제 페이지 이동이
-           일어나야 네이티브 카메라 인터셉트가 걸리기 때문 — st.radio는 그냥
-           rerun이라 안 걸림). "직접입력"은 지금 이 페이지 자체가 그 상태라
-           눌러도 할 일이 없어 그냥 강조 표시만 한다. */
+        /* 입력방법(QR스캔/직접입력) — 실제 라디오가 아니라 링크 2개다("QR스캔"을
+           누르면 실제 페이지 이동이 일어나야 네이티브 카메라 인터셉트가 걸리기
+           때문 — st.radio는 그냥 rerun이라 안 걸림). "직접입력"은 지금 이
+           페이지 자체가 그 상태라 눌러도 할 일이 없어 그냥 강조 표시만 한다.
+           모드 토글(보라/초록 알약)과 나란히 놓이니 헷갈리지 않게, 금색 계열의
+           "고급 스위치" 느낌으로 확실히 차별화한다(로또용지 버튼과 같은 금색
+           톤으로 이 앱 전체의 프리미엄 포인트 컬러에 맞춤). */
         .hedge-input-toggle {
             display: flex;
             gap: 6px;
-            background: linear-gradient(180deg, #243044 0%, #1E293B 100%);
+            height: 100%;
+            background: linear-gradient(180deg, #241f14 0%, #17130c 100%);
+            border: 1px solid rgba(212, 175, 55, 0.4);
             border-radius: 999px;
             padding: 5px;
-            margin-bottom: 10px;
+            box-sizing: border-box;
         }
         .hedge-input-pill {
             flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
+            gap: 4px;
             border-radius: 999px;
-            padding: 8px 10px;
+            padding: 8px 6px;
             font-weight: 800;
-            font-size: 14px;
-            color: #94a3b8;
+            font-size: 13px;
+            color: #b8a679;
             text-decoration: none;
             box-sizing: border-box;
+            white-space: nowrap;
         }
         .hedge-input-pill-active {
-            background: linear-gradient(145deg, #A78BFA, #7C3AED);
-            color: #FFFFFF;
+            background: linear-gradient(160deg, #ffe9a8 0%, #f0c552 55%, #d4a017 100%);
+            color: #241a06;
+            box-shadow:
+                0 2px 6px rgba(212, 160, 23, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        }
+        /* QR스캔/직접입력 토글과 모드(안티/액땜) 토글을 한 줄에 나란히 — st.columns는
+           좁은 화면에서 기본적으로 세로로 쌓이므로(번호 그리드에서도 겪은 문제),
+           이 둘을 감싼 wrap 안에서만 가로 배치를 강제한다. */
+        .st-key-hedge_toggles_row div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 8px !important;
+            align-items: stretch !important;
+        }
+        .st-key-hedge_toggles_row div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            flex: 1 1 0 !important;
+            width: auto !important;
+            min-width: 0 !important;
         }
         /* 모드 토글 — 요청받은 목업처럼 어두운 알약(pill) 모양 세그먼트, 선택된
            쪽만 안티조합=보라 / 액땜조합=초록으로 강조. */
@@ -245,7 +268,7 @@ def render():
             align-items: center !important;
             justify-content: center !important;
             border-radius: 999px !important;
-            padding: 8px 10px !important;
+            padding: 8px 6px !important;
             margin: 0 !important;
             cursor: pointer !important;
             transition: background 0.15s ease !important;
@@ -265,7 +288,7 @@ def render():
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label [data-testid="stMarkdownContainer"] p {
             color: #FFFFFF !important;
             font-weight: 800 !important;
-            font-size: 14px !important;
+            font-size: 13px !important;
         }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:nth-of-type(1):has(input:checked) {
             background: linear-gradient(145deg, #A78BFA, #7C3AED) !important;
@@ -403,22 +426,26 @@ def render():
         '<div class="hedge-subtitle">구매한 복권 숫자를 입력하고 또 다른 결과를 확인해 보세요</div>',
         unsafe_allow_html=True,
     )
-    st.markdown(_render_input_mode_html(), unsafe_allow_html=True)
-
     qr_loaded = st.session_state.pop("hedge_qr_loaded", None)
     if qr_loaded:
         st.success(f"✅ QR로 {qr_loaded}줄 번호를 불러왔어요. 아래에서 확인하고 조합시작을 눌러주세요.")
     if st.session_state.pop("hedge_qr_error", False):
         st.error("QR 인식에 실패했어요. 로또 용지 QR이 맞는지 확인 후 다시 시도하거나 직접 입력해 주세요.")
 
-    with st.container(key="hedge_mode_toggle"):
-        mode = st.radio(
-            "모드",
-            ["안티조합", "액땜조합"],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="hedge_mode",
-        )
+    # 입력방법(QR스캔/직접입력)과 모드(안티/액땜) 토글을 한 줄에 나란히 배치.
+    with st.container(key="hedge_toggles_row"):
+        col_input, col_mode = st.columns(2)
+        with col_input:
+            st.markdown(_render_input_mode_html(), unsafe_allow_html=True)
+        with col_mode:
+            with st.container(key="hedge_mode_toggle"):
+                mode = st.radio(
+                    "모드",
+                    ["안티조합", "액땜조합"],
+                    horizontal=True,
+                    label_visibility="collapsed",
+                    key="hedge_mode",
+                )
     if mode == "안티조합":
         st.caption("입력한 5줄 각각과 따로따로 비교해서, 각 줄과 크게 안 겹치는 조합을 만들어요.")
     else:
