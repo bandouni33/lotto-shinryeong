@@ -219,7 +219,7 @@ def render():
             display: none !important;
         }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label [data-testid="stMarkdownContainer"] p {
-            color: #94a3b8 !important;
+            color: #FFFFFF !important;
             font-weight: 800 !important;
             font-size: 14px !important;
         }
@@ -230,7 +230,7 @@ def render():
             background: linear-gradient(145deg, #4ADE80, #16A34A) !important;
         }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:has(input:checked) [data-testid="stMarkdownContainer"] p {
-            color: #0F172A !important;
+            color: #FFFFFF !important;
         }
         /* 번호 그리드 — 어두운 카드 안에 흰색 둥근사각 버튼(목업 참고). st.columns가
            좁은 화면에서는 기본적으로 세로로 쌓이므로, 번호 그리드만은 강제로 가로
