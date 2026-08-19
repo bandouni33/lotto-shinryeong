@@ -66,12 +66,15 @@ def wallet_bar_button_css() -> str:
     {_SECONDARY_HOVER}
 }}
 /* 예전엔 모든 화면 맨 위에 적립금/ID/로그아웃 줄이 항상 떠 있었는데, 화면을
-   옮길 때마다 반복 노출돼 거슬린다는 요청으로 우하단 작은 버튼 뒤로 숨겼다
-   (탭하면 dialog로 뜸). 화면 콘텐츠를 가리지 않게 최대한 작게, 구석에 둔다. */
+   옮길 때마다 반복 노출돼 거슬린다는 요청으로 작은 버튼 뒤로 숨겼다(탭하면
+   dialog로 뜸). 메인 화면에만 필요하다는 요청이라 render_wallet_bar가 메인
+   에서만 이 버튼을 그리고, 위치도 우상단 구석으로 옮김(다른 상세페이지에서
+   빈 공간을 만들던 원인이라 아예 안 그리는 쪽으로 없앴다 — 여기 위치값은
+   메인 화면에서만 적용됨). */
 .st-key-my_info_trigger_wrap {{
     position: fixed !important;
     right: 12px !important;
-    bottom: 14px !important;
+    top: 8px !important;
     z-index: 999 !important;
     width: auto !important;
 }}

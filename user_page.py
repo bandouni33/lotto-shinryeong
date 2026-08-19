@@ -145,7 +145,7 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 
     from wallet_ui import render_wallet_bar
 
-    render_wallet_bar()
+    render_wallet_bar(show_my_info_trigger=(current_page == "main"))
 
     from app_settings import get_update_notice
     import html as _html

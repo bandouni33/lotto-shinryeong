@@ -521,11 +521,6 @@ def render():
         committed = st.session_state.setdefault("hedge_committed_lines", [])
 
         if len(committed) < MAX_LINES:
-            st.markdown(
-                f'<div class="hedge-section-label">{len(committed) + 1}번째 줄 선택 중 · '
-                "6개를 선택하면 자동으로 다음 줄로 넘어가요</div>",
-                unsafe_allow_html=True,
-            )
             # 줄마다 프리픽스를 다르게 줘서(hedge_anti_num_{줄번호}_N) 매번 완전히 새
             # 체크박스 위젯을 쓴다 — 예전엔 모든 줄이 같은 키(hedge_anti_num_N)를
             # 재사용해서, 줄이 넘어갈 때 session_state.pop()으로 체크 해제를

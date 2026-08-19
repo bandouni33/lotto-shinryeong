@@ -452,8 +452,11 @@ def advanced_subscription_dialog(*, on_close) -> None:
     return None
 
 
-def render_wallet_bar() -> int | None:
-    """로그인 시에만 상단 잔액 바. 미로그인 시 배너는 인증 필요 클릭 때만."""
+def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
+    """로그인 시에만 상단 잔액 바. 미로그인 시 배너는 인증 필요 클릭 때만.
+
+    show_my_info_trigger=False면 "내정보" 버튼/다이얼로그 자체를 아예 안 그린다 —
+    메인 화면에만 필요하고 다른 상세페이지에서는 불필요하다는 요청."""
     from shared_ui_styles import wallet_bar_button_css
     from zero_phone_db import TEST_USER_ID, get_user, init_zero_phone_tables, login_test_user
 
@@ -501,15 +504,18 @@ def render_wallet_bar() -> int | None:
         return None
 
     # 예전엔 이 정보(적립금/ID/로그아웃)를 화면마다 상단에 항상 띄워뒀는데, 페이지를
-    # 옮길 때마다 계속 보여서 거슬린다는 요청 — 화면 맨 아래 "내정보" 버튼을 눌러야만
-    # 뜨는 창으로 옮긴다. 로그아웃도 요즘 앱들처럼 앱을 완전히 닫으면 세션이 알아서
-    # 끊기니 상시 노출할 필요가 없다는 게 사용자 판단(자동 로그아웃 로직 자체를
-    # 새로 만든 건 아니고, 기존 세션 유지 방식은 그대로 둠).
-    st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
-    with st.container(key="my_info_trigger_wrap"):
-        if st.button("👤 내정보", key="my_info_trigger_btn", use_container_width=True):
-            st.session_state["my_info_dialog_open"] = True
-            st.rerun()
+    # 옮길 때마다 계속 보여서 거슬린다는 요청 — 메인 화면 우상단의 "내정보" 버튼을
+    # 눌러야만 뜨는 창으로 옮긴다. 다른 상세페이지에서는 이 버튼 자체가 불필요하다는
+    # 요청이라 show_my_info_trigger=False면 아예 안 그린다(그 페이지들 상단에 빈
+    # 공간을 남기던 원인이기도 했다). 로그아웃도 요즘 앱들처럼 앱을 완전히 닫으면
+    # 세션이 알아서 끊기니 상시 노출할 필요가 없다는 게 사용자 판단(자동 로그아웃
+    # 로직 자체를 새로 만든 건 아니고, 기존 세션 유지 방식은 그대로 둠).
+    if show_my_info_trigger:
+        st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
+        with st.container(key="my_info_trigger_wrap"):
+            if st.button("👤 내정보", key="my_info_trigger_btn", use_container_width=True):
+                st.session_state["my_info_dialog_open"] = True
+                st.rerun()
 
     if st.session_state.get("my_info_dialog_open"):
         _my_info_dialog(zp_uid=zp_uid, member_id=member_id)
