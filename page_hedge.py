@@ -354,7 +354,7 @@ def render():
     st.markdown(history_css("hedge_history_zone_6n36s5"), unsafe_allow_html=True)
 
     st.markdown(_render_nav_html(), unsafe_allow_html=True)
-    st.markdown('<div class="hedge-title">🛡️ 안티조합 · 액땜조합</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hedge-title">안티조합 · 액땜조합</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="hedge-subtitle">구매한 복권 숫자를 입력하고 또 다른 결과를 확인해 보세요</div>',
         unsafe_allow_html=True,
