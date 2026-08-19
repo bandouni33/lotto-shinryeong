@@ -1274,7 +1274,24 @@ elif current_page == "stats":
         st.error(f"통계 데이터 로딩 오류: {e}")
 
     # 3. 3개의 탭으로 모바일 화면 최적화
-    tab1, tab2, tab3 = st.tabs(["🧠 전문가 지표", "🔥 출현 빈도", "🎯 패턴 분석"])
+    # Streamlit 기본 탭의 "선택 안 된 탭" 글자색이 밝은 배경 기준(짙은 남색)이라,
+    # 이 페이지의 어두운 배경 위에서는 거의 안 보였다(선택된 탭만 보라색이라
+    # 겨우 읽힘). 이 페이지 탭에만 스코프해서 밝은 회색으로 고정한다.
+    st.markdown(
+        """
+        <style>
+        .st-key-stats_tabs_wrap [data-testid="stTab"] [data-testid="stMarkdownContainer"] p {
+            color: #94a3b8 !important;
+        }
+        .st-key-stats_tabs_wrap [data-testid="stTab"][aria-selected="true"] [data-testid="stMarkdownContainer"] p {
+            color: #A78BFA !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="stats_tabs_wrap"):
+        tab1, tab2, tab3 = st.tabs(["🧠 전문가 지표", "🔥 출현 빈도", "🎯 패턴 분석"])
 
     # --- TAB 1: 전문가 지표 ---
     with tab1:
