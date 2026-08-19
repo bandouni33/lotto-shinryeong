@@ -33,13 +33,19 @@ init_guest_scope()
 # 실어보낸다(LottoShinryeong/utils/fresh-start.ts 참고 — 백그라운드 전환/앱 내
 # 화면 이동에서는 안 붙는다). 그 신호가 오면 이 기기의 자동 로그인 연결을 끊어서,
 # 다음 줄의 restore_member_from_guest()가 조용히 다시 로그인시키지 않게 한다 —
-# "앱 완전 종료 시 자동 로그아웃"이 되게 해달라는 요청.
+# "앱 완전 종료 시 자동 로그아웃"이 되게 해달라는 요청. 다만 지금 비공개 테스트
+# 중인 테스터들한테 매번 재로그인을 강제하면 번거로우니, 실제 카카오 인증이
+# 붙는 정식 출시 전까지는 이 파라미터가 와도 무시한다(_testing_period_active
+# 참고 — kakao_configured()가 켜지는 순간 자동으로 적용되기 시작함).
 if st.query_params.get("fresh_start") == "1":
     del st.query_params["fresh_start"]
-    from user_scope import get_or_create_guest_id
-    from wallet_db import unlink_guest_from_member
+    from wallet_ui import _testing_period_active
 
-    unlink_guest_from_member(get_or_create_guest_id())
+    if not _testing_period_active():
+        from user_scope import get_or_create_guest_id
+        from wallet_db import unlink_guest_from_member
+
+        unlink_guest_from_member(get_or_create_guest_id())
 
 # 세션이 끊겼다 재연결되면(모바일 백그라운드 전환·네트워크 끊김 등) member_id가
 # 사라져서 기능을 쓸 때마다 간편인증 배너가 다시 뜨는 문제가 있었다 — 이 기기
