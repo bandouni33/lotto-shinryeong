@@ -165,6 +165,16 @@ def get_member_for_guest(guest_id: str) -> int | None:
     return int(row["member_id"]) if row else None
 
 
+def unlink_guest_from_member(guest_id: str) -> None:
+    """로그아웃 시 호출 — 이걸 안 하면 session_state만 비워질 뿐 guest_member_links는
+    그대로 남아있어서, 다음 페이지 이동 때 restore_member_from_guest()가 이 연결을
+    보고 조용히 다시 로그인시켜버린다(실사용 흐름 점검 중 발견된 버그)."""
+    conn = _connect()
+    conn.execute("DELETE FROM guest_member_links WHERE guest_id = ?", (str(guest_id),))
+    conn.commit()
+    conn.close()
+
+
 def get_or_create_member(provider: str, provider_user_id: str) -> tuple[int, bool]:
     """returns (member_id, is_new)."""
     ohash = oauth_hash(provider, provider_user_id)

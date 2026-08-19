@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
@@ -15,7 +15,15 @@ export default function QrScanScreen() {
   const { target } = useLocalSearchParams<{ target?: string }>();
   const targetPage = typeof target === 'string' && target ? target : 'hedge';
   const [permission, requestPermission] = useCameraPermissions();
+  const [showIntro, setShowIntro] = useState(true);
   const scannedRef = useRef(false);
+  // 화면에 그린 금색 사각형 가이드는 안내용일 뿐, expo-camera의 바코드 인식은 카메라
+  // 시야 전체를 스캔한다 — 가이드 밖의 QR(예: 테이블에 여러 장 놓인 다른 티켓)도
+  // 그대로 인식돼버리는 한계가 있다. bounds 좌표로 가이드 사각형 안쪽만 채택하도록
+  // 제한을 시도했었는데, bounds가 카메라 원본 해상도 좌표계라 화면 레이아웃 좌표와
+  // 안 맞아서 모든 스캔이 걸러지는(스캔이 아예 안 되는) 회귀가 실기기에서 발생함
+  // (2026-08-19). 실기기 좌표 로그 없이는 정확한 보정이 어려워 일단 되돌린다 —
+  // "여러 장 중 엉뚱한 티켓이 스캔될 수 있음"보다 "스캔이 아예 안 됨"이 훨씬 나쁘다.
 
   const goToTarget = useCallback(
     (qr?: string) => {
@@ -77,6 +85,16 @@ export default function QrScanScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.frameRow}>
+          {showIntro ? (
+            <TouchableOpacity style={styles.introCard} onPress={() => setShowIntro(false)} activeOpacity={0.85}>
+              <Text style={styles.introText}>
+                지금 자동으로 구매한 복권에 확신이 없다면{'\n'}
+                이 화면에서 QR 스캔해서 헤지 조합의 결과와{'\n'}
+                반전의 재미를 함께 경험해 보세요
+              </Text>
+              <Text style={styles.introDismiss}>탭하면 닫혀요</Text>
+            </TouchableOpacity>
+          ) : null}
           <View style={styles.frame} />
         </View>
         <View style={styles.bottomRow}>
@@ -129,6 +147,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  introCard: {
+    backgroundColor: 'rgba(18, 24, 43, 0.92)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(249, 168, 37, 0.55)',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    gap: 8,
+    maxWidth: 320,
+    marginBottom: 16,
+  },
+  introText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  introDismiss: {
+    color: '#90a4ae',
+    fontSize: 11,
+    textAlign: 'center',
+  },
   frameRow: { alignItems: 'center' },
   frame: {
     width: FRAME_SIZE,

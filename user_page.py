@@ -28,9 +28,23 @@ init_birthday_table()
 if handle_oauth_callback():
     st.rerun()
 init_guest_scope()
+
+# 네이티브 앱이 콜드 스타트(=완전히 껐다 다시 켬) 직후 최초 로드에만 ?fresh_start=1을
+# 실어보낸다(LottoShinryeong/utils/fresh-start.ts 참고 — 백그라운드 전환/앱 내
+# 화면 이동에서는 안 붙는다). 그 신호가 오면 이 기기의 자동 로그인 연결을 끊어서,
+# 다음 줄의 restore_member_from_guest()가 조용히 다시 로그인시키지 않게 한다 —
+# "앱 완전 종료 시 자동 로그아웃"이 되게 해달라는 요청.
+if st.query_params.get("fresh_start") == "1":
+    del st.query_params["fresh_start"]
+    from user_scope import get_or_create_guest_id
+    from wallet_db import unlink_guest_from_member
+
+    unlink_guest_from_member(get_or_create_guest_id())
+
 # 세션이 끊겼다 재연결되면(모바일 백그라운드 전환·네트워크 끊김 등) member_id가
 # 사라져서 기능을 쓸 때마다 간편인증 배너가 다시 뜨는 문제가 있었다 — 이 기기
 # (guest_id)가 이미 로그인한 적 있으면 인증 절차 없이 조용히 다시 로그인시킨다.
+# (fresh_start로 방금 연결을 끊은 경우엔 이 호출이 찾을 게 없어 그냥 통과한다.)
 restore_member_from_guest()
 
 current_page = st.query_params.get("page", "main")

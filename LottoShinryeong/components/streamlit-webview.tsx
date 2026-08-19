@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 
 import { getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
+import { consumeFreshStartFlag } from '@/utils/fresh-start';
 
 type Props = {
   page: string;
@@ -44,7 +45,29 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     };
   }, []);
 
-  const uri = getStreamlitPageUrl(page, guestId, extraParams);
+  // 이 프로세스에서 맨 처음 뜨는 웹뷰(=앱을 콜드 스타트한 직후)에만 true — 사용자가
+  // 앱을 완전히 종료했다 다시 켰을 때 로그인 세션을 정리하기 위한 신호로 쓴다
+  // (utils/fresh-start.ts 설명 참고). 홈 버튼 등으로 잠깐 백그라운드 갔다 온
+  // 경우나, 앱 안에서 다른 화면으로 이동한 경우엔 false.
+  const [isFreshStart] = useState(() => consumeFreshStartFlag());
+  const mergedParams = isFreshStart ? { ...extraParams, fresh_start: '1' } : extraParams;
+  const uri = getStreamlitPageUrl(page, guestId, mergedParams);
+
+  // QR 스캔 후 넘어오는 것처럼 ?qr=... 붙은 페이지에서, Streamlit이 그 1회성
+  // 파라미터를 읽자마자 지우면서 내부적으로 history API를 건드리는 것으로 보이는데,
+  // 그걸 웹뷰가 "새 페이지 로드 시작"으로 오인해서 onLoadStart만 다시 불리고
+  // onLoadEnd가 안 따라오는 경우가 실기기에서 확인됐다("불러오는 중" 오버레이가
+  // 실제로는 다 로드된 화면 위에 영원히 떠 있는 상태로 멈춤). 실제 네트워크 로드가
+  // 아니라 판단하기 애매한 상황이라 근본 원인을 웹뷰 이벤트만으로 명확히 구분하긴
+  // 어려워서, 대신 로딩 표시가 일정 시간 넘게 안 꺼지면 강제로 꺼버리는 안전장치를
+  // 둔다 — 정상적인 실제 로드는 이 시간 안에 항상 끝나므로 부작용이 없다.
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+    const timer = setTimeout(() => setLoading(false), 6000);
+    return () => clearTimeout(timer);
+  }, [loading, uri]);
 
   const onNavigationStateChange = useCallback((navState: { canGoBack: boolean }) => {
     setCanGoBack(navState.canGoBack);

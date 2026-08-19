@@ -263,8 +263,13 @@ def handle_oauth_callback() -> bool:
 
 
 def logout() -> None:
-    from user_scope import clear_user_session
+    from user_scope import clear_user_session, get_or_create_guest_id
+    from wallet_db import unlink_guest_from_member
 
+    # session_state만 비우면 다음 페이지 이동 때 restore_member_from_guest()가
+    # guest_member_links를 보고 조용히 다시 로그인시켜버린다 — 그 연결 자체도
+    # 끊어야 로그아웃이 실제로 유지된다.
+    unlink_guest_from_member(get_or_create_guest_id())
     clear_user_session()
 
 
