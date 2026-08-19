@@ -281,9 +281,13 @@ def render(admin_lucky=None):
 
     ncol1, ncol2 = st.columns(2)
     with ncol1:
-        if st.button("⬅️ 홈", key="th_nav_home_6n36s5", use_container_width=True):
-            st.query_params.clear()
-            st.rerun()
+        # 페이지마다 이름·모양이 제각각이던 "메인으로" 버튼(홈/메인/메인으로 등)을
+        # 자동구매·고급필터·통계센터가 이미 쓰던 스타일로 통일 — key는 그대로 둬서
+        # 아래 iframe 레이어 위로 올리는 z-index 규칙이 계속 이 자리에 적용되게 한다.
+        from shared_ui_styles import main_nav_button_css, main_nav_button_html
+
+        with st.container(key="th_nav_home_6n36s5"):
+            st.markdown(main_nav_button_css() + main_nav_button_html(), unsafe_allow_html=True)
     with ncol2:
         if st.button("📝 생일/행운수 관리", key="th_nav_bday_6n36s5", use_container_width=True):
             st.query_params.clear()

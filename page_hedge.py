@@ -92,14 +92,15 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
 
 def _render_nav_html() -> str:
     # 번개조합에서 파생된 하위 화면이던 시절의 흔적("← 번개조합")은 이제 독립
-    # 기능(메인에서 바로 진입)이 됐으니 없앤다 — "🏠 메인"만 남긴다.
-    return """
-    <div style="display:flex;gap:10px;margin-bottom:12px;">
-        <a href="?" style="flex:1;text-align:center;background:#fff;color:#1E293B;
-           border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;
-           display:flex;align-items:center;justify-content:center;box-sizing:border-box;">🏠 메인</a>
-    </div>
-    """
+    # 기능(메인에서 바로 진입)이 됐으니 없앤다 — "메인으로"만 남긴다.
+    # 페이지마다 이름·모양이 제각각이던 걸(홈/메인/메인으로 등) 자동구매·고급필터
+    # ·통계센터가 이미 쓰던 스타일로 전체 통일(shared_ui_styles.main_nav_button_*).
+    from shared_ui_styles import main_nav_button_css, main_nav_button_html
+
+    return (
+        main_nav_button_css()
+        + f'<div style="margin-bottom:12px;">{main_nav_button_html()}</div>'
+    )
 
 
 def _render_input_mode_html() -> str:

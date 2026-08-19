@@ -1171,8 +1171,12 @@ elif current_page == "tarot":
     if _tarot_dir not in _sys.path:
         _sys.path.insert(0, _tarot_dir)
 
+    # 페이지마다 이름·모양이 제각각이던 "메인으로" 버튼을 자동구매·고급필터·통계센터가
+    # 이미 쓰던 스타일로 통일.
+    from shared_ui_styles import main_nav_button_css, main_nav_button_html
+
     st.markdown(
-        '<a href="?" target="_self" style="text-decoration:none; color:#9aa5b1; font-weight:700; font-size:14px;">‹ 메인으로</a>',
+        main_nav_button_css() + f'<div style="max-width:160px;">{main_nav_button_html()}</div>',
         unsafe_allow_html=True,
     )
 

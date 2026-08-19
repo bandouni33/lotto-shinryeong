@@ -2,6 +2,73 @@
 
 from __future__ import annotations
 
+import base64
+import os
+from functools import lru_cache
+
+# ── "메인으로" 상세페이지 공통 네비게이션 버튼 ──
+# 예전엔 페이지마다 이름(홈/메인/메인으로)과 모양(순수 st.button, 흰색 알약,
+# 검은 알약+아이콘 등)이 제각각이었다 — 자동구매/고급필터/통계센터가 이미 쓰던
+# "검은 알약 + 금테 원형 아이콘 + 메인으로" 스타일로 전체 통일한다.
+_MAIN_NAV_BTN_CSS = """
+<style>
+.auto-back-main-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 12px;
+    box-sizing: border-box;
+    background: #000000 !important;
+    color: #ffffff !important;
+    border: 2px solid #333333 !important;
+    border-radius: 12px !important;
+    text-decoration: none !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+}
+.auto-back-main-btn:hover {
+    background: #111111 !important;
+    border-color: #555555 !important;
+    color: #ffffff !important;
+}
+.auto-back-main-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #ffb300;
+    flex-shrink: 0;
+}
+</style>
+"""
+
+
+@lru_cache(maxsize=4)
+def _main_nav_icon_base64(file_path: str = "K-325.jpg") -> str:
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
+
+
+def main_nav_button_css() -> str:
+    return _MAIN_NAV_BTN_CSS
+
+
+def main_nav_button_html(href: str = "?") -> str:
+    """모든 상세페이지 공통 "메인으로" 버튼 HTML — 검은 알약 + 금테 원형 아이콘."""
+    icon_base64 = _main_nav_icon_base64()
+    icon_html = (
+        f'<img class="auto-back-main-icon" src="data:image/jpeg;base64,{icon_base64}" alt="로또신령">'
+        if icon_base64
+        else "🏠"
+    )
+    return f'<a href="{href}" target="_self" class="auto-back-main-btn">{icon_html}<span>메인으로</span></a>'
+
+
 # ── Primary (간편인증 · 구매 확정 등) ──
 _PRIMARY_GRADIENT = """
     background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 45%, #A855F7 100%) !important;

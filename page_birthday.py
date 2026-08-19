@@ -12,16 +12,23 @@ from lucky_numbers import (
 
 
 def _render_birthday_nav_html() -> str:
-    return """
-    <div style="display:flex;gap:10px;margin-bottom:12px;">
-        <a href="?page=thunder" style="flex:1;text-align:center;background:#fff;color:#1E293B;
-           border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;
-           display:flex;align-items:center;justify-content:center;box-sizing:border-box;">← 번개조합</a>
-        <a href="?" style="flex:1;text-align:center;background:#fff;color:#1E293B;
-           border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;
-           display:flex;align-items:center;justify-content:center;box-sizing:border-box;">🏠 메인</a>
-    </div>
-    """
+    # "메인으로" 버튼은 페이지마다 이름·모양이 제각각이던 걸(홈/메인/메인으로 등)
+    # 자동구매·고급필터·통계센터가 이미 쓰던 스타일로 전체 통일한 공용 컴포넌트.
+    # (주의: 아래 HTML을 여러 줄로 들여써서 반환하면 Streamlit이 마크다운 코드
+    # 블록으로 오인해 태그를 그대로 텍스트로 찍어버린다 — 실기기 확인된 버그라
+    # 한 줄짜리 문자열로 이어붙인다.)
+    from shared_ui_styles import main_nav_button_css, main_nav_button_html
+
+    back_btn = (
+        '<a href="?page=thunder" style="flex:1;text-align:center;background:#fff;color:#1E293B;'
+        "border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;"
+        'display:flex;align-items:center;justify-content:center;box-sizing:border-box;">← 번개조합</a>'
+    )
+    return (
+        main_nav_button_css()
+        + f'<div style="display:flex;gap:10px;margin-bottom:12px;">{back_btn}'
+        f'<div style="flex:1;">{main_nav_button_html()}</div></div>'
+    )
 
 
 def render():
