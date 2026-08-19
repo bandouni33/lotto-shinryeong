@@ -206,10 +206,19 @@ def render():
             cursor: pointer !important;
             transition: background 0.15s ease !important;
         }
-        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label > div:first-child {
+        /* 라디오 기본 점(radio dot) 숨기기 — 이 Streamlit 버전의 실제 DOM은
+           label > div(z0lit3) > div(19nzcwv) > div(원 아이콘 감싸는 wrapper, 첫
+           번째 자식) + div[data-testid="stMarkdownContainer"](글자, 두 번째 자식)
+           구조다. 예전엔 "label > div:first-child"로 숨기려 했는데, label의 실제
+           첫 자식은 화면에 안 보이는 원본 <input>을 감싼 <span>이라 이 셀렉터가
+           애초에 아무것도 안 걸려서(매치 X) 점이 계속 그대로 보이던 버그였다
+           (선택된 쪽 배경은 보라/초록으로 바뀌는데 점은 Streamlit 기본 색 그대로라
+           안 어울려 보임 — 실기기 스크린샷으로 확인). 실제 중첩 구조를 그대로
+           따라가 정확히 그 wrapper만 숨긴다. */
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label > div > div > div:first-child {
             display: none !important;
         }
-        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label [data-testid="stWidgetLabel"] p {
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label [data-testid="stMarkdownContainer"] p {
             color: #94a3b8 !important;
             font-weight: 800 !important;
             font-size: 14px !important;
@@ -220,7 +229,7 @@ def render():
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:nth-of-type(2):has(input:checked) {
             background: linear-gradient(145deg, #4ADE80, #16A34A) !important;
         }
-        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:has(input:checked) [data-testid="stWidgetLabel"] p {
+        .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:has(input:checked) [data-testid="stMarkdownContainer"] p {
             color: #0F172A !important;
         }
         /* 번호 그리드 — 어두운 카드 안에 흰색 둥근사각 버튼(목업 참고). st.columns가
