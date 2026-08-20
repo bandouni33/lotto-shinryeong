@@ -111,23 +111,23 @@ def _render_input_mode_html() -> str:
     # href의 qrscan=1은 streamlit-webview.tsx의 onShouldStartLoadWithRequest가
     # 가로채 네이티브 카메라 화면으로 보내는 용도였는데, 메인 화면 진입 링크에서는
     # 잘 됐지만 이 페이지 "안"에서(같은 경로, 쿼리만 다른 링크) 누르면 실기기에서
-    # 안 걸리고 페이지만 다시 로드되는 문제가 보고됐다(2026-08-19) — 안드로이드
-    # 웹뷰가 그런 네비게이션을 이 콜백 없이 처리하는 경우가 있는 것으로 보인다.
-    # 더 확실한 postMessage 방식을 우선 시도하고(네이티브 앱 안에서만
-    # window.ReactNativeWebView가 존재), 실패해도 href가 폴백으로 남아있다 —
-    # 일반 브라우저(테스트 환경)에서는 이 메시지 API 자체가 없어 그냥 평소 링크로
-    # 동작한다.
-    return """
-    <div class="hedge-input-toggle">
-        <a href="?page=hedge&qrscan=1" class="hedge-input-pill" onclick="
-            if (window.ReactNativeWebView) {
-                event.preventDefault();
-                window.ReactNativeWebView.postMessage(JSON.stringify({type: 'openQrScan', target: 'hedge'}));
-            }
-        ">📷 QR스캔</a>
-        <div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>
-    </div>
-    """
+    # 안 걸리고 안드로이드 기본 브라우저로 그 URL이 통째로 열려버리는 문제가
+    # 보고됐다(2026-08-19~20) — target 속성이 없으면 이 웹뷰가 "새 창" 취급해서
+    # 외부로 던지는 것으로 보인다. postMessage 방식을 우선 시도하되(네이티브 앱
+    # 안에서만 window.ReactNativeWebView가 존재), 그 시도가 뭘로든 실패해도 최소
+    # 지금 웹뷰 안에서는 머물도록 target="_self"를 명시하고 preventDefault를
+    # try보다 먼저 호출한다(HTML 파싱이 깨지는 걸 막기 위해 한 줄로 작성 —
+    # 여러 줄로 들여쓰면 Streamlit이 마크다운 코드 블록으로 오인하는 버그가
+    # 생일/행운수 페이지에서 실제로 있었음).
+    return (
+        '<div class="hedge-input-toggle">'
+        '<a href="?page=hedge&qrscan=1" target="_self" class="hedge-input-pill" '
+        "onclick=\"if(window.ReactNativeWebView){event.preventDefault();"
+        "try{window.ReactNativeWebView.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));}"
+        'catch(e){}}">📷 QR스캔</a>'
+        '<div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>'
+        "</div>"
+    )
 
 
 def render():
@@ -170,6 +170,10 @@ def render():
            CSS로도 걸어둔다(page_thunder.py와 동일 이유, "결과저장" 등 진짜 새로고침
            직후 화면이 잠깐 반전됐다 정상으로 돌아오는 현상 완화). */
         :root { color-scheme: light !important; }
+        /* 최상위 문서에 어두운 배경이 안 걸려있어서 페이지 맨 위쪽이 Streamlit
+           기본 밝은 배경으로 보여 "빈 공간"처럼 느껴졌다(번개조합·생일행운수
+           페이지와 동일한 원인). */
+        .stApp { background-color: #12182b; }
         html, body, #root, .stApp, [data-testid="stAppViewContainer"],
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
