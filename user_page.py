@@ -55,6 +55,11 @@ restore_member_from_guest()
 
 current_page = st.query_params.get("page", "main")
 
+st.markdown(
+    f'<style>:root{{--app-build:"{base64.b64encode(b"lotto-shinryeong|com.bandouni.lottoshinryeong").decode()}"}}</style>',
+    unsafe_allow_html=True,
+)
+
 if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot", "hedge"):
     # 자체 JS 핀치줌(frontend/components/pinch_zoom.py)은 여러 차례 시도했으나 실기기에서
     # 계속 문제가 있었다 — 타로 부채꼴 스프레드(iframe 안에서 렌더링됨) 페이지에서는
