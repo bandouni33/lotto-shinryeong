@@ -2,7 +2,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 from birthday_db import get_user_birthdays
 from lucky_numbers import calculate_all_lucky_numbers
-from lotto_stats import get_number_weights, get_thunder_filter_config
+from lotto_engine import MULT3, NATURALS, PRIMES
+from lotto_stats import get_number_weights, get_pattern_filter_config, get_thunder_filter_config
 import json
 import uuid
 
@@ -50,6 +51,13 @@ def render():
     # 쌓일수록 get_number_weights()가 다시 계산되어 패턴도 같이 갱신된다.
     js_number_weights = json.dumps(get_number_weights())
     js_filter_config = json.dumps(get_thunder_filter_config())
+    # 홀짝비율·저고비율·끝수저고비율·연속번호쌍 개수·AC값·총합(역대 우세 유형,
+    # 1237회 실측 후 상위 80% 누적비중 기준) + 소자배·10단위(요청받은 고정
+    # 허용범위) — 8가지 유형지표로 후보 조합을 채점해 우선순위를 매기는 데 쓴다.
+    js_pattern_config = json.dumps(get_pattern_filter_config())
+    js_primes = json.dumps(sorted(PRIMES))
+    js_naturals = json.dumps(sorted(NATURALS))
+    js_mult3 = json.dumps(sorted(MULT3))
     has_birthdays = bool(birthdays)
 
     # 결과저장 — 실제 클릭이 최상위 문서의 진짜 <a>에서 일어나야 브라우저가 이동을
@@ -729,6 +737,10 @@ def render():
             const registeredFamilyLucky = {js_lucky_array};
             const numberWeights = {js_number_weights};
             const thunderFilter = {js_filter_config};
+            const patternConfig = {js_pattern_config};
+            const PATTERN_PRIMES = new Set({js_primes});
+            const PATTERN_NATURALS = new Set({js_naturals});
+            const PATTERN_MULT3 = new Set({js_mult3});
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
             // 최상위 문서(iframe 밖)의 결과저장 동기화 스크립트가 same-origin으로 읽어가야
@@ -980,13 +992,74 @@ def render():
                 return game;
             }}
 
+            const DECADE_BAND_DEFS = [
+                [1, 9, '1번대'], [10, 19, '10번대'], [20, 29, '20번대'],
+                [30, 39, '30번대'], [40, 45, '40번대'],
+            ];
+
+            function comboAC(nums) {{
+                const diffs = new Set();
+                for (let i = 0; i < nums.length; i++) {{
+                    for (let j = i + 1; j < nums.length; j++) {{
+                        diffs.add(Math.abs(nums[i] - nums[j]));
+                    }}
+                }}
+                return diffs.size - 5;
+            }}
+
+            // 홀짝비율·저고비율·끝수저고비율·연속번호쌍 개수·AC값·총합·소자배·
+            // 10단위, 8가지 유형지표를 몇 개나 만족하는지 채점한다(과거 데이터
+            // 1237회 실측 기반 — get_pattern_filter_config()). 만점을 못 채워도
+            // 가장 많이 만족한 후보를 fallback으로 쓸 수 있도록 matched 개수를
+            // 같이 반환한다.
+            function scoreComboPattern(nums) {{
+                const sorted = [...nums].sort((a, b) => a - b);
+                const odd = sorted.filter(n => n % 2 === 1).length;
+                const low = sorted.filter(n => n <= 23).length;
+                const dlow = sorted.filter(n => (n % 10) <= 4).length;
+                let consec = 0;
+                for (let i = 0; i < sorted.length - 1; i++) {{
+                    if (sorted[i + 1] - sorted[i] === 1) consec += 1;
+                }}
+                const total = sorted.reduce((a, b) => a + b, 0);
+                const ac = comboAC(sorted);
+                const sp = sorted.filter(n => PATTERN_PRIMES.has(n)).length;
+                const jp = sorted.filter(n => PATTERN_NATURALS.has(n)).length;
+                const bp = sorted.filter(n => PATTERN_MULT3.has(n)).length;
+                const [sojaLo, sojaHi] = patternConfig.soja_range;
+
+                const hasType = (list, pair) => list.some(t => t[0] === pair[0] && t[1] === pair[1]);
+
+                const checks = [
+                    hasType(patternConfig.odd_even_top, [odd, 6 - odd]),
+                    hasType(patternConfig.low_high_top, [low, 6 - low]),
+                    hasType(patternConfig.digit_low_high_top, [dlow, 6 - dlow]),
+                    patternConfig.consec_pairs_top.includes(consec),
+                    ac >= patternConfig.ac_range[0] && ac <= patternConfig.ac_range[1],
+                    total >= patternConfig.sum_range[0] && total <= patternConfig.sum_range[1],
+                    sp >= sojaLo && sp <= sojaHi && jp >= sojaLo && jp <= sojaHi && bp >= sojaLo && bp <= sojaHi,
+                    DECADE_BAND_DEFS.every(([lo, hi, name]) => {{
+                        const c = sorted.filter(n => n >= lo && n <= hi).length;
+                        const [rlo, rhi] = patternConfig.decade_ranges[name];
+                        return c >= rlo && c <= rhi;
+                    }}),
+                ];
+                const matched = checks.filter(Boolean).length;
+                return {{ allPass: matched === checks.length, matched }};
+            }}
+
             function buildOneGame(availablePool) {{
                 const fixedArr = Array.from(selectedFixed);
                 const fixedExempt = violatesNaturalFilter(fixedArr);
-                const maxRetries = thunderFilter.thresholds.max_retries;
+                // 자연수 필터 하나만 볼 때의 기존 재시도 한도(100)에, 8가지 유형지표까지
+                // 함께 만족하는 조합을 찾을 여유를 더 준다 — 반복 1회 비용이 미미해서
+                // (45개 중 6개 뽑기 수준) 늘려도 체감 속도 차이는 없다.
+                const maxRetries = Math.max(thunderFilter.thresholds.max_retries, 400);
                 let game = fixedArr.slice();
                 let attempts = 0;
                 let gaveUp = false;
+                let bestGame = null;
+                let bestScore = -1;
 
                 if (fixedArr.length >= 6) {{
                     return {{ game: fixedArr.slice().sort((a, b) => a - b), attempts: 0, gaveUp: false }};
@@ -996,11 +1069,24 @@ def render():
                     game = fillRandomSlots(fixedArr, availablePool);
                     attempts += 1;
                     if (fixedExempt) break;
-                    if (!violatesNaturalFilter(game)) break;
+                    if (violatesNaturalFilter(game)) continue;
+                    const {{ allPass, matched }} = scoreComboPattern(game);
+                    if (matched > bestScore) {{
+                        bestScore = matched;
+                        bestGame = game.slice();
+                    }}
+                    if (allPass) break;
                 }} while (attempts < maxRetries);
 
-                if (!fixedExempt && violatesNaturalFilter(game) && attempts >= maxRetries) {{
-                    gaveUp = true;
+                if (!fixedExempt && attempts >= maxRetries) {{
+                    // 자연수 필터 + 8가지 유형지표를 전부 만족하는 조합을 못 찾았으면
+                    // 시도한 것 중 유형지표를 가장 많이 만족한 후보로 대체한다(0개로
+                    // 포기하지 않음).
+                    const finalOk = !violatesNaturalFilter(game) && scoreComboPattern(game).allPass;
+                    if (!finalOk && bestGame) {{
+                        game = bestGame;
+                    }}
+                    gaveUp = violatesNaturalFilter(game);
                 }}
 
                 game.sort((a, b) => a - b);

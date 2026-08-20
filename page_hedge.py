@@ -66,14 +66,34 @@ def _weighted_combo(weights: dict[int, int]) -> tuple[int, ...]:
     return tuple(sorted(picked))
 
 
+def _fill_with_best_pattern_fallback(
+    results: list[tuple[int, ...]],
+    fallback: list[tuple[int, tuple[int, ...]]],
+    count: int,
+) -> list[tuple[int, ...]]:
+    """유형지표 8개를 전부 만족하는 조합만으로 count가 안 채워지면, 그중 유형을
+    가장 많이 만족한 후보로 나머지를 채운다 — 겹침 제약은 이미 통과한 후보들
+    이라 안티/액땜의 취지(구매복권과 안 겹치게)는 그대로 유지된다."""
+    if len(results) >= count:
+        return results
+    fallback.sort(key=lambda x: -x[0])
+    for _, cand in fallback:
+        if len(results) >= count:
+            break
+        results.append(cand)
+    return results
+
+
 def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
     """각 입력 줄과 개별적으로 겹침이 적은 조합을 생성 — 안티조합(줄별 방식)."""
-    from lotto_stats import get_number_weights
+    from lotto_stats import get_number_weights, get_pattern_filter_config, score_combo_pattern
 
     weights = get_number_weights()
+    pattern_config = get_pattern_filter_config()
     results: list[tuple[int, ...]] = []
     for max_overlap in _OVERLAP_STEPS:
         results = []
+        fallback: list[tuple[int, tuple[int, ...]]] = []
         seen: set[tuple[int, ...]] = set()
         for _ in range(_MAX_ATTEMPTS):
             if len(results) >= count:
@@ -82,8 +102,14 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
             if candidate in seen:
                 continue
             seen.add(candidate)
-            if all(len(set(candidate) & set(line)) <= max_overlap for line in lines):
+            if not all(len(set(candidate) & set(line)) <= max_overlap for line in lines):
+                continue
+            all_pass, matched = score_combo_pattern(candidate, pattern_config)
+            if all_pass:
                 results.append(candidate)
+            else:
+                fallback.append((matched, candidate))
+        results = _fill_with_best_pattern_fallback(results, fallback, count)
         if len(results) >= count:
             break
     return results[:count]
@@ -91,15 +117,17 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
 
 def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
     """입력된 모든 줄을 합친 전체 번호 풀과 겹침이 적은 조합을 생성 — 액땜조합(전체 방식)."""
-    from lotto_stats import get_number_weights
+    from lotto_stats import get_number_weights, get_pattern_filter_config, score_combo_pattern
 
     weights = get_number_weights()
+    pattern_config = get_pattern_filter_config()
     pool: set[int] = set()
     for line in lines:
         pool |= set(line)
     results: list[tuple[int, ...]] = []
     for max_overlap in _OVERLAP_STEPS:
         results = []
+        fallback: list[tuple[int, tuple[int, ...]]] = []
         seen: set[tuple[int, ...]] = set()
         for _ in range(_MAX_ATTEMPTS):
             if len(results) >= count:
@@ -108,8 +136,14 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
             if candidate in seen:
                 continue
             seen.add(candidate)
-            if len(set(candidate) & pool) <= max_overlap:
+            if len(set(candidate) & pool) > max_overlap:
+                continue
+            all_pass, matched = score_combo_pattern(candidate, pattern_config)
+            if all_pass:
                 results.append(candidate)
+            else:
+                fallback.append((matched, candidate))
+        results = _fill_with_best_pattern_fallback(results, fallback, count)
         if len(results) >= count:
             break
     return results[:count]
