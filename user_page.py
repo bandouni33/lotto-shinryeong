@@ -1134,7 +1134,12 @@ div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-t
 # ==========================================
 elif current_page == "thunder":
     import page_thunder
-    page_thunder.render(admin_lucky=lucky_display)
+
+    # lucky_display("관리자 행운수")는 메인화면 캐릭터 이미지 주변 장식용 숫자
+    # 볼(위에서 orbit-ball로 렌더링)에만 쓰여야 하고, 조합 생성에 절대 섞이면
+    # 안 된다는 요청 — page_thunder.render()에 더 이상 안 넘김(과거 데이터
+    # 근거 없는 admin 수기 리스트였음).
+    page_thunder.render()
 
 elif current_page == "birthday":
     import page_birthday

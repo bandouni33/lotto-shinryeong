@@ -2,7 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from birthday_db import get_user_birthdays
 from lucky_numbers import calculate_all_lucky_numbers
-from lotto_stats import get_thunder_filter_config
+from lotto_stats import get_number_weights, get_thunder_filter_config
 import json
 import uuid
 
@@ -22,7 +22,7 @@ THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
 THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
 THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
 
-def render(admin_lucky=None):
+def render():
     init_guest_scope()
     # 게스트 식별자를 쿠키로도 남겨둔다(자동구매/타로 페이지엔 이미 있던 동기화인데
     # 번개조합엔 빠져 있었다) — 네이티브 앱은 ?gid= 쿼리파라미터로 항상 정확한 값을
@@ -31,11 +31,13 @@ def render(admin_lucky=None):
     if not st.session_state.get("_guest_id_confirmed"):
         components.html(guest_id_cookie_sync_html(get_or_create_guest_id()), height=0)
     # ─── 데이터 로드 및 행운수 계산 ───
-    if admin_lucky is None:
-        admin_lucky = []
+    # "관리자 행운수"(admin_lucky) 기능은 완전히 제거했다 — 실제로는 메인 화면
+    # 캐릭터 이미지 주변 장식용 숫자 볼(user_page.py의 lucky_display)과 동일한,
+    # admin이 매주 감으로 손수 입력하던 리스트가 조합 생성에까지 몰래 섞여 들어가고
+    # 있었다(과거 데이터 근거 전혀 없음) — 조합에는 절대 반영되면 안 된다는 요청.
     user_id = current_birthday_scope()
     birthdays = get_user_birthdays(user_id)
-    
+
     if birthdays:
         mmdd_list = [b["mmdd"] for b in birthdays]
         family_lucky = calculate_all_lucky_numbers(mmdd_list)
@@ -43,7 +45,10 @@ def render(admin_lucky=None):
         family_lucky = []
 
     js_lucky_array = str(family_lucky)
-    js_admin_lucky_array = json.dumps(list(reversed(admin_lucky)))
+    # 번호별 과거(1회~최신회차) 출현 가중치 — 그동안 완전 무작위이던 나머지 자리
+    # 채우기를 이 가중치 기반 추첨으로 바꾼다(과거 데이터 근거 요구사항). 회차가
+    # 쌓일수록 get_number_weights()가 다시 계산되어 패턴도 같이 갱신된다.
+    js_number_weights = json.dumps(get_number_weights())
     js_filter_config = json.dumps(get_thunder_filter_config())
     has_birthdays = bool(birthdays)
 
@@ -722,7 +727,7 @@ def render(admin_lucky=None):
             let selectedFixed = new Set();
             let luckyNumbers = new Set();
             const registeredFamilyLucky = {js_lucky_array};
-            const adminLuckyOrdered = {js_admin_lucky_array};
+            const numberWeights = {js_number_weights};
             const thunderFilter = {js_filter_config};
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
@@ -883,40 +888,31 @@ def render(admin_lucky=None):
                 return 3;
             }}
 
-            function pickAdminCount() {{
-                const r = Math.random();
-                if (r < 0.40) return 0;
-                if (r < 0.80) return 1;
-                return 2;
-            }}
-
-            function pickWeightedFromOrdered(count, orderedList, poolSet, alreadyInGame) {{
+            // 나머지 빈 자리를 채울 때 완전 무작위 대신, 1회~최신회차 실제 당첨
+            // 데이터의 번호별 출현 횟수(numberWeights)를 가중치로 비복원 추출한다
+            // — "과거 데이터를 근거로 그 패턴 유형 우선순위로 조합이 생성돼야
+            // 한다"는 요구사항. (예전엔 여기서 "관리자 행운수"라는 admin이 매주
+            // 손으로 감으로 입력하던, 과거 데이터와 무관한 리스트를 섞어 넣고
+            // 있었다 — 완전히 제거했다.)
+            function weightedPickWithoutReplacement(count, sourcePool) {{
+                const candidates = sourcePool.slice();
                 const picked = [];
-                let remaining = orderedList.filter(
-                    n => poolSet.has(n) && !alreadyInGame.has(n)
-                );
-
-                for (let p = 0; p < count && remaining.length > 0; p++) {{
-                    const weights = remaining.map(
-                        n => orderedList.length - orderedList.indexOf(n)
-                    );
+                for (let p = 0; p < count && candidates.length > 0; p++) {{
+                    const weights = candidates.map(n => numberWeights[n] || 1);
                     const total = weights.reduce((a, b) => a + b, 0);
                     let r = Math.random() * total;
                     let cum = 0;
-                    let chosenIdx = 0;
-
-                    for (let i = 0; i < remaining.length; i++) {{
+                    let chosenIdx = candidates.length - 1;
+                    for (let i = 0; i < candidates.length; i++) {{
                         cum += weights[i];
-                        if (r < cum) {{
+                        if (r <= cum) {{
                             chosenIdx = i;
                             break;
                         }}
                     }}
-
-                    picked.push(remaining[chosenIdx]);
-                    remaining.splice(chosenIdx, 1);
+                    picked.push(candidates[chosenIdx]);
+                    candidates.splice(chosenIdx, 1);
                 }}
-
                 return picked;
             }}
 
@@ -969,7 +965,6 @@ def render(admin_lucky=None):
                 let game = fixedArr.slice();
                 const gameSet = new Set(game);
                 const pool = availablePool.filter(n => !selectedFixed.has(n));
-                const poolSet = new Set(pool);
 
                 let luckyCandidates = pool.filter(n => luckyNumbers.has(n));
                 let targetLucky = pickLuckyCount();
@@ -979,19 +974,9 @@ def render(admin_lucky=None):
                 game = game.concat(pickedLucky);
                 pickedLucky.forEach(n => gameSet.add(n));
 
-                let targetAdmin = pickAdminCount();
-                targetAdmin = Math.min(targetAdmin, 6 - game.length);
-                const pickedAdmin = pickWeightedFromOrdered(
-                    targetAdmin, adminLuckyOrdered, poolSet, gameSet
-                );
-                game = game.concat(pickedAdmin);
-                pickedAdmin.forEach(n => gameSet.add(n));
-
-                let remainingPool = pool.filter(n => !gameSet.has(n));
-                remainingPool.sort(() => Math.random() - 0.5);
-                while (game.length < 6 && remainingPool.length > 0) {{
-                    game.push(remainingPool.shift());
-                }}
+                const remainingPool = pool.filter(n => !gameSet.has(n));
+                const pickedRest = weightedPickWithoutReplacement(6 - game.length, remainingPool);
+                game = game.concat(pickedRest);
                 return game;
             }}
 

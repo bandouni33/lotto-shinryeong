@@ -84,6 +84,32 @@ def calc_hot_numbers(data: pd.DataFrame, top_n: int = 10) -> list[tuple[int, int
     return counts.most_common(top_n)
 
 
+@st.cache_data(show_spinner=False)
+def _number_weights_cached(path: str, _mtime: float) -> dict[int, int]:
+    """1~45번 각각이 지금까지(1회~최신회차) 실제 당첨번호로 나온 누적 횟수.
+    번개조합·안티/액땜조합 번호 추첨 시 이 값을 가중치로 써서, 완전 무작위
+    대신 과거 출현 빈도가 높을수록 더 잘 뽑히게 한다. load_lotto_data()가
+    이미 파일 mtime 기준으로 캐싱돼 있어서, 관리자가 새 회차를 반영하면
+    (1237회 → 1238회 → …) 이 가중치도 자동으로 다시 계산된다 — 데이터가
+    누적될수록 패턴도 같이 갱신되어야 한다는 요구사항을 그 방식으로 만족.
+    """
+    data = load_lotto_data(path)
+    all_nums = data.iloc[:, COL_NUM_START:COL_NUM_END].apply(pd.to_numeric, errors="coerce")
+    counts = Counter(int(x) for x in all_nums.values.flatten() if pd.notna(x))
+    # 이론상 1237회 넘는 데이터라면 1~45 전부 여러 번씩 나왔겠지만, 혹시 모를 결측에
+    # 대비해 최소 가중치 1은 보장한다(특정 번호가 아예 안 뽑히는 걸 막기 위함).
+    return {n: max(1, counts.get(n, 0)) for n in range(1, 46)}
+
+
+def get_number_weights(filepath: str = DATA_FILE) -> dict[int, int]:
+    """번호별 과거 출현 가중치 — 번개조합/안티·액땜조합의 무작위 추첨에서
+    "완전 무작위" 대신 이 가중치를 근거로 뽑도록 쓰인다."""
+    path = filepath
+    if not Path(path).is_file():
+        path = lotto_data_path(Path(path).name)
+    return _number_weights_cached(path, _xlsb_mtime(path))
+
+
 def get_latest_draw_stats(data: pd.DataFrame) -> dict:
     """최신 회차: 회차번호, 당첨번호, 총합, AC값(파일 값 그대로)."""
     row = data.iloc[0]

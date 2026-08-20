@@ -43,12 +43,34 @@ def _parse_qr_lines(raw: str) -> list[tuple[int, ...]] | None:
     return lines or None
 
 
-def _random_combo() -> tuple[int, ...]:
-    return tuple(sorted(random.sample(_NUMS, 6)))
+def _weighted_combo(weights: dict[int, int]) -> tuple[int, ...]:
+    """완전 무작위 대신, 1회~최신회차 실제 당첨 데이터의 번호별 출현 횟수를
+    가중치로 삼아 6개를 비복원 추출한다(과거 데이터 근거 요구사항). 회차가
+    쌓일수록(예: 1238회, 1239회…) get_number_weights()가 그때그때 다시
+    계산되므로 이 가중치도 자동으로 최신화된다."""
+    pool = list(_NUMS)
+    w = [weights.get(n, 1) for n in pool]
+    picked: list[int] = []
+    for _ in range(6):
+        total = sum(w)
+        r = random.uniform(0, total)
+        cum = 0.0
+        idx = len(w) - 1
+        for i, wt in enumerate(w):
+            cum += wt
+            if r <= cum:
+                idx = i
+                break
+        picked.append(pool.pop(idx))
+        w.pop(idx)
+    return tuple(sorted(picked))
 
 
 def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
     """각 입력 줄과 개별적으로 겹침이 적은 조합을 생성 — 안티조합(줄별 방식)."""
+    from lotto_stats import get_number_weights
+
+    weights = get_number_weights()
     results: list[tuple[int, ...]] = []
     for max_overlap in _OVERLAP_STEPS:
         results = []
@@ -56,7 +78,7 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
         for _ in range(_MAX_ATTEMPTS):
             if len(results) >= count:
                 break
-            candidate = _random_combo()
+            candidate = _weighted_combo(weights)
             if candidate in seen:
                 continue
             seen.add(candidate)
@@ -69,6 +91,9 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
 
 def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
     """입력된 모든 줄을 합친 전체 번호 풀과 겹침이 적은 조합을 생성 — 액땜조합(전체 방식)."""
+    from lotto_stats import get_number_weights
+
+    weights = get_number_weights()
     pool: set[int] = set()
     for line in lines:
         pool |= set(line)
@@ -79,7 +104,7 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
         for _ in range(_MAX_ATTEMPTS):
             if len(results) >= count:
                 break
-            candidate = _random_combo()
+            candidate = _weighted_combo(weights)
             if candidate in seen:
                 continue
             seen.add(candidate)
