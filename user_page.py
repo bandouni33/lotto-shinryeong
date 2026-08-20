@@ -1176,7 +1176,14 @@ elif current_page == "tarot":
     from shared_ui_styles import main_nav_button_css, main_nav_button_html
 
     st.markdown(
-        main_nav_button_css() + f'<div style="max-width:160px;">{main_nav_button_html()}</div>',
+        # .block-container가 기본적으로 위쪽 96px를 Streamlit 자체 헤더 자리로
+        # 비워둔다 — 헤더는 화면에 없는데 자리만 남아 진짜 빈 공간이 됐다(실측
+        # 확인, 다른 상세페이지들과 동일한 원인이라 같이 맞춤).
+        '<style>.block-container{padding-top:10px !important;} '
+        "header[data-testid='stHeader'], section[data-testid='stSidebar']"
+        "{display:none !important;}</style>"
+        + main_nav_button_css()
+        + f'<div style="max-width:160px;">{main_nav_button_html()}</div>',
         unsafe_allow_html=True,
     )
 

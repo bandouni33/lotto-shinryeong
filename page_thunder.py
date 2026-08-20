@@ -141,6 +141,14 @@ def render(admin_lucky=None):
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
         }
+        /* .block-container는 기본적으로 위쪽 96px를 Streamlit 자체 헤더(메뉴바)
+           자리로 비워둔다 — 그 헤더는 아래에서 숨기는데 비운 공간은 안 없어져서
+           실제로 진짜 빈 공간이 생겼다(자동구매 페이지는 이미 이 처리가 있었음).
+           실측 확인 후 자동구매와 동일하게 맞춘다. */
+        .block-container { padding-top: 10px !important; }
+        header[data-testid="stHeader"], section[data-testid="stSidebar"] {
+            display: none !important;
+        }
         /* PC 녹화용: 480px 이상 뷰포트에서만 폭 제한 (모바일 <480px 미적용) */
         @media (min-width: 480px) {
             .block-container {

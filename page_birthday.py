@@ -53,6 +53,13 @@ def render():
     [data-testid="stAppViewContainer"] > section.main {
         overflow-x: hidden !important;
     }
+    /* .block-container가 기본적으로 위쪽 96px를 Streamlit 자체 헤더 자리로 비워둔다
+       — 배경색 불일치 말고 이 여백도 실제로 있었다(뒤늦게 실측 확인). 헤더는 화면에
+       없는데 자리만 남아있던 것 — 자동구매 페이지와 동일하게 맞춘다. */
+    .block-container { padding-top: 10px !important; }
+    header[data-testid="stHeader"], section[data-testid="stSidebar"] {
+        display: none !important;
+    }
     .birthday-title {
         text-align: center;
         font-size: 1.4rem;

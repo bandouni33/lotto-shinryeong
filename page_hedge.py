@@ -178,6 +178,13 @@ def render():
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
         }
+        /* .block-container가 기본적으로 위쪽 96px를 Streamlit 자체 헤더 자리로
+           비워둔다 — 그 헤더는 화면에 없는데 자리만 남아 진짜 빈 공간이 됐다
+           (실측 확인, 자동구매 페이지와 동일하게 맞춤). */
+        .block-container { padding-top: 10px !important; }
+        header[data-testid="stHeader"], section[data-testid="stSidebar"] {
+            display: none !important;
+        }
         .hedge-section-label {
             font-size: 0.85rem;
             font-weight: 800;
