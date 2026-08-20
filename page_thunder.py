@@ -130,6 +130,13 @@ def render(admin_lucky=None):
            (참고: 이것만으로 깜빡임이 완전히 없어진다는 보장은 없다 — 강제 다크모드가
            최초 페인트 시점에 한 번만 판단하는 기기라면 그 찰나는 여전히 남을 수 있다.) */
         :root { color-scheme: light !important; }
+        /* 이 페이지 바깥(최상위 문서)엔 어두운 배경이 안 걸려있어서, 번호판 등
+           대부분의 어두운 느낌은 사실 components.html 번호판 iframe 내부 자체
+           배경(body{background-color:#0F172A} — 그 iframe 문서 안에서만 적용됨)
+           이었다. 그 iframe이 아직 안 뜬 최상위 문서 맨 위쪽은 Streamlit 기본
+           밝은 배경이 그대로 보여 "빈 공간"처럼 느껴졌다(생일/행운수 페이지와
+           동일한 원인). 최상위 문서 자체에도 같은 색을 걸어 통일한다. */
+        .stApp { background-color: #12182b; }
         html, body, #root, .stApp, [data-testid="stAppViewContainer"],
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
