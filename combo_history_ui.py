@@ -20,7 +20,9 @@ def history_css(container_key: str) -> str:
     .st-key-{container_key} div[data-testid="stExpander"] summary p {{
         font-size: 16px !important;
         font-weight: 800 !important;
-        color: #1E293B !important;
+        color: #ffffff !important;
+        position: relative !important;
+        z-index: 5 !important;
     }}
     .auto-purchase-banner {{
         margin: 14px 0 18px;
