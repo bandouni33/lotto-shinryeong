@@ -16,11 +16,12 @@ from datetime import timedelta
 if "admin_view" not in st.session_state:
     st.session_state.admin_view = "home"
 _qp_admin_view = st.query_params.get("admin_view")
-if _qp_admin_view in ("home", "filter_manage"):
+if _qp_admin_view in ("home", "filter_manage", "pattern_manage"):
     st.session_state.admin_view = _qp_admin_view
 
 MASTER_FILE = "로또기록 앱 업로드용.xlsb"
 FILTER_SAVE_FILE = "saved_filters.pkl"     # 필터 유지용 저장 파일 (로그아웃해도 유지)
+PATTERN_SAVE_FILE = "saved_pattern_rules.pkl"  # 번개조합·안티/액땜조합 기준값패턴 저장 파일
 COMBO_SAVE_FILE = "saved_combinations.csv" # 조합 결과 유지용 저장 파일 (로그아웃해도 유지)
 FILTER_JOB_STATUS_FILE = "filter_job.status"
 FILTER_WORKER_SCRIPT = os.path.join(os.path.dirname(__file__), "filter_worker.py")
@@ -392,6 +393,13 @@ if st.session_state.admin_view == "home":
     # 🔥 기존의 1단계, 2단계 버튼을 완전히 없애고 이 버튼 하나로 통합했습니다.
     if st.button("🚀 3종 필터 업로드 및 원스톱 조합 생성 시작", type="primary"):
         change_view("filter_manage")
+        st.rerun()
+
+    # 3종필터(자동구매 전용)와 완전히 별개 기능이라 헷갈리지 않게 별도 섹션·버튼으로 뺐다
+    # — 번개조합·안티/액땜조합이 과거 데이터 근거 유형지표를 채점할 때 쓰는 기준값 파일.
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🧭 번개조합·안티/액땜조합 기준값패턴</h4>", unsafe_allow_html=True)
+    if st.button("📐 기준값패턴 업로드"):
+        change_view("pattern_manage")
         st.rerun()
 
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
@@ -1014,3 +1022,141 @@ elif st.session_state.admin_view == "filter_manage":
 
             if st.session_state.get("admin_combo_save_pending"):
                 _admin_combo_save_conflict_dialog()
+
+# ==========================================
+# 📐 번개조합·안티/액땜조합 — 기준값패턴 관리
+# ==========================================
+# 3종필터(자동구매 전용, filter_manage 뷰)와 완전히 별개 기능이다 — 헷갈리지
+# 않게 홈 화면에서도 별도 버튼, 여기서도 별도 뷰로 분리했다. 번개조합·안티/
+# 액땜조합이 조합 후보를 채점할 때(score_combo_pattern) 쓰는 "역대 데이터
+# 근거 유형지표" 기준값을 관리자가 엑셀로 관리한다.
+elif st.session_state.admin_view == "pattern_manage":
+    st.session_state.admin_view = "pattern_manage"
+    try:
+        st.query_params["admin_view"] = "pattern_manage"
+    except Exception:
+        pass
+    if st.button("⬅️ 대시보드 홈으로 이동", key="pattern_manage_back_btn"):
+        change_view("home")
+        st.rerun()
+
+    st.markdown("<h3 style='color:#FFB300; font-weight:800;'>📐 기준값패턴 업로드</h3>", unsafe_allow_html=True)
+    st.info(
+        "💡 **기준값패턴.xlsx** — H열(그룹명) / J열(입력데이터, 앞뒤 콤마 형식 또는 "
+        "`AUTO`) / K열(최소) / L열(최대) / M열(설명, 참고용) · 헤더는 2행, 데이터는 3행부터. "
+        "번개조합·안티/액땜조합 조합 생성 시 이 기준으로 채점됩니다(자동구매용 3종필터와는 무관)."
+    )
+
+    uploaded_pattern = st.file_uploader(
+        "📂 기준값패턴 엑셀 업로드 (.xlsx)", type=["xlsx"], key="pattern_rules_uploader"
+    )
+
+    if uploaded_pattern:
+        try:
+            from lotto_engine import _parse_targets
+
+            raw = pd.read_excel(
+                uploaded_pattern, sheet_name=0, skiprows=2, usecols="H,J,K,L,M", header=None
+            )
+            raw.columns = ["그룹명", "입력데이터", "최소", "최대", "설명"]
+            raw = raw.dropna(subset=["최소", "최대"])
+
+            def _clean_int(val):
+                try:
+                    return int(float(val))
+                except (TypeError, ValueError):
+                    return None
+
+            rules = []
+            skipped = []
+            for _, row in raw.iterrows():
+                raw_input = str(row["입력데이터"]).strip() if pd.notna(row["입력데이터"]) else ""
+                min_v = _clean_int(row["최소"])
+                max_v = _clean_int(row["최대"])
+                group_name = str(row["그룹명"]).strip() if pd.notna(row["그룹명"]) else ""
+                note = str(row["설명"]).strip() if pd.notna(row["설명"]) else ""
+
+                if min_v is None or max_v is None:
+                    continue
+
+                if raw_input.upper() == "AUTO":
+                    rules.append(
+                        {
+                            "group_name": group_name,
+                            "type": "auto",
+                            "targets": None,
+                            "min": min_v,
+                            "max": max_v,
+                            "note": note,
+                        }
+                    )
+                else:
+                    targets = _parse_targets(raw_input)
+                    if not targets:
+                        # 입력데이터가 비어있으면(빈 칸) 그냥 미완성/미사용 행으로 보고
+                        # 조용히 건너뛴다 — 글자가 있는데도 번호로 못 읽은 경우만
+                        # "이상함"으로 보고 아래에 알림.
+                        if raw_input:
+                            skipped.append(group_name or raw_input or "(이름 없음)")
+                        continue
+                    rules.append(
+                        {
+                            "group_name": group_name,
+                            "type": "fixed",
+                            "targets": sorted(targets),
+                            "min": min_v,
+                            "max": max_v,
+                            "note": note,
+                        }
+                    )
+
+            with open(PATTERN_SAVE_FILE, "wb") as f:
+                pickle.dump(rules, f)
+
+            auto_count = sum(1 for r in rules if r["type"] == "auto")
+            fixed_count = len(rules) - auto_count
+            st.success(
+                f"✅ 저장 완료 — 고정 패턴 {fixed_count}개, AUTO(매주 자동계산) 패턴 {auto_count}개."
+            )
+            if skipped:
+                st.warning(f"⚠️ 번호를 못 읽어 건너뛴 행: {', '.join(skipped[:20])}"
+                           + (f" 외 {len(skipped) - 20}건" if len(skipped) > 20 else ""))
+
+            if auto_count:
+                st.markdown("**AUTO 패턴 목록** (실제 번호는 조합 생성 시점에 최신 데이터로 계산)")
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {"그룹명": r["group_name"], "최소": r["min"], "최대": r["max"], "설명": r["note"]}
+                            for r in rules
+                            if r["type"] == "auto"
+                        ]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            with st.expander(f"고정 패턴 미리보기 ({fixed_count}개)"):
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "그룹명": r["group_name"],
+                                "번호": ",".join(str(n) for n in r["targets"]),
+                                "최소": r["min"],
+                                "최대": r["max"],
+                            }
+                            for r in rules
+                            if r["type"] == "fixed"
+                        ]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+        except Exception as e:
+            st.error(f"업로드 처리 중 오류: {e}")
+    elif os.path.exists(PATTERN_SAVE_FILE):
+        with open(PATTERN_SAVE_FILE, "rb") as f:
+            _existing_rules = pickle.load(f)
+        _auto_n = sum(1 for r in _existing_rules if r["type"] == "auto")
+        st.caption(f"현재 저장된 기준값패턴: 고정 {len(_existing_rules) - _auto_n}개, AUTO {_auto_n}개")
