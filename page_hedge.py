@@ -71,9 +71,10 @@ def _fill_with_best_pattern_fallback(
     fallback: list[tuple[int, tuple[int, ...]]],
     count: int,
 ) -> list[tuple[int, ...]]:
-    """유형지표 8개를 전부 만족하는 조합만으로 count가 안 채워지면, 그중 유형을
-    가장 많이 만족한 후보로 나머지를 채운다 — 겹침 제약은 이미 통과한 후보들
-    이라 안티/액땜의 취지(구매복권과 안 겹치게)는 그대로 유지된다."""
+    """관리자가 업로드한 기준값패턴 규칙을 전부 만족하는 조합만으로 count가 안
+    채워지면, 그중 규칙을 가장 많이 만족한 후보로 나머지를 채운다 — 겹침
+    제약은 이미 통과한 후보들이라 안티/액땜의 취지(구매복권과 안 겹치게)는
+    그대로 유지된다."""
     if len(results) >= count:
         return results
     fallback.sort(key=lambda x: -x[0])
@@ -86,10 +87,10 @@ def _fill_with_best_pattern_fallback(
 
 def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
     """각 입력 줄과 개별적으로 겹침이 적은 조합을 생성 — 안티조합(줄별 방식)."""
-    from lotto_stats import get_number_weights, get_pattern_filter_config, score_combo_pattern
+    from lotto_stats import get_number_weights, get_resolved_pattern_rules, score_combo_against_pattern_rules
 
     weights = get_number_weights()
-    pattern_config = get_pattern_filter_config()
+    pattern_rules = get_resolved_pattern_rules()
     results: list[tuple[int, ...]] = []
     for max_overlap in _OVERLAP_STEPS:
         results = []
@@ -104,7 +105,7 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
             seen.add(candidate)
             if not all(len(set(candidate) & set(line)) <= max_overlap for line in lines):
                 continue
-            all_pass, matched = score_combo_pattern(candidate, pattern_config)
+            all_pass, matched, _total = score_combo_against_pattern_rules(candidate, pattern_rules)
             if all_pass:
                 results.append(candidate)
             else:
@@ -117,10 +118,10 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
 
 def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
     """입력된 모든 줄을 합친 전체 번호 풀과 겹침이 적은 조합을 생성 — 액땜조합(전체 방식)."""
-    from lotto_stats import get_number_weights, get_pattern_filter_config, score_combo_pattern
+    from lotto_stats import get_number_weights, get_resolved_pattern_rules, score_combo_against_pattern_rules
 
     weights = get_number_weights()
-    pattern_config = get_pattern_filter_config()
+    pattern_rules = get_resolved_pattern_rules()
     pool: set[int] = set()
     for line in lines:
         pool |= set(line)
@@ -138,7 +139,7 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
             seen.add(candidate)
             if len(set(candidate) & pool) > max_overlap:
                 continue
-            all_pass, matched = score_combo_pattern(candidate, pattern_config)
+            all_pass, matched, _total = score_combo_against_pattern_rules(candidate, pattern_rules)
             if all_pass:
                 results.append(candidate)
             else:

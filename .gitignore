@@ -50,6 +50,7 @@ lotto.db
 # 계속 리셋되고 있었음). 진짜 영속화(Turso 등)는 별도 작업이 필요하지만, 최소한
 # 이 파일들이 배포마다 옛 스냅샷으로 덮어써지는 것부터 막는다.
 saved_filters.pkl
+saved_pattern_rules.pkl
 saved_combinations.csv
 filter_job.status
 user_saved_filters.pkl

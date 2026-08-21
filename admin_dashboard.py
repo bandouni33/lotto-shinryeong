@@ -1028,8 +1028,9 @@ elif st.session_state.admin_view == "filter_manage":
 # ==========================================
 # 3종필터(자동구매 전용, filter_manage 뷰)와 완전히 별개 기능이다 — 헷갈리지
 # 않게 홈 화면에서도 별도 버튼, 여기서도 별도 뷰로 분리했다. 번개조합·안티/
-# 액땜조합이 조합 후보를 채점할 때(score_combo_pattern) 쓰는 "역대 데이터
-# 근거 유형지표" 기준값을 관리자가 엑셀로 관리한다.
+# 액땜조합이 조합 후보를 채점할 때(lotto_stats.score_combo_against_pattern_rules)
+# 쓰는 "역대 데이터 근거 기준값패턴"을 관리자가 엑셀로 관리한다(2026-08-21,
+# 하드코딩했던 8개 유형지표를 완전히 대체함).
 elif st.session_state.admin_view == "pattern_manage":
     st.session_state.admin_view = "pattern_manage"
     try:

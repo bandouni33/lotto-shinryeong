@@ -7,8 +7,6 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from lotto_engine import MULT3, NATURALS, PRIMES
-
 DATA_FILE = "로또최근당첨내역.xlsb"
 _APP_ROOT = Path(__file__).resolve().parent
 
@@ -112,149 +110,101 @@ def get_number_weights(filepath: str = DATA_FILE) -> dict[int, int]:
     return _number_weights_cached(path, _xlsb_mtime(path))
 
 
-# ─── 유형 패턴(홀짝·저고·끝수저고·연속쌍·AC·총합·소자배·10단위) ───
-# 번호 하나하나의 출현빈도(get_number_weights)만으로는 "패턴 유형 우선순위"라고
-# 하기엔 부족하다는 지적(2026-08-20)에 따라, 1237회 전체 데이터를 직접 집계해
-# 실제로 뚜렷하게 우세한 유형만 골라 반영한다. 소자배(소수/자연수/3배수 각
-# 1~3개)와 10단위 구간별 허용 개수는 사용자가 직접 지정한 고정 범위이고,
-# 나머지 6개(홀짝비율·저고비율·끝수저고비율·연속번호쌍 개수·AC값·총합)는
-# 역대 데이터에서 상위 80% 누적비중을 차지하는 유형을 그때그때 다시 계산한다.
-SOJA_RANGE = (1, 3)
-DECADE_ALLOWED_RANGE = {
-    "1번대": (0, 2),
-    "10번대": (0, 3),
-    "20번대": (0, 3),
-    "30번대": (0, 3),
-    "40번대": (0, 2),
-}
-_PATTERN_TOP_SHARE = 0.80
+# ─── 관리자 업로드 "기준값패턴" (admin_dashboard.py의 별도 pattern_manage 뷰에서
+# 엑셀로 업로드·관리) — 3종필터(자동구매 전용)와는 완전히 별개 저장소다.
+# lotto_engine.py의 PREV_WINNING_NUMS/PREV_NEIGHBORS(3종필터가 admin_filter.py를
+# 통해 전역변수를 덮어써서 쓰는 방식)는 재사용하지 않고, 여기서 필요한 값만
+# 그때그때 직접 계산한다 — 두 기능을 서로 의존시키지 말라는 요청(2026-08-21).
+PATTERN_RULES_FILE = "saved_pattern_rules.pkl"
 
 
-def _combo_ac(nums: list[int]) -> int:
-    """AC값(산술적 복잡도) = 6개 번호 사이 모든 쌍의 절대차 중 서로 다른 값의
-    개수 - 5(6개 숫자가 가질 수 있는 최소 서로 다른 차이값 개수)."""
-    diffs = set()
-    for i in range(len(nums)):
-        for j in range(i + 1, len(nums)):
-            diffs.add(abs(nums[i] - nums[j]))
-    return len(diffs) - 5
+def _load_pattern_rules_raw(path: str) -> list[dict]:
+    import pickle
+
+    if not Path(path).is_file():
+        return []
+    with open(path, "rb") as f:
+        return pickle.load(f)
 
 
-def _top_types(counter: Counter, share: float = _PATTERN_TOP_SHARE) -> set:
-    """빈도 상위부터 누적 비중이 share 이상이 될 때까지의 유형 집합."""
-    total = sum(counter.values())
-    if not total:
-        return set()
-    cum = 0
-    keep = set()
-    for key, cnt in counter.most_common():
-        keep.add(key)
-        cum += cnt
-        if cum / total >= share:
-            break
-    return keep
+def _resolve_auto_targets(group_name: str, prev_nums: list[int], bonus: int | None) -> set[int]:
+    """AUTO 행의 실제 번호 목록을 직전 회차 데이터로 계산한다.
+    - "전 출현번호": 직전 회차 당첨번호 6개 + 보너스 1개 = 최대 7개, 그대로.
+    - "이웃수": 위 7개 각각의 자기 자신 포함 앞뒤 1칸(n-1, n, n+1, 1~45 범위로 클리핑).
+    (2026-08-21 사용자 확인: 이웃수 규칙은 자기 자신 포함 앞뒤 1칸이 맞음.)
+    """
+    base = set(prev_nums)
+    if bonus is not None:
+        base.add(int(bonus))
 
-
-def _percentile(vals: list[int], p: float) -> int:
-    if not vals:
-        return 0
-    s = sorted(vals)
-    idx = min(len(s) - 1, max(0, round((p / 100) * (len(s) - 1))))
-    return s[idx]
+    if group_name == "전 출현번호":
+        return base
+    if group_name == "이웃수":
+        neighbors = set()
+        for n in base:
+            for d in (-1, 0, 1):
+                m = n + d
+                if 1 <= m <= 45:
+                    neighbors.add(m)
+        return neighbors
+    return set()
 
 
 @st.cache_data(show_spinner=False)
-def _pattern_filter_config_cached(path: str, _mtime: float) -> dict:
-    """1회~최신회차 실제 당첨 데이터로 홀짝비율·저고비율·끝수저고비율·연속번호쌍
-    개수·AC값·총합, 이 6개 지표의 "역대 우세 유형"을 계산한다. 번개조합·안티/
-    액땜조합이 후보 조합을 채택할지 판단하는 근거로 쓰인다. load_lotto_data()가
-    파일 mtime 기준으로 캐싱돼 있어서, 회차가 누적되면(1238회, 1239회…) 이
-    유형 판정 기준도 자동으로 다시 계산된다.
-    """
-    data = load_lotto_data(path)
-    oe: Counter = Counter()
-    lh: Counter = Counter()
-    dlh: Counter = Counter()
-    cp: Counter = Counter()
-    ac_vals: list[int] = []
-    sum_vals: list[int] = []
+def _resolved_pattern_rules_cached(
+    pattern_path: str, _pattern_mtime: float, data_path: str, _data_mtime: float
+) -> list[dict]:
+    rules = _load_pattern_rules_raw(pattern_path)
+    if not rules:
+        return []
 
-    for i in range(len(data)):
-        row = data.iloc[i]
-        nums = _draw_numbers(row)
-        if len(nums) != 6:
-            continue
-        odd = sum(1 for n in nums if n % 2 == 1)
-        low = sum(1 for n in nums if n <= 23)
-        dlow = sum(1 for n in nums if (n % 10) <= 4)
-        consec = sum(1 for k in range(5) if nums[k + 1] - nums[k] == 1)
-        oe[(odd, 6 - odd)] += 1
-        lh[(low, 6 - low)] += 1
-        dlh[(dlow, 6 - dlow)] += 1
-        cp[consec] += 1
-        sum_vals.append(sum(nums))
+    auto_needed = any(r["type"] == "auto" for r in rules)
+    prev_nums: list[int] = []
+    bonus = None
+    if auto_needed:
+        data = load_lotto_data(data_path)
+        prev_nums = get_latest_draw_stats(data)["numbers"]
+        bonus = _bonus_from_row(data.iloc[0])
 
-        ac_raw = row[COL_AC] if len(row) > COL_AC else None
-        ac_num = pd.to_numeric(ac_raw, errors="coerce")
-        if pd.notna(ac_num):
-            ac_vals.append(int(ac_num))
-
-    return {
-        "odd_even_top": [list(t) for t in _top_types(oe)],
-        "low_high_top": [list(t) for t in _top_types(lh)],
-        "digit_low_high_top": [list(t) for t in _top_types(dlh)],
-        "consec_pairs_top": list(_top_types(cp)),
-        "ac_range": [_percentile(ac_vals, 10), _percentile(ac_vals, 90)] if ac_vals else [0, 10],
-        "sum_range": [_percentile(sum_vals, 10), _percentile(sum_vals, 90)],
-        "soja_range": list(SOJA_RANGE),
-        "decade_ranges": {k: list(v) for k, v in DECADE_ALLOWED_RANGE.items()},
-    }
+    resolved = []
+    for r in rules:
+        if r["type"] == "auto":
+            targets = _resolve_auto_targets(r["group_name"], prev_nums, bonus)
+        else:
+            targets = set(r["targets"])
+        resolved.append({**r, "targets": targets})
+    return resolved
 
 
-def get_pattern_filter_config(filepath: str = DATA_FILE) -> dict:
-    """번개조합/안티·액땜조합이 후보 조합을 채택할지 판단하는, 과거 데이터
-    기반 유형 우선순위 설정 전체(홀짝·저고·끝수저고·연속쌍·AC·총합의 역대
-    우세 유형 + 소자배·10단위 허용 범위)."""
-    path = filepath
-    if not Path(path).is_file():
-        path = lotto_data_path(Path(path).name)
-    return _pattern_filter_config_cached(path, _xlsb_mtime(path))
+def get_resolved_pattern_rules(
+    pattern_filepath: str = PATTERN_RULES_FILE, data_filepath: str = DATA_FILE
+) -> list[dict]:
+    """관리자가 업로드한 기준값패턴 전체(고정 + AUTO 해석 완료)를 반환한다.
+    AUTO 행은 매번 최신 회차 데이터로 다시 계산되므로, 새 회차가 반영되거나
+    관리자가 패턴 파일을 재업로드하면 둘 다 자동으로 다시 계산된다."""
+    data_path = data_filepath
+    if not Path(data_path).is_file():
+        data_path = lotto_data_path(Path(data_path).name)
+    return _resolved_pattern_rules_cached(
+        pattern_filepath, _xlsb_mtime(pattern_filepath), data_path, _xlsb_mtime(data_path)
+    )
 
 
-def score_combo_pattern(combo: tuple[int, ...] | list[int], config: dict) -> tuple[bool, int]:
-    """조합 하나가 8가지 유형지표(홀짝·저고·끝수저고·연속쌍·AC·총합·소자배·
-    10단위)를 몇 개나 만족하는지 채점한다. 반환값은 (전부 만족 여부, 만족한
-    지표 개수) — 재시도 예산을 다 써도 전부 만족하는 조합을 못 찾으면, 이
-    점수가 가장 높은 후보를 대신 채택하는 데 쓰인다."""
-    nums = sorted(int(n) for n in combo)
-    odd = sum(1 for n in nums if n % 2 == 1)
-    low = sum(1 for n in nums if n <= 23)
-    dlow = sum(1 for n in nums if (n % 10) <= 4)
-    consec = sum(1 for k in range(5) if nums[k + 1] - nums[k] == 1)
-    total = sum(nums)
-    ac = _combo_ac(nums)
-    sp = sum(1 for n in nums if n in PRIMES)
-    jp = sum(1 for n in nums if n in NATURALS)
-    bp = sum(1 for n in nums if n in MULT3)
-    soja_lo, soja_hi = config["soja_range"]
-
-    checks = [
-        [odd, 6 - odd] in config["odd_even_top"],
-        [low, 6 - low] in config["low_high_top"],
-        [dlow, 6 - dlow] in config["digit_low_high_top"],
-        consec in config["consec_pairs_top"],
-        config["ac_range"][0] <= ac <= config["ac_range"][1],
-        config["sum_range"][0] <= total <= config["sum_range"][1],
-        (soja_lo <= sp <= soja_hi) and (soja_lo <= jp <= soja_hi) and (soja_lo <= bp <= soja_hi),
-        all(
-            config["decade_ranges"][name][0]
-            <= sum(1 for n in nums if lo <= n <= hi)
-            <= config["decade_ranges"][name][1]
-            for name, lo, hi in DECADE_BANDS
-        ),
-    ]
-    matched = sum(1 for c in checks if c)
-    return matched == len(checks), matched
+def score_combo_against_pattern_rules(
+    combo: tuple[int, ...] | list[int], rules: list[dict]
+) -> tuple[bool, int, int]:
+    """조합 하나가 업로드된 기준값패턴 규칙을 몇 개나 만족하는지 채점한다.
+    각 규칙은 "조합과 targets의 교집합 개수가 min~max 범위인가"로 판정한다.
+    반환값은 (전부 만족 여부, 만족한 규칙 수, 전체 규칙 수)."""
+    combo_set = set(int(n) for n in combo)
+    if not rules:
+        return True, 0, 0
+    matched = 0
+    for r in rules:
+        overlap = len(combo_set & r["targets"])
+        if r["min"] <= overlap <= r["max"]:
+            matched += 1
+    return matched == len(rules), matched, len(rules)
 
 
 def get_latest_draw_stats(data: pd.DataFrame) -> dict:
