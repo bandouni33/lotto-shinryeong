@@ -607,6 +607,20 @@ def render():
             font-weight: 600;
             background: linear-gradient(180deg, #1B2536 0%, #16202E 100%);
         }
+        /* "생성할 조합 수" 드롭다운 + "조합시작" 버튼을 한 줄로 — 세로로 쌓여서
+           공간을 낭비하고 있었다(정보 밀도 최대화 요청, 2026-08-22). "저장내역"은
+           그 아래로 펼쳐지는 별도 아코디언이라 이 줄에는 안 넣는다(넣으면 펼침
+           동작이 좁은 칸 안에서 이상해짐). */
+        .st-key-hedge_count_start_row div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 8px !important;
+            align-items: center !important;
+        }
+        .st-key-hedge_count_start_row div[data-testid="stColumn"] {
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -731,9 +745,18 @@ def render():
             st.markdown(_line_row_html(pool), unsafe_allow_html=True)
             lines = [tuple(pool)]
 
-    count = st.selectbox("생성할 조합 수", [5, 10, 15, 20], index=0, key="hedge_count")
+    with st.container(key="hedge_count_start_row"):
+        ccol1, ccol2 = st.columns([1, 1.3])
+        with ccol1:
+            count = st.selectbox(
+                "생성할 조합 수", [5, 10, 15, 20], index=0, key="hedge_count", label_visibility="collapsed"
+            )
+        with ccol2:
+            start_clicked = st.button(
+                "조합시작", type="primary", use_container_width=True, key="hedge_generate_btn"
+            )
 
-    if st.button("조합시작", type="primary", use_container_width=True, key="hedge_generate_btn"):
+    if start_clicked:
         if mode == "안티조합" and not lines:
             st.error("최소 1줄 이상 입력해 주세요 (6개씩 선택).")
         elif mode == "액땜조합" and (not lines or len(lines[0]) < 6):
