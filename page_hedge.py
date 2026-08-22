@@ -173,16 +173,23 @@ def _render_input_mode_html() -> str:
     # 잘 됐지만 이 페이지 "안"에서(같은 경로, 쿼리만 다른 링크) 누르면 실기기에서
     # 안 걸리고 안드로이드 기본 브라우저로 그 URL이 통째로 열려버리는 문제가
     # 보고됐다(2026-08-19~20) — target 속성이 없으면 이 웹뷰가 "새 창" 취급해서
-    # 외부로 던지는 것으로 보인다. postMessage 방식을 우선 시도하되(네이티브 앱
-    # 안에서만 window.ReactNativeWebView가 존재), 그 시도가 뭘로든 실패해도 최소
-    # 지금 웹뷰 안에서는 머물도록 target="_self"를 명시하고 preventDefault를
-    # try보다 먼저 호출한다(HTML 파싱이 깨지는 걸 막기 위해 한 줄로 작성 —
-    # 여러 줄로 들여쓰면 Streamlit이 마크다운 코드 블록으로 오인하는 버그가
+    # 외부로 던지는 것으로 보인다. postMessage 방식을 우선 시도한다(네이티브 앱
+    # 안에서만 window.ReactNativeWebView가 존재).
+    #
+    # 예전엔 postMessage 시도 전에 event.preventDefault()를 먼저 호출해서 링크
+    # 이동 자체를 무조건 막았는데, 이러면 postMessage가 어떤 이유로든(네이티브
+    # onMessage 핸들러가 못 받거나, 타이밍 문제 등) 조용히 실패했을 때 폴백으로
+    # 남겨뒀던 onShouldStartLoadWithRequest 가로채기가 아예 실행될 기회조차 없이
+    # 막혀버렸다 — "QR스캔을 눌러도 화면이 아예 안 바뀐다"는 실기기 신고
+    # (2026-08-22)와 정확히 일치하는 실패 모드. preventDefault를 빼서, postMessage가
+    # 실패해도 원래 있던 링크 이동(및 그걸 가로채는 onShouldStartLoadWithRequest)이
+    # 그대로 두 번째 경로로 살아있게 한다(HTML 파싱이 깨지는 걸 막기 위해 한 줄로
+    # 작성 — 여러 줄로 들여쓰면 Streamlit이 마크다운 코드 블록으로 오인하는 버그가
     # 생일/행운수 페이지에서 실제로 있었음).
     return (
         '<div class="hedge-input-toggle">'
         '<a href="?page=hedge&qrscan=1" target="_self" class="hedge-input-pill" '
-        "onclick=\"if(window.ReactNativeWebView){event.preventDefault();"
+        "onclick=\"if(window.ReactNativeWebView){"
         "try{window.ReactNativeWebView.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));}"
         'catch(e){}}">📷 QR스캔</a>'
         '<div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>'
