@@ -3,7 +3,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 import base64
 import os
-import pandas as pd
 
 if st.session_state.get("is_admin", False):
     with st.sidebar:
@@ -418,10 +417,10 @@ if current_page == "main":
 
     # 엑셀에서 데이터 가져오기
     try:
-        from lotto_stats import lotto_data_path
+        from lotto_stats import load_lotto_data
 
-        df = pd.read_excel(lotto_data_path(), engine="pyxlsb", header=None)
-        row = df.iloc[4].tolist() 
+        df = load_lotto_data()
+        row = df.iloc[0].tolist()
         draw_no = str(row[1]).replace(".0", "") + "회" 
         numbers = sorted([int(x) for x in row[3:9]])
         import re
