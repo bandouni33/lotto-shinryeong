@@ -195,22 +195,38 @@ def _fire_qr_scan_trigger() -> None:
     # 실행되므로, 그 안에서는 (한정자 없는) window.ReactNativeWebView가
     # 진짜 그 프레임에 심어진 브릿지를 가리킨다. user_page.py의 번역방지
     # 스크립트가 window.parent.document를 조작하는 것과 같은 계열의 기법.
+    #
+    # (2026-08-22) 브릿지 호출과 URL 폴백 이동을 항상 둘 다 실행했더니, 실기기에서
+    # "버튼은 눌리는데 화면이 바뀌려다 다시 제자리로 돌아온다"는 신고가 들어왔다 —
+    # 브릿지가 실제로 성공했을 때도 곧이어 폴백 이동이 같이 실행되면서 네이티브
+    # 화면전환과 웹뷰 URL 이동이 충돌해 되돌아오는 것으로 보인다. 이제 그 판단을
+    # (iframe 쪽이 아니라) 최상위 문서 스크립트 안에서 하도록 고친다 — 최상위
+    # 문서 컨텍스트에서 보는 window.ReactNativeWebView는(이 스크립트가 심어지는
+    # 바로 그 프레임이므로) 실제로 존재하는지 정확히 판별 가능해서, 있으면
+    # 브릿지만 부르고 폴백 이동은 아예 실행하지 않는다.
     components.html(
         """<script>
         (function () {
             var top = window.top;
             try {
                 var s = top.document.createElement('script');
-                s.textContent = "try{if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));}}catch(e){}";
+                s.textContent =
+                    "try{" +
+                    "if(window.ReactNativeWebView){" +
+                    "window.ReactNativeWebView.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));" +
+                    "}else{" +
+                    "window.location.href='?page=hedge&qrscan=1';" +
+                    "}" +
+                    "}catch(e){}";
                 top.document.head.appendChild(s);
                 s.parentNode.removeChild(s);
-            } catch (e) {}
-            // 네이티브 앱이 아닌 일반 브라우저(또는 위 브릿지 호출이 안 먹힌 경우)에서도
-            // 최소한 이 폴백 이동은 항상 실행된다 — onShouldStartLoadWithRequest가
-            // 이 URL을 가로챌 두 번째 기회를 준다.
-            try {
-                top.location.href = '?page=hedge&qrscan=1';
-            } catch (e) {}
+            } catch (e) {
+                // 최상위 문서에 스크립트를 못 심을 정도로 예외적인 상황이면(교차 출처 등)
+                // 최소한 이 폴백만이라도 시도한다.
+                try {
+                    top.location.href = '?page=hedge&qrscan=1';
+                } catch (e2) {}
+            }
         })();
         </script>""",
         height=0,
