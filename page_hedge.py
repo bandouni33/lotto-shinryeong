@@ -182,19 +182,30 @@ def _fire_qr_scan_trigger() -> None:
     # components.html(진짜 iframe, 스크립트가 그대로 실행됨) 안에서 real
     # <script>로 실행하면 이 제약을 안 받는다. st.button은 Streamlit 자체
     # 프레임워크가 클릭을 처리해서(사용자 onclick 불필요) 항상 눌리는 게 보장된다.
-    # window.top을 쓰는 이유: 이 스크립트는 components.html이 만든 중첩 iframe
-    # 안에서 실행되므로, 네이티브 브릿지(window.ReactNativeWebView)가 실제로
-    # 붙어있는 최상위 문서는 window.parent가 아니라 window.top이 더 안전하다.
+    #
+    # 그런데 이 fix를 반영해도 실기기 QR스캔이 계속 안 됐다 — 재조사 결과
+    # 진짜 원인은 따로 있었다. 안드로이드 웹뷰가 window.ReactNativeWebView를
+    # 심어주는 방식(addJavascriptInterface 계열)은 보안상 "최상위 프레임에만"
+    # 주입되고, 중첩된 iframe 안에서는 그 창(window.top 등)을 통해 참조해도
+    # 그 자리에 브릿지 객체 자체가 존재하지 않는 게 알려진 안드로이드 웹뷰의
+    # 제약이다. components.html은 항상 iframe이라 이 문제를 그대로 받는다 —
+    # 에러 없이 조용히 아무 일도 안 일어나던 증상과 정확히 일치한다(2026-08-22).
+    # 우회법: iframe 안에서 최상위 문서에 <script> 엘리먼트를 직접 만들어
+    # 심는다 — 그 스크립트는 iframe이 아니라 진짜 최상위 문서 컨텍스트에서
+    # 실행되므로, 그 안에서는 (한정자 없는) window.ReactNativeWebView가
+    # 진짜 그 프레임에 심어진 브릿지를 가리킨다. user_page.py의 번역방지
+    # 스크립트가 window.parent.document를 조작하는 것과 같은 계열의 기법.
     components.html(
         """<script>
         (function () {
             var top = window.top;
             try {
-                if (top && top.ReactNativeWebView) {
-                    top.ReactNativeWebView.postMessage(JSON.stringify({type: 'openQrScan', target: 'hedge'}));
-                }
+                var s = top.document.createElement('script');
+                s.textContent = "try{if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));}}catch(e){}";
+                top.document.head.appendChild(s);
+                s.parentNode.removeChild(s);
             } catch (e) {}
-            // 네이티브 앱이 아닌 일반 브라우저(또는 postMessage가 안 먹힌 경우)에서도
+            // 네이티브 앱이 아닌 일반 브라우저(또는 위 브릿지 호출이 안 먹힌 경우)에서도
             // 최소한 이 폴백 이동은 항상 실행된다 — onShouldStartLoadWithRequest가
             // 이 URL을 가로챌 두 번째 기회를 준다.
             try {
