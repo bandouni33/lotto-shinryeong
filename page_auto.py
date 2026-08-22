@@ -405,7 +405,7 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
             '<p class="auto-banner-legend">🟡 당첨번호 일치</p>' if win_set else ""
         )
         return (
-            '<div class="auto-purchase-banner auto-purchase-banner-compact auto-purchase-banner-history-grid">'
+            '<div class="auto-purchase-banner">'
             f'<div class="auto-banner-combos">{grid_rows}</div>'
             f"{compact_legend}"
             "</div>"
@@ -934,81 +934,13 @@ def render():
             background: linear-gradient(155deg, rgba(74, 20, 140, 0.92) 0%, rgba(26, 34, 56, 0.96) 55%, rgba(18, 24, 43, 0.98) 100%);
             box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(179, 157, 219, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
-        .auto-purchase-banner-compact {
-            margin: 10px 0;
-            padding: 12px;
-        }
-        /* K-979: 구매내역 — 6볼 × 5줄 그리드 전용 */
-        .st-key-auto_purchase_history_zone_6n36s5 {
-            overflow: visible !important;
-            z-index: auto !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] details {
-            overflow: visible !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
-            position: relative !important;
-            z-index: 40 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpanderDetails"] {
-            overflow: visible !important;
-            width: max-content !important;
-            /* 왼쪽으로 20% 더 넓게 — right:0로 오른쪽에 고정돼 있어서, 폭을 늘리면
-               자동으로 왼쪽으로만 확장된다(168→202px, 240→288px). */
-            min-width: 202px !important;
-            max-width: min(288px, calc(100vw - 20px)) !important;
-            padding: 4px 2px !important;
-            box-sizing: border-box !important;
-            position: absolute !important;
-            right: 0 !important;
-            top: calc(100% + 4px) !important;
-            z-index: 40 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpanderDetails"] div[data-testid="stMarkdown"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpanderDetails"] div[data-testid="stMarkdown"] > div {
-            width: fit-content !important;
-            max-width: 100% !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid {
-            margin: 0 !important;
-            /* 높이 10% — 위아래 여백을 늘려 전체 박스가 세로로 더 여유있게 보이도록 */
-            padding: 7px 9px 9px !important;
-            width: fit-content !important;
-            max-width: 100% !important;
-            box-sizing: border-box !important;
-            border-radius: 12px !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-combos {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 5px !important;
-            margin: 0 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-combo {
-            display: flex !important;
-            flex-wrap: nowrap !important;
-            align-items: center !important;
-            padding: 4px 6px !important;
-            gap: 6px !important;
-            border-radius: 8px !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball-row {
-            display: flex !important;
-            flex-wrap: nowrap !important;
-            flex: 0 0 auto !important;
-            gap: 7px !important;
-            min-width: 0 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball {
-            flex: 0 0 auto !important;
-            width: auto !important;
-            /* 셀이 넓어진 만큼 숫자도 그에 맞춰 커지도록 — 고정 11px 대신 셀 폭 기준으로 */
-            min-width: 20px !important;
-            height: auto !important;
-            font-size: clamp(11px, 4.6vw, 14px) !important;
-            padding: 0 !important;
-        }
+        /* 2026-08-23: "구매내역"만 유일하게 position:absolute 팝오버로 띄우던 방식을
+           버리고, 번개조합·안티/액땜조합의 "저장내역"(combo_history_ui.py)과 완전히
+           동일하게 평범한 st.expander(그 자리에서 아래로 펼쳐짐)로 통일했다 — 팝오버
+           방식이 주변 레이아웃과 겹치며 위치가 깨지는 실제 버그로 이어졌었다
+           (사용자 실기기에서 확인). 방식을 통일하면 사이즈 규칙도 자동으로 같아져서
+           유지보수·원인파악이 빨라진다는 게 이 통일의 취지 — 아래의 전용 크기/위치
+           재정의는 전부 제거하고, 기존 기본 .auto-banner-ball 등 스타일을 그대로 쓴다. */
         @keyframes autoToastFade {
             0% { opacity: 0; transform: translate(-50%, -6px); }
             8% { opacity: 1; transform: translate(-50%, 0); }
@@ -1107,12 +1039,14 @@ def render():
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 22px;
-            height: 22px;
+            /* combo_history_ui.py(번개조합·안티/액땜조합 저장내역)와 완전히 동일한
+               크기로 통일 — 2026-08-23 */
+            min-width: 24px;
+            height: 24px;
             padding: 0 2px;
             color: #f1e9ff;
             font-weight: 800;
-            font-size: 13px;
+            font-size: 15px;
             font-variant-numeric: tabular-nums;
         }
         /* 당첨번호가 확정되면 맞은 번호만 동그라미(테두리)로 감싸서, 일일이 손으로
@@ -1757,40 +1691,6 @@ def render():
                 overflow: visible !important;
             }
             div[data-testid="stVerticalBlock"]:has(.st-key-auto_spirit_below_confirm_6n36s5) {
-                overflow: visible !important;
-            }
-            .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-combo {
-                flex-wrap: nowrap !important;
-                padding: 4px 6px !important;
-                gap: 6px !important;
-            }
-            .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball-row {
-                flex-wrap: nowrap !important;
-                gap: 6px !important;
-            }
-            .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid .auto-banner-ball {
-                width: auto !important;
-                height: auto !important;
-                min-width: 17px !important;
-                font-size: clamp(11px, 4.6vw, 13px) !important;
-            }
-            .st-key-auto_purchase_history_zone_6n36s5 .auto-purchase-banner-history-grid {
-                width: fit-content !important;
-                max-width: 100% !important;
-                box-sizing: border-box !important;
-            }
-            .st-key-auto_page_columns_6n36s5 div[data-testid="stColumn"]:has(.st-key-auto_purchase_history_zone_6n36s5) {
-                overflow: visible !important;
-            }
-            .st-key-auto_purchase_history_zone_6n36s5 {
-                width: auto !important;
-                max-width: none !important;
-            }
-            .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"],
-            .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] details,
-            .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > div {
-                width: auto !important;
-                max-width: none !important;
                 overflow: visible !important;
             }
         }
