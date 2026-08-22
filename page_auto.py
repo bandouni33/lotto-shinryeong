@@ -747,7 +747,12 @@ def render():
         div[data-testid="stDialog"] > div {
             background-color: #12182b !important;
         }
-        div[data-testid="stDialog"] h2,
+        /* "구매내역" 버튼을 눌러서 여는 팝업인데 팝업 안에 st.dialog 기본
+           제목("구매내역")까지 또 나오면 글자가 중복돼 보인다(2026-08-23
+           사용자 지적) — 제목 줄은 아예 감춘다. */
+        div[data-testid="stDialog"] h2 {
+            display: none !important;
+        }
         div[data-testid="stDialog"] > div [data-testid="stMarkdownContainer"] > p,
         div[data-testid="stDialog"] label {
             color: #ffffff !important;
