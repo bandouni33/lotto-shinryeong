@@ -34,11 +34,25 @@ import streamlit as st
 #   - 캐싱 개선으로 요청당 부담은 줄었지만 정확한 배율은 실측 전이라 반영 안 함.
 # 위 유일한 정량 기준선(~100명)보다 확실히(약 40%) 낮춰 60명으로 잡는다.
 # 서버가 죽어서 결제/적립 분쟁이 생기는 것보다, 신규 유입을 조금 더 자주
-# 막는 쪽이 안전하다는 판단. 실제 트래픽 데이터가 쌓이면 이 값을 조정한다.
-MAX_CONCURRENT_SESSIONS = 60
+# 막는 쪽이 안전하다는 판단. 운영자 대시보드에서 실제 트래픽을 보며 이 값을
+# 코드 배포 없이 바로 조정할 수 있다 — 이 값은 그게 아직 저장된 적 없을
+# 때만 쓰이는 최초 기본값이다.
+DEFAULT_MAX_CONCURRENT_SESSIONS = 60
 
 # 이 시간(초) 안에 하트비트가 없으면 이미 나간 세션으로 간주해 집계에서 제외.
 _HEARTBEAT_TTL_SECONDS = 60
+
+# 운영자가 저장한 상한값을 매 렌더마다 DB에서 새로 읽으면 그 조회 자체가
+# 부담이 되니(입장 제한 장치가 오히려 병목이 되면 본말전도), 짧은 TTL로
+# 캐싱해서 값이 바뀌어도 최대 이 시간 안에는 반영되게 한다.
+_SETTING_CACHE_TTL_SECONDS = 30
+
+
+@st.cache_data(ttl=_SETTING_CACHE_TTL_SECONDS, show_spinner=False)
+def _resolve_cap() -> int:
+    from app_settings import get_max_concurrent_sessions
+
+    return get_max_concurrent_sessions(default=DEFAULT_MAX_CONCURRENT_SESSIONS)
 
 _SESSION_ID_KEY = "_admission_sid"
 _ADMITTED_KEY = "_admission_ok"
@@ -97,13 +111,18 @@ def _render_overload_screen() -> None:
     )
 
 
-def check_admission(cap: int = MAX_CONCURRENT_SESSIONS) -> None:
+def check_admission(cap: int | None = None) -> None:
     """무거운 페이지 로직(pg.run() 등) 실행 직전에 호출한다.
 
     이미 입장을 허용받은 세션은 하트비트만 남기고 그대로 통과시키고,
     아직 입장 전인 신규 세션만 동시접속 수가 cap을 넘을 때 안내화면을
     띄우고 st.stop()으로 이후 로직 실행을 막는다.
+
+    cap을 안 넘기면 운영자 대시보드에서 저장한 값(없으면 기본값)을 쓴다.
     """
+    if cap is None:
+        cap = _resolve_cap()
+
     if _SESSION_ID_KEY not in st.session_state:
         st.session_state[_SESSION_ID_KEY] = str(uuid.uuid4())
     session_id = st.session_state[_SESSION_ID_KEY]
@@ -118,3 +137,17 @@ def check_admission(cap: int = MAX_CONCURRENT_SESSIONS) -> None:
         st.stop()
 
     st.session_state[_ADMITTED_KEY] = True
+
+
+def get_live_status() -> tuple[int, int]:
+    """(현재 활동 중인 세션 수, 적용 중인 상한값) — 운영자 대시보드 표시용.
+    하트비트를 새로 남기지 않고(=이 조회 자체가 세션으로 집계되지 않게) 만료된
+    것만 정리한 뒤 현재 값을 그대로 읽는다."""
+    store, lock = _active_sessions_store()
+    now = time.time()
+    with lock:
+        stale_ids = [sid for sid, ts in store.items() if now - ts > _HEARTBEAT_TTL_SECONDS]
+        for sid in stale_ids:
+            del store[sid]
+        count = len(store)
+    return count, _resolve_cap()

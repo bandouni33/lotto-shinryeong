@@ -417,6 +417,24 @@ if st.session_state.admin_view == "home":
             st.success("저장했습니다. 사용자 화면에 즉시 반영됩니다.")
             st.rerun()
 
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🚦 동시접속 상한 (입장 제한)</h4>", unsafe_allow_html=True)
+    with st.expander("이용자 폭증 시 신규 유입을 막는 상한값 설정"):
+        import admission_control
+        from app_settings import get_max_concurrent_sessions, set_max_concurrent_sessions
+
+        _live_count, _live_cap = admission_control.get_live_status()
+        st.caption(f"지금 활동 중(최근 {admission_control._HEARTBEAT_TTL_SECONDS}초 이내): **{_live_count}명** / 현재 상한 **{_live_cap}명**")
+        st.caption("이미 입장한 사용자는 상한을 넘어도 절대 쫓아내지 않습니다 — 신규 유입만 막습니다. 값을 바꾸면 최대 30초 안에 반영됩니다.")
+
+        _cur_cap = get_max_concurrent_sessions(default=admission_control.DEFAULT_MAX_CONCURRENT_SESSIONS)
+        _new_cap = st.number_input(
+            "동시접속 상한 (명)", min_value=1, max_value=100000, value=_cur_cap, step=10, key="admin_max_concurrent_input",
+        )
+        if st.button("저장", key="admin_max_concurrent_save"):
+            set_max_concurrent_sessions(int(_new_cap))
+            st.success(f"상한을 {int(_new_cap)}명으로 저장했습니다. 최대 30초 안에 반영됩니다.")
+            st.rerun()
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📊 회차별 구매 전환 현황</h4>", unsafe_allow_html=True)
     from marketing_db import get_draw_purchase_conversion_stats
 

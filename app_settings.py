@@ -7,6 +7,7 @@ import db_turso
 UPDATE_VERSION_KEY = "latest_app_version"
 UPDATE_URL_KEY = "update_url"
 UPDATE_MESSAGE_KEY = "update_message"
+MAX_CONCURRENT_SESSIONS_KEY = "max_concurrent_sessions"
 
 
 def _connect():
@@ -78,3 +79,20 @@ def set_update_notice(version: str, url: str, message: str) -> None:
     set_setting(UPDATE_VERSION_KEY, version.strip())
     set_setting(UPDATE_URL_KEY, url.strip())
     set_setting(UPDATE_MESSAGE_KEY, message.strip())
+
+
+def get_max_concurrent_sessions(default: int) -> int:
+    """운영자가 저장한 값이 있으면 그걸, 없으면(최초 배포 등) default를 반환."""
+    init_settings_table()
+    raw = get_setting(MAX_CONCURRENT_SESSIONS_KEY, "")
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def set_max_concurrent_sessions(value: int) -> None:
+    init_settings_table()
+    set_setting(MAX_CONCURRENT_SESSIONS_KEY, str(int(value)))
