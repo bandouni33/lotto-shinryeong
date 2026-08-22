@@ -115,16 +115,28 @@ def get_number_weights(filepath: str = DATA_FILE) -> dict[int, int]:
 # lotto_engine.py의 PREV_WINNING_NUMS/PREV_NEIGHBORS(3종필터가 admin_filter.py를
 # 통해 전역변수를 덮어써서 쓰는 방식)는 재사용하지 않고, 여기서 필요한 값만
 # 그때그때 직접 계산한다 — 두 기능을 서로 의존시키지 말라는 요청(2026-08-21).
-PATTERN_RULES_FILE = "saved_pattern_rules.pkl"
+#
+# 2026-08-22: 로컬 pkl 파일로 저장하던 걸 Turso DB(app_settings)로 옮겼다 —
+# Streamlit Cloud는 재배포마다 로컬 디스크를 초기화해서, 관리자가 업로드한
+# 패턴이 코드 배포 때마다(!) 조용히 사라지고 있었다(에러 없이 "규칙 없음"으로
+# 처리돼 번개조합·안티조합이 필터링 없이 동작하는 심각한 문제였음).
+PATTERN_RULES_SETTING_KEY = "pattern_rules_json"
 
 
-def _load_pattern_rules_raw(path: str) -> list[dict]:
-    import pickle
+@st.cache_data(ttl=60, show_spinner=False)
+def _load_pattern_rules_raw() -> list[dict]:
+    """관리자가 업로드한 기준값패턴 원본(고정 규칙은 targets가 리스트, AUTO는 None).
+    렌더마다 DB를 조회하면 부담이라 60초 TTL로 캐싱 — 값이 바뀌어도 최대 60초
+    안에는 반영된다."""
+    import json
 
-    if not Path(path).is_file():
+    from app_settings import get_setting, init_settings_table
+
+    init_settings_table()
+    raw = get_setting(PATTERN_RULES_SETTING_KEY, "")
+    if not raw:
         return []
-    with open(path, "rb") as f:
-        return pickle.load(f)
+    return json.loads(raw)
 
 
 def _resolve_auto_targets(group_name: str, prev_nums: list[int], bonus: int | None) -> set[int]:
@@ -150,11 +162,12 @@ def _resolve_auto_targets(group_name: str, prev_nums: list[int], bonus: int | No
     return set()
 
 
-@st.cache_data(show_spinner=False)
-def _resolved_pattern_rules_cached(
-    pattern_path: str, _pattern_mtime: float, data_path: str, _data_mtime: float
-) -> list[dict]:
-    rules = _load_pattern_rules_raw(pattern_path)
+def _resolve_pattern_rules(data_path: str, _data_mtime: float) -> list[dict]:
+    """_load_pattern_rules_raw()(자체 캐싱됨)와 load_lotto_data()(자체 캐싱됨)만
+    조합하는 가벼운 순수 연산이라 여기엔 별도 캐싱을 두지 않는다 — 여기에도
+    캐싱을 씌우면 내부 캐시가 갱신돼도 이 바깥 캐시가 그걸 못 알아채고 오래된
+    값을 계속 돌려주는 함정에 빠지기 쉽다."""
+    rules = _load_pattern_rules_raw()
     if not rules:
         return []
 
@@ -176,18 +189,14 @@ def _resolved_pattern_rules_cached(
     return resolved
 
 
-def get_resolved_pattern_rules(
-    pattern_filepath: str = PATTERN_RULES_FILE, data_filepath: str = DATA_FILE
-) -> list[dict]:
+def get_resolved_pattern_rules(data_filepath: str = DATA_FILE) -> list[dict]:
     """관리자가 업로드한 기준값패턴 전체(고정 + AUTO 해석 완료)를 반환한다.
     AUTO 행은 매번 최신 회차 데이터로 다시 계산되므로, 새 회차가 반영되거나
-    관리자가 패턴 파일을 재업로드하면 둘 다 자동으로 다시 계산된다."""
+    관리자가 패턴을 재업로드하면 둘 다 자동으로 다시 계산된다."""
     data_path = data_filepath
     if not Path(data_path).is_file():
         data_path = lotto_data_path(Path(data_path).name)
-    return _resolved_pattern_rules_cached(
-        pattern_filepath, _xlsb_mtime(pattern_filepath), data_path, _xlsb_mtime(data_path)
-    )
+    return _resolve_pattern_rules(data_path, _xlsb_mtime(data_path))
 
 
 def score_combo_against_pattern_rules(

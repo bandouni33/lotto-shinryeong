@@ -21,7 +21,6 @@ if _qp_admin_view in ("home", "filter_manage", "pattern_manage"):
 
 MASTER_FILE = "로또기록 앱 업로드용.xlsb"
 FILTER_SAVE_FILE = "saved_filters.pkl"     # 필터 유지용 저장 파일 (로그아웃해도 유지)
-PATTERN_SAVE_FILE = "saved_pattern_rules.pkl"  # 번개조합·안티/액땜조합 기준값패턴 저장 파일
 COMBO_SAVE_FILE = "saved_combinations.csv" # 조합 결과 유지용 저장 파일 (로그아웃해도 유지)
 FILTER_JOB_STATUS_FILE = "filter_job.status"
 FILTER_WORKER_SCRIPT = os.path.join(os.path.dirname(__file__), "filter_worker.py")
@@ -570,8 +569,16 @@ elif st.session_state.admin_view == "filter_manage":
                 "absolute": get_clean_data("절대필터"),
                 "interval": get_clean_data("이격수필터"),
             }
+            _filters_pickle_bytes = pickle.dumps(filters_data)
             with open(FILTER_SAVE_FILE, "wb") as f:
-                pickle.dump(filters_data, f)
+                f.write(_filters_pickle_bytes)
+
+            # Streamlit Cloud는 재배포마다 로컬 디스크를 초기화해서, 로컬 파일만
+            # 믿으면 관리자가 업로드한 필터가 다음 배포 때 조용히 사라진다
+            # (2026-08-22 실제로 발생했던 사고) — Turso DB에도 미러링해둔다.
+            from app_settings import save_blob_setting
+
+            save_blob_setting("saved_filters_pickle_b64", _filters_pickle_bytes)
 
             from filter_sheet_validation import validate_three_filter_sheets
 
@@ -593,6 +600,17 @@ elif st.session_state.admin_view == "filter_manage":
             st.caption(f"총 {total_rows:,}개 패턴 — {cap}")
         except Exception as e:
             st.error(f"❌ 시트명 또는 양식 오류: {e}")
+
+    # 로컬 파일이 없는데(재배포로 사라졌을 수 있음) DB엔 미러본이 있으면 복원한다 —
+    # 이 복원만 해두면 아래의 모든 기존 os.path.exists(FILTER_SAVE_FILE) 분기가
+    # 손댈 필요 없이 그대로 정상 동작한다.
+    if not os.path.exists(FILTER_SAVE_FILE):
+        from app_settings import load_blob_setting
+
+        _restored_filters = load_blob_setting("saved_filters_pickle_b64")
+        if _restored_filters:
+            with open(FILTER_SAVE_FILE, "wb") as f:
+                f.write(_restored_filters)
 
     # 2. 업로드 여부와 상관없이 저장된 파일이 있으면 무조건 렌더링
     if os.path.exists(FILTER_SAVE_FILE):
@@ -740,9 +758,27 @@ elif st.session_state.admin_view == "filter_manage":
         # ==========================================
         # 4. [통합 연동] 결과물 화면 노출 및 다운로드
         # ==========================================
+        # 로컬 파일이 없는데(재배포로 사라졌을 수 있음) DB엔 미러본이 있으면 복원.
+        if not os.path.exists(COMBO_SAVE_FILE):
+            from app_settings import get_setting, init_settings_table
+
+            init_settings_table()
+            _restored_combos = get_setting("saved_combinations_csv", "")
+            if _restored_combos:
+                with open(COMBO_SAVE_FILE, "w", encoding="utf-8") as f:
+                    f.write(_restored_combos)
+
         if os.path.exists(COMBO_SAVE_FILE):
             df_export = pd.read_csv(COMBO_SAVE_FILE)
             total_created = len(df_export)
+
+            # 백그라운드 워커가 방금 새로 썼을 수도 있는 최신 내용을 DB에도
+            # 미러링 — 다음 배포 때도 살아남도록. 관리자 전용 저빈도 화면이라
+            # 렌더마다 다시 써도 부담 없다.
+            from app_settings import init_settings_table, set_setting
+
+            init_settings_table()
+            set_setting("saved_combinations_csv", df_export.to_csv(index=False))
             
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(f"""
@@ -1129,8 +1165,10 @@ elif st.session_state.admin_view == "pattern_manage":
                         }
                     )
 
-            with open(PATTERN_SAVE_FILE, "wb") as f:
-                pickle.dump(rules, f)
+            from app_settings import init_settings_table, set_setting
+
+            init_settings_table()
+            set_setting("pattern_rules_json", json.dumps(rules))
 
             auto_count = sum(1 for r in rules if r["type"] == "auto")
             fixed_count = len(rules) - auto_count
@@ -1174,8 +1212,14 @@ elif st.session_state.admin_view == "pattern_manage":
                 )
         except Exception as e:
             st.error(f"업로드 처리 중 오류: {e}")
-    elif os.path.exists(PATTERN_SAVE_FILE):
-        with open(PATTERN_SAVE_FILE, "rb") as f:
-            _existing_rules = pickle.load(f)
-        _auto_n = sum(1 for r in _existing_rules if r["type"] == "auto")
-        st.caption(f"현재 저장된 기준값패턴: 고정 {len(_existing_rules) - _auto_n}개, AUTO {_auto_n}개")
+    else:
+        from app_settings import get_setting, init_settings_table
+
+        init_settings_table()
+        _existing_raw = get_setting("pattern_rules_json", "")
+        if _existing_raw:
+            _existing_rules = json.loads(_existing_raw)
+            _auto_n = sum(1 for r in _existing_rules if r["type"] == "auto")
+            st.caption(f"현재 저장된 기준값패턴: 고정 {len(_existing_rules) - _auto_n}개, AUTO {_auto_n}개")
+        else:
+            st.caption("아직 업로드된 기준값패턴이 없습니다.")

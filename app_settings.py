@@ -96,3 +96,23 @@ def get_max_concurrent_sessions(default: int) -> int:
 def set_max_concurrent_sessions(value: int) -> None:
     init_settings_table()
     set_setting(MAX_CONCURRENT_SESSIONS_KEY, str(int(value)))
+
+
+def save_blob_setting(key: str, raw_bytes: bytes) -> None:
+    """임의 바이너리(pickle 등)를 base64로 인코딩해 TEXT 컬럼에 저장.
+    로컬 파일(saved_filters.pkl 등)이 Streamlit Cloud 재배포마다 사라지는 문제의
+    영속화 대책(2026-08-22) — 로컬 파일은 그대로 쓰되, 여기에도 미러링해둔다."""
+    import base64
+
+    init_settings_table()
+    set_setting(key, base64.b64encode(raw_bytes).decode("ascii"))
+
+
+def load_blob_setting(key: str) -> bytes | None:
+    import base64
+
+    init_settings_table()
+    raw = get_setting(key, "")
+    if not raw:
+        return None
+    return base64.b64decode(raw)
