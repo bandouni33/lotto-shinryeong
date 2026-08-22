@@ -10,6 +10,7 @@ import re
 import sqlite3
 
 import libsql_client
+import streamlit as st
 
 
 class Row(dict):
@@ -86,15 +87,29 @@ class _ConnectionWrapper:
         pass
 
     def close(self):
-        self._client.close()
+        # 이 클라이언트는 st.cache_resource로 앱 전체(모든 세션)가 공유하는
+        # 자원이다 — 기존 코드 수백 곳이 "매번 새로 열고 쓰고 닫는다"는 전제로
+        # 함수 끝마다 conn.close()를 호출하고 있는데, 여기서 진짜로 닫아버리면
+        # 그 사용자 하나의 요청이 끝나는 순간 다른 모든 세션의 DB 연결까지
+        # 통째로 끊겨버린다(2026-08-22, 동시접속 대비 점검 중 발견). 그래서
+        # 아무 동작도 하지 않는다 — 실제 종료는 프로세스 자체가 끝날 때
+        # 자연스럽게 정리된다.
+        pass
 
 
-def connect() -> _ConnectionWrapper:
+@st.cache_resource(show_spinner=False)
+def _shared_client() -> libsql_client.sync.ClientSync:
+    # 요청마다(=Streamlit 재실행마다) 원격 Turso로 새 HTTP 클라이언트를
+    # 매번 새로 만들고 있던 게 확인됐다 — 동시접속이 몰리는 시점(예: 토요일
+    # 저녁 로또 구매 마감 직전)에 가장 먼저 병목이 될 지점이라 캐싱한다.
+    # ClientSync는 내부적으로 전용 스레드+락으로 요청을 큐잉해 처리하도록
+    # 만들어져 있어(libsql_client/sync.py의 _AsyncExecutor) 여러 세션이 이
+    # 인스턴스 하나를 동시에 써도 안전하다 — st.cache_resource로 프로세스
+    # 전체가 공유하는 게 의도된 설계와 맞는다.
     url = os.getenv("TURSO_DATABASE_URL")
     token = os.getenv("TURSO_AUTH_TOKEN")
     if not url or not token:
         try:
-            import streamlit as st
             url = url or st.secrets.get("TURSO_DATABASE_URL", None)
             token = token or st.secrets.get("TURSO_AUTH_TOKEN", None)
         except Exception:
@@ -103,5 +118,8 @@ def connect() -> _ConnectionWrapper:
         raise RuntimeError(
             "TURSO_DATABASE_URL / TURSO_AUTH_TOKEN 환경변수가 설정되지 않았습니다."
         )
-    client = libsql_client.create_client_sync(url=url, auth_token=token)
-    return _ConnectionWrapper(client)
+    return libsql_client.create_client_sync(url=url, auth_token=token)
+
+
+def connect() -> _ConnectionWrapper:
+    return _ConnectionWrapper(_shared_client())
