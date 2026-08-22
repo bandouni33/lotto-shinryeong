@@ -1,15 +1,20 @@
 """안티조합 · 액땜조합 — 이미 산 번호와 일부러 안 겹치게 새 조합을 만드는 기능.
 
 번개조합 화면과 별도 페이지로 분리했다(번개조합 자체의 조합 생성 로직을 건드리지
-않기 위해). 번개조합과 달리 components.html iframe을 쓰지 않고 순수 Streamlit
-위젯만으로 만들어서, 저장 버튼이 브라우저 sandbox 정책에 막히는 문제 자체가
-없다(번개조합에서 겪었던 iframe→최상위 문서 네비게이션 제한과 무관).
+않기 위해). 결과저장 등 대부분은 번개조합과 달리 components.html iframe 없이
+순수 Streamlit 위젯만으로 만들어서, 저장 버튼이 브라우저 sandbox 정책에 막히는
+문제 자체가 없다(번개조합에서 겪었던 iframe→최상위 문서 네비게이션 제한과 무관).
+다만 QR스캔 버튼은 예외로, 클릭 시 네이티브 앱에 신호를 보내는 스크립트를
+실행하기 위해 아주 작은 height=0 components.html iframe을 하나 쓴다(_fire_qr_scan_trigger
+참고 — st.markdown의 unsafe_allow_html은 onclick 속성을 잘라내서 스크립트를
+못 돌린다).
 """
 
 import random
 import re
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from combo_history_ui import render_history_section
 from user_scope import get_or_create_guest_id, init_guest_scope
@@ -163,37 +168,41 @@ def _render_nav_html() -> str:
     )
 
 
-def _render_input_mode_html() -> str:
-    # 메인 화면에서 이 페이지로 들어오면 예전엔 곧장 QR 카메라 화면이 떴는데,
-    # 사용자 없이 갑자기 카메라부터 열리면 당황할 수 있다는 판단으로 이 페이지에
-    # 먼저 착지시키고, 여기서 "QR스캔"을 직접 고를 때만 카메라를 열게 바꿨다.
-    #
-    # href의 qrscan=1은 streamlit-webview.tsx의 onShouldStartLoadWithRequest가
-    # 가로채 네이티브 카메라 화면으로 보내는 용도였는데, 메인 화면 진입 링크에서는
-    # 잘 됐지만 이 페이지 "안"에서(같은 경로, 쿼리만 다른 링크) 누르면 실기기에서
-    # 안 걸리고 안드로이드 기본 브라우저로 그 URL이 통째로 열려버리는 문제가
-    # 보고됐다(2026-08-19~20) — target 속성이 없으면 이 웹뷰가 "새 창" 취급해서
-    # 외부로 던지는 것으로 보인다. postMessage 방식을 우선 시도한다(네이티브 앱
-    # 안에서만 window.ReactNativeWebView가 존재).
-    #
-    # 예전엔 postMessage 시도 전에 event.preventDefault()를 먼저 호출해서 링크
-    # 이동 자체를 무조건 막았는데, 이러면 postMessage가 어떤 이유로든(네이티브
-    # onMessage 핸들러가 못 받거나, 타이밍 문제 등) 조용히 실패했을 때 폴백으로
-    # 남겨뒀던 onShouldStartLoadWithRequest 가로채기가 아예 실행될 기회조차 없이
-    # 막혀버렸다 — "QR스캔을 눌러도 화면이 아예 안 바뀐다"는 실기기 신고
-    # (2026-08-22)와 정확히 일치하는 실패 모드. preventDefault를 빼서, postMessage가
-    # 실패해도 원래 있던 링크 이동(및 그걸 가로채는 onShouldStartLoadWithRequest)이
-    # 그대로 두 번째 경로로 살아있게 한다(HTML 파싱이 깨지는 걸 막기 위해 한 줄로
-    # 작성 — 여러 줄로 들여쓰면 Streamlit이 마크다운 코드 블록으로 오인하는 버그가
-    # 생일/행운수 페이지에서 실제로 있었음).
-    return (
-        '<div class="hedge-input-toggle">'
-        '<a href="?page=hedge&qrscan=1" target="_self" class="hedge-input-pill" '
-        "onclick=\"if(window.ReactNativeWebView){"
-        "try{window.ReactNativeWebView.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));}"
-        'catch(e){}}">📷 QR스캔</a>'
-        '<div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>'
-        "</div>"
+def _render_direct_input_pill_html() -> str:
+    # "직접입력"은 지금 이 페이지 자체가 그 상태라 눌러도 할 일이 없어 그냥
+    # 강조 표시만 한다(정적 HTML로 충분 — 클릭 핸들러 불필요).
+    return '<div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>'
+
+
+def _fire_qr_scan_trigger() -> None:
+    # "QR스캔"을 실제 <a onclick=...>로 만들었더니, Streamlit의 unsafe_allow_html
+    # 렌더러가 보안을 이유로 onclick 속성 자체를 통째로 잘라낸다는 게 실기기+로컬
+    # 양쪽에서 렌더링된 HTML을 직접 떠서 확인됐다(2026-08-22) — postMessage
+    # 로직이 애초에 한 번도 실행되지 못하고 있었다. onclick 속성이 아니라
+    # components.html(진짜 iframe, 스크립트가 그대로 실행됨) 안에서 real
+    # <script>로 실행하면 이 제약을 안 받는다. st.button은 Streamlit 자체
+    # 프레임워크가 클릭을 처리해서(사용자 onclick 불필요) 항상 눌리는 게 보장된다.
+    # window.top을 쓰는 이유: 이 스크립트는 components.html이 만든 중첩 iframe
+    # 안에서 실행되므로, 네이티브 브릿지(window.ReactNativeWebView)가 실제로
+    # 붙어있는 최상위 문서는 window.parent가 아니라 window.top이 더 안전하다.
+    components.html(
+        """<script>
+        (function () {
+            var top = window.top;
+            try {
+                if (top && top.ReactNativeWebView) {
+                    top.ReactNativeWebView.postMessage(JSON.stringify({type: 'openQrScan', target: 'hedge'}));
+                }
+            } catch (e) {}
+            // 네이티브 앱이 아닌 일반 브라우저(또는 postMessage가 안 먹힌 경우)에서도
+            // 최소한 이 폴백 이동은 항상 실행된다 — onShouldStartLoadWithRequest가
+            // 이 URL을 가로챌 두 번째 기회를 준다.
+            try {
+                top.location.href = '?page=hedge&qrscan=1';
+            } catch (e) {}
+        })();
+        </script>""",
+        height=0,
     )
 
 
@@ -318,24 +327,49 @@ def render():
                 0 7px 14px rgba(63, 98, 18, 0.4),
                 inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
         }
-        /* 입력방법(QR스캔/직접입력) — 실제 라디오가 아니라 링크 2개다("QR스캔"을
-           누르면 실제 페이지 이동이 일어나야 네이티브 카메라 인터셉트가 걸리기
-           때문 — st.radio는 그냥 rerun이라 안 걸림). "직접입력"은 지금 이
-           페이지 자체가 그 상태라 눌러도 할 일이 없어 그냥 강조 표시만 한다.
-           모드 토글(보라/초록 알약)과 나란히 놓이니 헷갈리지 않게, 금색 계열의
-           "고급 스위치" 느낌으로 확실히 차별화한다(로또용지 버튼과 같은 금색
-           톤으로 이 앱 전체의 프리미엄 포인트 컬러에 맞춤). */
-        .hedge-input-toggle {
-            display: flex;
-            gap: 6px;
-            height: 100%;
-            width: 85%;
-            margin: 0 auto;
-            background: linear-gradient(180deg, #241f14 0%, #17130c 100%);
-            border: 1px solid rgba(212, 175, 55, 0.4);
-            border-radius: 999px;
-            padding: 5px;
-            box-sizing: border-box;
+        /* 입력방법(QR스캔/직접입력) — "QR스캔"은 실제 st.button이다(예전엔
+           <a onclick=...> 링크였는데, Streamlit의 unsafe_allow_html 렌더러가
+           보안 목적으로 onclick 속성을 통째로 잘라내 버려서 postMessage 로직이
+           한 번도 실행되지 못했던 게 실기기+로컬 렌더링 결과 직접 확인으로
+           드러났다(2026-08-22) — st.button은 Streamlit 프레임워크가 클릭을
+           처리하므로 이 문제 자체가 없다). "직접입력"은 지금 이 페이지 자체가
+           그 상태라 눌러도 할 일이 없어 그냥 강조 표시만 한다. 모드 토글(보라/
+           초록 알약)과 나란히 놓이니 헷갈리지 않게, 금색 계열의 "고급 스위치"
+           느낌으로 확실히 차별화한다(로또용지 버튼과 같은 금색 톤으로 이 앱
+           전체의 프리미엄 포인트 컬러에 맞춤). */
+        .st-key-hedge_input_toggle_wrap div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 6px !important;
+            width: 85% !important;
+            margin: 0 auto !important;
+            background: linear-gradient(180deg, #241f14 0%, #17130c 100%) !important;
+            border: 1px solid rgba(212, 175, 55, 0.4) !important;
+            border-radius: 999px !important;
+            padding: 5px !important;
+            box-sizing: border-box !important;
+        }
+        .st-key-hedge_input_toggle_wrap div[data-testid="stColumn"] {
+            flex: 1 1 0 !important;
+            width: auto !important;
+            min-width: 0 !important;
+        }
+        .st-key-hedge_qr_scan_btn div[data-testid="stButton"] > button {
+            width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            border: none !important;
+            background: transparent !important;
+            border-radius: 999px !important;
+            padding: 8px 6px !important;
+            font-weight: 800 !important;
+            font-size: 14px !important;
+            line-height: 20px !important;
+            color: #FFFFFF !important;
+            white-space: nowrap !important;
+        }
+        .st-key-hedge_qr_scan_btn div[data-testid="stButton"] > button:active {
+            background: rgba(255, 255, 255, 0.08) !important;
         }
         .hedge-input-pill {
             flex: 1;
@@ -584,7 +618,14 @@ def render():
     with st.container(key="hedge_toggles_row"):
         col_input, col_mode = st.columns(2)
         with col_input:
-            st.markdown(_render_input_mode_html(), unsafe_allow_html=True)
+            with st.container(key="hedge_input_toggle_wrap"):
+                qc1, qc2 = st.columns(2)
+                with qc1:
+                    qr_clicked = st.button("📷 QR스캔", key="hedge_qr_scan_btn", use_container_width=True)
+                with qc2:
+                    st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
+            if qr_clicked:
+                _fire_qr_scan_trigger()
         with col_mode:
             with st.container(key="hedge_mode_toggle"):
                 mode = st.radio(
