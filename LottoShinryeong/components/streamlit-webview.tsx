@@ -69,46 +69,72 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     return () => clearTimeout(timer);
   }, [loading, uri]);
 
-  const onNavigationStateChange = useCallback((navState: { canGoBack: boolean }) => {
-    setCanGoBack(navState.canGoBack);
+  // "안티조합·액땜조합" 진입 링크(?page=hedge&qrscan=1)를 QR 촬영 화면으로 보내는
+  // 경로를 세 겹으로 둔다 — 실기기마다 어느 게 실제로 걸리는지가 달라서
+  // (2026-08-19~22 여러 차례 확인) 하나에만 의존하면 특정 기종에서 아예 안 걸린다.
+  // 한 번 넘어가면 qrScanRedirected.current로 잠가서 세 경로가 중복으로 넘어가지
+  // 않게 한다.
+  const qrScanRedirected = useRef(false);
+  const goToQrScan = useCallback(() => {
+    if (qrScanRedirected.current) {
+      return;
+    }
+    qrScanRedirected.current = true;
+    router.replace({ pathname: '/qr-scan', params: { target: 'hedge' } });
   }, []);
 
-  // "안티조합·액땜조합" 진입 링크(?page=hedge&qrscan=1)만 골라서 실제 웹뷰 로드를
-  // 취소하고 네이티브 QR 촬영 화면으로 대신 보낸다. qrscan=1은 이 진입 링크에만
-  // 쓰이는 마커라 그 외의 정상 로드(초기 로드, QR 스캔 후 ?qr=...로 돌아오는 로드,
-  // "직접입력" 폴백으로 넘어가는 순수 ?page=hedge 로드)와는 절대 겹치지 않는다 —
-  // 그래서 로딩 유형(클릭/최초로드 등)을 구분할 필요 없이 이 문자열 하나만 보면 된다.
+  // 1) onNavigationStateChange — 웹뷰의 실제 URL이 바뀔 때마다 항상 불리는(리액티브)
+  // 이벤트라 세 경로 중 가장 신뢰도가 높다. 실기기(Android 16, Samsung SM-M166S)에서
+  // window.ReactNativeWebView 자체가 안 만들어져 2)의 postMessage 경로가 완전히
+  // 무력화되는 게 실측으로 확인됐다(2026-08-22, page_hedge.py의 진단 배너로 확인) —
+  // 그 대체 경로로 추가함.
+  const onNavigationStateChange = useCallback(
+    (navState: { canGoBack: boolean; url?: string }) => {
+      setCanGoBack(navState.canGoBack);
+      if (navState.url && navState.url.includes('qrscan=1')) {
+        goToQrScan();
+      }
+    },
+    [goToQrScan]
+  );
+
+  // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
   // (2026-08-19: 메인 화면 진입 링크에서는 이 방식이 잘 됐는데, 안티/액땜 상세페이지
   // 자체에 새로 넣은 "QR스캔" 버튼(같은 페이지 안에서 쿼리파라미터만 바뀌는 링크)을
   // 누르면 실기기에서 인터셉트가 안 걸리고 그냥 페이지가 다시 로드되는 문제가
   // 보고됐다 — 안드로이드 웹뷰가 "같은 경로, 쿼리만 다른" 네비게이션을 이 콜백
-  // 없이 처리하는 경우가 있는 것으로 보인다. 원인을 완전히 못 좁혀서, 네비게이션
-  // 가로채기에 기대는 대신 postMessage로 직접 신호를 보내는 더 확실한 방식을
-  // onMessage 핸들러에 추가했다 — 이 콜백은 혹시 몰라 그대로 남겨둔다.
-  const onShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
-    if (request.url.includes('qrscan=1')) {
-      router.push({ pathname: '/qr-scan', params: { target: 'hedge' } });
-      return false;
-    }
-    return true;
-  }, []);
+  // 없이 처리하는 경우가 있는 것으로 보인다.) 그래도 되는 기종에서는 이게 가장
+  // 빠르게(실제 로드 자체를 막으면서) 넘어가므로 그대로 둔다.
+  const onShouldStartLoadWithRequest = useCallback(
+    (request: { url: string }) => {
+      if (request.url.includes('qrscan=1')) {
+        goToQrScan();
+        return false;
+      }
+      return true;
+    },
+    [goToQrScan]
+  );
 
-  // 안티/액땜 상세페이지 안의 "QR스캔" 버튼이 쓰는 확실한 경로 — 페이지 이동을
-  // 가로채는 대신, 버튼 클릭 시 웹뷰 JS가 곧장 네이티브로 메시지를 보내고 여기서
-  // 받아서 카메라 화면으로 이동시킨다(page_hedge.py의 _render_input_mode_html
-  // 참고). window.ReactNativeWebView가 없는 일반 브라우저에서는 그 버튼이 그냥
-  // 평소 링크로 동작하도록 페이지 쪽에서 이미 분기해뒀다.
-  const onMessage = useCallback((event: { nativeEvent: { data: string } }) => {
-    let payload: { type?: string; target?: string } | null = null;
-    try {
-      payload = JSON.parse(event.nativeEvent.data);
-    } catch {
-      return;
-    }
-    if (payload?.type === 'openQrScan') {
-      router.push({ pathname: '/qr-scan', params: { target: payload.target || 'hedge' } });
-    }
-  }, []);
+  // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
+  // window.ReactNativeWebView 자체가 없는 기기에서는 이 경로가 애초에 실행조차
+  // 안 되지만(위 1번 설명 참고), 되는 기기에서는 가장 즉각적이라 그대로 둔다.
+  // window.ReactNativeWebView가 없는 일반 브라우저에서는 페이지 쪽(page_hedge.py)이
+  // 이 메시지를 아예 안 보내고 URL 폴백만 쓰도록 이미 분기해뒀다.
+  const onMessage = useCallback(
+    (event: { nativeEvent: { data: string } }) => {
+      let payload: { type?: string; target?: string } | null = null;
+      try {
+        payload = JSON.parse(event.nativeEvent.data);
+      } catch {
+        return;
+      }
+      if (payload?.type === 'openQrScan') {
+        goToQrScan();
+      }
+    },
+    [goToQrScan]
+  );
 
   const goToStreamlitHome = useCallback(() => {
     router.replace('/');
