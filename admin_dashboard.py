@@ -788,7 +788,74 @@ elif st.session_state.admin_view == "filter_manage":
             </div>
             <br>
             """, unsafe_allow_html=True)
-            
+
+            # ==========================================
+            # 🎯 조합 수량 조정 — 기준값패턴 적합도가 가장 낮은 것부터 제외
+            # ==========================================
+            st.markdown("<h4 style='color:#FFB300; margin-top:10px;'>🎯 조합 수량 조정</h4>", unsafe_allow_html=True)
+            st.caption(
+                "기준값패턴(번개조합·안티/액땜조합이 쓰는 그 기준)에 가장 적게 부합하는 "
+                "조합부터 제외해서 원하는 수량으로 줄입니다. 3종필터와는 별개 기준입니다."
+            )
+            trim_col1, trim_col2 = st.columns([2, 1])
+            with trim_col1:
+                target_qty = st.number_input(
+                    "원하는 조정 수량 (개)",
+                    min_value=1,
+                    max_value=int(total_created),
+                    value=int(total_created),
+                    step=100,
+                    key="admin_combo_trim_target",
+                )
+            with trim_col2:
+                st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+                trim_clicked = st.button(
+                    "✂️ 이 수량으로 줄이기", key="admin_combo_trim_btn", use_container_width=True
+                )
+
+            if trim_clicked:
+                if int(target_qty) >= total_created:
+                    st.warning(f"현재 수량({total_created:,}개)보다 크거나 같아 줄일 필요가 없습니다.")
+                else:
+                    from lotto_stats import get_resolved_pattern_rules, score_combo_against_pattern_rules
+
+                    rules = get_resolved_pattern_rules()
+                    if not rules:
+                        st.warning(
+                            "업로드된 기준값패턴이 없어 적합도 순위를 매길 수 없습니다. "
+                            "먼저 '🧭 번개조합·안티/액땜조합 기준값패턴'에서 패턴을 업로드해 주세요."
+                        )
+                    else:
+                        with st.spinner(f"{total_created:,}개 조합의 기준값패턴 적합도를 계산하는 중..."):
+                            def _pattern_score(row):
+                                combo = (
+                                    row["번호1"], row["번호2"], row["번호3"],
+                                    row["번호4"], row["번호5"], row["번호6"],
+                                )
+                                _, matched, _total = score_combo_against_pattern_rules(combo, rules)
+                                return matched
+
+                            df_scored = df_export.copy()
+                            df_scored["_pattern_score"] = df_scored.apply(_pattern_score, axis=1)
+                            df_trimmed = (
+                                df_scored.sort_values("_pattern_score", ascending=False)
+                                .head(int(target_qty))
+                                .drop(columns=["_pattern_score"])
+                                .reset_index(drop=True)
+                            )
+                            df_trimmed.to_csv(COMBO_SAVE_FILE, index=False)
+
+                            from app_settings import init_settings_table, set_setting
+
+                            init_settings_table()
+                            set_setting("saved_combinations_csv", df_trimmed.to_csv(index=False))
+
+                        st.success(
+                            f"✅ {total_created:,}개 → {len(df_trimmed):,}개로 줄였습니다 "
+                            f"(기준값패턴 적합도가 가장 낮은 {total_created - len(df_trimmed):,}개 제외)."
+                        )
+                        st.rerun()
+
             st.markdown("#### 📊 생성 조합 실시간 모니터링 (상위 15개 추출 분)")
             st.dataframe(style_dataframe(df_export.head(15)), use_container_width=True, hide_index=True)
             
