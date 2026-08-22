@@ -389,25 +389,25 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
             hit_cls = ""
         return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
 
+    # 2026-08-23: 박스(.auto-banner-combo — 배경·테두리·padding)를 완전히 없앴다.
+    # 그 박스가 "내용 폭만큼 넓어지게"(fit-content/max-content) 만드는 과정에서
+    # 계속 실기기 버그로 이어졌었다(번호가 박스 밖으로 삐져나옴) — 사용자가
+    # 아예 장식 없이 숫자만 깔끔하게 보여달라고 요청, 원인 자체를 없앤다.
     combo_rows = ""
     for item in allocated:
         combo = item.get("combo") or []
         balls = "".join(_ball_span(n) for n in combo)
-        combo_rows += f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div></div>'
+        combo_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
 
     if compact:
         grid_rows = ""
         for item in allocated[:5]:
             combo = (item.get("combo") or [])[:6]
             balls = "".join(_ball_span(n) for n in combo)
-            grid_rows += f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div></div>'
-        compact_legend = (
-            '<p class="auto-banner-legend">🟡 당첨번호 일치</p>' if win_set else ""
-        )
+            grid_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
         return (
-            '<div class="auto-purchase-banner">'
+            '<div class="auto-purchase-banner-plain">'
             f'<div class="auto-banner-combos">{grid_rows}</div>'
-            f"{compact_legend}"
             "</div>"
         )
 
@@ -695,6 +695,34 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
     return _limit_to_recent_rounds(items)
 
 
+@st.dialog("구매내역")
+def _show_auto_history_dialog():
+    from auth_providers import current_member_id
+
+    mid = current_member_id()
+    history_items = _collect_purchase_history_items(mid)
+    if not history_items:
+        st.caption("아직 구매 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다.")
+        return
+    # 여러 회차 구매가 섞여 쌓일 수 있는데, 예전엔 조합 숫자만 보여주고 몇
+    # 회차 것인지 표시가 없어서 어떤 조합이 어느 회차인지, 왜 동그라미가
+    # 없는지(미추첨인지 낙첨인지) 헷갈릴 수 있었다 — 회차별로 묶어서 머리글을
+    # 붙인다.
+    grouped_history: dict = {}
+    for item in history_items:
+        grouped_history.setdefault(item.get("draw_round"), []).append(item)
+    for draw_round, items in grouped_history.items():
+        st.markdown(
+            f'<div class="auto-history-round-head">{draw_round}회차</div>',
+            unsafe_allow_html=True,
+        )
+        for item in items:
+            st.markdown(
+                _purchase_banner_html(item, compact=True),
+                unsafe_allow_html=True,
+            )
+
+
 def render():
     from user_scope import init_guest_scope
 
@@ -714,6 +742,16 @@ def render():
         """
     <style>
         .stApp { background-color: #12182b; color: white; }
+        /* st.dialog("구매내역")는 기본 흰 배경이라 흰색 번호 글자가 안 보였다 —
+           앱 전체와 같은 어두운 배경으로 맞춘다. */
+        div[data-testid="stDialog"] > div {
+            background-color: #12182b !important;
+        }
+        div[data-testid="stDialog"] h2,
+        div[data-testid="stDialog"] > div [data-testid="stMarkdownContainer"] > p,
+        div[data-testid="stDialog"] label {
+            color: #ffffff !important;
+        }
         html, body, #root, .stApp, [data-testid="stAppViewContainer"],
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
@@ -926,6 +964,14 @@ def render():
             font-size: 16px !important;
             font-weight: 800 !important;
         }
+        /* "구매확정"과 반씩 나눈 좁은 칸 안에 있다 보니, 펼쳤을 때 번호 6개가 한
+           줄에 다 못 들어가고 잘려 보였다(2026-08-23) — position:absolute 없이
+           (그 방식은 이미 한 번 실패했다) 그냥 이 칸만 내용 폭만큼 넓어지게 한다.
+           일반 문서 흐름 안에서 넓어지는 거라 다른 요소와 안 겹친다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpanderDetails"] {
+            width: max-content !important;
+            max-width: min(88vw, 300px) !important;
+        }
         .auto-purchase-banner {
             margin: 14px 0 18px;
             padding: 16px 14px 14px;
@@ -933,6 +979,12 @@ def render():
             border: 1px solid rgba(206, 147, 216, 0.55);
             background: linear-gradient(155deg, rgba(74, 20, 140, 0.92) 0%, rgba(26, 34, 56, 0.96) 55%, rgba(18, 24, 43, 0.98) 100%);
             box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(179, 157, 219, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+        /* 2026-08-23: "구매내역" 목록은 카드/박스 장식을 다 걷어내고 숫자만 깔끔하게
+           보여달라는 요청 — 박스가 내용 폭에 맞춰 넓어지게 하는 과정(fit-content/
+           max-content)에서 계속 실기기 버그로 이어졌던 걸 근본적으로 없앤다. */
+        .auto-purchase-banner-plain {
+            margin: 10px 0;
         }
         /* 2026-08-23: "구매내역"만 유일하게 position:absolute 팝오버로 띄우던 방식을
            버리고, 번개조합·안티/액땜조합의 "저장내역"(combo_history_ui.py)과 완전히
@@ -942,19 +994,15 @@ def render():
            유지보수·원인파악이 빨라진다는 게 이 통일의 취지 — 아래의 전용 크기/위치
            재정의는 전부 제거하고, 기존 기본 .auto-banner-ball 등 스타일을 그대로 쓴다. */
         @keyframes autoToastFade {
-            0% { opacity: 0; transform: translate(-50%, -6px); }
-            8% { opacity: 1; transform: translate(-50%, 0); }
-            85% { opacity: 1; transform: translate(-50%, 0); }
-            100% { opacity: 0; transform: translate(-50%, -6px); }
+            0% { opacity: 0; transform: translateY(-6px); }
+            8% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-6px); }
         }
         .auto-next-draw-pool-banner {
-            position: absolute;
-            top: calc(100% + 10px);
-            left: 50%;
-            z-index: 45;
             width: max-content;
             max-width: min(90vw, 380px);
-            margin: 0;
+            margin: 10px auto 0;
             padding: 13px 20px;
             border-radius: 14px;
             border: 1px solid rgba(255, 193, 7, 0.4);
@@ -967,7 +1015,6 @@ def render():
             font-weight: 700;
             line-height: 1.5;
             text-align: center;
-            pointer-events: none;
             animation: autoToastFade 4s ease forwards;
         }
         .auto-banner-head {
@@ -995,14 +1042,13 @@ def render():
             font-weight: 800;
             font-size: 16px;
             line-height: 1.35;
+            margin-bottom: 12px;
         }
         .auto-history-round-head {
             margin: 14px 0 6px;
-            padding-bottom: 4px;
             color: #ce93d8;
             font-weight: 800;
             font-size: 13px;
-            border-bottom: 1px solid rgba(206, 147, 216, 0.3);
         }
         .auto-history-round-head:first-child {
             margin-top: 2px;
@@ -1017,37 +1063,25 @@ def render():
         .auto-banner-combos {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-        }
-        .auto-banner-combo {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 10px;
-            border-radius: 12px;
-            background: rgba(0, 0, 0, 0.22);
-            border: 1px solid rgba(179, 157, 219, 0.22);
-        }
-        .auto-banner-ball-row {
-            display: flex;
-            /* combo_history_ui.py와 동일하게 nowrap — wrap이면 좁은 컨테이너 안에서
-               번호가 한 줄에 하나씩 세로로 늘어서 버린다(2026-08-23 실제로 겪은
-               버그의 진짜 원인 — 통일 작업 때 이 한 줄을 놓쳤었다). */
-            flex-wrap: nowrap;
             gap: 10px;
         }
-        /* 색칠된 볼 대신 순수 숫자 텍스트 — 당첨번호와 대조할 때 눈에 더 선명하게
-           들어오도록 배경/그림자를 뺐다. */
+        /* 2026-08-23: 조합 하나하나를 감싸던 박스(.auto-banner-combo — 배경·테두리·
+           padding)를 완전히 없앴다. 그 박스를 "내용 폭만큼만 넓게" 만들려던
+           시도(width: fit-content, 이어서 max-content)가 계속 실기기에서 번호가
+           박스 밖으로 삐져나오는 버그로 이어졌다 — 장식을 없애면 애초에 그 계산
+           자체가 필요 없어진다. 이제 ball-row가 각 줄을 그대로 담당한다. */
+        .auto-banner-ball-row {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 8px;
+        }
+        /* 순수 숫자 텍스트만 — 배경·테두리 없음. */
         .auto-banner-ball {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            /* combo_history_ui.py(번개조합·안티/액땜조합 저장내역)와 완전히 동일한
-               크기로 통일 — 2026-08-23 */
-            min-width: 24px;
-            height: 24px;
-            padding: 0 2px;
-            color: #f1e9ff;
+            min-width: 20px;
+            color: #ffffff;
             font-weight: 800;
             font-size: 15px;
             font-variant-numeric: tabular-nums;
@@ -1343,6 +1377,24 @@ def render():
         .st-key-auto_purchase_history_zone_6n36s5 {
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
+        }
+        /* 전화번호 입력(왼쪽) + 구매내역·구매확정(오른쪽, 위아래로) 한 줄 배치 —
+           좁은 화면에서도 두 열이 세로로 쌓이지 않게 강제로 nowrap 시킨다. */
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            align-items: flex-start !important;
+        }
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] {
+            min-width: 0 !important;
+        }
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:last-child {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 6px !important;
+        }
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:last-child .st-key-auto_purchase_history_zone_6n36s5,
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:last-child div[data-testid="stButton"] {
+            width: 100% !important;
         }
         .st-key-auto_page_columns_6n36s5 {
             margin-bottom: 0 !important;
@@ -2188,6 +2240,36 @@ def render():
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button:active {
             transform: scale(0.97) !important;
         }
+        /* "구매내역" 버튼 — "구매 확정"과 완전히 동일한 규격(2026-08-23 사용자
+           통일 요청)으로 맞춘다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
+            width: 106px !important;
+            min-width: 106px !important;
+            max-width: 106px !important;
+            background: linear-gradient(180deg, #22d3ee 0%, #06B6D4 55%, #0891b2 100%) !important;
+            color: #FFFFFF !important;
+            box-shadow:
+                0 4px 0 #0e7490,
+                0 7px 14px rgba(6, 182, 212, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+            transition: transform 0.12s ease, box-shadow 0.12s ease !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button:hover {
+            box-shadow:
+                0 5px 0 #0e7490,
+                0 9px 18px rgba(6, 182, 212, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button:active {
+            transform: scale(0.97) !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button p {
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            font-size: 15px !important;
+            font-weight: 900 !important;
+            margin: 0 !important;
+        }
         .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
             background: linear-gradient(180deg, #22d3ee 0%, #06B6D4 55%, #0891b2 100%) !important;
             color: #FFFFFF !important;
@@ -2320,12 +2402,6 @@ def render():
                                 """
                             )
 
-                    phone = st.text_input(
-                        "수신 번호 (문자 발송용)",
-                        placeholder="01012345678",
-                        key="auto_phone_input_6n36s5",
-                    )
-
                     from auto_purchase_service import (
                         NEXT_DRAW_POOL_BANNER,
                         NextDrawPoolNotReadyError,
@@ -2333,16 +2409,36 @@ def render():
                     )
 
                     next_pool = check_next_draw_pool_ready()
-                    if not next_pool["ok"]:
-                        st.markdown(
-                            f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
-                            unsafe_allow_html=True,
-                        )
 
-                    confirm_history_row = st.container(key="auto_confirm_history_row_6n36s5")
-                    with confirm_history_row:
-                        col_confirm, col_history = st.columns(2, gap="small")
-                        with col_confirm:
+                    # 전화번호 입력 옆(오른쪽) 좁은 열에 "구매내역"·"구매확정"을 위아래로
+                    # 나란히 쌓는다(2026-08-23 사용자 제공 배치 참고) — 반씩 나눠 한 줄에
+                    # 펼치던 예전 배치는 구매내역을 열었을 때 번호가 잘리거나 버튼과
+                    # 겹치는 문제가 있었다.
+                    with st.container(key="auto_phone_btn_row_6n36s5"):
+                        phone_col, btn_col = st.columns([2, 1], gap="small")
+                        with phone_col:
+                            phone = st.text_input(
+                                "수신 번호 (문자 발송용)",
+                                placeholder="01012345678",
+                                key="auto_phone_input_6n36s5",
+                            )
+
+                        with btn_col:
+                            # "구매내역"을 좁은 열 안에서 펼치면(st.expander) 번호 6개가
+                            # 열 폭에 잘려 보이는 문제가 있었다(2026-08-23) — 대신 진짜
+                            # 버튼으로 만들고 st.dialog(이 코드베이스에서 이미 쓰고 있는
+                            # points_notice_dialog와 같은 패턴)로 화면 중앙에 넓게 띄운다.
+                            history_blink = bool(st.session_state.pop("auto_history_blink", False))
+                            with st.container(key="auto_purchase_history_zone_6n36s5"):
+                                if st.button(
+                                    "구매내역",
+                                    use_container_width=True,
+                                    key="auto_history_open_btn_6n36s5",
+                                ):
+                                    _show_auto_history_dialog()
+                            if history_blink:
+                                _show_auto_history_dialog()
+
                             if st.button(
                                 "구매 확정",
                                 type="primary",
@@ -2385,46 +2481,11 @@ def render():
                                     ):
                                         st.session_state["auto_show_points"] = True
 
-                        with col_history:
-                            history_blink = bool(st.session_state.pop("auto_history_blink", False))
-                            history_expander_label = "구매내역"
-                            with st.container(key="auto_purchase_history_zone_6n36s5"):
-                                if history_blink:
-                                    st.markdown(
-                                        '<div class="auto-history-just-saved-marker" aria-hidden="true"></div>',
-                                        unsafe_allow_html=True,
-                                    )
-                                with st.expander(
-                                    history_expander_label,
-                                    expanded=history_blink,
-                                ):
-                                    from auth_providers import current_member_id
-
-                                    mid = current_member_id()
-                                    history_items = _collect_purchase_history_items(mid)
-                                    if not history_items:
-                                        st.caption(
-                                            "아직 구매 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다."
-                                        )
-                                    else:
-                                        # 여러 회차 구매가 섞여 쌓일 수 있는데, 예전엔 조합
-                                        # 숫자만 보여주고 몇 회차 것인지 표시가 없어서 어떤
-                                        # 조합이 어느 회차인지, 왜 동그라미가 없는지(미추첨
-                                        # 인지 낙첨인지) 헷갈릴 수 있었다 — 회차별로 묶어서
-                                        # 머리글을 붙인다.
-                                        grouped_history: dict = {}
-                                        for item in history_items:
-                                            grouped_history.setdefault(item.get("draw_round"), []).append(item)
-                                        for draw_round, items in grouped_history.items():
-                                            st.markdown(
-                                                f'<div class="auto-history-round-head">{draw_round}회차</div>',
-                                                unsafe_allow_html=True,
-                                            )
-                                            for item in items:
-                                                st.markdown(
-                                                    _purchase_banner_html(item, compact=True),
-                                                    unsafe_allow_html=True,
-                                                )
+                    if not next_pool["ok"]:
+                        st.markdown(
+                            f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
+                            unsafe_allow_html=True,
+                        )
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
