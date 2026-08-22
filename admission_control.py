@@ -50,9 +50,16 @@ _SETTING_CACHE_TTL_SECONDS = 30
 
 @st.cache_data(ttl=_SETTING_CACHE_TTL_SECONDS, show_spinner=False)
 def _resolve_cap() -> int:
-    from app_settings import get_max_concurrent_sessions
+    # 이 입장 제한 장치는 "서버가 죽는 걸 막기 위한 안전장치"인데, 그 장치
+    # 자체가(예: DB 일시 장애, 배포 환경 차이로 인한 import 실패 등) 앱
+    # 전체를 죽여버리면 본말전도다(2026-08-23 실제로 이렇게 앱이 통째로
+    # 다운된 사고가 있었음) — 무슨 일이 있어도 기본값으로 조용히 대체한다.
+    try:
+        from app_settings import get_max_concurrent_sessions
 
-    return get_max_concurrent_sessions(default=DEFAULT_MAX_CONCURRENT_SESSIONS)
+        return get_max_concurrent_sessions(default=DEFAULT_MAX_CONCURRENT_SESSIONS)
+    except Exception:
+        return DEFAULT_MAX_CONCURRENT_SESSIONS
 
 _SESSION_ID_KEY = "_admission_sid"
 _ADMITTED_KEY = "_admission_ok"
