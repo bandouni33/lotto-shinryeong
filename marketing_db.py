@@ -341,6 +341,86 @@ def _reset_draw_allocations(conn: sqlite3.Connection, draw_round: int) -> None:
     )
 
 
+# ─── 동시 배포 안전장치 (2026-08-22) ───────────────────────────────────────
+# 기존에는 "BEGIN IMMEDIATE ... UPDATE ... commit()"으로 잠금을 걸었다고
+# 생각했는데, 실제 TURSO_DATABASE_URL이 https(HTTP) 스킴이라 libsql_client의
+# HTTP 클라이언트는 애초에 트랜잭션 자체를 지원하지 않는다("The HTTP client
+# does not support transactions" — 라이브러리 자체 에러 메시지, db_turso.py의
+# _ConnectionWrapper.commit()도 원래부터 아무 일도 안 하는 함수였다). 즉 조회
+# (미배포 조합 찾기)와 갱신(배포 표시) 사이에 아무 원자성 보장이 없어서,
+# 동시에 여러 명이 자동구매를 누르면 같은 조합이 두 사람에게 중복 배포될 수
+# 있는 실제 위험이 있었다.
+#
+# 해결: 여러 SQL문을 트랜잭션으로 묶는 대신, "이 순간에도 여전히 미배포
+# 상태인 것만" 조건(allocated_at IS NULL)을 UPDATE 문 자체에 넣는다 — SQL
+# 문 하나는 트랜잭션 없이도 DB 엔진이 원자적으로 처리하므로(HTTP 기반이든
+# 아니든 이건 SQL 엔진의 기본 보장), 두 요청이 동시에 같은 조합을 노려도
+# 먼저 도착한 것만 실제로 갱신되고 나머지는 자동으로 실패한다. 실패(경합에서
+# 밀린) 후보는 다시 새로 조회해서 채우는 재시도 루프로 감당한다.
+_MAX_ALLOCATION_ATTEMPTS = 8
+
+
+def _claim_pending_ids(
+    conn: sqlite3.Connection,
+    candidate_ids: list[int],
+    auto_order_id: int,
+    now: str,
+) -> list:
+    """candidate_ids 중, 이 UPDATE가 실제로 실행되는 순간까지도 미배포
+    상태였던 것만 auto_order_id로 배정하고, 성공한 행만 반환한다(원자적).
+    다른 요청이 그새 먼저 가져간 id는 이 UPDATE의 WHERE 조건에 안 걸려
+    조용히 스킵된다 — 그래서 호출자는 반환된 행 수가 candidate_ids보다
+    적을 수 있다는 걸 감안하고 재시도해야 한다."""
+    if not candidate_ids:
+        return []
+    placeholders = ",".join("?" * len(candidate_ids))
+    conn.execute(
+        f"""
+        UPDATE lotto_combinations
+        SET allocated_at = ?, auto_order_id = ?
+        WHERE id IN ({placeholders}) AND allocated_at IS NULL
+        """,
+        [now, int(auto_order_id), *candidate_ids],
+    )
+    # 여기서 commit()이 빠지면(Turso HTTP 백엔드는 각 execute()가 이미
+    # 개별 요청으로 즉시 반영되니 무해한 no-op이지만) 다른 커넥션에서 이
+    # UPDATE가 아직 안 보일 수 있어 중복 확정으로 이어질 수 있다 — 실제로
+    # 로컬 sqlite3로 동시성 테스트해보니 이걸 빼먹었을 때 중복이 재현됐다.
+    conn.commit()
+    # auto_order_id는 구매 건마다 고유하므로, 이 값으로 필터링하면 "방금 이
+    # 호출로 내가 실제로 배정에 성공한 행"만 정확히 걸러진다(다른 동시
+    # 요청·과거 배정과 절대 안 섞임).
+    return conn.execute(
+        f"""
+        SELECT id, num1, num2, num3, num4, num5, num6
+        FROM lotto_combinations
+        WHERE id IN ({placeholders}) AND auto_order_id = ?
+        """,
+        [*candidate_ids, int(auto_order_id)],
+    ).fetchall()
+
+
+def _verify_claims_alive(conn, claimed_ids: set, auto_order_id: int) -> list:
+    """이미 확정했다고 믿고 있는 claimed_ids가 지금도 실제로 이 auto_order_id로
+    배정된 채인지 DB에서 다시 확인한다. 동시에 다른 요청이 재고 소진으로
+    회전(전체 초기화)을 실행하면, 그 요청이 시작되기 전에 이미 확정됐던
+    내 배정도 함께 지워질 수 있다 — allocated_at IS NULL WHERE draw_round=?
+    는 회차 전체를 대상으로 하는 무차별 초기화라 "누구 배정인지"를 가리지
+    않기 때문이다. 그래서 매 재시도마다 실제로 살아있는 것만 신뢰하고,
+    사라진 게 있으면 그만큼 다시 채우도록 재시도 루프에 맡긴다."""
+    if not claimed_ids:
+        return []
+    placeholders = ",".join("?" * len(claimed_ids))
+    return conn.execute(
+        f"""
+        SELECT id, num1, num2, num3, num4, num5, num6
+        FROM lotto_combinations
+        WHERE id IN ({placeholders}) AND auto_order_id = ?
+        """,
+        [*claimed_ids, int(auto_order_id)],
+    ).fetchall()
+
+
 def allocate_lotto_combinations(
     draw_round: int,
     count: int,
@@ -354,6 +434,11 @@ def allocate_lotto_combinations(
 
     미배포 재고가 구매 수량보다 적으면(전량 소진 포함) 해당 회차 배포를
     초기화한 뒤 처음부터 같은 우선순위로 다시 순차 배포(회전).
+
+    동시에 여러 구매 요청이 들어와도 같은 조합이 중복 배정되지 않도록,
+    후보를 고른 뒤 실제 확정은 "그 순간까지도 미배포 상태인 것만" UPDATE로
+    원자적으로 처리한다(_claim_pending_ids). 경합에서 밀려 놓친 만큼만 다시
+    후보를 골라 재시도한다(최대 _MAX_ALLOCATION_ATTEMPTS회).
     """
     draw_round = int(draw_round)
     count = int(count)
@@ -363,8 +448,9 @@ def allocate_lotto_combinations(
     conn = _connect()
     conn.row_factory = sqlite3.Row
     rotated = False
+    claimed_rows: list = []
+    claimed_ids: set[int] = set()
     try:
-        conn.execute("BEGIN IMMEDIATE")
         number_freq = build_number_frequency_map(draw_round, conn)
         if not number_freq:
             raise InsufficientCombinationsError(draw_round, count, 0)
@@ -373,43 +459,73 @@ def allocate_lotto_combinations(
         if total < count:
             raise InsufficientCombinationsError(draw_round, count, total)
 
-        pending = _fetch_pending_rows(conn, draw_round)
-        if len(pending) < count:
-            _reset_draw_allocations(conn, draw_round)
-            pending = _fetch_pending_rows(conn, draw_round)
-            rotated = True
+        for _attempt in range(_MAX_ALLOCATION_ATTEMPTS):
+            if claimed_ids:
+                # 다른 동시 요청이 재고 소진으로 회전(회차 전체 초기화)을
+                # 실행하면 내가 이미 확정한 배정까지 함께 지워질 수 있다 —
+                # 그래서 매 시도마다 실제로 살아있는지 재확인하고, 사라진
+                # 만큼은 아래에서 다시 채운다.
+                alive_rows = _verify_claims_alive(conn, claimed_ids, auto_order_id)
+                alive_ids = {int(r["id"]) for r in alive_rows}
+                if alive_ids != claimed_ids:
+                    claimed_ids = alive_ids
+                    claimed_rows = list(alive_rows)
 
-        ordered = _sort_combos_by_priority(pending, number_freq)[:count]
-        now = datetime.now().isoformat()
-        ids = [int(row["id"]) for row in ordered]
-        placeholders = ",".join("?" * len(ids))
-        conn.execute(
-            f"""
-            UPDATE lotto_combinations
-            SET allocated_at = ?, auto_order_id = ?
-            WHERE id IN ({placeholders})
-            """,
-            [now, int(auto_order_id), *ids],
-        )
-        conn.commit()
-    except InsufficientCombinationsError:
-        conn.execute("ROLLBACK")
-        raise
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
+            need = count - len(claimed_rows)
+            if need <= 0:
+                break
+
+            pending = [
+                row for row in _fetch_pending_rows(conn, draw_round)
+                if int(row["id"]) not in claimed_ids
+            ]
+            # 이미 확정한 것이 하나도 없는 첫 시도에서만 회전(초기화)한다 —
+            # 확정된 뒤에 회전하면 이번 요청이 이미 배정받은 조합까지
+            # allocated_at이 NULL로 지워져 다른 요청과 중복 배정될 수 있다.
+            if len(pending) < need and not claimed_rows and not rotated:
+                _reset_draw_allocations(conn, draw_round)
+                conn.commit()
+                rotated = True
+                pending = _fetch_pending_rows(conn, draw_round)
+
+            if not pending:
+                continue
+
+            candidates = _sort_combos_by_priority(pending, number_freq)[:need]
+            now = datetime.now().isoformat()
+            newly_claimed = _claim_pending_ids(
+                conn, [int(row["id"]) for row in candidates], auto_order_id, now
+            )
+            for row in newly_claimed:
+                rid = int(row["id"])
+                if rid not in claimed_ids:
+                    claimed_ids.add(rid)
+                    claimed_rows.append(row)
+
+        # 루프가 끝난 직후에도 마지막 시도 이후 찰나에 남의 회전이 끼어들
+        # 수 있으니, 반환 직전 마지막으로 한 번 더 실사를 확인한다.
+        if claimed_ids:
+            alive_rows = _verify_claims_alive(conn, claimed_ids, auto_order_id)
+            alive_ids = {int(r["id"]) for r in alive_rows}
+            if alive_ids != claimed_ids:
+                claimed_ids = alive_ids
+                claimed_rows = list(alive_rows)
+
+        if len(claimed_rows) < count:
+            if claimed_rows:
+                release_lotto_combination_allocation(list(claimed_ids))
+            raise InsufficientCombinationsError(draw_round, count, len(claimed_rows))
     finally:
         conn.close()
 
-    result = [
+    return [
         {
             "id": int(row["id"]),
             "combo": _combo_nums_from_row(row),
             "rotated": rotated,
         }
-        for row in ordered
+        for row in claimed_rows[:count]
     ]
-    return result
 
 
 def _pick_spread_indices(pool_size: int, count: int) -> list[int]:
@@ -455,6 +571,11 @@ def allocate_lotto_combinations_random_sequential(
 
     예) 5개 → 인덱스 1, 3, 6, 10, 14처럼 퍼져서 선택.
     재고가 부족하면 해당 회차 배포를 초기화한 뒤 다시 배정(회전).
+
+    동시에 여러 구매 요청이 들어와도 같은 조합이 중복 배정되지 않도록,
+    후보를 고른 뒤 실제 확정은 "그 순간까지도 미배포 상태인 것만" UPDATE로
+    원자적으로 처리한다(_claim_pending_ids). 경합에서 밀려 놓친 만큼만 다시
+    후보를 골라 재시도한다(최대 _MAX_ALLOCATION_ATTEMPTS회).
     """
     draw_round = int(draw_round)
     count = int(count)
@@ -464,41 +585,70 @@ def allocate_lotto_combinations_random_sequential(
     conn = _connect()
     conn.row_factory = sqlite3.Row
     rotated = False
+    claimed_rows: list = []
+    claimed_ids: set[int] = set()
     try:
-        conn.execute("BEGIN IMMEDIATE")
         total = _count_total_combinations(conn, draw_round)
         if total < count:
             raise InsufficientCombinationsError(draw_round, count, total)
 
-        pending = _fetch_pending_rows(conn, draw_round)
-        if len(pending) < count:
-            _reset_draw_allocations(conn, draw_round)
-            pending = _fetch_pending_rows(conn, draw_round)
-            rotated = True
+        for _attempt in range(_MAX_ALLOCATION_ATTEMPTS):
+            if claimed_ids:
+                # 다른 동시 요청이 재고 소진으로 회전(회차 전체 초기화)을
+                # 실행하면 내가 이미 확정한 배정까지 함께 지워질 수 있다 —
+                # 그래서 매 시도마다 실제로 살아있는지 재확인하고, 사라진
+                # 만큼은 아래에서 다시 채운다.
+                alive_rows = _verify_claims_alive(conn, claimed_ids, auto_order_id)
+                alive_ids = {int(r["id"]) for r in alive_rows}
+                if alive_ids != claimed_ids:
+                    claimed_ids = alive_ids
+                    claimed_rows = list(alive_rows)
 
-        if len(pending) < count:
-            raise InsufficientCombinationsError(draw_round, count, len(pending))
+            need = count - len(claimed_rows)
+            if need <= 0:
+                break
 
-        pick_indices = _pick_spread_indices(len(pending), count)
-        ordered = [pending[i] for i in pick_indices]
-        now = datetime.now().isoformat()
-        ids = [int(row["id"]) for row in ordered]
-        placeholders = ",".join("?" * len(ids))
-        conn.execute(
-            f"""
-            UPDATE lotto_combinations
-            SET allocated_at = ?, auto_order_id = ?
-            WHERE id IN ({placeholders})
-            """,
-            [now, int(auto_order_id), *ids],
-        )
-        conn.commit()
-    except InsufficientCombinationsError:
-        conn.execute("ROLLBACK")
-        raise
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
+            pending = [
+                row for row in _fetch_pending_rows(conn, draw_round)
+                if int(row["id"]) not in claimed_ids
+            ]
+            # 이미 확정한 것이 하나도 없는 첫 시도에서만 회전(초기화)한다 —
+            # 확정된 뒤에 회전하면 이번 요청이 이미 배정받은 조합까지
+            # allocated_at이 NULL로 지워져 다른 요청과 중복 배정될 수 있다.
+            if len(pending) < need and not claimed_rows and not rotated:
+                _reset_draw_allocations(conn, draw_round)
+                conn.commit()
+                rotated = True
+                pending = _fetch_pending_rows(conn, draw_round)
+
+            if not pending:
+                continue
+
+            pick_indices = _pick_spread_indices(len(pending), min(need, len(pending)))
+            candidates = [pending[i] for i in pick_indices]
+            now = datetime.now().isoformat()
+            newly_claimed = _claim_pending_ids(
+                conn, [int(row["id"]) for row in candidates], auto_order_id, now
+            )
+            for row in newly_claimed:
+                rid = int(row["id"])
+                if rid not in claimed_ids:
+                    claimed_ids.add(rid)
+                    claimed_rows.append(row)
+
+        # 루프가 끝난 직후에도 마지막 시도 이후 찰나에 남의 회전이 끼어들
+        # 수 있으니, 반환 직전 마지막으로 한 번 더 실사를 확인한다.
+        if claimed_ids:
+            alive_rows = _verify_claims_alive(conn, claimed_ids, auto_order_id)
+            alive_ids = {int(r["id"]) for r in alive_rows}
+            if alive_ids != claimed_ids:
+                claimed_ids = alive_ids
+                claimed_rows = list(alive_rows)
+
+        if len(claimed_rows) < count:
+            if claimed_rows:
+                release_lotto_combination_allocation(list(claimed_ids))
+            raise InsufficientCombinationsError(draw_round, count, len(claimed_rows))
     finally:
         conn.close()
 
@@ -508,7 +658,7 @@ def allocate_lotto_combinations_random_sequential(
             "combo": _combo_nums_from_row(row),
             "rotated": rotated,
         }
-        for row in ordered
+        for row in claimed_rows[:count]
     ]
 
 
