@@ -434,6 +434,15 @@ def render():
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] > div[role="radiogroup"] {
             display: flex !important;
             flex-direction: row !important;
+            /* Streamlit이 라디오그룹에 기본으로 flex-wrap:wrap을 걸어놔서, 컨테이너가
+               두 옵션(안티조합·액땜조합) 원래 너비를 다 담을 만큼 넓지 않으면 "액땜조합"
+               전체가 다음 줄로 통째로 밀려나 세로 2줄짜리 이상한 모양이 되고 있었다
+               (실기기 실측으로 확인: 컨테이너 136px인데 라벨 하나가 126px라 두 개가
+               한 줄에 못 들어감, 2026-08-22) — 글자 줄바꿈 문제가 아니라 이거였다.
+               nowrap으로 막고, 아래 label에 min-width:0을 줘서 flex:1이 실제로
+               좁은 폭에 맞춰 줄어들 수 있게 한다(안 그러면 flex:1이어도 내용 크기
+               밑으로는 안 줄어드는 게 flex 기본 동작). */
+            flex-wrap: nowrap !important;
             width: 85% !important;
             margin: 0 auto !important;
             gap: 6px !important;
@@ -443,15 +452,17 @@ def render():
             box-sizing: border-box !important;
         }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label {
-            flex: 1 !important;
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
             border-radius: 999px !important;
-            padding: 8px 6px !important;
+            padding: 8px 4px !important;
             margin: 0 !important;
             cursor: pointer !important;
             transition: background 0.15s ease !important;
+            overflow: hidden !important;
         }
         /* 라디오 기본 점(radio dot) 숨기기 — 이 Streamlit 버전의 실제 DOM은
            label > div(z0lit3) > div(19nzcwv) > div(원 아이콘 감싸는 wrapper, 첫
