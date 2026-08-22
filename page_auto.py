@@ -2429,21 +2429,11 @@ def render():
                             )
 
                         with btn_col:
-                            # "구매내역"을 좁은 열 안에서 펼치면(st.expander) 번호 6개가
-                            # 열 폭에 잘려 보이는 문제가 있었다(2026-08-23) — 대신 진짜
+                            # "구매확정"을 위, "구매내역"을 아래로(2026-08-23 사용자
+                            # 지정 순서). "구매내역"을 좁은 열 안에서 펼치면(st.expander)
+                            # 번호 6개가 열 폭에 잘려 보이는 문제가 있었다 — 대신 진짜
                             # 버튼으로 만들고 st.dialog(이 코드베이스에서 이미 쓰고 있는
                             # points_notice_dialog와 같은 패턴)로 화면 중앙에 넓게 띄운다.
-                            history_blink = bool(st.session_state.pop("auto_history_blink", False))
-                            with st.container(key="auto_purchase_history_zone_6n36s5"):
-                                if st.button(
-                                    "구매내역",
-                                    use_container_width=True,
-                                    key="auto_history_open_btn_6n36s5",
-                                ):
-                                    _show_auto_history_dialog()
-                            if history_blink:
-                                _show_auto_history_dialog()
-
                             if st.button(
                                 "구매 확정",
                                 type="primary",
@@ -2485,6 +2475,17 @@ def render():
                                         reason="구매 확정을 위해 간편인증이 필요합니다.",
                                     ):
                                         st.session_state["auto_show_points"] = True
+
+                            history_blink = bool(st.session_state.pop("auto_history_blink", False))
+                            with st.container(key="auto_purchase_history_zone_6n36s5"):
+                                if st.button(
+                                    "구매내역",
+                                    use_container_width=True,
+                                    key="auto_history_open_btn_6n36s5",
+                                ):
+                                    _show_auto_history_dialog()
+                            if history_blink:
+                                _show_auto_history_dialog()
 
                     if not next_pool["ok"]:
                         st.markdown(
