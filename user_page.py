@@ -649,7 +649,6 @@ if current_page == "main":
     </div>
     """, unsafe_allow_html=True)
 
-
     # 🟢 1. 로또볼 디자인 (3D 입체감 & 크기 확대)
     col1 = st.columns([1])[0]
     with col1:
@@ -930,7 +929,8 @@ if current_page == "main":
                 <div class="rank-more-toast-body">
                     1위: 407억 (1회)<br>
                     2위: 369억 (51회)<br>
-                    3위: 346억 (100회)
+                    3위: 346억 (100회)<br>
+                    <span id="rank-more-4th-6n36s5">4위: 300억 (132회)</span>
                 </div>
             </div>
         </div>
@@ -1044,6 +1044,21 @@ if current_page == "main":
                         hideTimer = null;
                     }, 5000);
                 }
+            });
+        }
+
+        // "4위" 줄은 실제 순위 데이터가 아니라 관리자 전용 숨은 진입점이다 —
+        // 일반 사용자는 이게 그냥 TOP 5 목록의 나머지 한 줄로 보이지만,
+        // 클릭하면 메인 화면 맨 아래 관리자 메뉴가 나타난다(위 CSS의
+        // body.admin-menu-revealed 규칙 참고). Streamlit 재실행 없이 순수
+        // CSS 클래스 토글이라 즉시 반영된다.
+        const secretEntry = doc.getElementById('rank-more-4th-6n36s5');
+        if (secretEntry && !secretEntry.dataset.adminRevealBound) {
+            secretEntry.dataset.adminRevealBound = '1';
+            secretEntry.addEventListener('click', function(e) {
+                e.stopPropagation();
+                doc.body.classList.add('admin-menu-revealed');
+                if (toast) toast.classList.remove('show');
             });
         }
     })();
@@ -1589,124 +1604,142 @@ if current_page == "main":
 # ==========================================================
 # 👑 메인 화면 맨 아래 관리자 메뉴
 # ==========================================================
+# 이 블록은 항상 렌더링되지만 기본적으로 display:none으로 숨겨져 있다 — "역대
+# 최고 당첨 금액 순위 · 더 보러가기" 토스트의 가짜 4위 줄을 클릭해야만
+# document.body에 admin-menu-revealed 클래스가 붙으면서 나타난다(아래 토스트
+# 스크립트 참고). 일반 사용자 화면에는 "시스템 관리자 메뉴"라는 문구 자체가
+# 노출되지 않는다. 서버 왕복(Streamlit 재실행) 없이 순수 CSS/JS로 즉시
+# 토글되는 방식이라, 안 보이는 상태에서도 password 위젯 자체는 이미 DOM에
+# 존재한다 — 하지만 관리자 비밀번호 값 자체는 서버에서만 비교하므로(환경변수
+# ADMIN_MENU_PASSWORD) 노출 위험은 없다.
 if current_page == "main":
-    st.markdown("""
-    <div class="main-admin-menu-marker" aria-hidden="true"></div>
-    <style>
-    .main-admin-menu-marker { display: none !important; }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) {
-        margin-top: 0 !important;
-        margin-bottom: 0 !important;
-        padding-top: 0 !important;
-    }
+    with st.container(key="admin_menu_reveal_wrap"):
+        st.markdown("""
+        <div class="main-admin-menu-marker" aria-hidden="true"></div>
+        <style>
+        .main-admin-menu-marker { display: none !important; }
+        /* 숨김/노출은 이 컨테이너 자체(.st-key-admin_menu_reveal_wrap)로 정확히
+           타겟팅한다 — 처음엔 아래처럼 :has(.main-admin-menu-marker)로 잡은
+           stVerticalBlock에 display:none을 걸었었는데, Streamlit의 중첩 레이아웃
+           구조상 :has()가 마커를 포함한 "모든 조상" 블록에 다 매치돼서(가장
+           바깥쪽 루트 블록까지 포함) 페이지 전체가 사라지는 사고로 이어졌다
+           (2026-08-22 실제로 겪음). 아래 :has() 패턴은 margin/padding 같은
+           비파괴적 스타일에만 계속 쓴다. */
+        .st-key-admin_menu_reveal_wrap { display: none !important; }
+        body.admin-menu-revealed .st-key-admin_menu_reveal_wrap { display: block !important; }
 
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        border-radius: 10px !important;
-        margin-bottom: 0 !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary {
-        background: linear-gradient(145deg, #1c2838 0%, #141c2a 45%, #0c1018 100%) !important;
-        background-color: transparent !important;
-        color: #c8d0dc !important;
-        padding: 6px 8px !important;
-        min-height: 0 !important;
-        line-height: 1.15 !important;
-        border-radius: 10px !important;
-        border: 1px solid rgba(80, 95, 120, 0.35) !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] details {
-        background-color: #000000 !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary:hover {
-        background: linear-gradient(145deg, #243040 0%, #1a2432 45%, #101620 100%) !important;
-        color: #e8ecf2 !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary p,
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary span,
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary div,
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary svg {
-        color: #c8d0dc !important;
-        fill: #c8d0dc !important;
-        font-size: 13px !important;
-        line-height: 1.15 !important;
-        white-space: nowrap !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
-        background-color: #000000 !important;
-        border-top: 1px solid #333333 !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
-        background-color: #000000 !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[kind="secondary"],
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[data-testid="stBaseButton-secondary"],
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button {
-        background-color: #3a3a3a !important;
-        color: #ffffff !important;
-        border: 1px solid #555555 !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button:hover {
-        background-color: #4a4a4a !important;
-        color: #ffffff !important;
-        border-color: #666666 !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button p,
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button span,
-    div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button div {
-        color: #ffffff !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    with st.expander(" 시스템 관리자 메뉴"):
-        import os
-        import admin_auth_guard
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 10px !important;
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary {
+            background: linear-gradient(145deg, #1c2838 0%, #141c2a 45%, #0c1018 100%) !important;
+            background-color: transparent !important;
+            color: #c8d0dc !important;
+            padding: 6px 8px !important;
+            min-height: 0 !important;
+            line-height: 1.15 !important;
+            border-radius: 10px !important;
+            border: 1px solid rgba(80, 95, 120, 0.35) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] details {
+            background-color: #000000 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary:hover {
+            background: linear-gradient(145deg, #243040 0%, #1a2432 45%, #101620 100%) !important;
+            color: #e8ecf2 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary p,
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary span,
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary div,
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary svg {
+            color: #c8d0dc !important;
+            fill: #c8d0dc !important;
+            font-size: 13px !important;
+            line-height: 1.15 !important;
+            white-space: nowrap !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+            background-color: #000000 !important;
+            border-top: 1px solid #333333 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
+            background-color: #000000 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[kind="secondary"],
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[data-testid="stBaseButton-secondary"],
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button {
+            background-color: #3a3a3a !important;
+            color: #ffffff !important;
+            border: 1px solid #555555 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button:hover {
+            background-color: #4a4a4a !important;
+            color: #ffffff !important;
+            border-color: #666666 !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button p,
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button span,
+        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button div {
+            color: #ffffff !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        with st.expander(" 시스템 관리자 메뉴"):
+            import os
+            import admin_auth_guard
 
-        _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD")
-        if not _ADMIN_MENU_PASSWORD:
-            try:
-                _ADMIN_MENU_PASSWORD = st.secrets.get("ADMIN_MENU_PASSWORD", None)
-            except Exception:
-                _ADMIN_MENU_PASSWORD = None
-        if not _ADMIN_MENU_PASSWORD:
-            st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
-            st.stop()
+            _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD")
+            if not _ADMIN_MENU_PASSWORD:
+                try:
+                    _ADMIN_MENU_PASSWORD = st.secrets.get("ADMIN_MENU_PASSWORD", None)
+                except Exception:
+                    _ADMIN_MENU_PASSWORD = None
+            if not _ADMIN_MENU_PASSWORD:
+                st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
+                st.stop()
 
-        _ADMIN_MAX_ATTEMPTS = 5
-        _ADMIN_LOCKOUT_SECONDS = 300  # 5분
+            _ADMIN_MAX_ATTEMPTS = 5
+            _ADMIN_LOCKOUT_SECONDS = 300  # 5분
 
-        if not st.session_state.get("admin_menu_unlocked", False):
-            _remaining = admin_auth_guard.seconds_locked_remaining()
-            if _remaining > 0:
-                st.error(f"비밀번호 시도 횟수를 초과했습니다. {int(_remaining) + 1}초 후 다시 시도해 주세요.")
-            else:
-                st.text_input(
-                    "관리자 비밀번호",
-                    type="password",
-                    key="admin_menu_pwd_6n36s5",
-                )
-                if st.button("확인", key="admin_menu_pwd_submit_6n36s5"):
-                    if st.session_state.get("admin_menu_pwd_6n36s5") == _ADMIN_MENU_PASSWORD:
-                        admin_auth_guard.record_success()
-                        st.session_state.admin_menu_unlocked = True
-                        st.rerun()
-                    else:
-                        fail_count = admin_auth_guard.record_failure(
-                            _ADMIN_MAX_ATTEMPTS, _ADMIN_LOCKOUT_SECONDS
-                        )
-                        if fail_count == 0:
-                            st.warning(
-                                f"비밀번호가 올바르지 않습니다. 시도 횟수 초과로 {_ADMIN_LOCKOUT_SECONDS}초간 잠금됩니다."
-                            )
+            if not st.session_state.get("admin_menu_unlocked", False):
+                _remaining = admin_auth_guard.seconds_locked_remaining()
+                if _remaining > 0:
+                    st.error(f"비밀번호 시도 횟수를 초과했습니다. {int(_remaining) + 1}초 후 다시 시도해 주세요.")
+                else:
+                    st.text_input(
+                        "관리자 비밀번호",
+                        type="password",
+                        key="admin_menu_pwd_6n36s5",
+                    )
+                    if st.button("확인", key="admin_menu_pwd_submit_6n36s5"):
+                        if st.session_state.get("admin_menu_pwd_6n36s5") == _ADMIN_MENU_PASSWORD:
+                            admin_auth_guard.record_success()
+                            st.session_state.admin_menu_unlocked = True
+                            st.rerun()
                         else:
-                            st.warning(
-                                f"비밀번호가 올바르지 않습니다. ({fail_count}/{_ADMIN_MAX_ATTEMPTS}회)"
+                            fail_count = admin_auth_guard.record_failure(
+                                _ADMIN_MAX_ATTEMPTS, _ADMIN_LOCKOUT_SECONDS
                             )
-        elif st.button(" 대시보드로 이동", key="admin_btn_dashboard"):
-            st.session_state.is_admin = True
-            st.session_state.go_to_admin = True
-            st.rerun()
+                            if fail_count == 0:
+                                st.warning(
+                                    f"비밀번호가 올바르지 않습니다. 시도 횟수 초과로 {_ADMIN_LOCKOUT_SECONDS}초간 잠금됩니다."
+                                )
+                            else:
+                                st.warning(
+                                    f"비밀번호가 올바르지 않습니다. ({fail_count}/{_ADMIN_MAX_ATTEMPTS}회)"
+                                )
+            elif st.button(" 대시보드로 이동", key="admin_btn_dashboard"):
+                st.session_state.is_admin = True
+                st.session_state.go_to_admin = True
+                st.rerun()
 
