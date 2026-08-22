@@ -695,8 +695,7 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
     return _limit_to_recent_rounds(items)
 
 
-@st.dialog("구매내역")
-def _show_auto_history_dialog():
+def _render_auto_history_content():
     from auth_providers import current_member_id
 
     mid = current_member_id()
@@ -742,21 +741,6 @@ def render():
         """
     <style>
         .stApp { background-color: #12182b; color: white; }
-        /* st.dialog("구매내역")는 기본 흰 배경이라 흰색 번호 글자가 안 보였다 —
-           앱 전체와 같은 어두운 배경으로 맞춘다. */
-        div[data-testid="stDialog"] > div {
-            background-color: #12182b !important;
-        }
-        /* "구매내역" 버튼을 눌러서 여는 팝업인데 팝업 안에 st.dialog 기본
-           제목("구매내역")까지 또 나오면 글자가 중복돼 보인다(2026-08-23
-           사용자 지적) — 제목 줄은 아예 감춘다. */
-        div[data-testid="stDialog"] h2 {
-            display: none !important;
-        }
-        div[data-testid="stDialog"] > div [data-testid="stMarkdownContainer"] > p,
-        div[data-testid="stDialog"] label {
-            color: #ffffff !important;
-        }
         html, body, #root, .stApp, [data-testid="stAppViewContainer"],
         [data-testid="stAppViewContainer"] > section.main {
             overflow-x: hidden !important;
@@ -2477,15 +2461,33 @@ def render():
                                         st.session_state["auto_show_points"] = True
 
                             history_blink = bool(st.session_state.pop("auto_history_blink", False))
+                            if history_blink:
+                                st.session_state["auto_history_panel_open_6n36s5"] = True
                             with st.container(key="auto_purchase_history_zone_6n36s5"):
                                 if st.button(
                                     "구매내역",
+                                    type="primary",
                                     use_container_width=True,
                                     key="auto_history_open_btn_6n36s5",
                                 ):
-                                    _show_auto_history_dialog()
+                                    st.session_state["auto_history_panel_open_6n36s5"] = (
+                                        not st.session_state.get(
+                                            "auto_history_panel_open_6n36s5", False
+                                        )
+                                    )
+
+                    # 구매내역 펼침 내용은 좁은 열(btn_col) 안이 아니라 전화번호·버튼
+                    # 줄 전체 밑에 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서
+                    # 펼치면 번호 6개가 잘려 보이고, 화면 중앙 팝업으로 띄우면
+                    # "구매 확정" 버튼을 가려버리는 문제가 있었다(2026-08-23).
+                    if st.session_state.get("auto_history_panel_open_6n36s5", False):
+                        with st.container(key="auto_purchase_history_panel_6n36s5"):
                             if history_blink:
-                                _show_auto_history_dialog()
+                                st.markdown(
+                                    '<div class="auto-history-just-saved-marker" aria-hidden="true"></div>',
+                                    unsafe_allow_html=True,
+                                )
+                            _render_auto_history_content()
 
                     if not next_pool["ok"]:
                         st.markdown(
