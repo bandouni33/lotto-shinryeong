@@ -205,8 +205,10 @@ def _fire_qr_scan_trigger() -> None:
     # 바로 그 프레임이므로) 실제로 존재하는지 정확히 판별 가능해서, 있으면
     # 브릿지만 부르고 폴백 이동은 아예 실행하지 않는다.
     # (임시 진단, 2026-08-22) adb 로그 확인이 계속 안 되는 상황이라, 실기기 화면에
-    # 글자로 직접 "브릿지 있음/없음"이 보이도록 배너를 띄운다 — 원인을 좁힌 뒤
-    # 지워야 하는 임시 코드. 3초 후 자동으로 사라진다.
+    # 글자로 직접 상세 상태가 보이도록 배너를 띄운다 — 원인을 좁힌 뒤 지워야 하는
+    # 임시 코드. 1차 진단(있음/없음)에서 실기기가 계속 "없음"으로 나와서, 정확히
+    # 뭐가 없는 건지(객체 자체가 없는지, 있는데 postMessage만 없는지) 더 세분화하고,
+    # 폴백 이동 전에 읽을 시간을 벌기 위해 6초로 늘린다.
     components.html(
         """<script>
         (function () {
@@ -215,18 +217,25 @@ def _fire_qr_scan_trigger() -> None:
                 var s = top.document.createElement('script');
                 s.textContent =
                     "try{" +
-                    "var found = !!window.ReactNativeWebView;" +
+                    "var rnwv = window.ReactNativeWebView;" +
+                    "var state = !rnwv ? 'A' : (typeof rnwv.postMessage !== 'function' ? 'B' : 'C');" +
+                    "var labels = {" +
+                    "A: '\\uAC1D\\uCCB4 \\uC790\\uCCB4\\uAC00 \\uC5C6\\uC74C'," +
+                    "B: '\\uAC1D\\uCCB4\\uB294 \\uC788\\uC74C, postMessage \\uC5C6\\uC74C'," +
+                    "C: '\\uC815\\uC0C1 \\u2013 \\uC2E0\\uD638 \\uC804\\uC1A1\\uD568'" +
+                    "};" +
+                    "var ua = navigator.userAgent.slice(0, 40);" +
                     "var b = document.createElement('div');" +
-                    "b.textContent = found ? '\\uBE0C\\uB9AC\\uC9C0 \\uC788\\uC74C \\u2013 \\uC2E0\\uD638 \\uC804\\uC1A1\\uD568' : '\\uBE0C\\uB9AC\\uC9C0 \\uC5C6\\uC74C \\u2013 \\uD3F4\\uBC31 \\uC774\\uB3D9';" +
+                    "b.textContent = labels[state] + ' | ' + ua;" +
                     "b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:999999;" +
-                    "background:' + (found ? '#16a34a' : '#dc2626') + ';color:#fff;font-weight:800;" +
-                    "font-size:15px;text-align:center;padding:10px 6px;';" +
+                    "background:' + (state === 'C' ? '#16a34a' : '#dc2626') + ';color:#fff;font-weight:800;" +
+                    "font-size:12px;text-align:center;padding:10px 6px;line-height:1.5;word-break:break-all;';" +
                     "document.body.appendChild(b);" +
-                    "setTimeout(function(){ if(b.parentNode){ b.parentNode.removeChild(b); } }, 3000);" +
-                    "if(found){" +
-                    "window.ReactNativeWebView.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));" +
+                    "setTimeout(function(){ if(b.parentNode){ b.parentNode.removeChild(b); } }, 6000);" +
+                    "if(state === 'C'){" +
+                    "rnwv.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));" +
                     "}else{" +
-                    "setTimeout(function(){ window.location.href='?page=hedge&qrscan=1'; }, 1500);" +
+                    "setTimeout(function(){ window.location.href='?page=hedge&qrscan=1'; }, 5000);" +
                     "}" +
                     "}catch(e){}";
                 top.document.head.appendChild(s);
