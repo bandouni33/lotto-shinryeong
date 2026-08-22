@@ -721,7 +721,12 @@ if current_page == "main":
     
     /* 3D 느낌의 크고 선명한 이모티콘 */
     .menu-icon { font-size: 36px; margin-bottom: 8px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
-    .menu-title { color: #ffffff; font-weight: 900; font-size: 16px; margin-bottom: 2px; letter-spacing: 0.5px; }
+    /* "안티조합 · 액땜조합"처럼 긴 제목이 좁은 카드 폭에서 "안티조/합"처럼 글자
+       중간에서 줄바꿈되던 버그(2026-08-22 실기기 스크린샷 확인) — 한글은 기본
+       word-break 규칙상 아무 글자 사이에서나 끊길 수 있어서, 단어(어절) 경계
+       에서만 끊기도록 명시한다. nowrap은 이 제목엔 너무 길어 오히려 잘려
+       보일 수 있어 쓰지 않는다. */
+    .menu-title { color: #ffffff; font-weight: 900; font-size: 16px; margin-bottom: 2px; letter-spacing: 0.5px; word-break: keep-all; }
     .menu-sub { color: #9aa5b1; font-size: 13px; font-weight: 600; min-height: 18px; line-height: 18px; }
     
     /* 테두리 글로우 효과 */

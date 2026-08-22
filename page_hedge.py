@@ -430,6 +430,11 @@ def render():
             font-size: 14px !important;
             line-height: 20px !important;
             margin: 0 !important;
+            /* 바로 옆 QR스캔/직접입력 토글(.hedge-input-pill)에는 있던 nowrap이
+               여기만 빠져서, 실기기 좁은 화면에서 "안티조합"/"액땜조합"이
+               "안티조/합"처럼 글자 중간에서 줄바꿈되던 버그(2026-08-22 실기기
+               스크린샷으로 확인). */
+            white-space: nowrap !important;
         }
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label:nth-of-type(1):has(input:checked) {
             background: linear-gradient(145deg, #A78BFA, #7C3AED) !important;
