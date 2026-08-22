@@ -171,7 +171,7 @@ def _render_nav_html() -> str:
 def _render_direct_input_pill_html() -> str:
     # "직접입력"은 지금 이 페이지 자체가 그 상태라 눌러도 할 일이 없어 그냥
     # 강조 표시만 한다(정적 HTML로 충분 — 클릭 핸들러 불필요).
-    return '<div class="hedge-input-pill hedge-input-pill-active">✏️ 직접입력</div>'
+    return '<div class="hedge-input-pill hedge-input-pill-active">직접입력</div>'
 
 
 def _fire_qr_scan_trigger() -> None:
@@ -361,10 +361,10 @@ def render():
             border: none !important;
             background: transparent !important;
             border-radius: 999px !important;
-            padding: 8px 6px !important;
+            padding: 8px 4px !important;
             font-weight: 800 !important;
-            font-size: 14px !important;
-            line-height: 20px !important;
+            font-size: 12px !important;
+            line-height: 16px !important;
             color: #FFFFFF !important;
             white-space: nowrap !important;
         }
@@ -378,10 +378,10 @@ def render():
             justify-content: center;
             gap: 4px;
             border-radius: 999px;
-            padding: 8px 6px;
+            padding: 8px 4px;
             font-weight: 800;
-            font-size: 14px;
-            line-height: 20px;
+            font-size: 12px;
+            line-height: 16px;
             color: #FFFFFF;
             /* 안드로이드 웹뷰 강제 다크모드가 <a> 링크 글자색은 유독 별도로
                재해석해서 색을 지정해도 무시하고 뒤집는 경우가 있다(이 프로젝트에서
@@ -479,8 +479,8 @@ def render():
         .st-key-hedge_mode_toggle div[data-testid="stRadio"] label [data-testid="stMarkdownContainer"] p {
             color: #FFFFFF !important;
             font-weight: 800 !important;
-            font-size: 14px !important;
-            line-height: 20px !important;
+            font-size: 12px !important;
+            line-height: 16px !important;
             margin: 0 !important;
             /* 바로 옆 QR스캔/직접입력 토글(.hedge-input-pill)에는 있던 nowrap이
                여기만 빠져서, 실기기 좁은 화면에서 "안티조합"/"액땜조합"이
@@ -632,7 +632,7 @@ def render():
             with st.container(key="hedge_input_toggle_wrap"):
                 qc1, qc2 = st.columns(2)
                 with qc1:
-                    qr_clicked = st.button("📷 QR스캔", key="hedge_qr_scan_btn", use_container_width=True)
+                    qr_clicked = st.button("QR스캔", key="hedge_qr_scan_btn", use_container_width=True)
                 with qc2:
                     st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
             if qr_clicked:
