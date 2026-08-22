@@ -969,6 +969,10 @@ if current_page == "main":
                     align-items: center !important;
                     justify-content: center !important;
                     cursor: pointer !important;
+                    /* "더 보러가기"의 공백에서 줄바꿈되면서 height:32px 고정 박스 안에
+                       2줄이 눌려 찌그러져 보이던 버그(실기기 스크린샷 확인,
+                       2026-08-22) — 줄바꿈 자체를 막는다. */
+                    white-space: nowrap !important;
                 }
                 .rank-more-toast {
                     position: absolute;
