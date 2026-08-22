@@ -1030,7 +1030,10 @@ def render():
         }
         .auto-banner-ball-row {
             display: flex;
-            flex-wrap: wrap;
+            /* combo_history_ui.py와 동일하게 nowrap — wrap이면 좁은 컨테이너 안에서
+               번호가 한 줄에 하나씩 세로로 늘어서 버린다(2026-08-23 실제로 겪은
+               버그의 진짜 원인 — 통일 작업 때 이 한 줄을 놓쳤었다). */
+            flex-wrap: nowrap;
             gap: 10px;
         }
         /* 색칠된 볼 대신 순수 숫자 텍스트 — 당첨번호와 대조할 때 눈에 더 선명하게
