@@ -1980,7 +1980,7 @@ def render():
         .auto-section-row .auto-label-pill,
         .st-key-auto_phone_input_6n36s5 div[data-testid="stTextInput"] input,
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
             box-sizing: border-box !important;
             width: 106px !important;
             min-width: 106px !important;
@@ -2049,7 +2049,7 @@ def render():
             min-width: 106px !important;
             max-width: 106px !important;
         }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] {
             width: 106px !important;
             min-width: 106px !important;
             max-width: 106px !important;
@@ -2672,7 +2672,7 @@ def render():
             height: auto !important;
         }
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] {
             width: 106px !important;
             min-width: 106px !important;
             max-width: 106px !important;
@@ -2729,7 +2729,7 @@ def render():
         .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"] > div,
         .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div,
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
             height: 32px !important;
             min-height: 32px !important;
             max-height: 32px !important;
@@ -2792,8 +2792,8 @@ def render():
         /* 구매확정·구매내역 버튼 — 106px → 7%↓(98.58) → 4%↑(102.52) → 3%↑(105.6px) */
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
             width: 105.6px !important;
             min-width: 105.6px !important;
             max-width: 105.6px !important;
@@ -2856,9 +2856,9 @@ def render():
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
         .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span {
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button span {
             font-family: "Source Sans", sans-serif !important;
             font-size: 17px !important;
             font-weight: 700 !important;
