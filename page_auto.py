@@ -259,9 +259,17 @@ def _admin_combo_save_mtime() -> float:
         return 0.0
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     """실제 DB(lotto_combinations)에 저장된 회차만 표시 — 로컬 재업로드 파일은 미리보기일 뿐
-    실제 추출 결과가 아니므로 반영하지 않는다."""
+    실제 추출 결과가 아니므로 반영하지 않는다.
+
+    _sync_completed_draw_win_ranks()가 최근 100개 회차를 순회하며 회차마다
+    COUNT 쿼리 + (아직 등수 동기화 안 된 회차는) 조합 전체 재조회·재기록을
+    하는데, 캐싱 없이 렌더될 때마다(위젯 하나만 건드려도) 이걸 통째로
+    다시 실행하고 있었다 — Turso 쓰기/읽기 한도를 순식간에 소진시킨
+    가장 큰 원인이었다(2026-08-23). 로또 추첨은 주 1회뿐이라 5분 캐시로도
+    실질적 지연은 없다."""
     mdb = _marketing_db()
     mdb.init_marketing_tables()
     mdb.ensure_marketing_pool_seeds()

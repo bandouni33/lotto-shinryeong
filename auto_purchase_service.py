@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+import streamlit as st
+
 from marketing_db import (
     InsufficientCombinationsError,
     allocate_lotto_combinations_random_sequential,
@@ -49,10 +51,21 @@ class NextDrawPoolNotReadyError(Exception):
         super().__init__(message)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def check_next_draw_pool_ready() -> dict:
     """
     추첨 완료된 최신 회차 N → 배포 대상은 N+1.
     N+1 회차 조합이 DB에 없으면 배포 불가.
+
+    자동구매 페이지가 렌더될 때마다(위젯 하나만 건드려도 Streamlit이 전체
+    스크립트를 다시 실행) 이 함수가 매번 불려서, 캐싱 없이 매번 회차 풀
+    COUNT(*) 쿼리를 새로 날리고 있었다 — 한 회차 풀이 수천 건이라 페이지를
+    잠깐 조작하는 것만으로도 수만~수십만 행을 태워, Turso 무료 요금제
+    쓰기/읽기 한도를 순식간에 소진시킨 주범이었다(2026-08-23). 60초 안의
+    반복 호출은 이 캐시를 재사용한다 — 실제 배정(allocate_lotto_combinations_
+    random_sequential)은 이 캐시와 별개로 매번 실시간 원자적 체크를 하므로,
+    이 게이트 함수가 살짝 오래된 값을 반환해도 실제 조합이 중복 배정되는
+    일은 없다.
     """
     init_marketing_tables()
     from marketing_db import ensure_marketing_pool_seeds

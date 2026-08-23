@@ -11,6 +11,18 @@ import streamlit as st
 RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _sync_generated_combo_win_ranks_cached() -> None:
+    """"저장내역"을 열 때마다(위젯 하나만 건드려도 Streamlit이 스크립트 전체를
+    재실행) 당첨 대기 중인 모든 회차의 생성조합을 매번 다시 훑어 win_rank를
+    갱신하고 있었다 — 캐싱이 없어 Turso 쓰기/읽기 한도를 크게 갉아먹은
+    원인 중 하나였다(2026-08-23). 로또 추첨은 주 1회뿐이라 5분 캐시로도
+    실질적 지연은 없다."""
+    from lotto_stats import sync_generated_combo_win_ranks
+
+    sync_generated_combo_win_ranks()
+
+
 def history_css(container_key: str) -> str:
     """container_key는 render_history_section에 준 key와 같아야 블링크 연출이 맞는
     컨테이너에만 걸린다. 카드 자체(.auto-purchase-banner 계열)는 자동구매
@@ -213,9 +225,7 @@ def render_history_section(
     label_for_source로 각 소스의 표시 이름을 지정하면 카드 제목에 "{이름} · N회차"로
     구분해 표시한다(소스가 하나뿐이고 label_for_source도 없으면 회차만 표시)."""
     try:
-        from lotto_stats import sync_generated_combo_win_ranks
-
-        sync_generated_combo_win_ranks()
+        _sync_generated_combo_win_ranks_cached()
     except Exception:
         pass
 
