@@ -11,13 +11,15 @@ import streamlit as st
 RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _sync_generated_combo_win_ranks_cached() -> None:
     """"저장내역"을 열 때마다(위젯 하나만 건드려도 Streamlit이 스크립트 전체를
     재실행) 당첨 대기 중인 모든 회차의 생성조합을 매번 다시 훑어 win_rank를
-    갱신하고 있었다 — 캐싱이 없어 Turso 쓰기/읽기 한도를 크게 갉아먹은
-    원인 중 하나였다(2026-08-23). 로또 추첨은 주 1회뿐이라 5분 캐시로도
-    실질적 지연은 없다."""
+    갱신하고 있었다 — 캐싱이 없어 Turso 쓰기 한도(월 1,000만 행)를 순식간에
+    소진시킨 진짜 원인이었다(2026-08-23, 실제 사용량으로 역산해 확인: 회차당
+    수천 건 × 반복 호출 ≈ 실제 초과분과 거의 일치). 이미 처리된 회차까지
+    매번 전체 UPDATE를 다시 날리는 구조라 캐시 시간이 짧으면 여전히 많이
+    쌓인다 — 로또 추첨은 주 1회뿐이라 1시간 캐시로도 실질적 지연은 없다."""
     from lotto_stats import sync_generated_combo_win_ranks
 
     sync_generated_combo_win_ranks()
