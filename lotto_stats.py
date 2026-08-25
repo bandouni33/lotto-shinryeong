@@ -544,20 +544,34 @@ def calc_lotto_win_rank(
     return None
 
 
+_WIN_RANK_SOURCE_LOTTO = "lotto_combinations"
+_WIN_RANK_SOURCE_GENERATED = "guest_generated_combos"
+
+
 def sync_marketing_win_ranks_for_round(
     draw_round: int,
     filepath: str = DATA_FILE,
 ) -> dict:
-    """추첨 완료 회차 — DB 저장 조합에 1~5등 win_rank 반영."""
+    """추첨 완료 회차 — DB 저장 조합에 1~5등 win_rank 반영.
+
+    로또 추첨은 주 1회뿐이라 한 번 확정되면 다시는 안 바뀌는데도, 예전엔
+    이미 끝난 회차까지 매번 조합 전체를 다시 읽고 다시 썼다 — Turso 쓰기
+    한도 초과 사고의 진짜 원인(2026-08-25). draw_win_rank_sync_status에
+    "이미 끝났다"고 기록된 회차는 아예 건드리지 않고 즉시 반환한다.
+    """
     from marketing_db import (
         get_combination_count_by_draw,
         get_win_rank_counts_by_draw,
         init_marketing_tables,
+        is_win_rank_synced,
+        mark_win_rank_synced,
         update_win_ranks_for_draw,
     )
 
     init_marketing_tables()
     draw_round = int(draw_round)
+    if is_win_rank_synced(draw_round, _WIN_RANK_SOURCE_LOTTO):
+        return {"synced": False, "reason": "already_synced", "draw_round": draw_round}
     if get_combination_count_by_draw(draw_round) == 0:
         return {"synced": False, "reason": "no_combinations", "draw_round": draw_round}
 
@@ -570,6 +584,7 @@ def sync_marketing_win_ranks_for_round(
         result["numbers"],
         int(result["bonus"]),
     )
+    mark_win_rank_synced(draw_round, _WIN_RANK_SOURCE_LOTTO)
     return {
         "synced": True,
         "draw_round": draw_round,
@@ -592,21 +607,33 @@ def sync_marketing_win_ranks_for_db_draws(filepath: str = DATA_FILE) -> list[dic
 
 
 def sync_generated_combo_win_ranks(filepath: str = DATA_FILE) -> list[dict]:
-    """번개조합 등에서 저장한 생성조합 — 추첨 완료 회차 win_rank 반영."""
+    """번개조합 등에서 저장한 생성조합 — 추첨 완료 회차 win_rank 반영.
+
+    get_generated_combo_pending_draw_rounds()는 win_rank가 NULL인 조합이
+    있는 회차를 찾는데, 낙첨 조합도 win_rank가 NULL이라("낙첨"과 "아직
+    동기화 안 됨"을 구분 못 함) 이미 끝난 회차도 거의 항상 다시 걸린다 —
+    그래서 is_win_rank_synced로 한 번 더 걸러, 이미 끝났다고 기록된 회차는
+    조합을 다시 읽지도 쓰지도 않고 건너뛴다(2026-08-25).
+    """
     from marketing_db import (
         get_generated_combo_pending_draw_rounds,
         init_marketing_tables,
+        is_win_rank_synced,
+        mark_win_rank_synced,
         update_win_ranks_for_generated_draw,
     )
 
     init_marketing_tables()
     synced: list[dict] = []
     for draw_round in get_generated_combo_pending_draw_rounds():
+        if is_win_rank_synced(draw_round, _WIN_RANK_SOURCE_GENERATED):
+            continue
         result = get_draw_result_by_round(draw_round, filepath)
         if not result:
             continue
         updated = update_win_ranks_for_generated_draw(
             draw_round, result["numbers"], int(result["bonus"])
         )
+        mark_win_rank_synced(draw_round, _WIN_RANK_SOURCE_GENERATED)
         synced.append({"draw_round": draw_round, "updated": updated})
     return synced

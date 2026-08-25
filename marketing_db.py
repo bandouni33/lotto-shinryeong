@@ -168,6 +168,21 @@ def init_marketing_tables():
         CREATE INDEX IF NOT EXISTS idx_guest_generated_combos_draw
         ON guest_generated_combos(draw_round, win_rank)
     """)
+    # 당첨 등수 동기화 완료 여부 — win_rank 컬럼 자체는 "낙첨"도 NULL, "아직 동기화
+    # 안 됨"도 NULL이라 이 둘을 구분할 수 없다(대부분의 조합이 낙첨이라 거의 항상
+    # NULL이 남아있음). 그래서 매번 "혹시 안 된 게 있나" 싶어 이미 확정된 회차까지
+    # 전체를 다시 훑어 재기록하고 있었다 — 로또 추첨은 주 1회뿐이라 한 번 확정되면
+    # 다시는 안 바뀌는 데이터인데도. 회차(+출처)별로 "이미 끝났다"를 별도로 기록해서,
+    # 끝난 회차는 아예 건드리지 않게 한다(2026-08-25, Turso 쓰기 할당량 초과 사고
+    # 원인 근본 수정).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS draw_win_rank_sync_status (
+            draw_round INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            synced_at TEXT NOT NULL,
+            PRIMARY KEY (draw_round, source)
+        )
+    """)
     _migrate_lotto_combinations(conn)
     conn.commit()
     conn.close()
@@ -1152,6 +1167,33 @@ def get_pattern_count_for_draw(draw_round: int) -> int | None:
     return int(row[0]) if row else None
 
 
+def is_win_rank_synced(draw_round: int, source: str) -> bool:
+    """이 회차(+출처)의 당첨 등수 동기화가 이미 끝났는지. source는
+    "lotto_combinations" 또는 "guest_generated_combos" 중 하나로 호출부에서
+    구분해 쓴다 — 같은 회차라도 두 테이블은 별도로 동기화되기 때문."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT 1 FROM draw_win_rank_sync_status WHERE draw_round = ? AND source = ?",
+        (int(draw_round), source),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def mark_win_rank_synced(draw_round: int, source: str) -> None:
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO draw_win_rank_sync_status (draw_round, source, synced_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(draw_round, source) DO UPDATE SET synced_at = excluded.synced_at
+        """,
+        (int(draw_round), source, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
 def update_win_ranks_for_draw(
     draw_round: int,
     winning_numbers: list[int],
@@ -1356,6 +1398,8 @@ __all__ = [
     "get_combinations_by_draw",
     "delete_lotto_combinations_by_draw",
     "update_win_ranks_for_draw",
+    "is_win_rank_synced",
+    "mark_win_rank_synced",
     "get_win_rank_counts_by_draw",
     "get_combination_count_by_draw",
     "get_draw_extraction_stats",
