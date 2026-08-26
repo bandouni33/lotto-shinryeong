@@ -911,15 +911,51 @@ if current_page == "main":
     main_rank_row = st.container(key="main_rank_row_6n36s5")
     col_info, col_btn = main_rank_row.columns([2, 1])
     with col_info:
-        st.markdown("""
-        <div id="rank-top1-trigger-6n36s5" style="height:32px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:0 10px; background: linear-gradient(145deg, #1c2645, #12182b); border-radius:10px; border:1px solid #2a3a60; box-shadow: 0 3px 6px rgba(0,0,0,0.35);">
-            <span style="color:#b0bec5; font-size:13px; font-weight:bold; letter-spacing:-0.3px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🏆 역대 최고 당첨 금액 순위</span>
-            <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; flex-shrink:0;">
-                <div style="background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c); width:18px; height:18px; border-radius:50%; text-align:center; line-height:18px; color:white; font-weight:bold; font-size:11px; box-shadow: 1px 2px 3px rgba(0,0,0,0.5); flex-shrink:0;">1</div>
-                <span style="color:#fff; font-weight:900; font-size:16px; letter-spacing:-0.5px; line-height:1;">407억 원</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # 2026-08-27: 예전엔 이 자리가 순수 HTML div였고, 관리자 메뉴 진입은
+        # components.html이 iframe 밖 DOM에 JS로 클릭 리스너를 붙이는 방식이었다
+        # — 오늘 이 세션에서만 iframe sandbox 정책, :has() 오작동 등으로 여러 번
+        # 문제를 일으킨 바로 그 기법이라, 실기기에서 클릭이 안 먹는 문제가
+        # 재발했다(사용자 지적). 진짜 st.button으로 바꿔 서버 재실행 기반의
+        # 확실한 클릭 처리로 통일한다 — 자동구매 등 이 프로젝트의 다른 모든
+        # 버튼과 같은 방식.
+        st.markdown(
+            """
+            <style>
+            .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button {
+                height: 32px !important;
+                min-height: 32px !important;
+                box-sizing: border-box !important;
+                width: 100% !important;
+                padding: 0 10px !important;
+                background: linear-gradient(145deg, #1c2645, #12182b) !important;
+                border-radius: 10px !important;
+                border: 1px solid #2a3a60 !important;
+                box-shadow: 0 3px 6px rgba(0,0,0,0.35) !important;
+                display: flex !important;
+                justify-content: flex-start !important;
+            }
+            .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button p {
+                color: #fff !important;
+                font-weight: 800 !important;
+                font-size: 13px !important;
+                letter-spacing: -0.3px !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.container(key="main_rank_top1_wrap_6n36s5"):
+            if st.button(
+                "🏆 역대 최고 당첨 금액 순위 · 1위 407억 원",
+                key="main_rank_top1_btn_6n36s5",
+                use_container_width=True,
+            ):
+                st.session_state["admin_menu_revealed_flag"] = not st.session_state.get(
+                    "admin_menu_revealed_flag", False
+                )
     with col_btn:
         st.markdown("""
         <div class="rank-more-wrap">
@@ -1047,21 +1083,10 @@ if current_page == "main":
             });
         }
 
-        // "역대 최고 당첨 금액 순위 1위" 배지는 실제 데이터를 보여주는 동시에
-        // 관리자 전용 숨은 진입점이다 — 일반 사용자는 그냥 순위 표시로 보이지만,
-        // 클릭하면 메인 화면 관리자 메뉴가 나타난다(위 CSS의 body.admin-menu-revealed
-        // 규칙 참고). Streamlit 재실행 없이 순수 CSS 클래스 토글이라 즉시 반영된다.
-        // (2026-08-27: "더 보러가기" 토스트 안 가짜 4위 줄이 트리거였는데, 모바일에서
-        // 화면 우측이라 눌리지 않는 위치라는 지적 — 항상 보이는 1위 배지로 옮김.)
-        const secretEntry = doc.getElementById('rank-top1-trigger-6n36s5');
-        if (secretEntry && !secretEntry.dataset.adminRevealBound) {
-            secretEntry.dataset.adminRevealBound = '1';
-            secretEntry.addEventListener('click', function(e) {
-                e.stopPropagation();
-                doc.body.classList.add('admin-menu-revealed');
-                if (toast) toast.classList.remove('show');
-            });
-        }
+        // 2026-08-27: 관리자 메뉴 진입 트리거는 iframe 밖 DOM을 JS로 조작하는
+        // 방식(여기)에서 진짜 st.button 클릭으로 옮겼다 — 실기기에서 클릭이
+        // 안 먹는 문제가 있었다. 이제 이 스크립트는 "더 보러가기" 토스트
+        // 열고닫기만 담당한다.
     })();
     </script>
     """, height=0)
@@ -1069,47 +1094,37 @@ if current_page == "main":
 # ==========================================================
 # 👑 관리자 메뉴 (역대 최고 당첨금 순위 토스트 바로 아래)
 # ==========================================================
-# 이 블록은 항상 렌더링되지만 기본적으로 display:none으로 숨겨져 있다 — "역대
-# 최고 당첨 금액 순위 1위" 배지를 클릭해야만 document.body에 admin-menu-revealed
-# 클래스가 붙으면서 나타난다(바로 위 토스트 스크립트 참고). 일반 사용자 화면에는
-# "시스템 관리자 메뉴"라는 문구 자체가 노출되지 않는다. 서버 왕복(Streamlit
-# 재실행) 없이 순수 CSS/JS로 즉시 토글되는 방식이라, 안 보이는 상태에서도
-# password 위젯 자체는 이미 DOM에 존재한다 — 하지만 관리자 비밀번호 값 자체는
-# 서버에서만 비교하므로(환경변수 ADMIN_MENU_PASSWORD) 노출 위험은 없다.
+# 이 블록은 st.session_state["admin_menu_revealed_flag"]가 True일 때만
+# 렌더링된다 — "역대 최고 당첨 금액 순위" 버튼을 클릭해야 켜진다(바로 위
+# 코드 참고). 일반 사용자 화면에는 "시스템 관리자 메뉴"라는 문구 자체가
+# 노출되지 않는다. 관리자 비밀번호 값 자체는 서버에서만 비교하므로(환경변수
+# ADMIN_MENU_PASSWORD) 노출 위험은 없다.
 # 원래 메인 화면 맨 아래(개선 요구사항·약관보다도 아래)에 있었는데, 트리거와
 # 너무 멀리 떨어져 있어 모바일에서 열어도 스크롤을 한참 내려야만 보이는
 # 위치였다(2026-08-23 사용자 지적) — 트리거 바로 다음으로 옮겼다.
-# 2026-08-27: 트리거 자체도 "더 보러가기" 토스트 안 가짜 4위 줄(화면 우측,
-# 모바일에서 눌리지 않는 위치)에서 항상 보이는 "1위" 배지로 옮겼다.
-if current_page == "main":
+# 2026-08-27: 트리거를 iframe 밖 DOM을 JS로 조작하는 방식(가짜 4위 줄→1위
+# 배지 클릭 감지)에서 진짜 st.button + session_state로 바꿨다 — 실기기에서
+# 클릭이 안 먹는 문제가 반복됐던 게 근본적으로 이 JS 방식의 한계였다.
+# CSS도 :has(마커) 대신 컨테이너 key로 직접 스코프한다 — :has()가 마커를
+# 포함한 모든 조상 블록에 매치돼 페이지 전체가 사라진 사고가 있었다
+# (2026-08-22 실제로 겪음).
+if current_page == "main" and st.session_state.get("admin_menu_revealed_flag", False):
     with st.container(key="admin_menu_reveal_wrap"):
         st.markdown("""
-        <div class="main-admin-menu-marker" aria-hidden="true"></div>
         <style>
-        .main-admin-menu-marker { display: none !important; }
-        /* 숨김/노출은 이 컨테이너 자체(.st-key-admin_menu_reveal_wrap)로 정확히
-           타겟팅한다 — 처음엔 아래처럼 :has(.main-admin-menu-marker)로 잡은
-           stVerticalBlock에 display:none을 걸었었는데, Streamlit의 중첩 레이아웃
-           구조상 :has()가 마커를 포함한 "모든 조상" 블록에 다 매치돼서(가장
-           바깥쪽 루트 블록까지 포함) 페이지 전체가 사라지는 사고로 이어졌다
-           (2026-08-22 실제로 겪음). 아래 :has() 패턴은 margin/padding 같은
-           비파괴적 스타일에만 계속 쓴다. */
-        .st-key-admin_menu_reveal_wrap { display: none !important; }
-        body.admin-menu-revealed .st-key-admin_menu_reveal_wrap { display: block !important; }
-
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) {
+        .st-key-admin_menu_reveal_wrap {
             margin-top: 0 !important;
             margin-bottom: 0 !important;
             padding-top: 0 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] {
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
             border-radius: 10px !important;
             margin-bottom: 0 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary {
             background: linear-gradient(145deg, #1c2838 0%, #141c2a 45%, #0c1018 100%) !important;
             background-color: transparent !important;
             color: #c8d0dc !important;
@@ -1120,45 +1135,45 @@ if current_page == "main":
             border: 1px solid rgba(80, 95, 120, 0.35) !important;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] details {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] details {
             background-color: #000000 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary:hover {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary:hover {
             background: linear-gradient(145deg, #243040 0%, #1a2432 45%, #101620 100%) !important;
             color: #e8ecf2 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary p,
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary span,
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary div,
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] summary svg {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary p,
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary span,
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary div,
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary svg {
             color: #c8d0dc !important;
             fill: #c8d0dc !important;
             font-size: 13px !important;
             line-height: 1.15 !important;
             white-space: nowrap !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
             background-color: #000000 !important;
             border-top: 1px solid #333333 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
             background-color: #000000 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[kind="secondary"],
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button[data-testid="stBaseButton-secondary"],
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button[kind="secondary"],
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button[data-testid="stBaseButton-secondary"],
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button {
             background-color: #3a3a3a !important;
             color: #ffffff !important;
             border: 1px solid #555555 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button:hover {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button:hover {
             background-color: #4a4a4a !important;
             color: #ffffff !important;
             border-color: #666666 !important;
         }
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button p,
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button span,
-        div[data-testid="stVerticalBlock"]:has(.main-admin-menu-marker) div[data-testid="stExpander"] button div {
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button p,
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button span,
+        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button div {
             color: #ffffff !important;
         }
         </style>
