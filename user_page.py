@@ -909,7 +909,7 @@ if current_page == "main":
     # — 메인화면 첫인상이 어수선해 보인다는 피드백으로, 상단(최근당첨번호 바로 아래)에서
     # 버튼 그리드(자동구매 등) 아래로 옮겼다. 다른 레이아웃·버튼 기능은 그대로다.
     main_rank_row = st.container(key="main_rank_row_6n36s5")
-    col_info, col_btn = main_rank_row.columns([2, 1])
+    col_info, col_btn = main_rank_row.columns([5, 2])
     with col_info:
         # 2026-08-27: 예전엔 이 자리가 순수 HTML div였고, 관리자 메뉴 진입은
         # components.html이 iframe 밖 DOM에 JS로 클릭 리스너를 붙이는 방식이었다
@@ -918,44 +918,80 @@ if current_page == "main":
         # 재발했다(사용자 지적). 진짜 st.button으로 바꿔 서버 재실행 기반의
         # 확실한 클릭 처리로 통일한다 — 자동구매 등 이 프로젝트의 다른 모든
         # 버튼과 같은 방식.
+        #
+        # 처음엔 줄 전체("🏆 역대 최고 당첨 금액 순위 · 1위 407억 원")를 통째로
+        # 버튼 하나로 만들었는데, 메인 화면에 항상 크게 보이는 줄 전체가 버튼이
+        # 되면서 궁금해서 아무 데나 눌러보는 사용자도 우연히 발견하기 쉬워졌다는
+        # 지적(2026-08-27) — 라벨(왼쪽, 그냥 텍스트)과 순위·금액(오른쪽, 작은
+        # 버튼)을 분리해서 클릭 가능한 영역 자체를 원래 크기(작은 배지)로
+        # 되돌린다. 빨간 원 "1" 아이콘은 순수 HTML에서만 가능한 장식이라
+        # 버튼으로는 재현하지 않고 뺐다.
         st.markdown(
             """
             <style>
-            .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button {
-                height: 32px !important;
-                min-height: 32px !important;
-                box-sizing: border-box !important;
-                width: 100% !important;
-                padding: 0 10px !important;
-                background: linear-gradient(145deg, #1c2645, #12182b) !important;
-                border-radius: 10px !important;
-                border: 1px solid #2a3a60 !important;
-                box-shadow: 0 3px 6px rgba(0,0,0,0.35) !important;
-                display: flex !important;
-                justify-content: flex-start !important;
+            .st-key-main_rank_label_badge_row_6n36s5 div[data-testid="stHorizontalBlock"] {
+                flex-wrap: nowrap !important;
             }
-            .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button p {
-                color: #fff !important;
-                font-weight: 800 !important;
-                font-size: 13px !important;
-                letter-spacing: -0.3px !important;
-                white-space: nowrap !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important;
+            .st-key-main_rank_label_badge_row_6n36s5 div[data-testid="stColumn"] {
+                min-width: 0 !important;
             }
             </style>
             """,
             unsafe_allow_html=True,
         )
-        with st.container(key="main_rank_top1_wrap_6n36s5"):
-            if st.button(
-                "🏆 역대 최고 당첨 금액 순위 · 1위 407억 원",
-                key="main_rank_top1_btn_6n36s5",
-                use_container_width=True,
-            ):
-                st.session_state["admin_menu_revealed_flag"] = not st.session_state.get(
-                    "admin_menu_revealed_flag", False
-                )
+        label_badge_row = st.container(key="main_rank_label_badge_row_6n36s5")
+        label_col, badge_col = label_badge_row.columns([5, 3])
+        with label_col:
+            st.markdown(
+                """
+                <div style="height:32px; box-sizing:border-box; display:flex; align-items:center; padding:0 10px; background: linear-gradient(145deg, #1c2645, #12182b); border-radius:10px; border:1px solid #2a3a60; box-shadow: 0 3px 6px rgba(0,0,0,0.35);">
+                    <span style="color:#b0bec5; font-size:13px; font-weight:bold; letter-spacing:-0.3px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🏆 역대 최고 당첨 금액 순위</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with badge_col:
+            st.markdown(
+                """
+                <style>
+                .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button,
+                .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button:hover,
+                .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button:active,
+                .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button:focus {
+                    height: 32px !important;
+                    min-height: 32px !important;
+                    box-sizing: border-box !important;
+                    width: 100% !important;
+                    padding: 0 10px !important;
+                    background: linear-gradient(145deg, #1c2645, #12182b) !important;
+                    border-radius: 10px !important;
+                    border: 1px solid #2a3a60 !important;
+                    box-shadow: 0 3px 6px rgba(0,0,0,0.35) !important;
+                    cursor: default !important;
+                    transform: none !important;
+                    transition: none !important;
+                    outline: none !important;
+                }
+                .st-key-main_rank_top1_wrap_6n36s5 div[data-testid="stButton"] > button p {
+                    color: #fff !important;
+                    font-weight: 900 !important;
+                    font-size: 14px !important;
+                    letter-spacing: -0.5px !important;
+                    white-space: nowrap !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            with st.container(key="main_rank_top1_wrap_6n36s5"):
+                if st.button(
+                    "1위 407억 원",
+                    key="main_rank_top1_btn_6n36s5",
+                    use_container_width=True,
+                ):
+                    st.session_state["admin_menu_revealed_flag"] = not st.session_state.get(
+                        "admin_menu_revealed_flag", False
+                    )
     with col_btn:
         st.markdown("""
         <div class="rank-more-wrap">
