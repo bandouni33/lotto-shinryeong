@@ -322,8 +322,14 @@ if st.session_state.admin_view == "home":
     st.markdown("<h2 style='font-weight:800; color:#FFFFFF; margin-bottom:5px;'>운영자 메인 대시보드</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#94A3B8; margin-bottom:25px;'>대시보드 운영 현황</p>", unsafe_allow_html=True)
 
+    @st.cache_data(ttl=60, show_spinner=False)
     def _member_activity_counts() -> tuple[int, int]:
-        """(누적 가입자 수, 오늘 활동 인원). last_login_at은 로그인 시마다 갱신됨."""
+        """(누적 가입자 수, 오늘 활동 인원). last_login_at은 로그인 시마다 갱신됨.
+
+        관리자 대시보드는 위젯 하나만 눌러도 이 블록이 재실행되는데, 캐싱 없이
+        COUNT(*) 쿼리 2개를 매번 다시 날리고 있었다(2026-08-27, 전체 코드베이스
+        캐싱 누락 점검 중 발견) — 관리자 전용 화면이라 트래픽은 낮지만 같은
+        패턴이라 60초 캐시를 씌운다."""
         import datetime as _dt
         import wallet_db
 
@@ -437,7 +443,11 @@ if st.session_state.admin_view == "home":
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📊 회차별 구매 전환 현황</h4>", unsafe_allow_html=True)
     from marketing_db import get_draw_purchase_conversion_stats
 
-    _conv_stats = get_draw_purchase_conversion_stats(limit=10)
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _conv_stats_cached(limit: int):
+        return get_draw_purchase_conversion_stats(limit=limit)
+
+    _conv_stats = _conv_stats_cached(10)
     if not _conv_stats:
         st.caption("데이터가 없습니다.")
     else:
@@ -492,13 +502,26 @@ if st.session_state.admin_view == "home":
                 pass
     else:
         st.session_state["_dl_block_logged"] = False
-        _dl_stats = get_draw_extraction_stats(limit=1)
-        if not _dl_stats:
+
+        @st.cache_data(ttl=60, show_spinner=False)
+        def _dl_latest_draw_cached():
+            """최신 회차 조합 전체를 다운로드 버튼용으로 미리 불러온다 — 실제로
+            다운로드를 누르든 안 누르든 홈 화면이 재렌더될 때마다 회차 하나 분
+            조합 전체(수천 건)를 매번 다시 조회하고 있었다(2026-08-27, 전체
+            코드베이스 캐싱 누락 점검 중 발견) — 60초 캐시로 방어."""
+            stats = get_draw_extraction_stats(limit=1)
+            if not stats:
+                return None
+            draw_round = int(stats[0]["draw_round"])
+            count = int(stats[0]["total_count"])
+            combos = get_combinations_by_draw(draw_round)
+            return draw_round, count, combos
+
+        _dl_latest = _dl_latest_draw_cached()
+        if _dl_latest is None:
             st.caption("다운로드할 회차 데이터가 없습니다.")
         else:
-            _dl_draw_round = int(_dl_stats[0]["draw_round"])
-            _dl_count = int(_dl_stats[0]["total_count"])
-            _dl_combos = get_combinations_by_draw(_dl_draw_round)
+            _dl_draw_round, _dl_count, _dl_combos = _dl_latest
             _dl_df = pd.DataFrame(
                 [
                     {
