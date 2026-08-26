@@ -912,7 +912,7 @@ if current_page == "main":
     col_info, col_btn = main_rank_row.columns([2, 1])
     with col_info:
         st.markdown("""
-        <div style="height:32px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:0 10px; background: linear-gradient(145deg, #1c2645, #12182b); border-radius:10px; border:1px solid #2a3a60; box-shadow: 0 3px 6px rgba(0,0,0,0.35);">
+        <div id="rank-top1-trigger-6n36s5" style="height:32px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:0 10px; background: linear-gradient(145deg, #1c2645, #12182b); border-radius:10px; border:1px solid #2a3a60; box-shadow: 0 3px 6px rgba(0,0,0,0.35);">
             <span style="color:#b0bec5; font-size:13px; font-weight:bold; letter-spacing:-0.3px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🏆 역대 최고 당첨 금액 순위</span>
             <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; flex-shrink:0;">
                 <div style="background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c); width:18px; height:18px; border-radius:50%; text-align:center; line-height:18px; color:white; font-weight:bold; font-size:11px; box-shadow: 1px 2px 3px rgba(0,0,0,0.5); flex-shrink:0;">1</div>
@@ -930,7 +930,7 @@ if current_page == "main":
                     1위: 407억 (1회)<br>
                     2위: 369억 (51회)<br>
                     3위: 346억 (100회)<br>
-                    <span id="rank-more-4th-6n36s5">4위: 300억 (132회)</span>
+                    4위: 300억 (132회)
                 </div>
             </div>
         </div>
@@ -1047,12 +1047,13 @@ if current_page == "main":
             });
         }
 
-        // "4위" 줄은 실제 순위 데이터가 아니라 관리자 전용 숨은 진입점이다 —
-        // 일반 사용자는 이게 그냥 TOP 5 목록의 나머지 한 줄로 보이지만,
-        // 클릭하면 메인 화면 맨 아래 관리자 메뉴가 나타난다(위 CSS의
-        // body.admin-menu-revealed 규칙 참고). Streamlit 재실행 없이 순수
-        // CSS 클래스 토글이라 즉시 반영된다.
-        const secretEntry = doc.getElementById('rank-more-4th-6n36s5');
+        // "역대 최고 당첨 금액 순위 1위" 배지는 실제 데이터를 보여주는 동시에
+        // 관리자 전용 숨은 진입점이다 — 일반 사용자는 그냥 순위 표시로 보이지만,
+        // 클릭하면 메인 화면 관리자 메뉴가 나타난다(위 CSS의 body.admin-menu-revealed
+        // 규칙 참고). Streamlit 재실행 없이 순수 CSS 클래스 토글이라 즉시 반영된다.
+        // (2026-08-27: "더 보러가기" 토스트 안 가짜 4위 줄이 트리거였는데, 모바일에서
+        // 화면 우측이라 눌리지 않는 위치라는 지적 — 항상 보이는 1위 배지로 옮김.)
+        const secretEntry = doc.getElementById('rank-top1-trigger-6n36s5');
         if (secretEntry && !secretEntry.dataset.adminRevealBound) {
             secretEntry.dataset.adminRevealBound = '1';
             secretEntry.addEventListener('click', function(e) {
@@ -1069,16 +1070,17 @@ if current_page == "main":
 # 👑 관리자 메뉴 (역대 최고 당첨금 순위 토스트 바로 아래)
 # ==========================================================
 # 이 블록은 항상 렌더링되지만 기본적으로 display:none으로 숨겨져 있다 — "역대
-# 최고 당첨 금액 순위 · 더 보러가기" 토스트의 가짜 4위 줄을 클릭해야만
-# document.body에 admin-menu-revealed 클래스가 붙으면서 나타난다(바로 위 토스트
-# 스크립트 참고). 일반 사용자 화면에는 "시스템 관리자 메뉴"라는 문구 자체가
-# 노출되지 않는다. 서버 왕복(Streamlit 재실행) 없이 순수 CSS/JS로 즉시
-# 토글되는 방식이라, 안 보이는 상태에서도 password 위젯 자체는 이미 DOM에
-# 존재한다 — 하지만 관리자 비밀번호 값 자체는 서버에서만 비교하므로(환경변수
-# ADMIN_MENU_PASSWORD) 노출 위험은 없다.
-# 원래 메인 화면 맨 아래(개선 요구사항·약관보다도 아래)에 있었는데, 트리거인
-# "4위" 줄과 너무 멀리 떨어져 있어 모바일에서 열어도 스크롤을 한참 내려야만
-# 보이는 위치였다(2026-08-23 사용자 지적) — 트리거 바로 다음으로 옮겼다.
+# 최고 당첨 금액 순위 1위" 배지를 클릭해야만 document.body에 admin-menu-revealed
+# 클래스가 붙으면서 나타난다(바로 위 토스트 스크립트 참고). 일반 사용자 화면에는
+# "시스템 관리자 메뉴"라는 문구 자체가 노출되지 않는다. 서버 왕복(Streamlit
+# 재실행) 없이 순수 CSS/JS로 즉시 토글되는 방식이라, 안 보이는 상태에서도
+# password 위젯 자체는 이미 DOM에 존재한다 — 하지만 관리자 비밀번호 값 자체는
+# 서버에서만 비교하므로(환경변수 ADMIN_MENU_PASSWORD) 노출 위험은 없다.
+# 원래 메인 화면 맨 아래(개선 요구사항·약관보다도 아래)에 있었는데, 트리거와
+# 너무 멀리 떨어져 있어 모바일에서 열어도 스크롤을 한참 내려야만 보이는
+# 위치였다(2026-08-23 사용자 지적) — 트리거 바로 다음으로 옮겼다.
+# 2026-08-27: 트리거 자체도 "더 보러가기" 토스트 안 가짜 4위 줄(화면 우측,
+# 모바일에서 눌리지 않는 위치)에서 항상 보이는 "1위" 배지로 옮겼다.
 if current_page == "main":
     with st.container(key="admin_menu_reveal_wrap"):
         st.markdown("""
