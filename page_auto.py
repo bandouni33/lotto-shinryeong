@@ -1071,6 +1071,7 @@ def render():
         .auto-banner-ball-row {
             display: flex;
             flex-wrap: nowrap;
+            justify-content: center;
             gap: 8px;
         }
         /* 순수 숫자 텍스트만 — 배경·테두리 없음. */

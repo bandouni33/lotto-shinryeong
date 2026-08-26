@@ -61,6 +61,7 @@ def history_css(container_key: str = "") -> str:
         display: flex;
         flex-wrap: nowrap;
         align-items: center;
+        justify-content: center;
         gap: 8px;
     }
     .auto-banner-ball {
