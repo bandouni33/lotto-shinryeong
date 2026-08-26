@@ -962,11 +962,11 @@ if current_page == "main":
                     min-height: 32px !important;
                     box-sizing: border-box !important;
                     width: 100% !important;
-                    padding: 0 10px !important;
-                    background: linear-gradient(145deg, #1c2645, #12182b) !important;
-                    border-radius: 10px !important;
-                    border: 1px solid #2a3a60 !important;
-                    box-shadow: 0 3px 6px rgba(0,0,0,0.35) !important;
+                    padding: 0 4px !important;
+                    background: transparent !important;
+                    border-radius: 0 !important;
+                    border: none !important;
+                    box-shadow: none !important;
                     cursor: default !important;
                     transform: none !important;
                     transition: none !important;
