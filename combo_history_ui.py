@@ -4,6 +4,12 @@
 당첨 여부를 마킹해 보여주는" 화면이 여러 개 생길 예정이라, 카드 디자인(자동구매
 구매내역과 동일한 형식)과 저장/조회/블링크 연출을 여기 한 곳에서만 관리하고
 각 페이지는 이 모듈을 그대로 가져다 쓴다.
+
+2026-08-27: 자동구매 "구매내역"이 겪었던 것과 같은 문제(테두리·박스 장식,
+position:absolute 팝오버, 좁은 열 안에서 펼치다 번호가 잘리는 버그)를 여기도
+그대로 겪을 이유가 없어, 자동구매가 최종적으로 정착한 방식을 그대로 옮겨왔다 —
+박스 없이 순수 숫자만, 트리거는 진짜 st.button, 펼침은 화면 중앙 팝업이 아니라
+버튼 바로 밑 전체 폭 인라인 패널.
 """
 
 import streamlit as st
@@ -25,129 +31,70 @@ def _sync_generated_combo_win_ranks_cached() -> None:
     sync_generated_combo_win_ranks()
 
 
-def history_css(container_key: str) -> str:
-    """container_key는 render_history_section에 준 key와 같아야 블링크 연출이 맞는
-    컨테이너에만 걸린다. 카드 자체(.auto-purchase-banner 계열)는 자동구매
-    구매내역(page_auto.py)과 완전히 동일한 정의를 그대로 옮겨왔다."""
-    return f"""
+def history_css(container_key: str = "") -> str:
+    """카드 자체(.auto-banner-ball 등)는 자동구매 구매내역(page_auto.py)과 완전히
+    동일한 정의를 그대로 옮겨왔다 — 두 화면이 항상 같은 사이즈·서체로 유지보수되게.
+
+    container_key는 이제 CSS 스코프에 쓰이지 않는다(트리거가 expander가 아니라
+    진짜 st.button이라 별도 스코프가 필요 없어졌다) — 기존 호출부(page_hedge.py의
+    미리보기 CSS 주입)와의 호환을 위해 인자만 남겨두고 무시한다."""
+    return """
     <style>
-    .st-key-{container_key} div[data-testid="stExpander"] summary p {{
-        font-size: 16px !important;
-        font-weight: 800 !important;
-        color: #ffffff !important;
-        position: relative !important;
-        z-index: 5 !important;
-    }}
-    .auto-purchase-banner {{
-        margin: 14px 0 18px;
-        padding: 16px 14px 14px;
-        border-radius: 16px;
-        border: 1px solid rgba(206, 147, 216, 0.55);
-        background: linear-gradient(155deg, rgba(74, 20, 140, 0.92) 0%, rgba(26, 34, 56, 0.96) 55%, rgba(18, 24, 43, 0.98) 100%);
-        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(179, 157, 219, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    }}
-    .auto-banner-title {{
-        color: #f3e5f5;
+    .auto-purchase-banner-plain {
+        margin: 10px 0;
+    }
+    .auto-history-round-head {
+        margin: 14px 0 6px;
+        color: #ce93d8;
         font-weight: 800;
-        font-size: 16px;
-        line-height: 1.35;
-        margin-bottom: 12px;
-    }}
-    .auto-banner-combos {{
+        font-size: 13px;
+    }
+    .auto-history-round-head:first-child {
+        margin-top: 2px;
+    }
+    .auto-banner-combos {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-    }}
-    .auto-banner-combo {{
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        width: fit-content;
-        max-width: 100%;
-        padding: 8px 12px;
-        border-radius: 12px;
-        background: rgba(0, 0, 0, 0.22);
-        border: 1px solid rgba(179, 157, 219, 0.22);
-    }}
-    .auto-banner-ball-row {{
+        gap: 10px;
+    }
+    .auto-banner-ball-row {
         display: flex;
         flex-wrap: nowrap;
-        gap: 10px;
-    }}
-    .auto-banner-ball {{
+        align-items: center;
+        gap: 8px;
+    }
+    .auto-banner-ball {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-width: 24px;
-        height: 24px;
-        padding: 0 2px;
-        color: #f1e9ff;
+        min-width: 20px;
+        color: #ffffff;
         font-weight: 800;
         font-size: 15px;
         font-variant-numeric: tabular-nums;
-    }}
-    .combo-history-rank-badge {{
+    }
+    .auto-banner-ball-hit {
+        border-radius: 50%;
+        border: 2px solid #FFD600;
+        color: #FFD600;
+    }
+    .auto-banner-ball-bonus {
+        border-radius: 50%;
+        border: 2px solid #B0BEC5;
+        color: #B0BEC5;
+    }
+    .combo-history-rank-badge {
         display: inline-block;
         flex-shrink: 0;
-        padding: 3px 9px;
+        margin-left: 6px;
+        padding: 2px 8px;
         border-radius: 999px;
         background: linear-gradient(145deg, #ffd54f, #ffb800);
         color: #4a2f00;
         font-weight: 900;
         font-size: 11px;
         white-space: nowrap;
-    }}
-    .auto-banner-ball-hit {{
-        border-radius: 50%;
-        border: 2px solid #FFD600;
-        color: #FFD600;
-    }}
-    .auto-banner-ball-bonus {{
-        border-radius: 50%;
-        border: 2px solid #B0BEC5;
-        color: #B0BEC5;
-    }}
-    .auto-banner-legend {{
-        margin: 6px 0 0;
-        color: #cfd8dc;
-        font-size: 11px;
-        font-weight: 600;
-    }}
-    @keyframes comboHistoryBlink {{
-        0%, 100% {{
-            box-shadow: 0 0 0 0 rgba(255, 184, 0, 0);
-            background: #ffffff !important;
-        }}
-        50% {{
-            box-shadow: 0 0 0 5px rgba(255, 184, 0, 0.9), 0 0 22px rgba(255, 152, 0, 0.55);
-            background: #fff8e1 !important;
-        }}
-    }}
-    @keyframes comboHistoryCardPulse {{
-        0%, 100% {{
-            transform: scale(1);
-            border-color: rgba(255, 152, 0, 0.35) !important;
-        }}
-        50% {{
-            transform: scale(1.015);
-            border-color: rgba(255, 152, 0, 0.9) !important;
-            box-shadow: 0 0 24px rgba(255, 184, 0, 0.4) !important;
-        }}
-    }}
-    .st-key-{container_key}:has(.combo-history-just-saved-marker) div[data-testid="stExpander"] {{
-        animation: comboHistoryCardPulse 0.95s ease-in-out 7 !important;
-        border: 2px solid rgba(255, 152, 0, 0.75) !important;
-    }}
-    .st-key-{container_key}:has(.combo-history-just-saved-marker) div[data-testid="stExpander"] > details > summary {{
-        animation: comboHistoryBlink 0.95s ease-in-out 7 !important;
-        font-weight: 900 !important;
-    }}
-    .combo-history-just-saved-marker {{
-        display: none !important;
-        height: 0 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }}
+    }
     </style>
     """
 
@@ -166,10 +113,11 @@ def winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
     return set(int(n) for n in result.get("numbers", [])), result.get("bonus")
 
 
-def batch_card_html(batch: dict, *, label_prefix: str = "") -> str:
-    """구매내역(_purchase_banner_html)과 동일한 카드 형식 — 순수 숫자 볼 + 당첨번호
-    일치 시 테두리 동그라미. label_prefix가 있으면 "{label_prefix} · N회차"로 표시한다
-    (한 화면에 여러 소스가 섞여 쌓일 수 있는 경우 구분용, 없으면 회차만 표시)."""
+def batch_card_html(batch: dict) -> str:
+    """구매내역(_purchase_banner_html)과 완전히 동일한 카드 형식 — 순수 숫자 볼 +
+    당첨번호 일치 시 테두리 동그라미. 회차/소스 제목은 호출부(render_history_section)가
+    회차별로 묶어 별도 줄(auto-history-round-head)로 그리므로 여기서는 조합 숫자만
+    그린다."""
     draw_round = batch.get("draw_round", "")
     win_set, bonus_number = winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
 
@@ -194,20 +142,9 @@ def batch_card_html(batch: dict, *, label_prefix: str = "") -> str:
             if rank in RANK_LABELS
             else ""
         )
-        combo_rows += (
-            f'<div class="auto-banner-combo"><div class="auto-banner-ball-row">{balls}</div>{rank_badge}</div>'
-        )
+        combo_rows += f'<div class="auto-banner-ball-row">{balls}{rank_badge}</div>'
 
-    legend = '<p class="auto-banner-legend">🟡 당첨번호 일치 · ⚪ 보너스 번호 일치</p>' if win_set else ""
-    title = f"{label_prefix} · {draw_round}회차" if label_prefix else f"{draw_round}회차"
-
-    return (
-        '<div class="auto-purchase-banner">'
-        f'<div class="auto-banner-title">{title}</div>'
-        f'<div class="auto-banner-combos">{combo_rows}</div>'
-        f"{legend}"
-        "</div>"
-    )
+    return f'<div class="auto-purchase-banner-plain"><div class="auto-banner-combos">{combo_rows}</div></div>'
 
 
 def render_history_section(
@@ -221,11 +158,15 @@ def render_history_section(
     limit_per_source: int = 10,
     label_for_source: dict[str, str] | None = None,
 ) -> None:
-    """저장내역 익스팬더 전체(당첨마킹 동기화 + 블링크 연출 + 카드 목록)를 렌더링한다.
+    """"저장내역" 전체(당첨마킹 동기화 + 버튼 트리거 + 인라인 패널)를 렌더링한다.
 
     sources가 여러 개면(예: 안티조합+액땜조합) 하나의 목록으로 합쳐 최신순으로 보여주고,
-    label_for_source로 각 소스의 표시 이름을 지정하면 카드 제목에 "{이름} · N회차"로
-    구분해 표시한다(소스가 하나뿐이고 label_for_source도 없으면 회차만 표시)."""
+    label_for_source로 각 소스의 표시 이름을 지정하면 회차 머리글에 "{이름} · N회차"로
+    구분해 표시한다(소스가 하나뿐이고 label_for_source도 없으면 회차만 표시).
+
+    자동구매 "구매내역"과 동일한 방식 — 진짜 st.button으로 열고 닫으며, 펼침 내용은
+    버튼 바로 밑에 전체 폭 인라인 패널로 그린다(팝업이나 좁은 열 안 펼침이 아님).
+    """
     try:
         _sync_generated_combo_win_ranks_cached()
     except Exception:
@@ -234,16 +175,18 @@ def render_history_section(
     from marketing_db import init_marketing_tables, list_guest_generated_combos
 
     init_marketing_tables()
-    st.markdown(history_css(container_key), unsafe_allow_html=True)
+    st.markdown(history_css(), unsafe_allow_html=True)
 
-    blink = bool(st.session_state.pop(blink_flag_key, False))
+    panel_open_key = f"{blink_flag_key}_panel_open"
+    if bool(st.session_state.pop(blink_flag_key, False)):
+        st.session_state[panel_open_key] = True
+
     with st.container(key=container_key):
-        if blink:
-            st.markdown(
-                '<div class="combo-history-just-saved-marker" aria-hidden="true"></div>',
-                unsafe_allow_html=True,
-            )
-        with st.expander(title, expanded=blink):
+        if st.button(title, type="primary", use_container_width=True, key=f"{container_key}_open_btn"):
+            st.session_state[panel_open_key] = not st.session_state.get(panel_open_key, False)
+
+    if st.session_state.get(panel_open_key, False):
+        with st.container(key=f"{container_key}_panel"):
             batches = []
             for source in sources:
                 for batch in list_guest_generated_combos(guest_id, source=source, limit=limit_per_source):
@@ -257,7 +200,10 @@ def render_history_section(
             else:
                 for batch in batches:
                     label_prefix = (label_for_source or {}).get(batch.get("_source"), "")
+                    draw_round = batch.get("draw_round", "")
+                    heading = f"{label_prefix} · {draw_round}회차" if label_prefix else f"{draw_round}회차"
                     st.markdown(
-                        batch_card_html(batch, label_prefix=label_prefix),
+                        f'<div class="auto-history-round-head">{heading}</div>',
                         unsafe_allow_html=True,
                     )
+                    st.markdown(batch_card_html(batch), unsafe_allow_html=True)
