@@ -1377,8 +1377,10 @@ def render():
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
         }
-        /* 전화번호 입력(왼쪽) + 구매내역·구매확정(오른쪽, 위아래로) 한 줄 배치 —
-           좁은 화면에서도 두 열이 세로로 쌓이지 않게 강제로 nowrap 시킨다. */
+        /* 구매내역·구매확정(왼쪽, 위아래로) + 전화번호 입력(오른쪽) 한 줄 배치 —
+           좁은 화면에서도 두 열이 세로로 쌓이지 않게 강제로 nowrap 시킨다.
+           버튼이 왼쪽 열(:first-child)에 있다(2026-08-27, Streamlit Cloud
+           우측 하단 고정 배지를 피하려고 좌우를 바꿈). */
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stHorizontalBlock"] {
             flex-wrap: nowrap !important;
             align-items: flex-start !important;
@@ -1386,13 +1388,13 @@ def render():
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] {
             min-width: 0 !important;
         }
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:last-child {
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:first-child {
             display: flex !important;
             flex-direction: column !important;
             gap: 6px !important;
         }
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:last-child .st-key-auto_purchase_history_zone_6n36s5,
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:last-child div[data-testid="stButton"] {
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:first-child .st-key-auto_purchase_history_zone_6n36s5,
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:first-child div[data-testid="stButton"] {
             width: 100% !important;
         }
         .st-key-auto_page_columns_6n36s5 {
@@ -2409,12 +2411,14 @@ def render():
 
                     next_pool = check_next_draw_pool_ready()
 
-                    # 전화번호 입력 옆(오른쪽) 좁은 열에 "구매내역"·"구매확정"을 위아래로
-                    # 나란히 쌓는다(2026-08-23 사용자 제공 배치 참고) — 반씩 나눠 한 줄에
-                    # 펼치던 예전 배치는 구매내역을 열었을 때 번호가 잘리거나 버튼과
-                    # 겹치는 문제가 있었다.
+                    # "구매내역"·"구매확정"을 왼쪽 좁은 열에 위아래로 쌓고, 전화번호
+                    # 입력을 오른쪽 넓은 열에 둔다(2026-08-27) — Streamlit Cloud
+                    # 무료 호스팅이 화면 우측 하단에 항상 고정으로 띄우는 "Hosted
+                    # with Streamlit" 배지(내 코드로는 제거·수정 불가)와 버튼이
+                    # 겹쳐 보이는 문제가 있어, 버튼을 배지 반대편인 좌측으로
+                    # 옮겨서 피한다.
                     with st.container(key="auto_phone_btn_row_6n36s5"):
-                        phone_col, btn_col = st.columns([2, 1], gap="small")
+                        btn_col, phone_col = st.columns([1, 2], gap="small")
                         with phone_col:
                             phone = st.text_input(
                                 "수신 번호 (문자 발송용)",
