@@ -997,12 +997,11 @@ if current_page == "main":
         <div class="rank-more-wrap">
             <button type="button" id="rank-more-btn-6n36s5" class="rank-more-btn">더 보러가기</button>
             <div id="rank-more-toast-6n36s5" class="rank-more-toast">
-                <div class="rank-more-toast-title">🏆 역대 당첨금 TOP 5</div>
+                <div class="rank-more-toast-title">🏆 역대 당첨금 TOP 3</div>
                 <div class="rank-more-toast-body">
                     1위: 407억 (1회)<br>
                     2위: 369억 (51회)<br>
-                    3위: 346억 (100회)<br>
-                    4위: 300억 (132회)
+                    3위: 346억 (100회)
                 </div>
             </div>
         </div>
@@ -1144,124 +1143,125 @@ if current_page == "main":
 # CSS도 :has(마커) 대신 컨테이너 key로 직접 스코프한다 — :has()가 마커를
 # 포함한 모든 조상 블록에 매치돼 페이지 전체가 사라진 사고가 있었다
 # (2026-08-22 실제로 겪음).
-if current_page == "main" and st.session_state.get("admin_menu_revealed_flag", False):
-    with st.container(key="admin_menu_reveal_wrap"):
-        st.markdown("""
-        <style>
-        .st-key-admin_menu_reveal_wrap {
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-            padding-top: 0 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] {
-            background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            border-radius: 10px !important;
-            margin-bottom: 0 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary {
-            background: linear-gradient(145deg, #1c2838 0%, #141c2a 45%, #0c1018 100%) !important;
-            background-color: transparent !important;
-            color: #c8d0dc !important;
-            padding: 6px 8px !important;
-            min-height: 0 !important;
-            line-height: 1.15 !important;
-            border-radius: 10px !important;
-            border: 1px solid rgba(80, 95, 120, 0.35) !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] details {
-            background-color: #000000 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary:hover {
-            background: linear-gradient(145deg, #243040 0%, #1a2432 45%, #101620 100%) !important;
-            color: #e8ecf2 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary p,
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary span,
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary div,
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary svg {
-            color: #c8d0dc !important;
-            fill: #c8d0dc !important;
-            font-size: 13px !important;
-            line-height: 1.15 !important;
-            white-space: nowrap !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
-            background-color: #000000 !important;
-            border-top: 1px solid #333333 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
-            background-color: #000000 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button[kind="secondary"],
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button[data-testid="stBaseButton-secondary"],
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button {
-            background-color: #3a3a3a !important;
-            color: #ffffff !important;
-            border: 1px solid #555555 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button:hover {
-            background-color: #4a4a4a !important;
-            color: #ffffff !important;
-            border-color: #666666 !important;
-        }
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button p,
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button span,
-        .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button div {
-            color: #ffffff !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        with st.expander(" 시스템 관리자 메뉴"):
-            import os
-            import admin_auth_guard
+if current_page == "main":
+    if st.session_state.get("admin_menu_revealed_flag", False):
+        with st.container(key="admin_menu_reveal_wrap"):
+            st.markdown("""
+            <style>
+            .st-key-admin_menu_reveal_wrap {
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+                padding-top: 0 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                border-radius: 10px !important;
+                margin-bottom: 0 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary {
+                background: linear-gradient(145deg, #1c2838 0%, #141c2a 45%, #0c1018 100%) !important;
+                background-color: transparent !important;
+                color: #c8d0dc !important;
+                padding: 6px 8px !important;
+                min-height: 0 !important;
+                line-height: 1.15 !important;
+                border-radius: 10px !important;
+                border: 1px solid rgba(80, 95, 120, 0.35) !important;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] details {
+                background-color: #000000 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary:hover {
+                background: linear-gradient(145deg, #243040 0%, #1a2432 45%, #101620 100%) !important;
+                color: #e8ecf2 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary p,
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary span,
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary div,
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] summary svg {
+                color: #c8d0dc !important;
+                fill: #c8d0dc !important;
+                font-size: 13px !important;
+                line-height: 1.15 !important;
+                white-space: nowrap !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+                background-color: #000000 !important;
+                border-top: 1px solid #333333 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] [data-testid="stExpanderDetails"] > div {
+                background-color: #000000 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button[kind="secondary"],
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button[data-testid="stBaseButton-secondary"],
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button {
+                background-color: #3a3a3a !important;
+                color: #ffffff !important;
+                border: 1px solid #555555 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button:hover {
+                background-color: #4a4a4a !important;
+                color: #ffffff !important;
+                border-color: #666666 !important;
+            }
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button p,
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button span,
+            .st-key-admin_menu_reveal_wrap div[data-testid="stExpander"] button div {
+                color: #ffffff !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            with st.expander(" 시스템 관리자 메뉴"):
+                import os
+                import admin_auth_guard
 
-            _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD")
-            if not _ADMIN_MENU_PASSWORD:
-                try:
-                    _ADMIN_MENU_PASSWORD = st.secrets.get("ADMIN_MENU_PASSWORD", None)
-                except Exception:
-                    _ADMIN_MENU_PASSWORD = None
-            if not _ADMIN_MENU_PASSWORD:
-                st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
-                st.stop()
+                _ADMIN_MENU_PASSWORD = os.getenv("ADMIN_MENU_PASSWORD")
+                if not _ADMIN_MENU_PASSWORD:
+                    try:
+                        _ADMIN_MENU_PASSWORD = st.secrets.get("ADMIN_MENU_PASSWORD", None)
+                    except Exception:
+                        _ADMIN_MENU_PASSWORD = None
+                if not _ADMIN_MENU_PASSWORD:
+                    st.error("관리자 비밀번호가 설정되지 않았습니다. 환경변수(ADMIN_MENU_PASSWORD)를 확인하세요.")
+                    st.stop()
 
-            _ADMIN_MAX_ATTEMPTS = 5
-            _ADMIN_LOCKOUT_SECONDS = 300  # 5분
+                _ADMIN_MAX_ATTEMPTS = 5
+                _ADMIN_LOCKOUT_SECONDS = 300  # 5분
 
-            if not st.session_state.get("admin_menu_unlocked", False):
-                _remaining = admin_auth_guard.seconds_locked_remaining()
-                if _remaining > 0:
-                    st.error(f"비밀번호 시도 횟수를 초과했습니다. {int(_remaining) + 1}초 후 다시 시도해 주세요.")
-                else:
-                    st.text_input(
-                        "관리자 비밀번호",
-                        type="password",
-                        key="admin_menu_pwd_6n36s5",
-                    )
-                    if st.button("확인", key="admin_menu_pwd_submit_6n36s5"):
-                        if st.session_state.get("admin_menu_pwd_6n36s5") == _ADMIN_MENU_PASSWORD:
-                            admin_auth_guard.record_success()
-                            st.session_state.admin_menu_unlocked = True
-                            st.rerun()
-                        else:
-                            fail_count = admin_auth_guard.record_failure(
-                                _ADMIN_MAX_ATTEMPTS, _ADMIN_LOCKOUT_SECONDS
-                            )
-                            if fail_count == 0:
-                                st.warning(
-                                    f"비밀번호가 올바르지 않습니다. 시도 횟수 초과로 {_ADMIN_LOCKOUT_SECONDS}초간 잠금됩니다."
-                                )
+                if not st.session_state.get("admin_menu_unlocked", False):
+                    _remaining = admin_auth_guard.seconds_locked_remaining()
+                    if _remaining > 0:
+                        st.error(f"비밀번호 시도 횟수를 초과했습니다. {int(_remaining) + 1}초 후 다시 시도해 주세요.")
+                    else:
+                        st.text_input(
+                            "관리자 비밀번호",
+                            type="password",
+                            key="admin_menu_pwd_6n36s5",
+                        )
+                        if st.button("확인", key="admin_menu_pwd_submit_6n36s5"):
+                            if st.session_state.get("admin_menu_pwd_6n36s5") == _ADMIN_MENU_PASSWORD:
+                                admin_auth_guard.record_success()
+                                st.session_state.admin_menu_unlocked = True
+                                st.rerun()
                             else:
-                                st.warning(
-                                    f"비밀번호가 올바르지 않습니다. ({fail_count}/{_ADMIN_MAX_ATTEMPTS}회)"
+                                fail_count = admin_auth_guard.record_failure(
+                                    _ADMIN_MAX_ATTEMPTS, _ADMIN_LOCKOUT_SECONDS
                                 )
-            elif st.button(" 대시보드로 이동", key="admin_btn_dashboard"):
-                st.session_state.is_admin = True
-                st.session_state.go_to_admin = True
-                st.rerun()
+                                if fail_count == 0:
+                                    st.warning(
+                                        f"비밀번호가 올바르지 않습니다. 시도 횟수 초과로 {_ADMIN_LOCKOUT_SECONDS}초간 잠금됩니다."
+                                    )
+                                else:
+                                    st.warning(
+                                        f"비밀번호가 올바르지 않습니다. ({fail_count}/{_ADMIN_MAX_ATTEMPTS}회)"
+                                    )
+                elif st.button(" 대시보드로 이동", key="admin_btn_dashboard"):
+                    st.session_state.is_admin = True
+                    st.session_state.go_to_admin = True
+                    st.rerun()
 
 
     from feedback_db import init_feedback_tables, save_feedback
