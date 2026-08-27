@@ -2438,7 +2438,22 @@ def render():
                                 use_container_width=True,
                                 key="auto_purchase_confirm_6n36s5",
                             ):
-                                if not _is_auto_deploy_window_open():
+                                # 연속 클릭(더블탭) 중복 제출 방지 — 실제 두 번의 클릭
+                                # 이벤트가 거의 동시에 들어오면 Streamlit은 각각을 별도
+                                # 재실행으로 처리해 주문이 두 번 생길 수 있다(2026-08-27
+                                # 지적됨). st.session_state는 재실행 사이에도 유지되므로,
+                                # 직전 클릭 시각과 너무 가까우면(2초 이내) 같은 사람이
+                                # 실수로 두 번 누른 것으로 보고 조용히 무시한다.
+                                _now_ts = datetime.now().timestamp()
+                                _last_click_ts = st.session_state.get(
+                                    "auto_purchase_last_click_ts", 0.0
+                                )
+                                st.session_state["auto_purchase_last_click_ts"] = _now_ts
+                                _is_duplicate_click = (_now_ts - _last_click_ts) < 2.0
+
+                                if _is_duplicate_click:
+                                    pass
+                                elif not _is_auto_deploy_window_open():
                                     st.markdown(
                                         f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
                                         unsafe_allow_html=True,
