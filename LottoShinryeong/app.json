@@ -12,6 +12,7 @@
       "reactCompiler": false
     },
     "ios": {
+      "bundleIdentifier": "com.bandouni.lottoshinryeong",
       "supportsTablet": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
