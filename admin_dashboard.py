@@ -10,6 +10,19 @@ import subprocess
 import sys
 from datetime import timedelta
 
+# 2026-08-27: 이 페이지는 app.py가 is_admin일 때만 st.navigation에 등록해주는
+# 방식으로만 접근을 막고 있었다 — 그런데 Streamlit Cloud가 재부팅(재배포·잠깐
+# 잠들었다 깨어남 등)되면 세션이 통째로 새로 시작되며 is_admin이 False로
+# 초기화되는데, 브라우저 주소창은 여전히 이 페이지의 URL을 그대로 들고 있어
+# "Page not found - Running the app's main page"라는 낯선 영어 에러가 관리자
+# 화면에 그대로 노출됐다. app.py에서 이 페이지를 항상 등록해두고, 대신 여기서
+# 직접 로그인 여부를 확인해 아니면 조용히 메인으로 돌려보낸다 — 사이드바가
+# collapsed(위 "🏠 홈으로" 버튼 주석 참고)라 등록해둬도 일반 이용자에게 메뉴로
+# 노출되지는 않는다.
+if not st.session_state.get("is_admin", False):
+    st.switch_page("user_page.py")
+    st.stop()
+
 # ==========================================
 # 0. 초기화 로직 및 로컬 마스터 파일/데이터 보존 로드
 # ==========================================

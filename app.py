@@ -18,11 +18,15 @@ user_view = st.Page("user_page.py", title="로또 번호 조합", icon="🎰")
 admin_view = st.Page("admin_dashboard.py", title="운영자 대시보드", icon="⚙️")
 feedback_view = st.Page("admin_feedback.py", title="개선 요구사항", icon="💬")
 
-# 권한에 따라 메뉴 구성
-if st.session_state.is_admin:
-    pg = st.navigation([user_view, admin_view, feedback_view])
-else:
-    pg = st.navigation([user_view])
+# 2026-08-27: 예전엔 is_admin일 때만 admin_view/feedback_view를 등록해서 접근을
+# 막았는데, 그 방식은 세션이 새로 시작되면(재배포·Streamlit Cloud 재부팅 등)
+# is_admin이 False로 리셋되는 순간 그 페이지의 URL이 더 이상 "존재하지 않는"
+# 것이 돼버려 관리자에게 Streamlit의 "Page not found" 영어 에러가 그대로
+# 노출됐다. 항상 세 페이지 모두 등록해두고, 실제 접근 제어는 각 admin
+# 페이지(admin_dashboard.py/admin_feedback.py) 맨 앞의 is_admin 확인으로
+# 옮겼다 — 사이드바 자체가 모든 화면에서 collapsed·CSS로 숨겨져 있어 등록해둬도
+# 일반 이용자에게 메뉴로 노출되지는 않는다.
+pg = st.navigation([user_view, admin_view, feedback_view])
 
 if st.session_state.pop("go_to_admin", False):
     st.switch_page("admin_dashboard.py")

@@ -11,6 +11,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# admin_dashboard.py와 동일한 이유 — app.py가 항상 등록해두는 대신 여기서
+# 직접 관리자 여부를 확인한다(재부팅 후 "Page not found" 노출 방지).
+if not st.session_state.get("is_admin", False):
+    st.switch_page("user_page.py")
+    st.stop()
+
 init_feedback_tables()
 
 st.markdown(
