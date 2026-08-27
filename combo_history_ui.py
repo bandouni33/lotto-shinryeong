@@ -16,6 +16,31 @@ import streamlit as st
 
 RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
 
+# 2026-08-27: 자동구매 "구매내역"(page_auto.py)은 회차 기준으로 최근 2개
+# 회차분만 표시하는데, 여기(번개조합/안티·액땜조합 "저장내역")는 회차와
+# 무관하게 "최근 저장 10건"만 보여주고 있어 세 화면의 표시 기준이 서로 달랐다
+# — 세 곳 모두 "최근 2개 회차만 보인다"로 통일한다.
+MAX_HISTORY_ROUNDS = 2
+
+
+def _limit_to_recent_rounds(batches: list[dict], max_rounds: int = MAX_HISTORY_ROUNDS) -> list[dict]:
+    """최근 N개 회차분만 남기고 그보다 오래된 회차는 잘라낸다.
+
+    batches는 이미 최신순(created_at desc)으로 정렬돼 있다고 가정한다.
+    page_auto.py의 동일 이름 함수와 로직을 그대로 맞춰, 세 화면의 "구매/저장
+    내역"이 항상 같은 회차 범위를 보여주게 한다.
+    """
+    seen_rounds: list = []
+    result = []
+    for batch in batches:
+        dr = batch.get("draw_round")
+        if dr not in seen_rounds:
+            if len(seen_rounds) >= max_rounds:
+                continue
+            seen_rounds.append(dr)
+        result.append(batch)
+    return result
+
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _sync_generated_combo_win_ranks_cached() -> None:
@@ -156,7 +181,7 @@ def render_history_section(
     blink_flag_key: str,
     title: str = "저장내역",
     empty_caption: str = "아직 저장한 조합이 없습니다.",
-    limit_per_source: int = 10,
+    limit_per_source: int = 30,
     label_for_source: dict[str, str] | None = None,
 ) -> None:
     """"저장내역" 전체(당첨마킹 동기화 + 버튼 트리거 + 인라인 패널)를 렌더링한다.
@@ -167,6 +192,11 @@ def render_history_section(
 
     자동구매 "구매내역"과 동일한 방식 — 진짜 st.button으로 열고 닫으며, 펼침 내용은
     버튼 바로 밑에 전체 폭 인라인 패널로 그린다(팝업이나 좁은 열 안 펼침이 아님).
+
+    limit_per_source는 최종 표시 개수가 아니라 소스별 DB 조회 상한이다 — 실제
+    화면에 남는 범위는 언제나 _limit_to_recent_rounds가 정하는 "최근
+    MAX_HISTORY_ROUNDS개 회차"이며, 10건보다 더 자주 저장한 회차가 있어도
+    빠짐없이 그 회차 안에 들어오도록 여유 있게(기존 10 → 30) 조회한다.
     """
     try:
         _sync_generated_combo_win_ranks_cached()
@@ -194,7 +224,7 @@ def render_history_section(
                     batch["_source"] = source
                     batches.append(batch)
             batches.sort(key=lambda b: b.get("created_at") or "", reverse=True)
-            batches = batches[:limit_per_source]
+            batches = _limit_to_recent_rounds(batches)
 
             if not batches:
                 st.caption(empty_caption)
