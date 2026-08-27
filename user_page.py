@@ -350,7 +350,7 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 # ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️
 # 앞 번호일수록 유력한 순서로 입력 (예: 44가 가장 유력, 7이 가장 약함)
 # ⚠️⚠️⚠️ 다른 코드는 건드리지 말고 이 줄의 숫자만 바꾸세요 ⚠️⚠️⚠️
-lucky_display = [41, 26, 17, 33, 32, 5]
+lucky_display = [30, 41, 26, 17, 33, 5]
 # ===============================================================================
 
 def get_image_base64(file_path):
@@ -441,7 +441,11 @@ if current_page == "main":
 
     balls_css = ""
     for i, num in enumerate(lucky_display):
-        angle = i * 30
+        # 시계방향 회전에서 고정된 지점을 먼저 지나는 건 시작각이 큰 볼이라
+        # angle=i*30이면 lucky_display 뒷번호(인덱스 5)부터 먼저 나오고
+        # 앞번호(인덱스 0)가 맨 마지막에 나왔다 — 인덱스와 등장 순서가
+        # 일치하도록 시작각을 뒤집는다(0번이 가장 큰 각도로 시작 → 가장 먼저 등장).
+        angle = (len(lucky_display) - 1 - i) * 30
         color = get_ball_color(num)
         balls_css += f"""
         .orbit-ball-{i} {{
