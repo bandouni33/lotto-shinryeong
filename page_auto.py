@@ -2346,9 +2346,13 @@ def render():
                     col_method, col_qty = st.columns(2, gap="small")
                     with col_method:
                         with st.container(key="auto_method_left_6n36s5"):
+                            # 2026-08-27: 월간구독은 실제 매주 자동 재생성·재과금 엔진이
+                            # 아직 없고(정기구독이라는 라벨만 붙을 뿐 자동화가 안 됨),
+                            # 알리고 SMS 없이는 매주 새 번호를 알릴 방법도 없다 — 사용자
+                            # 요청 시 다시 추가하기로 하고 정식 출시 범위에서는 뺀다.
                             purchase_method = st.selectbox(
                                 "구매 방식",
-                                ["즉시", "월간구독"],
+                                ["즉시"],
                                 label_visibility="collapsed",
                                 key="auto_purchase_method_6n36s5",
                             )
@@ -2394,8 +2398,6 @@ def render():
                             st.markdown(
                                 """
         • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
-
-        • **자동 결제 안내:** 월간구독은 신청일 기준 30일마다 자동 결제되며, 마이페이지에서 언제든지 해지하실 수 있습니다.
 
         • **환불 규정:** 로또 번호 추출 및 SMS 발송 서비스가 시작된 이후에는 디지털 콘텐츠 특성상 중도 청약철회 및 환불이 불가능합니다.
 
