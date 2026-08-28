@@ -694,10 +694,10 @@ def render():
             _fire_qr_scan_trigger()
     st.markdown(
         '<div class="hedge-mode-desc">'
-        '<div class="hedge-mode-desc-line hedge-mode-desc-anti"><span class="hedge-mode-desc-dot"></span>'
-        "개별리셋: 구매복권 5줄과 상반된 반전조합 5줄 생성.</div>"
         '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'
         "전체리셋: 구매복권 전체숫자와 상반된 반전조합 5줄 생성.</div>"
+        '<div class="hedge-mode-desc-line hedge-mode-desc-anti"><span class="hedge-mode-desc-dot"></span>'
+        "개별리셋: 구매복권 5줄과 상반된 반전조합 5줄 생성.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
