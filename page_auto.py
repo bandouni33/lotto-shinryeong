@@ -277,6 +277,15 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     _sync_completed_draw_win_ranks()
     stats = mdb.get_draw_extraction_stats(limit=20)
     if stats:
+        # 당 회차(가장 최근 행)는 아직 "조합 저장" 시점의 잠금 기록이 없어
+        # (record_draw_pattern_count 호출 전) 적용패턴수가 늘 "—"로 비어
+        # 보였다 — 바로 위 안내 문구("당 회차에는 N개의 필터 규칙이
+        # 적용되었습니다")와 같은 값(_pattern_applied_count)을 그대로
+        # 채워 넣어, 문구와 표가 서로 다른 걸 말하는 것처럼 안 보이게 한다.
+        if stats[0].get("pattern_count") is None:
+            live_count = _pattern_applied_count()
+            if live_count:
+                stats[0]["pattern_count"] = live_count
         return _stats_to_dataframe(stats, False), False
     return _stats_to_dataframe(mdb.get_mock_draw_extraction_stats(), True), True
 

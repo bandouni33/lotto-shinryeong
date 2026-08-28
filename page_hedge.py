@@ -700,9 +700,13 @@ def render():
                 _fire_qr_scan_trigger()
         with col_mode:
             with st.container(key="hedge_mode_toggle"):
+                # 2026-08-27 명칭변경: 화면엔 "개별리셋"(안티조합)·"전체리셋"(액땜조합)으로
+                # 보여달라는 요청 — 내부 값(mode)은 "안티조합"/"액땜조합"을 그대로 써서
+                # 아래 모든 분기·저장 로직을 안 건드리고, format_func로 표시 이름만 바꾼다.
                 mode = st.radio(
                     "모드",
                     ["안티조합", "액땜조합"],
+                    format_func=lambda v: "개별리셋" if v == "안티조합" else "전체리셋",
                     horizontal=True,
                     label_visibility="collapsed",
                     key="hedge_mode",
@@ -710,9 +714,9 @@ def render():
     st.markdown(
         '<div class="hedge-mode-desc">'
         '<div class="hedge-mode-desc-line hedge-mode-desc-anti"><span class="hedge-mode-desc-dot"></span>'
-        "안티조합: 구매복권 5줄과 상반된 반전조합 5줄 생성.</div>"
+        "개별리셋: 구매복권 5줄과 상반된 반전조합 5줄 생성.</div>"
         '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'
-        "액땜조합: 구매복권 전체숫자와 상반된 반전조합 5줄 생성.</div>"
+        "전체리셋: 구매복권 전체숫자와 상반된 반전조합 5줄 생성.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -850,27 +854,20 @@ def render():
             st.session_state["hedge_results"] = results
             st.session_state["hedge_results_mode"] = pending_mode
 
-        points_notice_dialog("hedge", quantity=pending_count, on_close=_hedge_dialog_close)
-
-    results = st.session_state.get("hedge_results")
-    if results:
-        st.markdown('<div class="hedge-section-label">생성 결과</div>', unsafe_allow_html=True)
-        rows = "".join(_line_row_html(combo) for combo in results)
-        st.markdown(rows, unsafe_allow_html=True)
-        if st.button("💾 결과저장", type="primary", use_container_width=True, key="hedge_save_btn"):
+            # 2026-08-27: "번호 확정되면 즉시 자동저장" 요청 — 예전엔 결과가 화면에
+            # 뜬 뒤 "💾 결과저장"을 한 번 더 눌러야 실제로 DB에 저장됐다. 번호가
+            # 확정되는 이 시점(다이얼로그가 닫히는 순간)에 바로 저장해서 그 별도
+            # 클릭을 없앤다.
             from auto_purchase_service import _next_draw_round
             from marketing_db import init_marketing_tables, save_guest_generated_combos
 
             init_marketing_tables()
-            saved_mode = st.session_state.get("hedge_results_mode", mode)
-            source = "anti" if saved_mode == "안티조합" else "aekddaem"
+            source = "anti" if pending_mode == "안티조합" else "aekddaem"
             save_guest_generated_combos(guest_id, source, _next_draw_round(), results)
-            st.session_state.pop("hedge_results", None)
-            st.session_state.pop("hedge_results_mode", None)
             # 방금 저장한 모드의 입력 상태만 비운다 — 두 모드 다 비우면, QR 스캔 한 번으로
             # 안티조합 저장 후 이어서 액땜조합도 만들려는 흐름에서 액땜용 번호 풀까지
             # 같이 날아가 다시 스캔해야 하는 문제가 있었다(사용자 확인, 2026-08-19).
-            if saved_mode == "안티조합":
+            if pending_mode == "안티조합":
                 st.session_state.pop("hedge_committed_lines", None)
                 for line_idx in range(MAX_LINES):
                     for n in range(1, 46):
@@ -880,14 +877,26 @@ def render():
                     st.session_state.pop(f"hedge_aek_num_{n}", None)
                 st.session_state.pop("hedge_aek_from_qr", None)
             st.session_state["hedge_history_blink"] = True
-            st.rerun()
+
+        points_notice_dialog("hedge", quantity=pending_count, on_close=_hedge_dialog_close)
+
+    # hedge_results는 방금 자동저장된 결과를 한 번만 보여주기 위한 1회성 플래시다 —
+    # pop으로 꺼내 쓰기 때문에 다음 재실행부턴 저절로 사라지고(중복 표시 없음),
+    # 실제 기록은 아래 "저장내역"에서 계속 확인할 수 있다.
+    results = st.session_state.pop("hedge_results", None)
+    st.session_state.pop("hedge_results_mode", None)
+    if results:
+        st.markdown('<div class="hedge-section-label">생성 결과</div>', unsafe_allow_html=True)
+        rows = "".join(_line_row_html(combo) for combo in results)
+        st.markdown(rows, unsafe_allow_html=True)
+        st.caption("💾 자동으로 저장됐습니다 — 아래 저장내역에서 확인할 수 있어요.")
 
     render_history_section(
         container_key="hedge_history_zone_6n36s5",
         guest_id=guest_id,
         sources=["anti", "aekddaem"],
         blink_flag_key="hedge_history_blink",
-        label_for_source={"anti": "안티조합", "aekddaem": "액땜조합"},
+        label_for_source={"anti": "개별리셋", "aekddaem": "전체리셋"},
     )
 
 

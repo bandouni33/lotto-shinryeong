@@ -157,18 +157,15 @@ def batch_card_html(batch: dict) -> str:
             hit_cls = ""
         return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
 
+    # 2026-08-27: 등수 배지("3등" 등)가 줄마다 폭이 달라서 저장내역 카드가
+    # 삐뚤빼뚤해 보인다는 지적 — 당첨 여부는 번호에 동그라미(_ball_span의
+    # hit_cls)만으로 이미 표시되니, 배지 없이 숫자 줄만 가운데 정렬로 그린다.
     combos = batch.get("combos") or []
     combo_rows = ""
     for item in combos:
         combo = item.get("combo") or []
         balls = "".join(_ball_span(n) for n in combo)
-        rank = item.get("win_rank")
-        rank_badge = (
-            f'<span class="combo-history-rank-badge">{RANK_LABELS[rank]}</span>'
-            if rank in RANK_LABELS
-            else ""
-        )
-        combo_rows += f'<div class="auto-banner-ball-row">{balls}{rank_badge}</div>'
+        combo_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
 
     return f'<div class="auto-purchase-banner-plain"><div class="auto-banner-combos">{combo_rows}</div></div>'
 

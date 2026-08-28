@@ -829,7 +829,7 @@ if current_page == "main":
     <a href="?page=hedge" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box shield">
             <div class="menu-icon">🛡️</div>
-            <div class="menu-title">안티조합 · 액땜조합</div>
+            <div class="menu-title">개별리셋 · 전체리셋</div>
             <div class="menu-sub">안 겹치는 조합</div>
         </div>
     </a>
