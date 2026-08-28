@@ -829,7 +829,7 @@ if current_page == "main":
     <a href="?page=hedge" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box shield">
             <div class="menu-icon">🛡️</div>
-            <div class="menu-title">개별리셋 · 전체리셋</div>
+            <div class="menu-title">전체리셋 · 개별리셋</div>
             <div class="menu-sub">구매복권 검증</div>
         </div>
     </a>
