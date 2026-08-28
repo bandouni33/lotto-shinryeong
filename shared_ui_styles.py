@@ -69,37 +69,39 @@ def main_nav_button_html(href: str = "?") -> str:
     return f'<a href="{href}" target="_self" class="auto-back-main-btn">{icon_html}<span>메인으로</span></a>'
 
 
-# ── 가벼운 "로또신령" 로고 링크 (2026-08-28) ──
-# 위 "메인으로" 알약 버튼을 화면 공간 낭비라고 지우고 나니, 네이티브 앱
-# 바깥(브라우저로 직접 이 URL을 열었을 때)에는 메인으로 돌아갈 길이 아예
-# 없어져 버렸다 — 네이티브 앱은 자체 툴바에 "← 메인" 버튼이 있어서 문제
-# 없지만, 브라우저에는 그게 없다. 자리를 거의 안 차지하는 작은 로고
-# 텍스트를 대신 두고, 그걸 누르면 메인으로 가게 한다(웹사이트 로고 클릭하면
-# 홈으로 가는 것과 같은 흔한 패턴).
+# ── 자리 안 차지하는 메인 이동 아이콘 (2026-08-28) ──
+# "메인으로" 알약 버튼(화면 낭비)을 지웠다가, 텍스트까지 붙인 작은 링크로
+# 복구했더니 이번엔 그 링크 자체가 한 줄을 차지하고 "로또신령"이라는 글자도
+# 페이지마다 반복돼 중복스럽다는 지적을 받았다. position:fixed로 문서
+# 흐름에서 완전히 빼서(=다른 요소를 절대 아래로 밀어내지 않음) 화면 좌상단에
+# 작은 원형 아이콘 하나만 떠 있게 한다 — 글자 없이 아이콘만이라 "로또신령"
+# 텍스트 반복도 없다. 네이티브 앱에선 자체 툴바 "← 메인"과 겹치지 않게 톱바
+# 아래쪽에 놓는다.
 _BRAND_HOME_LINK_CSS = """
 <style>
 .brand-home-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: #d8c48a !important;
-    font-weight: 800 !important;
-    font-size: 13px !important;
-    letter-spacing: 0.02em;
+    position: fixed;
+    top: 6px;
+    left: 6px;
+    z-index: 9999;
+    display: block;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1px solid rgba(255, 179, 0, 0.55);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    opacity: 0.82;
     text-decoration: none !important;
-    padding: 4px 2px;
-    margin-bottom: 6px;
 }
 .brand-home-link:hover {
-    color: #ffe9b3 !important;
+    opacity: 1;
 }
 .brand-home-link-icon {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
-    border: 1px solid #ffb300;
-    flex-shrink: 0;
+    display: block;
 }
 </style>
 """
@@ -110,15 +112,16 @@ def brand_home_link_css() -> str:
 
 
 def brand_home_link_html(href: str = "?") -> str:
-    """작은 "로또신령" 로고 링크 — 클릭하면 메인으로. main_nav_button_html보다
-    훨씬 작아서 화면을 거의 안 차지한다."""
+    """화면 좌상단에 떠 있는 작은 원형 아이콘(글자 없음) — 클릭하면 메인으로.
+    position:fixed라 문서 흐름에서 빠져 있어 다른 요소를 밀어내지 않는다
+    (진짜 "자리를 차지하지 않는" 버전)."""
     icon_base64 = _main_nav_icon_base64()
     icon_html = (
-        f'<img class="brand-home-link-icon" src="data:image/jpeg;base64,{icon_base64}" alt="로또신령">'
+        f'<img class="brand-home-link-icon" src="data:image/jpeg;base64,{icon_base64}" alt="메인으로">'
         if icon_base64
         else "🔮"
     )
-    return f'<a href="{href}" target="_self" class="brand-home-link">{icon_html}<span>로또신령</span></a>'
+    return f'<a href="{href}" target="_self" class="brand-home-link">{icon_html}</a>'
 
 
 # ── Primary (간편인증 · 구매 확정 등) ──
