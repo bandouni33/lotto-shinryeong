@@ -2330,18 +2330,9 @@ def render():
         unsafe_allow_html=True,
     )
 
-    icon_base64 = _get_icon_base64()
-    col_back, _ = st.columns([3, 7])
-    with col_back:
-        icon_html = (
-            f'<img class="auto-back-main-icon" src="data:image/jpeg;base64,{icon_base64}" alt="로또신령">'
-            if icon_base64
-            else "🏠"
-        )
-        st.markdown(
-            f'<a href="?" target="_self" class="auto-back-main-btn">{icon_html}<span>메인으로</span></a>',
-            unsafe_allow_html=True,
-        )
+    # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
+    # streamlit-webview.tsx) 화면 안 이 버튼은 완전히 중복이었다 — 화면 공간만
+    # 차지한다는 지적으로 제거.
 
     spirit2_base64 = _get_icon_base64("로또신령2.jpg")
 

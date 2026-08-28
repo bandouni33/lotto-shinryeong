@@ -155,19 +155,6 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
     return results[:count]
 
 
-def _render_nav_html() -> str:
-    # 번개조합에서 파생된 하위 화면이던 시절의 흔적("← 번개조합")은 이제 독립
-    # 기능(메인에서 바로 진입)이 됐으니 없앤다 — "메인으로"만 남긴다.
-    # 페이지마다 이름·모양이 제각각이던 걸(홈/메인/메인으로 등) 자동구매·고급필터
-    # ·통계센터가 이미 쓰던 스타일로 전체 통일(shared_ui_styles.main_nav_button_*).
-    from shared_ui_styles import main_nav_button_css, main_nav_button_html
-
-    return (
-        main_nav_button_css()
-        + f'<div style="margin-bottom:12px;">{main_nav_button_html()}</div>'
-    )
-
-
 def _render_direct_input_pill_html() -> str:
     # "직접입력"은 지금 이 페이지 자체가 그 상태라 눌러도 할 일이 없어 그냥
     # 강조 표시만 한다(정적 HTML로 충분 — 클릭 핸들러 불필요).
@@ -673,7 +660,6 @@ def render():
 
     st.markdown(history_css("hedge_history_zone_6n36s5"), unsafe_allow_html=True)
 
-    st.markdown(_render_nav_html(), unsafe_allow_html=True)
     qr_loaded = st.session_state.pop("hedge_qr_loaded", None)
     if qr_loaded:
         st.success(f"✅ QR로 {qr_loaded}줄 번호를 불러왔어요. 아래에서 확인하고 조합시작을 눌러주세요.")

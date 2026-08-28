@@ -309,20 +309,14 @@ def render():
     if st.session_state.pop("thunder_save_toast", False):
         st.success("✅ 결과가 저장됐어요! 아래로 스크롤하면 저장내역에서 확인할 수 있어요.")
 
-    ncol1, ncol2 = st.columns(2)
-    with ncol1:
-        # 페이지마다 이름·모양이 제각각이던 "메인으로" 버튼(홈/메인/메인으로 등)을
-        # 자동구매·고급필터·통계센터가 이미 쓰던 스타일로 통일 — key는 그대로 둬서
-        # 아래 iframe 레이어 위로 올리는 z-index 규칙이 계속 이 자리에 적용되게 한다.
-        from shared_ui_styles import main_nav_button_css, main_nav_button_html
-
-        with st.container(key="th_nav_home_6n36s5"):
-            st.markdown(main_nav_button_css() + main_nav_button_html(), unsafe_allow_html=True)
-    with ncol2:
-        if st.button("📝 생일/행운수 관리", key="th_nav_bday_6n36s5", use_container_width=True):
-            st.query_params.clear()
-            st.query_params["page"] = "birthday"
-            st.rerun()
+    # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
+    # streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 완전히 중복이었다 — 화면
+    # 공간만 차지한다는 지적으로 제거. 옆에 있던 "생일/행운수 관리"는 이제 혼자
+    # 전체 폭을 쓴다.
+    if st.button("📝 생일/행운수 관리", key="th_nav_bday_6n36s5", use_container_width=True):
+        st.query_params.clear()
+        st.query_params["page"] = "birthday"
+        st.rerun()
 
     # 예전엔 여기서 postMessage + window.parent.location.href로 iframe 밖(최상위 문서)을
     # 내비게이션 시키려 했는데, Streamlit의 components.html iframe은 sandbox에

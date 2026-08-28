@@ -1407,19 +1407,16 @@ elif current_page == "tarot":
     if _tarot_dir not in _sys.path:
         _sys.path.insert(0, _tarot_dir)
 
-    # 페이지마다 이름·모양이 제각각이던 "메인으로" 버튼을 자동구매·고급필터·통계센터가
-    # 이미 쓰던 스타일로 통일.
-    from shared_ui_styles import main_nav_button_css, main_nav_button_html
-
+    # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
+    # streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 완전히 중복이었다 — 화면
+    # 공간만 차지한다는 지적으로 제거.
     st.markdown(
         # .block-container가 기본적으로 위쪽 96px를 Streamlit 자체 헤더 자리로
         # 비워둔다 — 헤더는 화면에 없는데 자리만 남아 진짜 빈 공간이 됐다(실측
         # 확인, 다른 상세페이지들과 동일한 원인이라 같이 맞춤).
         '<style>.block-container{padding-top:10px !important;} '
         "header[data-testid='stHeader'], section[data-testid='stSidebar']"
-        "{display:none !important;}</style>"
-        + main_nav_button_css()
-        + f'<div style="max-width:160px;">{main_nav_button_html()}</div>',
+        "{display:none !important;}</style>",
         unsafe_allow_html=True,
     )
 
@@ -1486,20 +1483,10 @@ elif current_page == "stats":
     </style>
     """, unsafe_allow_html=True)
 
-    # 1. 상단 네비게이션
-    col_back, col_title = st.columns([3, 7])
-    with col_back:
-        stats_icon_html = (
-            f'<img class="auto-back-main-icon" src="data:image/jpeg;base64,{icon_base64}" alt="로또신령">'
-            if icon_base64
-            else "🏠"
-        )
-        st.markdown(
-            f'<a href="?" target="_self" class="auto-back-main-btn">{stats_icon_html}<span>메인으로</span></a>',
-            unsafe_allow_html=True,
-        )
-    with col_title:
-        st.markdown("<h3 style='color:#ffb300; margin:0; padding-top:2px;'>📊 로또 통계 센터</h3>", unsafe_allow_html=True)
+    # 1. 상단 네비게이션 — 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을
+    # 갖고 있어(showBack, streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 중복이라
+    # 제거, 제목이 전체 폭을 쓴다.
+    st.markdown("<h3 style='color:#ffb300; margin:0; padding-top:2px;'>📊 로또 통계 센터</h3>", unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
 
