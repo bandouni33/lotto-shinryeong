@@ -457,7 +457,7 @@ if current_page == "main":
             box-shadow: 2px 3px 5px rgba(0,0,0,0.6), inset 2px 2px 4px rgba(255,255,255,0.4);
             top: 50%; left: 50%;
             margin-top: -11px; margin-left: -11px;
-            animation: orbit{i} 7.06s linear infinite;
+            animation: orbit{i} 10s linear infinite;
         }}
         @keyframes orbit{i} {{
             from {{ transform: rotate({angle}deg) translateX(82px) rotate(-{angle}deg); }}
