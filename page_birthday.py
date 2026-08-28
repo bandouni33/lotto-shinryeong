@@ -13,14 +13,19 @@ from lucky_numbers import (
 
 def _render_birthday_nav_html() -> str:
     # 2026-08-28: "메인으로"는 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고
-    # 있어(showBack, streamlit-webview.tsx) 화면 공간만 차지하는 중복이라 제거.
-    # "← 번개조합"은 툴바가 대신해주지 않는(메인이 아니라 번개조합으로 돌아가는)
-    # 이동이라 그대로 남긴다.
+    # 있어(showBack, streamlit-webview.tsx) 화면 공간만 차지하는 중복이라 제거하고,
+    # 자리를 거의 안 차지하는 작은 로고 링크로 대신한다(브라우저로 직접 열었을 땐
+    # 툴바가 없어 메인으로 갈 방법이 없어지므로). "← 번개조합"은 툴바가 대신해주지
+    # 않는(메인이 아니라 번개조합으로 돌아가는) 이동이라 그대로 남긴다.
     # (주의: 아래 HTML을 여러 줄로 들여써서 반환하면 Streamlit이 마크다운 코드
     # 블록으로 오인해 태그를 그대로 텍스트로 찍어버린다 — 실기기 확인된 버그라
     # 한 줄짜리 문자열로 이어붙인다.)
+    from shared_ui_styles import brand_home_link_css, brand_home_link_html
+
     return (
-        '<a href="?page=thunder" style="text-align:center;background:#fff;color:#1E293B;'
+        brand_home_link_css()
+        + brand_home_link_html()
+        + '<a href="?page=thunder" style="text-align:center;background:#fff;color:#1E293B;'
         "border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;"
         'display:flex;align-items:center;justify-content:center;box-sizing:border-box;'
         'margin-bottom:12px;">← 번개조합</a>'

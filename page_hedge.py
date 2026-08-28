@@ -660,6 +660,14 @@ def render():
 
     st.markdown(history_css("hedge_history_zone_6n36s5"), unsafe_allow_html=True)
 
+    # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
+    # streamlit-webview.tsx) 화면 넓게 차지하던 "메인으로" 버튼은 지웠다 — 다만
+    # 브라우저로 직접 열었을 땐 메인으로 갈 방법이 없어지므로, 자리를 거의 안
+    # 차지하는 작은 로고 링크를 대신 둔다.
+    from shared_ui_styles import brand_home_link_css, brand_home_link_html
+
+    st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
+
     qr_loaded = st.session_state.pop("hedge_qr_loaded", None)
     if qr_loaded:
         st.success(f"✅ QR로 {qr_loaded}줄 번호를 불러왔어요. 아래에서 확인하고 조합시작을 눌러주세요.")

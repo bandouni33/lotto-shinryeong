@@ -69,6 +69,58 @@ def main_nav_button_html(href: str = "?") -> str:
     return f'<a href="{href}" target="_self" class="auto-back-main-btn">{icon_html}<span>메인으로</span></a>'
 
 
+# ── 가벼운 "로또신령" 로고 링크 (2026-08-28) ──
+# 위 "메인으로" 알약 버튼을 화면 공간 낭비라고 지우고 나니, 네이티브 앱
+# 바깥(브라우저로 직접 이 URL을 열었을 때)에는 메인으로 돌아갈 길이 아예
+# 없어져 버렸다 — 네이티브 앱은 자체 툴바에 "← 메인" 버튼이 있어서 문제
+# 없지만, 브라우저에는 그게 없다. 자리를 거의 안 차지하는 작은 로고
+# 텍스트를 대신 두고, 그걸 누르면 메인으로 가게 한다(웹사이트 로고 클릭하면
+# 홈으로 가는 것과 같은 흔한 패턴).
+_BRAND_HOME_LINK_CSS = """
+<style>
+.brand-home-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #d8c48a !important;
+    font-weight: 800 !important;
+    font-size: 13px !important;
+    letter-spacing: 0.02em;
+    text-decoration: none !important;
+    padding: 4px 2px;
+    margin-bottom: 6px;
+}
+.brand-home-link:hover {
+    color: #ffe9b3 !important;
+}
+.brand-home-link-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #ffb300;
+    flex-shrink: 0;
+}
+</style>
+"""
+
+
+def brand_home_link_css() -> str:
+    return _BRAND_HOME_LINK_CSS
+
+
+def brand_home_link_html(href: str = "?") -> str:
+    """작은 "로또신령" 로고 링크 — 클릭하면 메인으로. main_nav_button_html보다
+    훨씬 작아서 화면을 거의 안 차지한다."""
+    icon_base64 = _main_nav_icon_base64()
+    icon_html = (
+        f'<img class="brand-home-link-icon" src="data:image/jpeg;base64,{icon_base64}" alt="로또신령">'
+        if icon_base64
+        else "🔮"
+    )
+    return f'<a href="{href}" target="_self" class="brand-home-link">{icon_html}<span>로또신령</span></a>'
+
+
 # ── Primary (간편인증 · 구매 확정 등) ──
 _PRIMARY_GRADIENT = """
     background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 45%, #A855F7 100%) !important;

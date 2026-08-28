@@ -1408,15 +1408,20 @@ elif current_page == "tarot":
         _sys.path.insert(0, _tarot_dir)
 
     # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
-    # streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 완전히 중복이었다 — 화면
-    # 공간만 차지한다는 지적으로 제거.
+    # streamlit-webview.tsx) 화면 넓게 차지하던 "메인으로" 버튼은 지웠다 — 다만
+    # 브라우저로 직접 열었을 땐 메인으로 갈 방법이 없어지므로, 자리를 거의 안
+    # 차지하는 작은 로고 링크를 대신 둔다.
+    from shared_ui_styles import brand_home_link_css, brand_home_link_html
+
     st.markdown(
         # .block-container가 기본적으로 위쪽 96px를 Streamlit 자체 헤더 자리로
         # 비워둔다 — 헤더는 화면에 없는데 자리만 남아 진짜 빈 공간이 됐다(실측
         # 확인, 다른 상세페이지들과 동일한 원인이라 같이 맞춤).
         '<style>.block-container{padding-top:10px !important;} '
         "header[data-testid='stHeader'], section[data-testid='stSidebar']"
-        "{display:none !important;}</style>",
+        "{display:none !important;}</style>"
+        + brand_home_link_css()
+        + brand_home_link_html(),
         unsafe_allow_html=True,
     )
 
@@ -1484,8 +1489,12 @@ elif current_page == "stats":
     """, unsafe_allow_html=True)
 
     # 1. 상단 네비게이션 — 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을
-    # 갖고 있어(showBack, streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 중복이라
-    # 제거, 제목이 전체 폭을 쓴다.
+    # 갖고 있어(showBack, streamlit-webview.tsx) 화면 넓게 차지하던 "메인으로"
+    # 버튼은 지웠다 — 다만 브라우저로 직접 열었을 땐 메인으로 갈 방법이 없어지므로,
+    # 자리를 거의 안 차지하는 작은 로고 링크를 대신 둔다.
+    from shared_ui_styles import brand_home_link_css, brand_home_link_html
+
+    st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
     st.markdown("<h3 style='color:#ffb300; margin:0; padding-top:2px;'>📊 로또 통계 센터</h3>", unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)

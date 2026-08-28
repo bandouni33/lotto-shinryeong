@@ -2331,8 +2331,12 @@ def render():
     )
 
     # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
-    # streamlit-webview.tsx) 화면 안 이 버튼은 완전히 중복이었다 — 화면 공간만
-    # 차지한다는 지적으로 제거.
+    # streamlit-webview.tsx) 화면 넓게 차지하던 이 버튼은 지웠다 — 다만 브라우저로
+    # 직접 열었을 땐(툴바 없음) 메인으로 갈 방법이 없어지므로, 자리를 거의 안
+    # 차지하는 작은 로고 링크를 대신 둔다.
+    from shared_ui_styles import brand_home_link_css, brand_home_link_html
+
+    st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
 
     spirit2_base64 = _get_icon_base64("로또신령2.jpg")
 
