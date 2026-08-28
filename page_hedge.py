@@ -259,21 +259,15 @@ def render():
 
     # 네이티브 앱에서 QR 촬영 화면을 거쳐 들어오면 스캔된 문자열이 ?qr=로 실려온다.
     # 1회성 파라미터라 읽자마자 지운다(다음 rerun에서 또 덮어쓰지 않도록, th_save와
-    # 동일한 패턴). 안티조합용 committed_lines와 액땜조합용 풀 체크박스 둘 다 채워둬서
-    # 스캔 한 번으로 두 모드를 이어서 쓸 수 있게 한다(사용자 요청 시나리오: 안티 조합
-    # 생성 후 바로 이어서 액땜 조합도 생성).
+    # 동일한 패턴). 2026-08-27부터 조합시작 한 번에 개별리셋·전체리셋을 항상 함께
+    # 생성하므로(아래 참고), committed_lines 하나만 채워두면 된다 — "전체숫자" 풀은
+    # 이제 그 committed_lines에서 그때그때 계산해서 보여준다(별도 체크박스 상태 불필요).
     qr_raw = st.query_params.get("qr")
     if qr_raw:
         del st.query_params["qr"]
         parsed = _parse_qr_lines(qr_raw)
         if parsed:
             st.session_state["hedge_committed_lines"] = parsed
-            for n in range(1, 46):
-                st.session_state.pop(f"hedge_aek_num_{n}", None)
-            for line in parsed:
-                for n in line:
-                    st.session_state[f"hedge_aek_num_{n}"] = True
-            st.session_state["hedge_aek_from_qr"] = True
             st.session_state["hedge_qr_loaded"] = len(parsed)
         else:
             st.session_state["hedge_qr_error"] = True
@@ -686,31 +680,18 @@ def render():
     if st.session_state.pop("hedge_qr_error", False):
         st.error("QR 인식에 실패했어요. 로또 용지 QR이 맞는지 확인 후 다시 시도하거나 직접 입력해 주세요.")
 
-    # 입력방법(QR스캔/직접입력)과 모드(안티/액땜) 토글을 한 줄에 나란히 배치.
+    # 입력방법(QR스캔/직접입력) 토글. 2026-08-27부터 "조합시작" 한 번으로
+    # 개별리셋·전체리셋을 항상 함께 생성하도록 바뀌어(아래 참고) 더 이상 둘 중
+    # 하나를 고르는 모드 토글이 필요 없다 — 없애고 설명만 정적으로 보여준다.
     with st.container(key="hedge_toggles_row"):
-        col_input, col_mode = st.columns(2)
-        with col_input:
-            with st.container(key="hedge_input_toggle_wrap"):
-                qc1, qc2 = st.columns(2)
-                with qc1:
-                    qr_clicked = st.button("QR스캔", key="hedge_qr_scan_btn", use_container_width=True)
-                with qc2:
-                    st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
-            if qr_clicked:
-                _fire_qr_scan_trigger()
-        with col_mode:
-            with st.container(key="hedge_mode_toggle"):
-                # 2026-08-27 명칭변경: 화면엔 "개별리셋"(안티조합)·"전체리셋"(액땜조합)으로
-                # 보여달라는 요청 — 내부 값(mode)은 "안티조합"/"액땜조합"을 그대로 써서
-                # 아래 모든 분기·저장 로직을 안 건드리고, format_func로 표시 이름만 바꾼다.
-                mode = st.radio(
-                    "모드",
-                    ["안티조합", "액땜조합"],
-                    format_func=lambda v: "개별리셋" if v == "안티조합" else "전체리셋",
-                    horizontal=True,
-                    label_visibility="collapsed",
-                    key="hedge_mode",
-                )
+        with st.container(key="hedge_input_toggle_wrap"):
+            qc1, qc2 = st.columns(2)
+            with qc1:
+                qr_clicked = st.button("QR스캔", key="hedge_qr_scan_btn", use_container_width=True)
+            with qc2:
+                st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
+        if qr_clicked:
+            _fire_qr_scan_trigger()
     st.markdown(
         '<div class="hedge-mode-desc">'
         '<div class="hedge-mode-desc-line hedge-mode-desc-anti"><span class="hedge-mode-desc-dot"></span>'
@@ -744,57 +725,49 @@ def render():
     def _line_row_html(combo) -> str:
         return '<div class="hedge-line-row">' + " ".join(f"{n:02d}" for n in combo) + "</div>"
 
-    lines: list[tuple[int, ...]] = []
+    # 2026-08-27: 개별리셋(줄별)·전체리셋(전체 풀) 둘 다 이 같은 "구매복권 5줄"
+    # 입력 하나만 있으면 되고("전체숫자"는 이 5줄을 합친 값일 뿐이라 따로 입력받을
+    # 필요가 없다 — generate_aekddaem_combinations도 원래 lines를 받아 내부에서
+    # 풀로 합친다), 조합시작 한 번에 두 종류를 항상 함께 만들므로 모드별로 입력
+    # 방식을 나눌 이유가 없어졌다. 입력은 언제나 이 5줄 방식 하나뿐이다.
+    committed = st.session_state.setdefault("hedge_committed_lines", [])
 
-    if mode == "안티조합":
-        committed = st.session_state.setdefault("hedge_committed_lines", [])
-
-        if len(committed) < MAX_LINES:
-            # 줄마다 프리픽스를 다르게 줘서(hedge_anti_num_{줄번호}_N) 매번 완전히 새
-            # 체크박스 위젯을 쓴다 — 예전엔 모든 줄이 같은 키(hedge_anti_num_N)를
-            # 재사용해서, 줄이 넘어갈 때 session_state.pop()으로 체크 해제를
-            # 시도했는데 브라우저 쪽 체크박스는 여전히 눌려있는 상태라 다음 rerun에
-            # 그 값이 되살아나 같은 6개로 계속 다음 줄이 자동 커밋되는 문제가 있었다
-            # (줄이 안 늘어야 하는데 계속 늘어나며 조합시작이 제대로 안 눌리던 원인).
-            line_prefix = f"hedge_anti_num_{len(committed)}_"
-            _render_num_grid(line_prefix)
-            current = _grid_selected(line_prefix)
-            if len(current) == 6:
-                committed.append(current)
-                st.session_state["hedge_committed_lines"] = committed
-                st.rerun()
-            elif current:
-                st.caption(f"{len(current)}/6개 선택됨")
-        else:
-            st.success(f"{MAX_LINES}줄 모두 입력했습니다. 아래 조합시작을 눌러주세요.")
-
-        if committed:
-            st.markdown('<div class="hedge-section-label">입력한 줄</div>', unsafe_allow_html=True)
-            rows = "".join(_line_row_html(sorted(line)) for line in committed)
-            rows += "".join(
-                '<div class="hedge-line-row hedge-line-row-empty">- - - - - -</div>'
-                for _ in range(MAX_LINES - len(committed))
-            )
-            st.markdown(rows, unsafe_allow_html=True)
-
-        lines = [tuple(sorted(line)) for line in committed]
-
+    if len(committed) < MAX_LINES:
+        # 줄마다 프리픽스를 다르게 줘서(hedge_anti_num_{줄번호}_N) 매번 완전히 새
+        # 체크박스 위젯을 쓴다 — 예전엔 모든 줄이 같은 키(hedge_anti_num_N)를
+        # 재사용해서, 줄이 넘어갈 때 session_state.pop()으로 체크 해제를
+        # 시도했는데 브라우저 쪽 체크박스는 여전히 눌려있는 상태라 다음 rerun에
+        # 그 값이 되살아나 같은 6개로 계속 다음 줄이 자동 커밋되는 문제가 있었다
+        # (줄이 안 늘어야 하는데 계속 늘어나며 조합시작이 제대로 안 눌리던 원인).
+        line_prefix = f"hedge_anti_num_{len(committed)}_"
+        _render_num_grid(line_prefix)
+        current = _grid_selected(line_prefix)
+        if len(current) == 6:
+            committed.append(current)
+            st.session_state["hedge_committed_lines"] = committed
+            st.rerun()
+        elif current:
+            st.caption(f"{len(current)}/6개 선택됨")
     else:
-        pool = _grid_selected("hedge_aek_num_")
-        # QR 스캔으로 이미 6개 이상 채워져 있으면 번호판을 또 보여줄 필요가 없다 —
-        # 안티조합 저장 후 이어서 액땜조합도 스캔 한 번으로 바로 만들 수 있어야 한다는
-        # 요청. 직접 고치고 싶으면 다시 스캔하면 되므로 별도 "직접입력" 전환은 안 둔다.
-        from_qr = bool(st.session_state.get("hedge_aek_from_qr")) and len(pool) >= 6
-        if from_qr:
-            st.success(f"QR로 불러온 {len(pool)}개 번호로 바로 조합할 수 있어요.")
-        else:
-            _render_num_grid("hedge_aek_num_")
-            pool = _grid_selected("hedge_aek_num_")
-        st.caption(f"{len(pool)}개 선택됨" + (" · 6개 이상 선택해 주세요" if pool and len(pool) < 6 else ""))
-        if pool:
-            st.markdown('<div class="hedge-section-label">선택한 번호</div>', unsafe_allow_html=True)
-            st.markdown(_line_row_html(pool), unsafe_allow_html=True)
-            lines = [tuple(pool)]
+        st.success(f"{MAX_LINES}줄 모두 입력했습니다. 아래 조합시작을 눌러주세요.")
+
+    lines = [tuple(sorted(line)) for line in committed]
+
+    # 표시 순서는 스캔 화면과 동일하게 "전체숫자(위) → 개별 5줄(아래)" —
+    # 전체숫자는 입력된 줄들을 합친 값이라 별도 입력 없이 그때그때 계산한다.
+    if lines:
+        pool = sorted({n for line in lines for n in line})
+        st.markdown('<div class="hedge-section-label">전체숫자</div>', unsafe_allow_html=True)
+        st.markdown(_line_row_html(pool), unsafe_allow_html=True)
+
+    if committed:
+        st.markdown('<div class="hedge-section-label">입력한 줄</div>', unsafe_allow_html=True)
+        rows = "".join(_line_row_html(sorted(line)) for line in committed)
+        rows += "".join(
+            '<div class="hedge-line-row hedge-line-row-empty">- - - - - -</div>'
+            for _ in range(MAX_LINES - len(committed))
+        )
+        st.markdown(rows, unsafe_allow_html=True)
 
     with st.container(key="hedge_count_start_row"):
         ccol1, ccol2 = st.columns([1, 1.3])
@@ -808,22 +781,19 @@ def render():
             )
 
     if start_clicked:
-        if mode == "안티조합" and not lines:
+        if not lines:
             st.error("최소 1줄 이상 입력해 주세요 (6개씩 선택).")
-        elif mode == "액땜조합" and (not lines or len(lines[0]) < 6):
-            st.error("번호를 6개 이상 선택해 주세요.")
         else:
             from wallet_ui import ensure_member_or_banner
 
             if ensure_member_or_banner(
                 resume="open_hedge_dialog",
                 reason="조합 생성을 위해 간편인증이 필요합니다.",
-                resume_data={"lines": lines, "count": count, "mode": mode},
+                resume_data={"lines": lines, "count": count},
             ):
                 st.session_state["open_hedge_dialog"] = True
                 st.session_state["hedge_pending_lines"] = lines
                 st.session_state["hedge_pending_count"] = count
-                st.session_state["hedge_pending_mode"] = mode
                 st.rerun()
 
     if st.session_state.get("open_hedge_dialog"):
@@ -837,58 +807,62 @@ def render():
             from wallet_ui import deduct_after_result
 
             pending_lines = st.session_state.pop("hedge_pending_lines", None) or []
-            pending_mode = st.session_state.pop("hedge_pending_mode", mode)
             st.session_state.pop("hedge_pending_count", None)
+            # 2026-08-27: "조합시작 한 번으로 개별리셋·전체리셋 동시 생성" 요청 —
+            # 적립금은 두 종류를 합친 개수만큼 차감된다(기본 5개 선택 시
+            # 개별 5 + 전체 5 = 10개 → 100P).
+            total_count = pending_count * 2
             if confirmed:
                 mid = current_member_id()
                 if mid:
                     import uuid
 
                     ref = f"hedge:{mid}:{uuid.uuid4().hex[:10]}"
-                    deduct_after_result(mid, "hedge", ref, quantity=pending_count)
+                    deduct_after_result(mid, "hedge", ref, quantity=total_count)
             # 테스트 기간이라 취소를 눌러도 그대로 생성을 진행시킨다.
-            if pending_mode == "안티조합":
-                results = generate_anti_combinations(pending_lines, pending_count)
-            else:
-                results = generate_aekddaem_combinations(pending_lines, pending_count)
-            st.session_state["hedge_results"] = results
-            st.session_state["hedge_results_mode"] = pending_mode
+            anti_results = generate_anti_combinations(pending_lines, pending_count)
+            aek_results = generate_aekddaem_combinations(pending_lines, pending_count)
+            st.session_state["hedge_results"] = {"anti": anti_results, "aekddaem": aek_results}
 
             # 2026-08-27: "번호 확정되면 즉시 자동저장" 요청 — 예전엔 결과가 화면에
             # 뜬 뒤 "💾 결과저장"을 한 번 더 눌러야 실제로 DB에 저장됐다. 번호가
-            # 확정되는 이 시점(다이얼로그가 닫히는 순간)에 바로 저장해서 그 별도
-            # 클릭을 없앤다.
+            # 확정되는 이 시점(다이얼로그가 닫히는 순간)에 개별리셋·전체리셋 둘 다
+            # 바로 저장해서 그 별도 클릭을 없앤다.
             from auto_purchase_service import _next_draw_round
             from marketing_db import init_marketing_tables, save_guest_generated_combos
 
             init_marketing_tables()
-            source = "anti" if pending_mode == "안티조합" else "aekddaem"
-            save_guest_generated_combos(guest_id, source, _next_draw_round(), results)
-            # 방금 저장한 모드의 입력 상태만 비운다 — 두 모드 다 비우면, QR 스캔 한 번으로
-            # 안티조합 저장 후 이어서 액땜조합도 만들려는 흐름에서 액땜용 번호 풀까지
-            # 같이 날아가 다시 스캔해야 하는 문제가 있었다(사용자 확인, 2026-08-19).
-            if pending_mode == "안티조합":
-                st.session_state.pop("hedge_committed_lines", None)
-                for line_idx in range(MAX_LINES):
-                    for n in range(1, 46):
-                        st.session_state.pop(f"hedge_anti_num_{line_idx}_{n}", None)
-            else:
+            next_round = _next_draw_round()
+            # anti를 먼저 저장해 created_at을 더 이르게 만든다 — 저장내역은
+            # created_at 최신순으로 정렬되므로, aekddaem(전체리셋)을 나중에
+            # 저장해야 화면 요청 순서("전체숫자 위 → 개별 5줄 아래")와 같이
+            # 전체리셋 묶음이 저장내역에서도 위에 온다.
+            save_guest_generated_combos(guest_id, "anti", next_round, anti_results)
+            save_guest_generated_combos(guest_id, "aekddaem", next_round, aek_results)
+            st.session_state.pop("hedge_committed_lines", None)
+            for line_idx in range(MAX_LINES):
                 for n in range(1, 46):
-                    st.session_state.pop(f"hedge_aek_num_{n}", None)
-                st.session_state.pop("hedge_aek_from_qr", None)
+                    st.session_state.pop(f"hedge_anti_num_{line_idx}_{n}", None)
             st.session_state["hedge_history_blink"] = True
 
-        points_notice_dialog("hedge", quantity=pending_count, on_close=_hedge_dialog_close)
+        points_notice_dialog("hedge", quantity=pending_count * 2, on_close=_hedge_dialog_close)
 
     # hedge_results는 방금 자동저장된 결과를 한 번만 보여주기 위한 1회성 플래시다 —
     # pop으로 꺼내 쓰기 때문에 다음 재실행부턴 저절로 사라지고(중복 표시 없음),
-    # 실제 기록은 아래 "저장내역"에서 계속 확인할 수 있다.
-    results = st.session_state.pop("hedge_results", None)
-    st.session_state.pop("hedge_results_mode", None)
-    if results:
-        st.markdown('<div class="hedge-section-label">생성 결과</div>', unsafe_allow_html=True)
-        rows = "".join(_line_row_html(combo) for combo in results)
-        st.markdown(rows, unsafe_allow_html=True)
+    # 실제 기록은 아래 "저장내역"에서 계속 확인할 수 있다. 표시 순서는 입력 화면과
+    # 동일하게 "전체리셋(위) → 개별리셋(아래)".
+    flash = st.session_state.pop("hedge_results", None)
+    if flash:
+        st.markdown('<div class="hedge-section-label">전체리셋 결과</div>', unsafe_allow_html=True)
+        st.markdown(
+            "".join(_line_row_html(combo) for combo in flash.get("aekddaem", [])),
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="hedge-section-label">개별리셋 결과</div>', unsafe_allow_html=True)
+        st.markdown(
+            "".join(_line_row_html(combo) for combo in flash.get("anti", [])),
+            unsafe_allow_html=True,
+        )
         st.caption("💾 자동으로 저장됐습니다 — 아래 저장내역에서 확인할 수 있어요.")
 
     render_history_section(

@@ -92,10 +92,11 @@ def _resume_after_auth() -> None:
         st.session_state["open_thunder_dialog"] = True
         st.session_state["open_thunder_dialog_games"] = int(data.get("games", 5))
     elif resume == "open_hedge_dialog":
+        # 2026-08-27: 조합시작 한 번에 개별리셋·전체리셋을 항상 함께 생성하도록
+        # 바뀌면서 "모드" 선택 자체가 없어져 더 이상 넘길 값이 없다.
         st.session_state["open_hedge_dialog"] = True
         st.session_state["hedge_pending_lines"] = data.get("lines") or []
         st.session_state["hedge_pending_count"] = int(data.get("count", 5))
-        st.session_state["hedge_pending_mode"] = data.get("mode", "안티조합")
     elif resume == "open_tarot_dialog":
         st.session_state["open_tarot_dialog"] = True
     elif resume == "af_show_step1_points":
