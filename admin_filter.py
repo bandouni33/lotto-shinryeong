@@ -1581,7 +1581,17 @@ if not _af_notice_dismissed_today():
         unsafe_allow_html=True,
     )
 
-# 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
+# 2026-08-28: 다른 상세페이지(자동구매·번개조합 등)는 전부 사이드바를 CSS로
+# 숨겨놨는데 이 화면(고급필터)엔 그 처리가 빠져 있었다 — "«" 화살표를 누르면
+# 사이드바가 열리고, 거기에 항상 등록해두는(app.py) 운영자 대시보드 메뉴까지
+# 그대로 보이는 문제가 있었다(실사용 중 발견). 다른 화면과 동일하게 숨긴다.
+st.markdown(
+    '<style>section[data-testid="stSidebar"], header[data-testid="stHeader"] '
+    "{display:none !important;}</style>",
+    unsafe_allow_html=True,
+)
+
+# 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
 # streamlit-webview.tsx) 화면 넓게 차지하던 "메인으로" 버튼은 지웠다 — 다만
 # 브라우저로 직접 열었을 땐 메인으로 갈 방법이 없어지므로, 자리를 거의 안
 # 차지하는 작은 로고 링크를 대신 둔다.
