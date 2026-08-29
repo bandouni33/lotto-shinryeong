@@ -225,6 +225,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             setLoading(false);
             setError(e.nativeEvent.description || '연결 실패');
           }}
+          // 2026-08-30: "결과저장 후 화면이 까맣게 죽고 앱을 완전히 닫아야만 풀린다"
+          // 신고 — 강제 다크모드로 인한 색 반전(위 forceDarkOn으로 대응)과는 별개로,
+          // 안드로이드 웹뷰 렌더러 프로세스 자체가 죽어도(메모리 압박 등) 이 핸들러가
+          // 없으면 웹뷰가 빈/검은 화면인 채로 완전히 멈춰버리고 앱 안에서는 복구할
+          // 방법이 없었다(재시작만이 유일한 탈출구였던 이유). 렌더러가 죽는 순간
+          // 자동으로 reload해서 앱을 안 닫아도 복구되게 한다.
+          onRenderProcessGone={(e) => {
+            console.warn('WebView render process gone', e.nativeEvent);
+            webViewRef.current?.reload();
+          }}
           onHttpError={(e) => {
             if (e.nativeEvent.statusCode >= 400) {
               setLoading(false);
@@ -251,6 +261,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
                 // https) 제거한 채로 둔다.
                 setBuiltInZoomControls: true,
                 setDisplayZoomControls: false,
+                // 2026-08-30: "번개조합 결과저장 후 화면이 반전된 채 안 돌아온다(앱을
+                // 완전히 닫아야만 풀림)" 신고 — page_thunder.py/page_hedge.py가 이미
+                // CSS(color-scheme:light)로 안드로이드 웹뷰의 "강제 다크모드" 자동 색
+                // 반전에 대응하고 있었지만, CSS는 웹뷰가 이미 반전 여부를 판단한
+                // *이후*에나 적용돼 타이밍에 따라 못 막을 때가 있었다(기존 주석 참고).
+                // forceDarkOn은 네이티브 웹뷰 레벨에서 이 자동 반전 알고리즘 자체를
+                // 끄는 설정이라 타이밍 문제 없이 근본적으로 막는다 — CSS 쪽 대응은
+                // 안전망으로 그대로 둔다. (문서상 "not persistent" — 매 웹뷰 생성 시
+                // 다시 걸어야 하는데, 이 prop은 렌더마다 항상 실려 있으니 문제 없음.)
+                forceDarkOn: false,
               }
             : {})}
         />
