@@ -285,6 +285,26 @@ def render():
                 inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
         .th-save-real-btn:active { transform: scale(0.97); }
+        /* 2026-08-29: "조합시작"에서 적립금이 이미 차감된 뒤, 번호 생성 자체는
+           iframe 안 JS가 담당해서(서버는 결과저장 클릭 전까진 실제 번호를 모름)
+           생성=저장을 한 몸으로 묶는 게 구조적으로 불가능하다. 반대로 차감을
+           저장 시점으로 미루면 "적립금 안 깎이는 걸 확인하고 결과만 보고 나가는"
+           역이용이 가능해진다는 지적 — 그래서 차감 시점은 그대로 두고, 대신
+           "저장 안 하면 사라진다"를 눈에 띄게 안내해 사용자 과실로 인한 분쟁
+           소지를 줄인다(고지 후 사용자 선택으로 전환).
+           색상은 이 파일에서 이미 경고 용도로 쓰던 #fbbf24(luckyWarn)와 통일. */
+        .th-save-warn {
+            margin: 4px 0 10px;
+            padding: 10px 12px;
+            background: rgba(251, 191, 36, 0.12);
+            border: 1px solid rgba(251, 191, 36, 0.45);
+            border-radius: 10px;
+            color: #fbbf24;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.5;
+            text-align: center;
+        }
         /* 조합시작 — 결제 확인창(points_notice_dialog)을 거쳐야 해서, 이 버튼도
            iframe 밖 진짜 Streamlit 버튼으로 둔다(같은 이유, 위 주석 참고). */
         .th-generate-label {
@@ -1338,6 +1358,11 @@ def render():
     with st.container(key="th_main_iframe_wrap_6n36s5"):
         components.html(thunder_ui_html, height=thunder_iframe_height, scrolling=True)
 
+    st.markdown(
+        '<div class="th-save-warn">⚠️ 결과저장을 누르지 않고 화면을 벗어나면 생성된 조합이 사라집니다.'
+        ' 차감된 적립금은 복구되지 않으니 꼭 저장해주세요.</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         '<a id="th_save_real_link" class="th-save-real-btn" href="?page=thunder">💾 결과저장</a>',
         unsafe_allow_html=True,
