@@ -1394,15 +1394,15 @@ def render():
             gap: 0.35rem !important;
             overflow: visible !important;
         }
-        .st-key-auto_confirm_history_row_6n36s5,
-        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stVerticalBlock"],
-        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+        .st-key-auto_phone_btn_row_6n36s5,
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stVerticalBlock"],
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
             overflow: visible !important;
             height: auto !important;
             min-height: 0 !important;
             max-height: none !important;
         }
-        .st-key-auto_confirm_history_row_6n36s5 {
+        .st-key-auto_phone_btn_row_6n36s5 {
             position: relative !important;
         }
         .st-key-auto_form_lower_6n36s5 div[data-testid="stTextInput"],
@@ -1467,17 +1467,14 @@ def render():
         }
         /* "구매 확정"·"구매내역" 나란히 2열 배치(2026-08-29, 전화번호 입력칸 제거로
            생긴 폭을 활용해 세로로 쌓던 걸 나란히로 정리) — 좁은 화면에서도 두
-           열이 세로로 쌓이지 않게 강제로 nowrap 시킨다. */
+           열이 세로로 쌓이지 않게 강제로 nowrap 시킨다. 실제 폭·중앙정렬은 아래
+           ".st-key-auto_phone_btn_row_6n36s5" 최종 override 블록(2026-08-30)이
+           캐스케이드 마지막에 한 번 더 결정한다. */
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stHorizontalBlock"] {
             flex-wrap: nowrap !important;
-            align-items: flex-start !important;
         }
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] {
             min-width: 0 !important;
-        }
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] .st-key-auto_purchase_history_zone_6n36s5,
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] div[data-testid="stButton"] {
-            width: 100% !important;
         }
         .st-key-auto_page_columns_6n36s5 {
             margin-bottom: 0 !important;
@@ -2741,12 +2738,19 @@ def render():
             gap: 14px !important;
             box-sizing: border-box !important;
         }
-        .st-key-auto_confirm_history_row_6n36s5 {
+        /* 2026-08-30: 이 규칙은 원래 "auto_confirm_history_row_6n36s5"라는 컨테이너
+           키를 겨냥해 쓰여 있었는데, 실제 구매확정·구매내역 버튼 줄의 키는
+           "auto_phone_btn_row_6n36s5"라 하나도 안 먹히고 있었다(고아 셀렉터) —
+           그래서 이 줄이 캐릭터 아이콘·구매방식 줄과 다른 폭·정렬로 보이던 것.
+           바로 위 구매방식 줄(auto_purchase_method_zone_6n36s5)과 완전히 같은
+           폭(--auto-visual-col-width)·중앙정렬 방식으로 맞춰서 두 줄이 캐릭터
+           아이콘과 같은 축에 나란히 정렬되게 한다. */
+        .st-key-auto_phone_btn_row_6n36s5 {
             width: 100% !important;
             max-width: var(--auto-visual-col-width) !important;
             margin: 0 auto !important;
         }
-        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
@@ -2759,8 +2763,8 @@ def render():
             min-height: 0 !important;
             box-sizing: border-box !important;
         }
-        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
-        .st-key-auto_confirm_history_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
             flex: 0 0 auto !important;
             width: auto !important;
             max-width: none !important;
