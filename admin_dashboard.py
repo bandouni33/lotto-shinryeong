@@ -143,8 +143,21 @@ def _start_filter_job() -> None:
         close_fds=True,
     )
 
-@st.cache_data(ttl=3600)
-def load_lotto_history():
+# 2026-08-29: 예전엔 인자 없이 순수 ttl=3600만으로 캐싱해서, 관리자가 실제로
+# MASTER_FILE을 새로 저장해도 최대 1시간까지 이전 버전이 계속 보였다(캐시 키가
+# 파일 내용과 무관해서 무효화될 방법이 없었음 — "추첨내역 저장해도 반영이
+# 느리다"는 신고의 실제 원인). lotto_stats.py의 엑셀 캐시가 이미 쓰던 대로
+# 파일 수정시각(mtime)을 캐시 키에 포함시켜, 파일이 바뀌는 즉시 캐시가
+# 무효화되면서도 안 바뀐 동안에는 재파싱하지 않게 한다.
+def _master_file_mtime() -> float:
+    try:
+        return os.path.getmtime(MASTER_FILE)
+    except OSError:
+        return 0.0
+
+
+@st.cache_data(show_spinner=False)
+def _load_lotto_history_cached(_mtime: float):
     if os.path.exists(MASTER_FILE):
         try:
             df = pd.read_excel(MASTER_FILE, sheet_name='당번', engine='pyxlsb')
@@ -156,6 +169,11 @@ def load_lotto_history():
         except Exception as e:
             return None, f"파일 읽기 오류: {e}"
     return None, "파일 없음"
+
+
+def load_lotto_history():
+    return _load_lotto_history_cached(_master_file_mtime())
+
 
 df_history, latest_info = load_lotto_history()
 
