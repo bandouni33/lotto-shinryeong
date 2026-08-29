@@ -2510,15 +2510,19 @@ def render():
                                 st.session_state["auto_purchase_last_click_ts"] = _now_ts
                                 _is_duplicate_click = (_now_ts - _last_click_ts) < 2.0
 
+                                # 2026-08-30: 이 안내들을 좁은 col_confirm 열 안에서 바로
+                                # st.markdown/st.error로 그렸더니, 그 열만 내용만큼 넓어져
+                                # 나란히 맞춰둔 구매확정·구매내역 두 버튼이 좌우로 벌어져
+                                # 보이는 문제가 있었다 — session_state에 담아 두 열 바깥,
+                                # 버튼 줄 전체 밑(아래 auto_purchase_notice/error 처리부)에서
+                                # 전체 폭으로 그리게 한다(같은 스크립트 실행 안이라 rerun
+                                # 없이도 아래에서 바로 집힌다).
                                 if _is_duplicate_click:
                                     pass
                                 elif not _is_auto_deploy_window_open():
-                                    st.markdown(
-                                        f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
-                                        unsafe_allow_html=True,
-                                    )
+                                    st.session_state["auto_purchase_notice"] = AUTO_DEPLOY_WINDOW_BANNER
                                 elif not next_pool["ok"]:
-                                    st.error(NEXT_DRAW_POOL_BANNER)
+                                    st.session_state["auto_purchase_error"] = NEXT_DRAW_POOL_BANNER
                                 elif AUTO_PURCHASE_SKIP_AUTH:
                                     from marketing_db import InsufficientCombinationsError
 
@@ -2529,9 +2533,9 @@ def render():
                                             st.session_state.get("auto_sms_days", []),
                                         )
                                     except NextDrawPoolNotReadyError:
-                                        st.error(NEXT_DRAW_POOL_BANNER)
+                                        st.session_state["auto_purchase_error"] = NEXT_DRAW_POOL_BANNER
                                     except InsufficientCombinationsError as exc:
-                                        st.error(
+                                        st.session_state["auto_purchase_error"] = (
                                             f"{exc.draw_round}회차 저장 조합이 부족합니다. "
                                             f"(요청 {exc.requested}개 / 가용 {exc.available}개)"
                                         )
