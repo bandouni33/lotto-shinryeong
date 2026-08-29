@@ -2574,6 +2574,19 @@ def render():
                                     ):
                                         st.session_state["auto_show_points"] = True
 
+                            # 2026-08-29: 이 배너를 "구매내역" 펼침 내용 바로 밑(전체 폭 줄)에
+                            # 그리고 있었는데, "구매내역"은 지난 회차(예: 1239회) 저장 기록을
+                            # 보는 화면이라 다음 판매 대상 회차(1240회) 준비 상태와는 무관하다.
+                            # 그런데도 그 밑에 붙어 있으니 "저장내역 보려는데 왜 다음 회차
+                            # 얘기가 나오냐"는 혼란으로 이어졌다 — "구매 확정" 버튼(새 구매를
+                            # 막아야 하는 실제 대상) 바로 밑, "구매내역" 버튼보다 위로 옮겨서
+                            # 이 배너가 구매 동작에 대한 안내라는 게 명확하게 보이게 한다.
+                            if not next_pool["ok"]:
+                                st.markdown(
+                                    f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
+                                    unsafe_allow_html=True,
+                                )
+
                             history_blink = bool(st.session_state.pop("auto_history_blink", False))
                             if history_blink:
                                 st.session_state["auto_history_panel_open_6n36s5"] = True
@@ -2602,12 +2615,6 @@ def render():
                                     unsafe_allow_html=True,
                                 )
                             _render_auto_history_content()
-
-                    if not next_pool["ok"]:
-                        st.markdown(
-                            f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
-                            unsafe_allow_html=True,
-                        )
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
