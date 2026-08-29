@@ -350,12 +350,31 @@ def render_history_section(
                 _render_batches(batches, label_for_source)
 
 
-def _render_single_batch(batch: dict, label_for_source: dict[str, str] | None) -> None:
+def _render_single_batch(
+    batch: dict, label_for_source: dict[str, str] | None, round_color: str | None = None
+) -> None:
     label_prefix = (label_for_source or {}).get(batch.get("_source"), "")
     draw_round = batch.get("draw_round", "")
     heading = f"{label_prefix} · {draw_round}회차" if label_prefix else f"{draw_round}회차"
-    st.markdown(f'<div class="auto-history-round-head">{heading}</div>', unsafe_allow_html=True)
+    color_style = f' style="color:{round_color};"' if round_color else ""
+    st.markdown(f'<div class="auto-history-round-head"{color_style}>{heading}</div>', unsafe_allow_html=True)
     st.markdown(batch_card_html(batch), unsafe_allow_html=True)
+
+
+def same_source_pair_card_html(batch_left: dict, batch_right: dict) -> str:
+    """번개조합처럼 소스가 하나뿐인 화면에서, 같은 회차에 저장된 배치가 2개
+    이상이면 세로로 쌓지 않고 좌우 2열로 나란히 보여준다("같은 회차는 2줄
+    나란히" 요청) — 배지는 없음(소스가 같으니 구분 표시가 필요 없다)."""
+    return f"""
+    <div class="hedge-pair-card">
+      <div class="hedge-pair-col hedge-pair-col-left">
+        {_combo_rows_html(batch_left, "auto-banner-ball-row")}
+      </div>
+      <div class="hedge-pair-col">
+        {_combo_rows_html(batch_right, "auto-banner-ball-row")}
+      </div>
+    </div>
+    """
 
 
 def _render_batches(batches: list[dict], label_for_source: dict[str, str] | None) -> None:
@@ -409,7 +428,28 @@ def _render_batches(batches: list[dict], label_for_source: dict[str, str] | None
             # 짝을 못 이룬 나머지(예: 한쪽만 재생성돼 개수가 안 맞는 경우)는
             # 기존 방식으로 그려서 데이터가 화면에서 누락되지 않게 한다.
             for b in list_left[pair_count:] + list_right[pair_count:]:
-                _render_single_batch(b, label_for_source)
+                _render_single_batch(b, label_for_source, round_color=round_color)
         else:
-            for b in group:
-                _render_single_batch(b, label_for_source)
+            sources_in_group = {b.get("_source") for b in group}
+            if len(sources_in_group) == 1:
+                # 소스가 하나뿐인 화면(번개조합)의 "같은 회차는 2줄 나란히" 요청 —
+                # 회차 머리글은 한 번만 찍고, 배치는 2개씩 짝지어 좌우로 보여준다.
+                src = next(iter(sources_in_group))
+                label_prefix = (label_for_source or {}).get(src, "")
+                heading = f"{label_prefix} · {dr}회차" if label_prefix else f"{dr}회차"
+                st.markdown(
+                    f'<div class="auto-history-round-head" style="color:{round_color};">{heading}</div>',
+                    unsafe_allow_html=True,
+                )
+                i = 0
+                n = len(group)
+                while i < n:
+                    if i + 1 < n:
+                        st.markdown(same_source_pair_card_html(group[i], group[i + 1]), unsafe_allow_html=True)
+                        i += 2
+                    else:
+                        st.markdown(batch_card_html(group[i]), unsafe_allow_html=True)
+                        i += 1
+            else:
+                for b in group:
+                    _render_single_batch(b, label_for_source, round_color=round_color)

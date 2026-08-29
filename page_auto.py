@@ -471,6 +471,51 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
     )
 
 
+# 2026-08-29: "같은 회차는 2줄 나란히, 회차별 칼라로 구분" 요청 — 한 회차에
+# 구매 건이 2개 이상이면 세로로 쌓지 않고 좌우 2열로 보여준다. 번개조합·
+# 안티/액땜조합의 저장내역 페어 카드(combo_history_ui.py)와 같은 톤이지만,
+# 이쪽은 실제 구매 레코드(_purchase_banner_html)라 별도 구현으로 둬서
+# 기존 단일 카드 렌더링에는 전혀 손대지 않는다.
+_AUTO_HISTORY_PAIR_ROUND_COLORS = ("#EAEAF2", "#ce93d8")
+
+
+def _history_ball_span(n: int, win_set: set, bonus_number) -> str:
+    n = int(n)
+    if n in win_set:
+        hit_cls = " auto-banner-ball-hit"
+    elif bonus_number is not None and n == int(bonus_number):
+        hit_cls = " auto-banner-ball-bonus"
+    else:
+        hit_cls = ""
+    return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
+
+
+def _history_grid_rows_html(item: dict) -> str:
+    """페어 카드용 — _purchase_banner_html(compact=True)의 grid_rows와 동일한
+    번호 줄만, 카드 wrapper 없이 반환한다(좌우 2열로 합칠 때 재사용)."""
+    draw_round = item.get("draw_round", "")
+    win_set, bonus_number = _winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
+    rows = ""
+    for it in (item.get("allocated") or [])[:5]:
+        combo = (it.get("combo") or [])[:6]
+        balls = "".join(_history_ball_span(n, win_set, bonus_number) for n in combo)
+        rows += f'<div class="auto-banner-ball-row">{balls}</div>'
+    return rows
+
+
+def _history_pair_card_html(item_left: dict, item_right: dict) -> str:
+    return f"""
+    <div class="auto-history-pair-card">
+      <div class="auto-history-pair-col auto-history-pair-col-left">
+        {_history_grid_rows_html(item_left)}
+      </div>
+      <div class="auto-history-pair-col">
+        {_history_grid_rows_html(item_right)}
+      </div>
+    </div>
+    """
+
+
 def _purchase_history_entry(
     outcome: dict,
     purchase_method: str,
@@ -728,16 +773,21 @@ def _render_auto_history_content():
     grouped_history: dict = {}
     for item in history_items:
         grouped_history.setdefault(item.get("draw_round"), []).append(item)
-    for draw_round, items in grouped_history.items():
+    for round_idx, (draw_round, items) in enumerate(grouped_history.items()):
+        round_color = _AUTO_HISTORY_PAIR_ROUND_COLORS[round_idx % len(_AUTO_HISTORY_PAIR_ROUND_COLORS)]
         st.markdown(
-            f'<div class="auto-history-round-head">{draw_round}회차</div>',
+            f'<div class="auto-history-round-head" style="color:{round_color};">{draw_round}회차</div>',
             unsafe_allow_html=True,
         )
-        for item in items:
-            st.markdown(
-                _purchase_banner_html(item, compact=True),
-                unsafe_allow_html=True,
-            )
+        i = 0
+        n = len(items)
+        while i < n:
+            if i + 1 < n:
+                st.markdown(_history_pair_card_html(items[i], items[i + 1]), unsafe_allow_html=True)
+                i += 2
+            else:
+                st.markdown(_purchase_banner_html(items[i], compact=True), unsafe_allow_html=True)
+                i += 1
 
 
 def render():
@@ -1060,6 +1110,34 @@ def render():
         }
         .auto-history-round-head:first-child {
             margin-top: 2px;
+        }
+        /* 2026-08-29: "같은 회차는 2줄 나란히" — 한 회차에 구매 건이 2개 이상이면
+           좌우 2열로 붙여 보여준다(번개조합·안티/액땜조합 저장내역 페어 카드와
+           같은 톤 — 구분선 하나만 두고 배지는 없음, 소스가 하나뿐이라 필요 없음). */
+        .auto-history-pair-card {
+            display: flex;
+            gap: 0;
+            margin: 10px 0;
+        }
+        .auto-history-pair-col {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 0 10px;
+        }
+        .auto-history-pair-col-left {
+            padding-left: 2px;
+            border-right: 2px solid #4fc3f7;
+        }
+        .auto-history-pair-col .auto-banner-ball-row {
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .auto-history-pair-col .auto-banner-ball {
+            font-size: 13px;
+            min-width: 16px;
         }
         .auto-banner-meta {
             color: #b39ddb;
