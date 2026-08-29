@@ -105,9 +105,10 @@ def process_auto_purchase(
             "draw_round": pool["draw_round"],
         }
 
+    # 2026-08-29: 수신 번호 입력칸을 화면에서 없앴다(당분간 SMS 미발송 확정,
+    # 알리고 미연동) — 더 이상 phone을 필수로 요구하지 않는다. dispatch_purchase_sms는
+    # SMS_ENABLED=False일 때 실제 발송 없이 로그만 남기므로 빈 값이어도 안전하다.
     phone = str(phone).strip()
-    if not phone:
-        return {"ok": False, "error": "phone_required"}
 
     cost = calc_auto_cost(quantity)
     if get_balance(member_id) < cost:

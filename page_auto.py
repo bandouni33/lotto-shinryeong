@@ -1465,10 +1465,9 @@ def render():
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
         }
-        /* 구매내역·구매확정(왼쪽, 위아래로) + 전화번호 입력(오른쪽) 한 줄 배치 —
-           좁은 화면에서도 두 열이 세로로 쌓이지 않게 강제로 nowrap 시킨다.
-           버튼이 왼쪽 열(:first-child)에 있다(2026-08-27, Streamlit Cloud
-           우측 하단 고정 배지를 피하려고 좌우를 바꿈). */
+        /* "구매 확정"·"구매내역" 나란히 2열 배치(2026-08-29, 전화번호 입력칸 제거로
+           생긴 폭을 활용해 세로로 쌓던 걸 나란히로 정리) — 좁은 화면에서도 두
+           열이 세로로 쌓이지 않게 강제로 nowrap 시킨다. */
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stHorizontalBlock"] {
             flex-wrap: nowrap !important;
             align-items: flex-start !important;
@@ -1476,13 +1475,8 @@ def render():
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] {
             min-width: 0 !important;
         }
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:first-child {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 6px !important;
-        }
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:first-child .st-key-auto_purchase_history_zone_6n36s5,
-        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"]:first-child div[data-testid="stButton"] {
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] .st-key-auto_purchase_history_zone_6n36s5,
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] div[data-testid="stButton"] {
             width: 100% !important;
         }
         .st-key-auto_page_columns_6n36s5 {
@@ -2475,18 +2469,10 @@ def render():
                 selected_quantity = int(str(quantity_label).replace("개", ""))
 
                 with st.container(key="auto_form_lower_6n36s5"):
-                    # ── 3. 구매 안내 Expander ──
-                    with st.container(key="auto_guide_expander_zone_6n36s5"):
-                        with st.expander("⚠️ 구매 안\u200b내 및 유의사항 (필독)"):
-                            st.markdown(
-                                """
-        • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
-
-        • **환불 규정:** 로또 번호 추출 및 SMS 발송 서비스가 시작된 이후에는 디지털 콘텐츠 특성상 중도 청약철회 및 환불이 불가능합니다.
-
-        • **당첨 면책 조항:** 본 조합 서비스는 당첨을 100% 보장하지 않으며, 실제 로또 결과에 대한 어떠한 법적 책임도 지지 않습니다.
-                                """
-                            )
+                    # 2026-08-29: "구매 안내 및 유의사항" expander는 메인화면
+                    # "개선 요구사항" 밑으로 옮겼다(user_page.py) — 자동구매 화면
+                    # 상단이 즉시/수량 선택과 구매확정·구매내역 위주로 보이도록
+                    # 정리해 달라는 요청.
 
                     from auto_purchase_service import (
                         NEXT_DRAW_POOL_BANNER,
@@ -2496,27 +2482,18 @@ def render():
 
                     next_pool = check_next_draw_pool_ready()
 
-                    # "구매내역"·"구매확정"을 왼쪽 좁은 열에 위아래로 쌓고, 전화번호
-                    # 입력을 오른쪽 넓은 열에 둔다(2026-08-27) — Streamlit Cloud
-                    # 무료 호스팅이 화면 우측 하단에 항상 고정으로 띄우는 "Hosted
-                    # with Streamlit" 배지(내 코드로는 제거·수정 불가)와 버튼이
-                    # 겹쳐 보이는 문제가 있어, 버튼을 배지 반대편인 좌측으로
-                    # 옮겨서 피한다.
+                    # 2026-08-29: "구매확정"·"구매내역"을 세로로 쌓지 않고 나란히
+                    # 2열로 배치한다 — 전화번호 입력칸을 없애면서(아래 참고) 생긴
+                    # 여유 폭을 활용해 상단을 더 균형 있게 정리해 달라는 요청.
                     with st.container(key="auto_phone_btn_row_6n36s5"):
-                        btn_col, phone_col = st.columns([1, 2], gap="small")
-                        with phone_col:
-                            phone = st.text_input(
-                                "수신 번호 (문자 발송용)",
-                                placeholder="01012345678",
-                                key="auto_phone_input_6n36s5",
-                            )
-
-                        with btn_col:
-                            # "구매확정"을 위, "구매내역"을 아래로(2026-08-23 사용자
-                            # 지정 순서). "구매내역"을 좁은 열 안에서 펼치면(st.expander)
-                            # 번호 6개가 열 폭에 잘려 보이는 문제가 있었다 — 대신 진짜
-                            # 버튼으로 만들고 st.dialog(이 코드베이스에서 이미 쓰고 있는
-                            # points_notice_dialog와 같은 패턴)로 화면 중앙에 넓게 띄운다.
+                        # "수신 번호" 입력은 더 이상 화면에 받지 않는다 — 당분간
+                        # SMS 미발송으로 확정(알리고 미연동)돼 있어 입력받을 이유가
+                        # 없어졌다는 요청으로 숨김 처리. process_auto_purchase
+                        # 시그니처 호환을 위해 빈 문자열로 고정해 넘긴다(SMS_ENABLED=False
+                        # 라 실제 발송에는 어차피 쓰이지 않음).
+                        phone = ""
+                        col_confirm, col_history = st.columns(2, gap="small")
+                        with col_confirm:
                             if st.button(
                                 "구매 확정",
                                 type="primary",
@@ -2574,19 +2551,7 @@ def render():
                                     ):
                                         st.session_state["auto_show_points"] = True
 
-                            # 2026-08-29: 이 배너를 "구매내역" 펼침 내용 바로 밑(전체 폭 줄)에
-                            # 그리고 있었는데, "구매내역"은 지난 회차(예: 1239회) 저장 기록을
-                            # 보는 화면이라 다음 판매 대상 회차(1240회) 준비 상태와는 무관하다.
-                            # 그런데도 그 밑에 붙어 있으니 "저장내역 보려는데 왜 다음 회차
-                            # 얘기가 나오냐"는 혼란으로 이어졌다 — "구매 확정" 버튼(새 구매를
-                            # 막아야 하는 실제 대상) 바로 밑, "구매내역" 버튼보다 위로 옮겨서
-                            # 이 배너가 구매 동작에 대한 안내라는 게 명확하게 보이게 한다.
-                            if not next_pool["ok"]:
-                                st.markdown(
-                                    f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
-                                    unsafe_allow_html=True,
-                                )
-
+                        with col_history:
                             history_blink = bool(st.session_state.pop("auto_history_blink", False))
                             if history_blink:
                                 st.session_state["auto_history_panel_open_6n36s5"] = True
@@ -2603,10 +2568,19 @@ def render():
                                         )
                                     )
 
-                    # 구매내역 펼침 내용은 좁은 열(btn_col) 안이 아니라 전화번호·버튼
-                    # 줄 전체 밑에 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서
-                    # 펼치면 번호 6개가 잘려 보이고, 화면 중앙 팝업으로 띄우면
-                    # "구매 확정" 버튼을 가려버리는 문제가 있었다(2026-08-23).
+                    # 2026-08-29: "다음회차 준비 안됨" 배너는 구매내역(지난 회차 조회)과
+                    # 무관하므로, 버튼 2열 전체 밑·저장내역 패널보다 위에 전체 폭으로
+                    # 둔다 — 구매 관련 안내라는 게 분명하게 보이도록.
+                    if not next_pool["ok"]:
+                        st.markdown(
+                            f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    # 구매내역 펼침 내용은 좁은 열 안이 아니라 버튼 2열 전체 밑에
+                    # 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면 번호 6개가
+                    # 잘려 보이고, 화면 중앙 팝업으로 띄우면 "구매 확정" 버튼을
+                    # 가려버리는 문제가 있었다(2026-08-23).
                     if st.session_state.get("auto_history_panel_open_6n36s5", False):
                         with st.container(key="auto_purchase_history_panel_6n36s5"):
                             if history_blink:
@@ -2633,9 +2607,10 @@ def render():
                             if not _is_auto_deploy_window_open():
                                 st.session_state["auto_purchase_notice"] = AUTO_DEPLOY_WINDOW_BANNER
                                 return
-                            if not phone.strip():
-                                st.session_state["auto_purchase_error"] = "수신 번호를 입력해 주세요."
-                                return
+                            # 2026-08-29: "수신 번호" 입력칸을 화면에서 없애면서(당분간
+                            # SMS 미발송) phone은 항상 빈 문자열로 넘어온다 — 더 이상
+                            # 필수 입력값이 아니므로 이 검증은 제거한다(과거엔 문자
+                            # 발송 대상 확인용이었음).
                             mid = current_member_id()
                             if not mid:
                                 return

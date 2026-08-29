@@ -1359,6 +1359,24 @@ div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-t
                     except ValueError as exc:
                         st.warning(str(exc))
 
+    # 2026-08-29: 자동구매 페이지 맨 위를 차지하던 "구매 안내 및 유의사항"
+    # expander를 여기로 옮겼다 — 자동구매 화면 상단을 즉시/수량 선택과
+    # 구매확정·구매내역 버튼 위주로 정리하기 위한 사용자 요청. 같은
+    # ".main-feedback-section-marker" 클래스를 재사용해 "개선 요구사항"과
+    # 똑같은 접힌 스타일로 통일한다(별도 CSS 추가 불필요).
+    with st.container():
+        st.markdown('<div class="main-feedback-section-marker"></div>', unsafe_allow_html=True)
+        with st.expander("⚠️ 구매 안​내 및 유의사항 (필독)", expanded=False):
+            st.markdown(
+                """
+    • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
+
+    • **환불 규정:** 로또 번호 추출 및 SMS 발송 서비스가 시작된 이후에는 디지털 콘텐츠 특성상 중도 청약철회 및 환불이 불가능합니다.
+
+    • **당첨 면책 조항:** 본 조합 서비스는 당첨을 100% 보장하지 않으며, 실제 로또 결과에 대한 어떠한 법적 책임도 지지 않습니다.
+                """
+            )
+
 
 # ==========================================
 # ⚡ 화면 2: 번개조합 (Thunder View) - 로직 분리됨
