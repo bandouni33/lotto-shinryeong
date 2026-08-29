@@ -73,6 +73,7 @@ def history_css(container_key: str = "") -> str:
         color: #ce93d8;
         font-weight: 800;
         font-size: 13px;
+        text-align: center;
     }
     .auto-history-round-head:first-child {
         margin-top: 2px;
