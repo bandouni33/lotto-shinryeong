@@ -121,6 +121,65 @@ def history_css(container_key: str = "") -> str:
         font-size: 11px;
         white-space: nowrap;
     }
+    /* 2026-08-29: 개별리셋·전체리셋처럼 한 번에 2종류가 같이 생성되는 저장내역을
+       좌우로 나란히 보여주는 전용 카드 — 한 회차 안에서 두 종류가 뒤섞여 보여
+       구분이 안 된다는 지적으로 추가. 소스가 하나뿐인 화면(자동구매·번개조합)은
+       이 클래스를 아예 안 쓰므로 기존 카드(.auto-purchase-banner-plain)엔 영향 없다. */
+    .hedge-pair-card {
+        display: flex;
+        gap: 0;
+        margin: 10px 0;
+    }
+    .hedge-pair-col {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 0 10px;
+    }
+    .hedge-pair-col-left {
+        padding-left: 2px;
+        border-right: 2px solid #4fc3f7;
+    }
+    .hedge-pair-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 20px;
+        flex-wrap: nowrap;
+    }
+    .hedge-pair-round {
+        font-weight: 800;
+        font-size: 13px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .hedge-pair-badge {
+        display: inline-block;
+        flex-shrink: 0;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 800;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+    .hedge-pair-badge-total {
+        background: #a8dab8;
+        color: #113321;
+    }
+    .hedge-pair-badge-individual {
+        background: #b9c3f2;
+        color: #1f2650;
+    }
+    .hedge-pair-col .auto-banner-ball-row {
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+    .hedge-pair-col .auto-banner-ball {
+        font-size: 13px;
+        min-width: 16px;
+    }
     </style>
     """
 
@@ -139,35 +198,96 @@ def winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
     return set(int(n) for n in result.get("numbers", [])), result.get("bonus")
 
 
+def _ball_span(n: int, win_set: set[int], bonus_number: int | None) -> str:
+    n = int(n)
+    if n in win_set:
+        hit_cls = " auto-banner-ball-hit"
+    elif bonus_number is not None and n == int(bonus_number):
+        hit_cls = " auto-banner-ball-bonus"
+    else:
+        hit_cls = ""
+    return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
+
+
+def _combo_rows_html(batch: dict, row_class: str = "auto-banner-ball-row") -> str:
+    draw_round = batch.get("draw_round", "")
+    win_set, bonus_number = winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
+    combos = batch.get("combos") or []
+    rows = ""
+    for item in combos:
+        combo = item.get("combo") or []
+        balls = "".join(_ball_span(n, win_set, bonus_number) for n in combo)
+        rows += f'<div class="{row_class}">{balls}</div>'
+    return rows
+
+
 def batch_card_html(batch: dict) -> str:
     """구매내역(_purchase_banner_html)과 완전히 동일한 카드 형식 — 순수 숫자 볼 +
     당첨번호 일치 시 테두리 동그라미. 회차/소스 제목은 호출부(render_history_section)가
     회차별로 묶어 별도 줄(auto-history-round-head)로 그리므로 여기서는 조합 숫자만
-    그린다."""
-    draw_round = batch.get("draw_round", "")
-    win_set, bonus_number = winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
+    그린다.
 
-    def _ball_span(n: int) -> str:
-        n = int(n)
-        if n in win_set:
-            hit_cls = " auto-banner-ball-hit"
-        elif bonus_number is not None and n == int(bonus_number):
-            hit_cls = " auto-banner-ball-bonus"
-        else:
-            hit_cls = ""
-        return f'<span class="auto-banner-ball{hit_cls}">{n:02d}</span>'
-
-    # 2026-08-27: 등수 배지("3등" 등)가 줄마다 폭이 달라서 저장내역 카드가
-    # 삐뚤빼뚤해 보인다는 지적 — 당첨 여부는 번호에 동그라미(_ball_span의
-    # hit_cls)만으로 이미 표시되니, 배지 없이 숫자 줄만 가운데 정렬로 그린다.
-    combos = batch.get("combos") or []
-    combo_rows = ""
-    for item in combos:
-        combo = item.get("combo") or []
-        balls = "".join(_ball_span(n) for n in combo)
-        combo_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
-
+    2026-08-27: 등수 배지("3등" 등)가 줄마다 폭이 달라서 저장내역 카드가
+    삐뚤빼뚤해 보인다는 지적 — 당첨 여부는 번호에 동그라미(_ball_span의
+    hit_cls)만으로 이미 표시되니, 배지 없이 숫자 줄만 가운데 정렬로 그린다."""
+    combo_rows = _combo_rows_html(batch)
     return f'<div class="auto-purchase-banner-plain"><div class="auto-banner-combos">{combo_rows}</div></div>'
+
+
+# 2026-08-29: 개별리셋·전체리셋처럼 조합시작 한 번에 두 소스가 같이 생성되는
+# 화면 전용 — 소스 키에 색을 고정해둬서(저장 순서 등 타이밍에 기대지 않고)
+# 항상 같은 소스가 같은 색으로 보이게 한다.
+_PAIR_BADGE_CLASS = {
+    "aekddaem": "hedge-pair-badge-total",
+    "anti": "hedge-pair-badge-individual",
+}
+_PAIR_BADGE_LABEL = {
+    "aekddaem": "전체",
+    "anti": "개별",
+}
+
+
+# 회차마다 번갈아 배정 — 흰색 계열 / 기존 회차머리글과 같은 보라. 인접한 회차를
+# 한눈에 구분하기 위한 용도라 2가지면 충분하다(요청: "회차별 텍스트를 칼라로
+# 쉽게 구분").
+PAIR_ROUND_COLORS = ("#EAEAF2", "#ce93d8")
+
+
+def paired_batch_card_html(
+    batch_left: dict,
+    batch_right: dict,
+    source_left: str,
+    source_right: str,
+    round_color: str = PAIR_ROUND_COLORS[0],
+) -> str:
+    """"조합시작" 한 번에 함께 생성된 두 소스(예: 전체리셋+개별리셋)를 회차 표시는
+    한 번만, 번호는 좌우로 나란히 보여준다 — 같은 회차 안에 두 종류가 뒤섞여
+    구분이 안 된다는 지적으로 추가. render_history_section이 소스 2개가 동시에
+    있는 회차에서만 이 카드를 쓰고, 소스가 하나뿐인 화면(자동구매·번개조합)은
+    기존 batch_card_html 경로 그대로라 영향이 없다."""
+    round_label = f'{batch_left.get("draw_round", "")}회'
+    badge_left = _PAIR_BADGE_LABEL.get(source_left, source_left)
+    badge_right = _PAIR_BADGE_LABEL.get(source_right, source_right)
+    cls_left = _PAIR_BADGE_CLASS.get(source_left, "hedge-pair-badge-total")
+    cls_right = _PAIR_BADGE_CLASS.get(source_right, "hedge-pair-badge-individual")
+
+    return f"""
+    <div class="hedge-pair-card">
+      <div class="hedge-pair-col hedge-pair-col-left">
+        <div class="hedge-pair-head">
+          <span class="hedge-pair-round" style="color:{round_color};">{round_label}</span>
+          <span class="hedge-pair-badge {cls_left}">{badge_left}</span>
+        </div>
+        {_combo_rows_html(batch_left, "auto-banner-ball-row")}
+      </div>
+      <div class="hedge-pair-col hedge-pair-col-right">
+        <div class="hedge-pair-head">
+          <span class="hedge-pair-badge {cls_right}">{badge_right}</span>
+        </div>
+        {_combo_rows_html(batch_right, "auto-banner-ball-row")}
+      </div>
+    </div>
+    """
 
 
 def render_history_section(
@@ -226,12 +346,69 @@ def render_history_section(
             if not batches:
                 st.caption(empty_caption)
             else:
-                for batch in batches:
-                    label_prefix = (label_for_source or {}).get(batch.get("_source"), "")
-                    draw_round = batch.get("draw_round", "")
-                    heading = f"{label_prefix} · {draw_round}회차" if label_prefix else f"{draw_round}회차"
-                    st.markdown(
-                        f'<div class="auto-history-round-head">{heading}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(batch_card_html(batch), unsafe_allow_html=True)
+                _render_batches(batches, label_for_source)
+
+
+def _render_single_batch(batch: dict, label_for_source: dict[str, str] | None) -> None:
+    label_prefix = (label_for_source or {}).get(batch.get("_source"), "")
+    draw_round = batch.get("draw_round", "")
+    heading = f"{label_prefix} · {draw_round}회차" if label_prefix else f"{draw_round}회차"
+    st.markdown(f'<div class="auto-history-round-head">{heading}</div>', unsafe_allow_html=True)
+    st.markdown(batch_card_html(batch), unsafe_allow_html=True)
+
+
+def _render_batches(batches: list[dict], label_for_source: dict[str, str] | None) -> None:
+    """batches(이미 최신순 정렬)를 회차별로 묶어, 한 회차 안에 서로 다른 소스
+    2개가 같이 있으면(개별리셋+전체리셋처럼 조합시작 한 번에 같이 생성된 경우)
+    좌우 나란히 카드로, 아니면(자동구매·번개조합처럼 소스가 하나뿐이면) 기존
+    방식 그대로 세로로 하나씩 보여준다.
+
+    2026-08-29: "2종조합 사이에 구분선, 회차별 텍스트를 칼라로 쉽게 구분"
+    요청 — 회차마다 다른 색을 배정해(PAIR_ROUND_COLORS) 인접한 회차를
+    한눈에 구분할 수 있게 한다(짝지어 보여주는 카드에만 적용 — 소스가
+    하나뿐인 기존 카드는 항상 쓰던 고정색 그대로라 다른 화면엔 영향 없음)."""
+    rounds_order: list = []
+    by_round: dict[object, list[dict]] = {}
+    for batch in batches:
+        dr = batch.get("draw_round")
+        if dr not in by_round:
+            by_round[dr] = []
+            rounds_order.append(dr)
+        by_round[dr].append(batch)
+
+    for round_idx, dr in enumerate(rounds_order):
+        round_color = PAIR_ROUND_COLORS[round_idx % len(PAIR_ROUND_COLORS)]
+        group = by_round[dr]
+
+        by_source: dict[str, list[dict]] = {}
+        source_order: list[str] = []
+        for b in group:
+            src = b.get("_source")
+            if src not in by_source:
+                by_source[src] = []
+                source_order.append(src)
+            by_source[src].append(b)
+
+        if len(source_order) == 2:
+            # 전체(aekddaem)를 항상 왼쪽에 — 저장 시각 순서 같은 타이밍에
+            # 기대지 않고 명시적으로 고정한다.
+            if "aekddaem" in by_source and "anti" in by_source:
+                src_left, src_right = "aekddaem", "anti"
+            else:
+                src_left, src_right = source_order
+            list_left, list_right = by_source[src_left], by_source[src_right]
+            pair_count = min(len(list_left), len(list_right))
+            for i in range(pair_count):
+                st.markdown(
+                    paired_batch_card_html(
+                        list_left[i], list_right[i], src_left, src_right, round_color=round_color
+                    ),
+                    unsafe_allow_html=True,
+                )
+            # 짝을 못 이룬 나머지(예: 한쪽만 재생성돼 개수가 안 맞는 경우)는
+            # 기존 방식으로 그려서 데이터가 화면에서 누락되지 않게 한다.
+            for b in list_left[pair_count:] + list_right[pair_count:]:
+                _render_single_batch(b, label_for_source)
+        else:
+            for b in group:
+                _render_single_batch(b, label_for_source)
