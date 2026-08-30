@@ -259,10 +259,28 @@ def _admin_combo_save_mtime() -> float:
         return 0.0
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+def _admin_stats_cache_key() -> tuple[float, float]:
+    """저장내역표 캐시 무효화 키 — 조합 저장 파일(csv)뿐 아니라 3종필터
+    연산 완료 시각(filter_job.status)도 같이 넣어, 3종필터만 새로 연산하고
+    아직 조합을 저장 안 한 경우에도(csv는 그대로라 안 바뀜) "적용패턴수"
+    미리보기가 120초 TTL 안에 새로 반영되게 한다."""
+    try:
+        job_mtime = os.path.getmtime("filter_job.status")
+    except OSError:
+        job_mtime = 0.0
+    return (_admin_combo_save_mtime(), job_mtime)
+
+
 def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     """실제 DB(lotto_combinations)에 저장된 회차만 표시 — 로컬 재업로드 파일은 미리보기일 뿐
     실제 추출 결과가 아니므로 반영하지 않는다.
+
+    2026-08-30: 예전엔 이 함수 자체에 @st.cache_data(ttl=3600)를 걸어놨는데,
+    인자가 하나도 없는 "고정 캐시"라 아래 _load_stats_table_cached가 mtime
+    기준으로 무효화하려 해도 정작 이 안쪽 함수가 최대 1시간 동안 옛날 결과를
+    계속 반환했다(3종필터를 새로 연산해도 "적용패턴수"가 안 바뀌던 원인 중
+    하나 — admin_dashboard.py의 load_lotto_history()가 겪었던 것과 같은
+    종류의 버그). 캐싱은 아래 mtime 기반 래퍼 한 곳에서만 한다.
 
     _sync_completed_draw_win_ranks()가 최근 100개 회차를 순회하며 회차마다
     COUNT 쿼리 + (이미 처리된 회차까지 매번) 조합 전체 재조회·재기록을
@@ -270,28 +288,59 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     다시 실행하고 있었다 — Turso 쓰기 한도(월 1,000만 행)를 순식간에
     소진시킨 진짜 원인이었다(2026-08-23, 실제 사용량 역산으로 확인:
     회차당 수천 건 × 반복 호출 ≈ 실제 초과분과 거의 일치). 로또 추첨은
-    주 1회뿐이라 1시간 캐시로도 실질적 지연은 없다."""
+    주 1회뿐이라 mtime 기반 캐시로도 실질적 지연은 없다."""
     mdb = _marketing_db()
     mdb.init_marketing_tables()
     mdb.ensure_marketing_pool_seeds()
     _sync_completed_draw_win_ranks()
     stats = mdb.get_draw_extraction_stats(limit=20)
-    if stats:
+
+    # 2026-08-30: "3종필터 업로드하면 적용패턴수가 바로 계산되는데 이 표에는
+    # 왜 반영이 안 되냐" — 원인은 이 표가 "실제로 조합까지 저장·배포된 회차"만
+    # 보여준다는 것이었다(lotto_combinations에 행이 있는 회차만 GROUP BY로
+    # 잡힘). 3종필터를 연산만 하고 아직 그 회차 조합을 저장(배포)하지 않았으면
+    # 그 회차는 이 표에 아예 존재하지 않는다 — 그래서 "1240 대신 1239가
+    # 보인다"가 아니라 "1240 자체가 표에 없다"였다. 다음에 배포할 회차를
+    # 최신 연산 결과와 함께 미리보기 행으로 맨 위에 추가한다(추출·당첨 관련
+    # 수치는 아직 없으니 0으로, 적용패턴수만 최신 연산 결과로 채움).
+    try:
+        from auto_purchase_service import _next_draw_round
+
+        next_round = _next_draw_round()
+    except Exception:
+        next_round = None
+    if next_round is not None and (not stats or stats[0]["draw_round"] != next_round):
+        live_count = _load_latest_filter_pattern_count()
+        stats.insert(
+            0,
+            {
+                "draw_round": next_round,
+                "total_count": 0,
+                "rank_1": 0,
+                "rank_2": 0,
+                "rank_3": 0,
+                "rank_4": 0,
+                "rank_5": 0,
+                "pattern_count": live_count,
+            },
+        )
+    elif stats and stats[0].get("pattern_count") is None:
         # 당 회차(가장 최근 행)는 아직 "조합 저장" 시점의 잠금 기록이 없어
         # (record_draw_pattern_count 호출 전) 적용패턴수가 늘 "—"로 비어
         # 보였다 — 바로 위 안내 문구("당 회차에는 N개의 필터 규칙이
         # 적용되었습니다")와 같은 값(_pattern_applied_count)을 그대로
         # 채워 넣어, 문구와 표가 서로 다른 걸 말하는 것처럼 안 보이게 한다.
-        if stats[0].get("pattern_count") is None:
-            live_count = _pattern_applied_count()
-            if live_count:
-                stats[0]["pattern_count"] = live_count
+        live_count = _pattern_applied_count()
+        if live_count:
+            stats[0]["pattern_count"] = live_count
+
+    if stats:
         return _stats_to_dataframe(stats, False), False
     return _stats_to_dataframe(mdb.get_mock_draw_extraction_stats(), True), True
 
 
 @st.cache_data(ttl=120, show_spinner=False)
-def _load_stats_table_cached(_admin_combo_csv_mtime: float) -> tuple[pd.DataFrame, bool]:
+def _load_stats_table_cached(_cache_key: tuple[float, float]) -> tuple[pd.DataFrame, bool]:
     return _load_stats_table()
 
 
@@ -2659,7 +2708,7 @@ def render():
                     unsafe_allow_html=True,
                 )
 
-        stats_df, is_mock = _load_stats_table_cached(_admin_combo_save_mtime())
+        stats_df, is_mock = _load_stats_table_cached(_admin_stats_cache_key())
         with st.container(key="auto_stats_section_6n36s5"):
             pattern_count = _pattern_applied_count()
             st.markdown(
