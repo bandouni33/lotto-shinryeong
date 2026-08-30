@@ -18,7 +18,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
         },
-        "NSCameraUsageDescription": "로또 용지의 QR코드를 촬영해서 번호를 자동으로 입력하기 위해 카메라 접근 권한이 필요합니다."
+        "NSCameraUsageDescription": "로또 용지의 QR코드를 촬영해서 번호를 자동으로 입력하기 위해 카메라 접근 권한이 필요합니다.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
