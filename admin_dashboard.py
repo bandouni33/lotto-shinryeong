@@ -980,23 +980,25 @@ elif st.session_state.admin_view == "filter_manage":
             init_marketing_tables()
 
             def _current_filter_pattern_count() -> int | None:
-                """"로또최근당첨내역.xlsb" 첫 시트("당번") N5 셀 — 조합을 방금 추출한
-                이 순간 값을 회차에 기록해두기 위함(회차별 당첨번호 배출 화면에서
-                회차마다 같은 값이 나오던 문제의 수정: 추출 시점 값을 고정 기록해서
-                나중에 이 셀이 바뀌어도 그 회차는 당시 값을 유지한다). 사용자 요청대로
-                saved_filters.pkl 재계산이 아니라 관리자가 직접 관리하는 이 셀을
-                그대로 읽어온다."""
-                try:
-                    from lotto_stats import lotto_data_path
+                """조합을 방금 추출한 이 순간 값을 회차에 기록해두기 위함(회차별
+                당첨번호 배출 화면에서 회차마다 같은 값이 나오던 문제의 수정: 추출
+                시점 값을 고정 기록해서 나중에 이 값이 바뀌어도 그 회차는 당시 값을
+                유지한다).
 
-                    path = lotto_data_path()
-                    if not os.path.exists(path):
-                        return None
-                    df = pd.read_excel(path, sheet_name=0, header=None, engine="pyxlsb", nrows=6, usecols="N")
-                    val = df.iloc[4, 0]
-                    if pd.isna(val):
-                        return None
-                    return int(val)
+                2026-08-30: 예전엔 "로또최근당첨내역.xlsb" 당번시트 N5 셀을 관리자가
+                손으로 입력해둔 값을 그대로 읽었는데, 3종필터를 새로 업로드·연산해도
+                N5를 따로 안 고치면 "적용패턴수"가 그 연산 결과와 따로 놀았다(관리자
+                지적, 재확인 요청) — .xlsb는 읽기 전용 라이브러리(pyxlsb)만 있어
+                이 서버에서 직접 써넣을 방법이 없어 그동안 수동 입력에 의존했다.
+                이제 filter_worker.py가 3종필터 연산 완료 직후 그 결과(필터를 전부
+                통과한 조합 수)를 DB 설정값으로 저장해두므로, N5 대신 그 값을
+                그대로 읽어온다 — 수동 입력 없이 항상 최신 연산 결과와 맞물린다."""
+                try:
+                    from app_settings import get_setting, init_settings_table
+
+                    init_settings_table()
+                    raw = get_setting("latest_filter_pattern_count", "")
+                    return int(raw) if raw.strip() else None
                 except Exception:
                     return None
 

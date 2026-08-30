@@ -47,6 +47,23 @@ def main() -> int:
             columns=["번호1", "번호2", "번호3", "번호4", "번호5", "번호6"],
         )
         df.to_csv(COMBO_SAVE_FILE, index=False)
+
+        # 2026-08-30: "3종필터 업로드하면 적용패턴수 바로 계산되는데, 회차 저장할
+        # 때 그 값이 안 따라온다"는 지적 — 지금까지는 "로또최근당첨내역.xlsb"
+        # 당번시트 N5 셀을 관리자가 손으로 옮겨 적어야만 회차 저장 시점에 반영됐다
+        # (.xlsb는 pyxlsb가 읽기 전용이라 여기서 직접 써넣을 방법이 없음). N5 셀
+        # 대신 여기서 곧바로 방금 계산된 최종 결과(stage3_interval, 필터를 전부
+        # 통과한 조합 수)를 DB 설정값으로 저장해두면, 회차 저장 시점
+        # (admin_dashboard.py의 _current_filter_pattern_count)이 이 값을 그대로
+        # 읽어가서 수동 입력 없이 항상 최신 상태로 맞물린다.
+        try:
+            from app_settings import init_settings_table, set_setting
+
+            init_settings_table()
+            set_setting("latest_filter_pattern_count", str(len(final_data)))
+        except Exception:
+            pass
+
         write_status(
             "done",
             total=len(final_data),

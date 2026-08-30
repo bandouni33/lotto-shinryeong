@@ -295,27 +295,22 @@ def _load_stats_table_cached(_admin_combo_csv_mtime: float) -> tuple[pd.DataFram
     return _load_stats_table()
 
 
-@st.cache_data(ttl=120, show_spinner=False)
-def _load_pattern_count_from_n5(_xlsb_mtime_val: float) -> int | None:
-    """"로또최근당첨내역.xlsb"의 첫 시트("당번") N5 셀 — 당 회차에 적용된 필터
-    규칙 수. 이 시트는 최신 회차가 맨 위(5행)에 오도록 관리자가 직접 관리하는
-    표라, N5는 항상 "지금 회차" 값을 가리킨다(예전엔 saved_filters.pkl을 다시
-    계산해서 보여줬는데, 관리자가 실제로 관리하는 원본 수치와 안 맞을 수 있어서
-    요청대로 이 셀을 그대로 읽어오는 방식으로 되돌림).
+def _load_latest_filter_pattern_count() -> int | None:
+    """3종필터 연산 완료 직후 filter_worker.py가 저장해두는 "필터를 전부 통과한
+    조합 수"(최신 연산 결과) — 아직 어느 회차에도 고정 기록(record_draw_pattern_count)
+    되지 않은 "다음에 추출할 회차"용 미리보기 값이다.
 
-    pyxlsb가 한글 시트 이름을 깨진 문자로 반환해서(인코딩 문제) 이름으로 못
-    찾으니, 첫 번째 시트(index 0)를 그대로 쓴다."""
-    from lotto_stats import lotto_data_path
-
-    path = lotto_data_path()
-    if not os.path.exists(path):
-        return None
+    2026-08-30: 예전엔 "로또최근당첨내역.xlsb" 당번시트 N5 셀(관리자가 손으로
+    입력)을 읽었는데, 3종필터를 새로 연산해도 N5를 따로 안 고치면 이 값이 그
+    연산 결과와 따로 놀았다(관리자 지적) — .xlsb는 읽기 전용이라 서버가 직접
+    써넣을 방법이 없어 그동안 수동 입력에 의존했다. 이제 N5 대신 그 연산 결과
+    DB 설정값을 그대로 읽어온다."""
     try:
-        df = pd.read_excel(path, sheet_name=0, header=None, engine="pyxlsb", nrows=6, usecols="N")
-        val = df.iloc[4, 0]  # N5 (0-indexed: 5행 → index 4)
-        if pd.isna(val):
-            return None
-        return int(val)
+        from app_settings import get_setting, init_settings_table
+
+        init_settings_table()
+        raw = get_setting("latest_filter_pattern_count", "")
+        return int(raw) if raw.strip() else None
     except Exception:
         return None
 
@@ -323,12 +318,11 @@ def _load_pattern_count_from_n5(_xlsb_mtime_val: float) -> int | None:
 def _pattern_applied_count() -> int:
     """당 회차(가장 최근에 실제로 조합을 추출한 회차)에 적용된 필터 규칙 수.
 
-    N5 셀은 관리자가 "다음에 추출할 회차"용으로 미리 입력해두는 값이라, 조합을
-    추출하는 순간의 값을 그 회차에 고정 기록해둔다(record_draw_pattern_count,
-    admin_dashboard.py) — 그래야 나중에 N5가 다음 회차 값으로 바뀌어도 이미
-    추출된 회차의 "당 회차 적용 수량"은 그대로 유지된다. 아직 그 회차가 한
-    번도 추출 안 됐으면(기록이 없으면) N5를 그대로 보여준다."""
-    from lotto_stats import _xlsb_mtime, lotto_data_path
+    "다음에 추출할 회차"용 최신 연산 결과(_load_latest_filter_pattern_count)는
+    조합을 추출하는 순간 그 회차에 고정 기록해둔다(record_draw_pattern_count,
+    admin_dashboard.py) — 그래야 나중에 3종필터를 다시 연산해도 이미 추출된
+    회차의 "당 회차 적용 수량"은 그대로 유지된다. 아직 그 회차가 한 번도
+    추출 안 됐으면(기록이 없으면) 최신 연산 결과를 그대로 보여준다."""
     from marketing_db import get_draw_extraction_stats, get_pattern_count_for_draw, init_marketing_tables
 
     init_marketing_tables()
@@ -338,7 +332,7 @@ def _pattern_applied_count() -> int:
         if locked is not None:
             return locked
 
-    count = _load_pattern_count_from_n5(_xlsb_mtime(lotto_data_path()))
+    count = _load_latest_filter_pattern_count()
     return int(count) if count is not None else 0
 
 
