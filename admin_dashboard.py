@@ -1037,6 +1037,30 @@ elif st.session_state.admin_view == "filter_manage":
                     f"(해당 회차 DB 누적 {total_in_db:,}개)"
                 )
 
+            # 2026-08-30: 이미 조합이 저장(배포)된 회차는 그 시점의 적용패턴수가
+            # 고정 기록된다(record_draw_pattern_count) — 그 뒤 3종필터를 다시
+            # 연산해도 이미 배포된 회차 조합을 그대로 두면서 "적용패턴수" 기록만
+            # 최신 값으로 바로잡고 싶을 때(조합 재추출·재배포 없이) 쓰는 수동
+            # 보정 도구. 실제 조합 데이터는 전혀 건드리지 않고 draw_pattern_counts
+            # 기록 한 줄만 갱신한다.
+            with st.expander("🔧 회차별 적용패턴수 수동 보정"):
+                st.caption(
+                    "이미 조합이 저장된 회차의 '적용패턴수' 기록만 바로잡습니다"
+                    "(조합 자체는 건드리지 않음)."
+                )
+                pc_col1, pc_col2 = st.columns(2)
+                with pc_col1:
+                    pc_round = st.number_input(
+                        "회차", min_value=1, step=1, key="admin_pc_fix_round"
+                    )
+                with pc_col2:
+                    pc_value = st.number_input(
+                        "적용패턴수", min_value=0, step=1, key="admin_pc_fix_value"
+                    )
+                if st.button("보정 저장", key="admin_pc_fix_submit"):
+                    record_draw_pattern_count(int(pc_round), int(pc_value))
+                    st.success(f"{int(pc_round)}회차 적용패턴수를 {int(pc_value):,}(으)로 기록했습니다.")
+
             @_admin_dialog("저장 확인")
             def _admin_combo_save_conflict_dialog() -> None:
                 pending = st.session_state.get("admin_combo_save_pending") or {}
