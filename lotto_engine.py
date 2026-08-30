@@ -1,4 +1,5 @@
 import itertools
+import re
 from collections import defaultdict
 
 import pandas as pd
@@ -22,12 +23,10 @@ NATURALS = {1, 4, 8, 10, 14, 16, 20, 22, 25, 26, 28, 32, 34, 35, 38, 40, 44}
 
 
 def _safe_min_max(row) -> tuple[int, int] | None:
-    """2026-08-30: 최소/최대(K·L열)가 비어있거나 숫자가 아닌 행이 있으면 여기서
-    int(float(...))가 그대로 죽어서 "could not convert string to float: ''"라는
-    관리자 입장에서 원인을 알 수 없는 에러로 연산 전체가 실패했다. 업로드 시점
-    검증(filter_sheet_validation.py)을 새로 추가했지만, 그 전에 이미 저장된
-    pkl에는 검증을 안 거친 데이터가 남아있을 수 있어 여기서도 방어적으로
-    None을 반환해 해당 행만 건너뛴다(연산 전체를 죽이지 않음)."""
+    """2026-08-30: 최소/최대(K·L열) 중 하나라도 비어있거나 숫자가 아닌 행은
+    "무시하고 건너뛰고 진행" 요청 — 예전엔 int(float(...))가 그대로 터져서
+    "could not convert string to float: ''"라는 원인불명 에러로 연산 전체가
+    죽었다. 여기서 None을 반환해 그 행 하나만 건너뛰고 나머지는 정상 진행한다."""
     try:
         return int(float(row["최소"])), int(float(row["최대"]))
     except (TypeError, ValueError):
@@ -35,8 +34,12 @@ def _safe_min_max(row) -> tuple[int, int] | None:
 
 
 def _parse_targets(cell) -> set[int]:
+    """2026-08-30: 콤마를 두 번 찍거나(1,,2,3) 콤마 대신 마침표를 실수로
+    찍는(1.2,3) 입력 실수를 그대로 허용 — 마침표도 콤마로, 연속된 구분자도
+    하나로 정규화한다."""
     targets = set()
-    for x in str(cell).split(","):
+    normalized = re.sub(r"[.,]+", ",", str(cell))
+    for x in normalized.split(","):
         if x.strip().isdigit():
             targets.add(int(x.strip()))
     return targets

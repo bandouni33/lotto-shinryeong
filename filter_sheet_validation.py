@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 SHEET_KEYS = ("basic", "absolute", "interval")
@@ -27,8 +29,14 @@ def normalize_three_filter_data(filters_data: dict) -> dict:
 
 
 def _parse_targets(cell) -> set[int]:
+    """2026-08-30: 관리자가 엑셀에 손으로 입력하다 보면 콤마를 두 번 찍거나
+    (1,,2,3) 콤마 대신 마침표를 실수로 찍는(1.2,3) 경우가 생긴다 — 예전엔
+    이런 오타 부분만 조용히 무시(빈 토큰은 그냥 안 잡힘)돼서 사실상 문제
+    없었지만, 명확히 하기 위해 마침표도 콤마로, 연속된 구분자도 하나로
+    정규화해서 실수를 그대로 허용한다."""
     targets: set[int] = set()
-    for part in str(cell).split(","):
+    normalized = re.sub(r"[.,]+", ",", str(cell))
+    for part in normalized.split(","):
         if part.strip().isdigit():
             targets.add(int(part.strip()))
     return targets
@@ -52,25 +60,6 @@ def _validate_gap_targets(sheet_key: str, row_idx: int, targets: set[int]) -> li
     ]
 
 
-def _validate_min_max(sheet_key: str, row_idx: int, row) -> list[str]:
-    """2026-08-30: 여기서 최소/최대(K·L열)를 전혀 검증하지 않아서, 입력데이터는
-    채워졌는데 최소/최대가 비어있는 행이 그대로 연산 단계(lotto_engine.py의
-    int(float(row["최소"])))까지 넘어가 "could not convert string to float: ''"
-    라는, 관리자 입장에서 어느 행이 문제인지 알 수 없는 날것의 에러로 죽었다.
-    업로드 시점에 행 번호까지 짚어 알려준다."""
-    errors: list[str] = []
-    for col in ("최소", "최대"):
-        val = str(row.get(col, "")).strip()
-        try:
-            float(val)
-        except (TypeError, ValueError):
-            errors.append(
-                f"{SHEET_LABELS[sheet_key]} {row_idx}행 {col}: 값이 비어있거나 숫자가 아닙니다"
-                f" (입력값: '{val}')"
-            )
-    return errors
-
-
 def validate_three_filter_sheets(filters_data: dict) -> tuple[list[str], dict]:
     """
     Returns (errors, summary).
@@ -91,7 +80,10 @@ def validate_three_filter_sheets(filters_data: dict) -> tuple[list[str], dict]:
             if not targets:
                 continue
 
-            errors.extend(_validate_min_max(key, row_no, row))
+            # 2026-08-30: 최소/최대(K·L열)가 비어있는 행은 여기서 에러로 막지
+            # 않는다 — 연산 단계(lotto_engine.py)가 그 행만 조용히 건너뛰고
+            # 나머지는 정상 진행하도록 이미 방어돼 있다("주요구간 중 한 곳이라도
+            # 비면 무시하고 진행" 요청).
 
             if key == "basic":
                 errors.extend(_validate_ball_targets(key, row_no, targets))
