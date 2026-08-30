@@ -21,6 +21,19 @@ MULT3 = {6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45}
 NATURALS = {1, 4, 8, 10, 14, 16, 20, 22, 25, 26, 28, 32, 34, 35, 38, 40, 44}
 
 
+def _safe_min_max(row) -> tuple[int, int] | None:
+    """2026-08-30: 최소/최대(K·L열)가 비어있거나 숫자가 아닌 행이 있으면 여기서
+    int(float(...))가 그대로 죽어서 "could not convert string to float: ''"라는
+    관리자 입장에서 원인을 알 수 없는 에러로 연산 전체가 실패했다. 업로드 시점
+    검증(filter_sheet_validation.py)을 새로 추가했지만, 그 전에 이미 저장된
+    pkl에는 검증을 안 거친 데이터가 남아있을 수 있어 여기서도 방어적으로
+    None을 반환해 해당 행만 건너뛴다(연산 전체를 죽이지 않음)."""
+    try:
+        return int(float(row["최소"])), int(float(row["최대"]))
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_targets(cell) -> set[int]:
     targets = set()
     for x in str(cell).split(","):
@@ -38,13 +51,10 @@ def prep_set_filters(df) -> list[dict]:
         targets = _parse_targets(row["입력데이터"])
         if not targets:
             continue
-        processed.append(
-            {
-                "targets": targets,
-                "min": int(float(row["최소"])),
-                "max": int(float(row["최대"])),
-            }
-        )
+        min_max = _safe_min_max(row)
+        if min_max is None:
+            continue
+        processed.append({"targets": targets, "min": min_max[0], "max": min_max[1]})
     return processed
 
 
@@ -63,13 +73,10 @@ def prep_interval_filters(df) -> dict[int, list[dict]]:
         targets = _parse_targets(row["입력데이터"])
         if not targets:
             continue
-        grouped[number].append(
-            {
-                "targets": targets,
-                "min": int(float(row["최소"])),
-                "max": int(float(row["최대"])),
-            }
-        )
+        min_max = _safe_min_max(row)
+        if min_max is None:
+            continue
+        grouped[number].append({"targets": targets, "min": min_max[0], "max": min_max[1]})
     return grouped
 
 
@@ -88,11 +95,14 @@ def prep_absolute_filters(df) -> dict[int, list[dict]]:
         targets = _parse_targets(row["입력데이터"])
         if not targets:
             continue
+        min_max = _safe_min_max(row)
+        if min_max is None:
+            continue
         grouped[number].append(
             {
                 "targets": targets,
-                "min": int(float(row["최소"])),
-                "max": int(float(row["최대"])),
+                "min": min_max[0],
+                "max": min_max[1],
             }
         )
     return grouped

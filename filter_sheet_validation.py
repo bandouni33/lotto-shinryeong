@@ -52,6 +52,25 @@ def _validate_gap_targets(sheet_key: str, row_idx: int, targets: set[int]) -> li
     ]
 
 
+def _validate_min_max(sheet_key: str, row_idx: int, row) -> list[str]:
+    """2026-08-30: 여기서 최소/최대(K·L열)를 전혀 검증하지 않아서, 입력데이터는
+    채워졌는데 최소/최대가 비어있는 행이 그대로 연산 단계(lotto_engine.py의
+    int(float(row["최소"])))까지 넘어가 "could not convert string to float: ''"
+    라는, 관리자 입장에서 어느 행이 문제인지 알 수 없는 날것의 에러로 죽었다.
+    업로드 시점에 행 번호까지 짚어 알려준다."""
+    errors: list[str] = []
+    for col in ("최소", "최대"):
+        val = str(row.get(col, "")).strip()
+        try:
+            float(val)
+        except (TypeError, ValueError):
+            errors.append(
+                f"{SHEET_LABELS[sheet_key]} {row_idx}행 {col}: 값이 비어있거나 숫자가 아닙니다"
+                f" (입력값: '{val}')"
+            )
+    return errors
+
+
 def validate_three_filter_sheets(filters_data: dict) -> tuple[list[str], dict]:
     """
     Returns (errors, summary).
@@ -71,6 +90,8 @@ def validate_three_filter_sheets(filters_data: dict) -> tuple[list[str], dict]:
             targets = _parse_targets(row.get("입력데이터", ""))
             if not targets:
                 continue
+
+            errors.extend(_validate_min_max(key, row_no, row))
 
             if key == "basic":
                 errors.extend(_validate_ball_targets(key, row_no, targets))
