@@ -386,7 +386,7 @@ def _pattern_applied_count() -> int:
 
 
 @st.cache_data(show_spinner=False)
-def _winning_numbers_for_draw_cached(draw_round: int, _mtime: float) -> tuple[set[int], int | None]:
+def _winning_numbers_for_draw_cached(draw_round: int, _cache_key: tuple) -> tuple[set[int], int | None]:
     try:
         from lotto_stats import get_draw_result_by_round
 
@@ -405,13 +405,14 @@ def _winning_numbers_for_draw(draw_round) -> tuple[set[int], int | None]:
 
     구매내역엔 회차별로 여러 건이 쌓일 수 있어서, 캐싱 없이는 같은 회차를
     항목 수만큼(내부적으로 매번 엑셀 데이터프레임을 훑으며) 반복 조회하게 된다
-    — load_lotto_data 자체는 이미 파일 mtime 기준으로 캐싱돼 있지만, 그 안에서
-    회차를 찾는 순회 자체는 캐싱되지 않았었다. mtime을 키에 포함해 admin이 파일을
-    갱신하면 바로 무효화되면서도, 평소엔 회차당 한 번만 계산하도록 캐싱한다."""
-    from lotto_stats import _xlsb_mtime, lotto_data_path
+    — load_lotto_data 자체는 이미 캐싱돼 있지만, 그 안에서 회차를 찾는 순회
+    자체는 캐싱되지 않았었다. 2026-09-01: 당첨번호 출처가 xlsb 파일에서
+    DB(draw_results)로 옮겨간 뒤로는 파일 mtime만으로는 갱신을 못 잡아내서,
+    draw_data_cache_key(파일 mtime + DB 건수/최신회차 묶음)로 바꿨다 —
+    관리자가 새 회차를 입력하면(파일을 안 건드려도) 바로 무효화된다."""
+    from lotto_stats import draw_data_cache_key
 
-    path = lotto_data_path()
-    return _winning_numbers_for_draw_cached(int(draw_round), _xlsb_mtime(path))
+    return _winning_numbers_for_draw_cached(int(draw_round), draw_data_cache_key())
 
 
 def _sms_schedule_label(purchase_method: str, sms_days: list[str] | str) -> str:

@@ -1087,6 +1087,93 @@ elif st.session_state.admin_view == "filter_manage":
                         _ss("main_lucky_numbers", ", ".join(nums))
                         st.success(f"메인화면 유력수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
 
+            # 2026-09-01: 당첨번호를 "로또최근당첨내역.xlsb 로컬 수정 → git 커밋·푸시"
+            # 하던 걸 DB(draw_results)로 옮겼다 — pyxlsb가 읽기 전용이라 그 xlsb
+            # 파일에는 더 이상 자동으로 못 써넣으니, 이제부터는 신규 회차가 전부
+            # 이 테이블에만 쌓인다. 동행복권 공식 사이트에 인증 없이 최신 회차를
+            # 그대로 내려주는 엔드포인트가 있어(2026-09-01 실측 확인) 매시간
+            # 자동으로 확인해서 채워 넣지만(lotto_stats._auto_sync_latest_draw_cached),
+            # 그게 실패하거나(사이트 구조 변경 등) 급하게 바로 반영하고 싶을 때를
+            # 위해 수동 등록·즉시 동기화 도구도 같이 둔다.
+            with st.expander("🔧 당첨번호 회차 관리 (자동 동기화 + 수동 등록)"):
+                import draw_results_db as _drdb
+
+                _drdb.init_draw_results_table()
+                _latest_local = _drdb.get_latest_draw_round()
+                st.caption(
+                    f"현재 DB에 등록된 최신 회차: {_latest_local if _latest_local else '없음(이관 전)'}"
+                    " — 매시간 자동으로 동행복권 사이트를 확인해 새 회차를 채웁니다."
+                )
+
+                if st.button("지금 바로 동행복권에서 확인", key="admin_draw_sync_now"):
+                    synced = _drdb.sync_latest_from_dhlottery()
+                    if synced:
+                        st.success(f"{synced}회차를 새로 가져와 저장했습니다.")
+                    else:
+                        remote = _drdb.fetch_latest_from_dhlottery()
+                        if remote is None:
+                            st.error("동행복권 사이트에서 가져오지 못했습니다(네트워크 또는 사이트 구조 변경 가능성) — 아래 수동 등록을 이용해 주세요.")
+                        else:
+                            st.info(f"이미 최신 상태입니다(사이트 최신 회차: {remote['draw_round']}).")
+
+                st.markdown("---")
+                st.caption("자동 동기화가 안 될 때, 회차와 번호를 직접 입력해 등록/수정합니다.")
+                dr_col1, dr_col2 = st.columns(2)
+                with dr_col1:
+                    dr_round = st.number_input(
+                        "회차", min_value=1, step=1,
+                        value=(int(_latest_local) + 1) if _latest_local else 1,
+                        key="admin_draw_round_input",
+                    )
+                with dr_col2:
+                    dr_bonus = st.number_input(
+                        "보너스 번호", min_value=1, max_value=45, step=1, key="admin_draw_bonus_input"
+                    )
+                dr_numbers = st.text_input(
+                    "당첨번호 6개 (쉼표 구분)", placeholder="예: 11,13,22,32,33,36",
+                    key="admin_draw_numbers_input",
+                )
+                if st.button("회차 저장", key="admin_draw_result_submit"):
+                    try:
+                        nums = [int(x.strip()) for x in dr_numbers.split(",") if x.strip()]
+                        _drdb.upsert_draw_result(int(dr_round), nums, int(dr_bonus))
+                        st.success(f"{int(dr_round)}회차를 저장했습니다.")
+                    except Exception as exc:
+                        st.error(f"저장 실패: {exc}")
+
+                st.markdown("---")
+                st.caption(
+                    "최초 1회용 — 기존 xlsb 파일의 과거 회차 전체를 이 DB로 이관합니다"
+                    "(이미 있는 회차는 건드리지 않고 값만 최신으로 덮어씁니다, 여러 번 눌러도 안전)."
+                )
+                if st.button("xlsb 과거 이력 전체 이관", key="admin_draw_migrate_xlsb"):
+                    from lotto_stats import _load_lotto_data_cached, _xlsb_mtime, lotto_data_path, COL_DRAW, COL_NUM_START, COL_NUM_END, COL_BONUS
+                    import pandas as _pd
+
+                    _xlsb_path = lotto_data_path()
+                    _df = _load_lotto_data_cached(_xlsb_path, _xlsb_mtime(_xlsb_path))
+                    migrated = 0
+                    skipped = 0
+                    for _, _row in _df.iterrows():
+                        _rnd = _pd.to_numeric(_row[COL_DRAW], errors="coerce")
+                        if _pd.isna(_rnd):
+                            continue
+                        _nums = []
+                        for _i in range(COL_NUM_START, COL_NUM_END):
+                            _v = _pd.to_numeric(_row[_i], errors="coerce")
+                            if _pd.notna(_v):
+                                _nums.append(int(_v))
+                        _bonus = _pd.to_numeric(_row[COL_BONUS], errors="coerce")
+                        if len(_nums) != 6 or _pd.isna(_bonus):
+                            skipped += 1
+                            continue
+                        try:
+                            _drdb.upsert_draw_result(int(_rnd), _nums, int(_bonus))
+                            migrated += 1
+                        except Exception:
+                            skipped += 1
+                    st.success(f"이관 완료: {migrated}건 저장, {skipped}건 건너뜀.")
+
             @_admin_dialog("저장 확인")
             def _admin_combo_save_conflict_dialog() -> None:
                 pending = st.session_state.get("admin_combo_save_pending") or {}

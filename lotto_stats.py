@@ -48,11 +48,104 @@ def _load_lotto_data_cached(path: str, _mtime: float) -> pd.DataFrame:
     return df.iloc[DATA_START_ROW:].reset_index(drop=True)
 
 
+def _ac_value(numbers: list[int]) -> int:
+    """AC(Arithmetic Complexity)값 — 6개 번호의 모든 쌍(15개) 절댓값 차이 중
+    서로 다른 값의 개수에서 5를 뺀 값(표준 로또 통계 지표). xlsb에는 관리자가
+    수기로 넣어둔 값이 있었지만, 신규 회차(DB 등록분)는 번호만 넣으면 이
+    공식으로 자동 계산해서 더 이상 손으로 넣을 값이 하나 줄어들게 한다."""
+    diffs = set()
+    for i in range(len(numbers)):
+        for j in range(i + 1, len(numbers)):
+            diffs.add(abs(numbers[i] - numbers[j]))
+    return len(diffs) - (len(numbers) - 1)
+
+
+def _build_dataframe_from_draw_results(rows: list[dict]) -> pd.DataFrame:
+    """draw_results_db의 행들을, 기존 xlsb 파싱 결과와 똑같은 열 배치(18열,
+    COL_DRAW=1/COL_NUM_START..END=3..8/COL_BONUS=9/COL_AC=11)로 재구성한다 —
+    이렇게 하면 이 함수 아래로 이어지는 수십 곳의 기존 코드(위치 인덱스로
+    회차·번호·AC값을 읽는 곳들)를 하나도 안 건드려도 된다. 실제로 쓰이지
+    않는 다른 열(12~17 등, 검증 결과 코드에서 참조 안 됨)은 비워둔다."""
+    data = []
+    for r in rows:
+        row = [None] * 18
+        row[COL_DRAW] = r["draw_round"]
+        row[COL_BONUS] = r["bonus"]
+        for i, n in enumerate(r["numbers"]):
+            row[COL_NUM_START + i] = n
+        row[COL_AC] = _ac_value(r["numbers"])
+        data.append(row)
+    return pd.DataFrame(data)
+
+
+@st.cache_data(show_spinner=False)
+def _load_lotto_data_db_cached(_cache_key: tuple[int, int]) -> pd.DataFrame | None:
+    """DB(Turso)가 일시적으로 불안정해도 load_lotto_data() 전체가 죽으면 안
+    되므로(호출부가 워낙 많음), 여기서 실패하면 None을 반환해 xlsb 폴백으로
+    자연스럽게 넘어가게 한다."""
+    try:
+        import draw_results_db
+
+        draw_results_db.init_draw_results_table()
+        rows = draw_results_db.get_all_draw_results()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    return _build_dataframe_from_draw_results(rows)
+
+
 def load_lotto_data(filepath: str = DATA_FILE) -> pd.DataFrame:
+    """2026-09-01: 당첨번호의 진짜 출처를 xlsb 파일에서 DB(draw_results)로
+    옮긴다 — xlsb는 pyxlsb가 읽기 전용이라 관리자가 로컬에서 고치고 매번
+    git 커밋·푸시해야만 반영되던 게 "완전자동화"의 마지막 걸림돌이었다.
+    DB에 회차가 하나라도 있으면 그걸 그대로 쓰고(관리자 대시보드에서 입력한
+    신규 회차가 즉시 반영됨), DB가 비어있으면(아직 이관 전) xlsb로 안전하게
+    폴백한다 — 이 폴백 덕분에 이관 스크립트를 돌리기 전까지는 기존 동작이
+    그대로 유지된다."""
+    db_df = _load_lotto_data_db_cached(_draw_results_cache_key())
+    if db_df is not None:
+        return db_df
+
     path = filepath
     if not Path(path).is_file():
         path = lotto_data_path(Path(path).name)
     return _load_lotto_data_cached(path, _xlsb_mtime(path))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _auto_sync_latest_draw_cached() -> int | None:
+    """동행복권 사이트에 새 회차가 올라왔는지 1시간에 한 번만 확인한다
+    (렌더마다 외부 사이트를 두드리면 안 되니까). 로또 추첨은 주 1회뿐이라
+    1시간 캐시로도 실질적 지연은 없다 — 토요일 추첨 직후부터 늦어도 1시간
+    안에는 이 앱 전체가 자동으로 새 회차를 반영한다."""
+    import draw_results_db
+
+    return draw_results_db.sync_latest_from_dhlottery()
+
+
+def _draw_results_cache_key() -> tuple[int, int]:
+    try:
+        import draw_results_db
+
+        draw_results_db.init_draw_results_table()
+        _auto_sync_latest_draw_cached()  # 새 회차 있으면 여기서 자동으로 채워짐
+        return draw_results_db.get_cache_key()
+    except Exception:
+        return (0, 0)
+
+
+def draw_data_cache_key(filepath: str = DATA_FILE) -> tuple[float, int, int]:
+    """당첨번호 데이터가 바뀌었는지 판단하는 공용 캐시 키 — xlsb 파일 mtime과
+    DB(draw_results) 건수·최신회차를 함께 묶는다. 두 출처 중 실제로 쓰이는
+    쪽(load_lotto_data가 DB를 우선하므로 보통 DB)이 바뀌면 이 키도 바뀌어서,
+    ball-highlighting·통계 등 여기 의존하는 다른 캐시들이 안전하게 무효화된다.
+    xlsb만 있던 시절엔 파일 mtime만으로 충분했지만, DB로 옮긴 뒤에는 파일
+    mtime이 더 이상 안 바뀌므로(더는 안 고치니까) 이 키가 꼭 필요하다."""
+    path = filepath
+    if not Path(path).is_file():
+        path = lotto_data_path(Path(path).name)
+    return (_xlsb_mtime(path), *_draw_results_cache_key())
 
 
 def _draw_numbers(row) -> list[int]:
@@ -85,7 +178,7 @@ def calc_hot_numbers(data: pd.DataFrame, top_n: int = 10) -> list[tuple[int, int
 
 
 @st.cache_data(show_spinner=False)
-def _number_weights_cached(path: str, _mtime: float) -> dict[int, int]:
+def _number_weights_cached(path: str, _cache_key: tuple) -> dict[int, int]:
     """1~45번 각각이 지금까지(1회~최신회차) 실제 당첨번호로 나온 누적 횟수.
     번개조합·안티/액땜조합 번호 추첨 시 이 값을 가중치로 써서, 완전 무작위
     대신 과거 출현 빈도가 높을수록 더 잘 뽑히게 한다. load_lotto_data()가
@@ -107,7 +200,7 @@ def get_number_weights(filepath: str = DATA_FILE) -> dict[int, int]:
     path = filepath
     if not Path(path).is_file():
         path = lotto_data_path(Path(path).name)
-    return _number_weights_cached(path, _xlsb_mtime(path))
+    return _number_weights_cached(path, draw_data_cache_key(filepath))
 
 
 # ─── 관리자 업로드 "기준값패턴" (admin_dashboard.py의 별도 pattern_manage 뷰에서

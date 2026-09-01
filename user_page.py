@@ -445,7 +445,7 @@ if current_page == "main":
         numbers = sorted([int(x) for x in row[3:9]])
         import re
         bonus_val = int(re.sub(r'[^0-9]', '', str(row[9])))
-    except Exception as e:
+    except Exception:
         draw_no = "오류"
         numbers = [3, 8, 9, 22, 28, 42]
         bonus_val = 45
