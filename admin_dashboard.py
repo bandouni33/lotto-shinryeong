@@ -1100,8 +1100,10 @@ elif st.session_state.admin_view == "filter_manage":
 
                 _drdb.init_draw_results_table()
                 _latest_local = _drdb.get_latest_draw_round()
+                _total_local = _drdb.get_draw_results_count()
                 st.caption(
                     f"현재 DB에 등록된 최신 회차: {_latest_local if _latest_local else '없음(이관 전)'}"
+                    f" (전체 {_total_local:,}건)"
                     " — 매시간 자동으로 동행복권 사이트를 확인해 새 회차를 채웁니다."
                 )
 
