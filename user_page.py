@@ -347,10 +347,30 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
         )
 
 # ===============================================================================
-# ⚠️⚠️⚠️ [관리자 필수 확인] 매주 이 숫자 6개를 직접 수정하세요 ⚠️⚠️⚠️
-# 앞 번호일수록 유력한 순서로 입력 (예: 44가 가장 유력, 7이 가장 약함)
-# ⚠️⚠️⚠️ 다른 코드는 건드리지 말고 이 줄의 숫자만 바꾸세요 ⚠️⚠️⚠️
-lucky_display = [5, 17, 26, 41, 30, 44]
+# 2026-08-31: 예전엔 이 줄의 숫자를 코드에서 직접 고치고 매번 git 커밋·푸시까지
+# 해야만 반영됐다 — 관리자가 로컬에서 값만 바꿔놓고 배포를 깜빡하면(실제로
+# 여러 번 있었음) 화면이 며칠씩 옛날 숫자로 멈춰있는 원인이었다. 관리자
+# 대시보드(admin_dashboard.py "🔧 메인화면 유력수 보정")에서 바로 입력하면
+# 즉시 반영되는 DB 설정값으로 옮기고, 아직 한 번도 설정 안 된 경우에만
+# 아래 기본값을 그대로 쓴다(앞 번호일수록 유력한 순서 — 예: 44가 가장 유력).
+_LUCKY_DISPLAY_DEFAULT = [5, 17, 26, 41, 30, 44]
+
+
+def _load_lucky_display() -> list[int]:
+    try:
+        from app_settings import get_setting, init_settings_table
+
+        init_settings_table()
+        raw = get_setting("main_lucky_numbers", "")
+        nums = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
+        if len(nums) == 6 and all(1 <= n <= 45 for n in nums):
+            return nums
+    except Exception:
+        pass
+    return _LUCKY_DISPLAY_DEFAULT
+
+
+lucky_display = _load_lucky_display()
 # ===============================================================================
 
 def get_image_base64(file_path):

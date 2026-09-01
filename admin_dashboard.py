@@ -1061,6 +1061,32 @@ elif st.session_state.admin_view == "filter_manage":
                     record_draw_pattern_count(int(pc_round), int(pc_value))
                     st.success(f"{int(pc_round)}회차 적용패턴수를 {int(pc_value):,}(으)로 기록했습니다.")
 
+            # 2026-08-31: 메인화면 아이콘 주변에 도는 숫자 6개(user_page.py의
+            # lucky_display)가 예전엔 코드에 직접 박혀있어서, 매주 값을 바꿀 때마다
+            # git 커밋·푸시를 잊으면 화면이 옛날 숫자로 며칠씩 멈춰있는 사고가
+            # 반복됐다 — 여기서 입력하면 배포 없이 바로 반영되도록 DB 설정값으로
+            # 옮겼다.
+            with st.expander("🔧 메인화면 유력수 보정"):
+                from app_settings import get_setting as _gs, init_settings_table as _ist, set_setting as _ss
+
+                _ist()
+                _current_lucky = _gs("main_lucky_numbers", "5, 17, 26, 41, 30, 44")
+                st.caption("앞 번호일수록 유력한 순서로, 쉼표로 구분해 6개 입력하세요 (1~45).")
+                lucky_input = st.text_input(
+                    "유력수 6개", value=_current_lucky, key="admin_lucky_numbers_input"
+                )
+                if st.button("유력수 저장", key="admin_lucky_numbers_submit"):
+                    nums = [x.strip() for x in lucky_input.split(",") if x.strip()]
+                    valid = (
+                        len(nums) == 6
+                        and all(n.isdigit() and 1 <= int(n) <= 45 for n in nums)
+                    )
+                    if not valid:
+                        st.error("숫자 6개를 쉼표로 구분해서, 1~45 범위로 입력해 주세요.")
+                    else:
+                        _ss("main_lucky_numbers", ", ".join(nums))
+                        st.success(f"메인화면 유력수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
+
             @_admin_dialog("저장 확인")
             def _admin_combo_save_conflict_dialog() -> None:
                 pending = st.session_state.get("admin_combo_save_pending") or {}
