@@ -5,12 +5,28 @@ Turso(libsql_client, 순수 Python HTTP 클라이언트) 연결을
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import re
 import sqlite3
 
 import libsql_client
 import streamlit as st
+
+# 2026-09-03: 어제 앱이 12시간 동안 먹통이었던 사고 이후 원인 조사 —
+# libsql_client 라이브러리 전체(sync.py의 _AsyncExecutor.submit_coro가
+# fut.result()를 타임아웃 없이 호출)에 타임아웃 보호장치가 전혀 없다는 걸
+# 발견했다. Turso 서버가 응답을 안 주는 상황이 오면(네트워크 문제 등) 그
+# 요청을 기다리는 스레드가 "예외조차 안 던지고" 영원히 멈춰버려서, try/except
+# 로도 못 잡고 그 요청을 처리하던 세션이 그대로 죽는다 — 여러 세션이 동시에
+# 이러면 앱 전체가 먹통이 된 것처럼 보일 수 있다. 아래 _EXECUTOR로 모든 Turso
+# 호출을 감싸서 강제 타임아웃을 걸어준다 — 타임아웃 나면 TimeoutError를
+# 던지고, 이건 기존에 이미 코드 곳곳(draw_results_db 등)에 있던 try/except가
+# 그대로 잡아서 안전하게 폴백(캐시된 값 사용 등)하도록 설계돼 있다.
+_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=16, thread_name_prefix="turso-guard"
+)
+_QUERY_TIMEOUT_SEC = 10
 
 
 class Row(dict):
@@ -57,9 +73,23 @@ class _ConnectionWrapper:
         self._client = client
         self.row_factory = None
 
+    def _guarded(self, func, *args):
+        """모든 Turso 호출의 공통 관문 — _QUERY_TIMEOUT_SEC 안에 안 끝나면
+        TimeoutError를 던진다(무한정 멈추는 것 방지). 백그라운드 스레드 자체는
+        (라이브러리 구조상 강제로 못 죽이므로) 계속 남아있을 수 있지만, 최소한
+        "이 요청을 기다리던 세션"은 살아나서 폴백 로직으로 넘어갈 수 있다."""
+        future = _EXECUTOR.submit(func, *args)
+        try:
+            return future.result(timeout=_QUERY_TIMEOUT_SEC)
+        except concurrent.futures.TimeoutError as e:
+            raise TimeoutError(
+                f"Turso 쿼리가 {_QUERY_TIMEOUT_SEC}초 안에 응답하지 않았습니다"
+                "(네트워크 문제로 추정, 자동 폴백됨)"
+            ) from e
+
     def execute(self, sql, params=()):
         try:
-            rs = self._client.execute(sql, list(params) if params else [])
+            rs = self._guarded(self._client.execute, sql, list(params) if params else [])
         except libsql_client.LibsqlError as e:
             msg = str(e)
             if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
@@ -72,7 +102,7 @@ class _ConnectionWrapper:
         if not stmts:
             return
         try:
-            self._client.batch(stmts)
+            self._guarded(self._client.batch, stmts)
         except libsql_client.LibsqlError as e:
             msg = str(e)
             if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
@@ -81,7 +111,7 @@ class _ConnectionWrapper:
 
     def executescript(self, script):
         stmts = [s.strip() for s in re.split(r";\s*\n|;\s*$", script, flags=re.M) if s.strip()]
-        self._client.batch(stmts)
+        self._guarded(self._client.batch, stmts)
 
     def commit(self):
         pass
