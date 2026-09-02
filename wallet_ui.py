@@ -488,20 +488,20 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
         charge_dialog()
 
     if not member_id and not zp_uid:
-        if _dev_mock_enabled():
-            with st.expander("개발용 테스트 로그인", expanded=False):
-                if st.button(
-                    f"테스트 로그인 (ID: {TEST_USER_ID})",
-                    key="zp_test_login_btn",
-                    use_container_width=True,
-                ):
-                    user, is_new = login_test_user(TEST_USER_ID)
-                    st.session_state.zp_user_id = user["user_id"]
-                    st.session_state.zp_point_balance = user["point_balance"]
-                    st.session_state.zp_is_premium = user["is_premium"]
-                    if is_new:
-                        st.session_state.wallet_toast = "테스트 가입 완료! 5,000점 지급"
-                    st.rerun()
+        # 2026-09-02: 예전엔 여기서 "개발용 테스트 로그인" 버튼을 사용자에게 직접
+        # 노출했는데, 애플 심사(가이드라인 2.2 베타 테스트)에서 "테스트/평가판
+        # 버전처럼 보인다"고 반려됨 — ensure_member_or_banner()가 이미 쓰던
+        # "테스트 기간엔 버튼 없이 조용히 로그인" 패턴으로 통일한다. 카카오
+        # 연동이 완료되면(kakao_configured()) _testing_period_active()가
+        # 자동으로 False가 되면서 이 우회 자체가 꺼진다.
+        if _testing_period_active():
+            user, is_new = login_test_user(TEST_USER_ID)
+            st.session_state.zp_user_id = user["user_id"]
+            st.session_state.zp_point_balance = user["point_balance"]
+            st.session_state.zp_is_premium = user["is_premium"]
+            if is_new:
+                st.session_state.wallet_toast = "가입 완료! 5,000P 지급"
+            st.rerun()
         return None
 
     # 예전엔 이 정보(적립금/ID/로그아웃)를 화면마다 상단에 항상 띄워뒀는데, 페이지를
