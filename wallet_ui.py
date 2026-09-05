@@ -105,6 +105,8 @@ def _resume_after_auth() -> None:
         st.session_state["af_show_step2_points"] = True
     elif resume == "wallet_show_charge":
         st.session_state["wallet_show_charge"] = True
+    elif resume == "my_info_dialog":
+        st.session_state["my_info_dialog_open"] = True
 
 
 def _finish_auth_success() -> None:
@@ -509,6 +511,20 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
             if is_new:
                 st.session_state.wallet_toast = "가입 완료! 5,000P 지급"
             st.rerun()
+        # 2026-09-05: 정식 출시 — "앱을 처음 열 때부터 로그인을 강제하진 않지만,
+        # 구매·구매내역·적립금내역(=내정보)을 보려고 하면 그 시점에 간편인증을
+        # 요구하고, 한 번 인증하면 그 방문 동안은 다시 안 묻는다"는 요구사항.
+        # 카카오 연동 전엔(_testing_period_active) 위에서 이미 조용히 로그인
+        # 처리하니 여기 도달하지 않는다 — 아래는 실제 인증이 켜진 뒤에만 탄다.
+        if show_my_info_trigger:
+            st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
+            with st.container(key="my_info_trigger_wrap"):
+                if st.button("👤 내정보", key="my_info_trigger_btn", use_container_width=True):
+                    open_auth_banner(
+                        reason="내정보(구매내역·적립금)를 보려면 간편인증이 필요합니다.",
+                        resume="my_info_dialog",
+                    )
+                    st.rerun()
         return None
 
     # 예전엔 이 정보(적립금/ID/로그아웃)를 화면마다 상단에 항상 띄워뒀는데, 페이지를
