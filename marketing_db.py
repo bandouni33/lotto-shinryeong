@@ -435,7 +435,7 @@ def _claim_pending_ids(
     # 요청·과거 배정과 절대 안 섞임).
     return conn.execute(
         f"""
-        SELECT id, num1, num2, num3, num4, num5, num6
+        SELECT id, num1, num2, num3, num4, num5, num6, top3_mask
         FROM lotto_combinations
         WHERE id IN ({placeholders}) AND auto_order_id = ?
         """,
