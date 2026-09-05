@@ -90,6 +90,33 @@ def _fill_with_best_pattern_fallback(
     return results
 
 
+def _pool_priority_matches(
+    condition, count: int
+) -> list[tuple[int, ...]]:
+    """2026-09-05: 1241회차부터 — 1차+2차+4차 필터 통과 조합 풀(참고용
+    샘플, DB에서 지워지지 않음)에서 안티/액땜 겹침 조건을 이미 만족하는
+    조합을 찾아 우선 반환한다. condition(combo)->bool. 풀 조회 실패해도
+    (아직 회차 데이터 없음 등) 조용히 빈 리스트로 넘어간다."""
+    try:
+        from auto_purchase_service import _next_draw_round
+        from marketing_db import get_random_pool_combos
+
+        pool = get_random_pool_combos(_next_draw_round())
+    except Exception:
+        return []
+    matched = []
+    seen: set[tuple[int, ...]] = set()
+    for combo in pool:
+        if len(matched) >= count:
+            break
+        if combo in seen:
+            continue
+        seen.add(combo)
+        if condition(combo):
+            matched.append(combo)
+    return matched
+
+
 def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
     """각 입력 줄과 개별적으로 겹침이 적은 조합을 생성 — 안티조합(줄별 방식)."""
     from lotto_stats import get_number_weights, get_resolved_pattern_rules, score_combo_against_pattern_rules
@@ -98,9 +125,16 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
     pattern_rules = get_resolved_pattern_rules()
     results: list[tuple[int, ...]] = []
     for max_overlap in _OVERLAP_STEPS:
-        results = []
+        results = list(
+            _pool_priority_matches(
+                lambda c, mo=max_overlap: all(
+                    len(set(c) & set(line)) <= mo for line in lines
+                ),
+                count,
+            )
+        )
         fallback: list[tuple[int, tuple[int, ...]]] = []
-        seen: set[tuple[int, ...]] = set()
+        seen: set[tuple[int, ...]] = set(results)
         for _ in range(_MAX_ATTEMPTS):
             if len(results) >= count:
                 break
@@ -132,9 +166,13 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
         pool |= set(line)
     results: list[tuple[int, ...]] = []
     for max_overlap in _OVERLAP_STEPS:
-        results = []
+        results = list(
+            _pool_priority_matches(
+                lambda c, mo=max_overlap: len(set(c) & pool) <= mo, count
+            )
+        )
         fallback: list[tuple[int, tuple[int, ...]]] = []
-        seen: set[tuple[int, ...]] = set()
+        seen: set[tuple[int, ...]] = set(results)
         for _ in range(_MAX_ATTEMPTS):
             if len(results) >= count:
                 break

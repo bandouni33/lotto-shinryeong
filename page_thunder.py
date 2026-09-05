@@ -50,6 +50,17 @@ def render():
     # 쌓일수록 get_number_weights()가 다시 계산되어 패턴도 같이 갱신된다.
     js_number_weights = json.dumps(get_number_weights())
     js_filter_config = json.dumps(get_thunder_filter_config())
+    # 2026-09-05: 1241회차부터 — 1차+2차+4차 필터를 통과한 조합 풀(고정,
+    # 삭제/소비되지 않는 참고용 샘플)에서 사용자가 지금 고른 고정수/삭제수
+    # 조건에 맞는 게 있으면 그걸 우선 쓰고, 없는 자리만 기존 방식(가중치
+    # 추첨+자연분포 필터)으로 채운다.
+    try:
+        from auto_purchase_service import _next_draw_round
+        from marketing_db import get_random_pool_combos
+
+        js_pool_combos = json.dumps(get_random_pool_combos(_next_draw_round()))
+    except Exception:
+        js_pool_combos = "[]"
     # 관리자가 대시보드(기준값패턴 업로드)에서 엑셀로 올린 과거데이터 근거 규칙
     # 전체 — 하드코딩했던 8개 유형지표는 이 업로드 시스템으로 완전히 교체됐다
     # (2026-08-21, 사용자 확인: 기존 8개 지표는 업로드 파일에 다 반영돼 있음).
@@ -756,6 +767,7 @@ def render():
             let luckyNumbers = new Set();
             const registeredFamilyLucky = {js_lucky_array};
             const numberWeights = {js_number_weights};
+            let poolCombos = {js_pool_combos};
             const thunderFilter = {js_filter_config};
             const patternRules = {js_pattern_rules};
             const hasBirthdays = {'true' if has_birthdays else 'false'};
@@ -1032,6 +1044,26 @@ def render():
                 return {{ allPass: matched === patternRules.length, matched }};
             }}
 
+            // 2026-09-05: 1241회차부터 — 저장된 필터 통과 조합 풀에서 지금
+            // 고른 고정수(전부 포함)/삭제수(전혀 포함 안 함) 조건에 맞는 걸
+            // 찾아 우선 쓴다. 같은 배치(한 번의 "조합 생성") 안에서만 중복
+            // 사용을 막기 위해 찾으면 poolCombos에서 빼지만, DB에서 지우진
+            // 않는다(다른 사용자에겐 계속 후보로 남음 — "삭제수에 영향 안받는").
+            function tryPoolMatch() {{
+                const fixedArr = Array.from(selectedFixed);
+                for (let i = 0; i < poolCombos.length; i++) {{
+                    const combo = poolCombos[i];
+                    const comboSet = new Set(combo);
+                    const hasAllFixed = fixedArr.every(n => comboSet.has(n));
+                    const hasNoDeleted = combo.every(n => !selectedDelete.has(n));
+                    if (hasAllFixed && hasNoDeleted) {{
+                        poolCombos.splice(i, 1);
+                        return combo.slice().sort((a, b) => a - b);
+                    }}
+                }}
+                return null;
+            }}
+
             function buildOneGame(availablePool) {{
                 const fixedArr = Array.from(selectedFixed);
                 const fixedExempt = violatesNaturalFilter(fixedArr);
@@ -1132,9 +1164,10 @@ def render():
                 for (let g = 0; g < count; g++) {{
                     const tid = setTimeout(() => {{
                         if (thisRun !== genRunId) return;
-                        const built = buildOneGame(available);
-                        currentResults.push(built.game);
-                        renderGame(built.game);
+                        const poolMatch = tryPoolMatch();
+                        const game = poolMatch || buildOneGame(available).game;
+                        currentResults.push(game);
+                        renderGame(game);
                     }}, g * 2000);
                     activeGenTimers.push(tid);
                 }}

@@ -1265,6 +1265,26 @@ def update_win_ranks_for_draw(
     return len(payload)
 
 
+def get_random_pool_combos(draw_round: int, limit: int = 3000) -> list[tuple[int, ...]]:
+    """번개조합/안티조합이 "우선배정" 후보로 참고만 하는 읽기 전용 샘플 —
+    allocate_lotto_combinations_random_sequential과 달리 어떤 것도
+    소비(할당)하지 않는다. 회차당 조합이 1.2만개 안팎이라 매번 그중 일부만
+    무작위로 가져와도 실질적으로 충분하다."""
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT num1, num2, num3, num4, num5, num6
+        FROM lotto_combinations
+        WHERE draw_round = ?
+        ORDER BY RANDOM()
+        LIMIT ?
+        """,
+        (int(draw_round), int(limit)),
+    ).fetchall()
+    conn.close()
+    return [tuple(int(x) for x in row) for row in rows]
+
+
 def delete_lotto_combinations_by_draw(draw_round: int) -> int:
     """해당 회차 추출 조합 전체 삭제."""
     draw_round = int(draw_round)
