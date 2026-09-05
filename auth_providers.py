@@ -17,11 +17,13 @@ KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_URL = "https://kapi.kakao.com/v2/user/me"
 
 # 2026-09-05: 네이티브 앱(LottoShinryeong)은 카카오 로그인을 앱 내장 웹뷰가
-# 아니라 Custom Tab(streamlit-webview.tsx의 openAuthSessionAsync)으로 열고,
-# 이 커스텀 스킴으로 리다이렉트되는 순간을 감지해 자동으로 앱에 복귀시킨다
-# (Expo 표준 패턴). 시크릿이 아니라 그냥 앱의 scheme(app.json)이라 하드코딩—
-# Kakao Developers 콘솔에 이 값을 "카카오 로그인 Redirect URI"로 추가 등록해야
-# 한다(기존 https 리다이렉트 URI는 일반 웹 접속용으로 그대로 둔다).
+# 아니라 Custom Tab(streamlit-webview.tsx의 openAuthSessionAsync)으로 연다.
+# 카카오는 REST API 카카오 로그인의 redirect_uri로 커스텀 스킴(myapp://...)을
+# 등록조차 못 하게 막는다("유효하지 않은 URL") — 그래서 카카오에는 항상 기존
+# https redirect_uri만 쓴다. 대신 그 https 콜백 페이지(handle_oauth_callback,
+# 로그인 처리를 다 끝낸 뒤)가 "2차 리다이렉트"로 이 커스텀 스킴에 JS로 한 번
+# 더 이동시킨다 — Custom Tab이 이 두 번째 이동만 감지해서(Kakao와는 무관하게,
+# 우리 앱이 소유한 scheme이라 앱이 자동으로 가로챔) 앱으로 복귀시킨다.
 NATIVE_KAKAO_REDIRECT_URI = "myapp://oauth/kakao"
 
 
@@ -41,19 +43,19 @@ def fincert_configured() -> bool:
     return bool(os.environ.get("FINCERT_CLIENT_ID", "").strip())
 
 
-def _redirect_uri(native: bool = False) -> str:
-    if native:
-        return NATIVE_KAKAO_REDIRECT_URI
+def _redirect_uri() -> str:
     return os.environ.get("KAKAO_REDIRECT_URI", "http://localhost:8501").strip()
 
 
-def _encode_oauth_state(provider: str, return_page: str = "main", gid: str | None = None) -> str:
+def _encode_oauth_state(
+    provider: str, return_page: str = "main", gid: str | None = None, native: bool = False
+) -> str:
     page = (return_page or "main").strip() or "main"
     allowed = ("main", "thunder", "auto", "stats", "birthday", "advanced")
     if page not in allowed:
         page = "main"
     encoded = f"{provider}:{urllib.parse.quote(page, safe='')}"
-    if gid:
+    if gid or native:
         # 2026-09-05: 카카오 로그인이 앱 내장 웹뷰가 아니라 기기 기본 브라우저에서
         # 열리게 되면서(WebView OAuth 차단 대응) 콜백도 그 브라우저의 별도
         # Streamlit 세션에서 처리된다 — 그 세션엔 앱이 매 요청 실어 보내는
@@ -61,11 +63,15 @@ def _encode_oauth_state(provider: str, return_page: str = "main", gid: str | Non
         # 만들어버리고, 로그인이 그 새 guest_id에 연결돼 앱으로 돌아와도
         # 로그인 상태가 안 보이는 문제로 이어졌다. state에 원래 기기 gid를
         # 실어 보내 콜백 쪽에서 복원한다(handle_oauth_callback 참고).
-        encoded += f":{urllib.parse.quote(gid, safe='')}"
+        encoded += f":{urllib.parse.quote(gid, safe='') if gid else ''}"
+    if native:
+        # 콜백 처리 후 커스텀 스킴으로 2차 리다이렉트할지 여부 —
+        # NATIVE_KAKAO_REDIRECT_URI 설명 참고.
+        encoded += ":1"
     return encoded
 
 
-def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None]:
+def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None, bool]:
     raw = (state or "kakao").strip() or "kakao"
     parts = raw.split(":")
     provider = (parts[0] or "kakao").strip() or "kakao"
@@ -75,21 +81,23 @@ def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None]:
     gid = None
     if len(parts) > 2 and parts[2]:
         gid = urllib.parse.unquote(parts[2]).strip() or None
-    return provider, page, gid
+    native = len(parts) > 3 and parts[3] == "1"
+    return provider, page, gid, native
 
 
 def get_kakao_authorize_url(return_page: str = "main") -> str:
     from user_scope import get_or_create_guest_id
 
-    # 네이티브 앱은 매 요청 ?native=1을 실어 보낸다(constants/streamlit.ts) —
-    # 이게 있으면 Custom Tab이 자동 감지할 수 있는 앱 전용 커스텀 스킴으로,
-    # 없으면(일반 웹 접속) 기존 https 리다이렉트로 인가 URL을 만든다.
+    # 카카오는 redirect_uri로 항상 등록된 https 주소만 받는다(커스텀 스킴은
+    # "유효하지 않은 URL"로 거부됨) — native=1이어도 여기선 redirect_uri를
+    # 그대로 두고, state에만 native 표식을 실어 콜백(handle_oauth_callback)이
+    # 처리 후 2차 리다이렉트를 할지 판단하게 한다.
     native = st.query_params.get("native") == "1"
     params = {
         "client_id": os.environ.get("KAKAO_REST_API_KEY", "").strip(),
-        "redirect_uri": _redirect_uri(native),
+        "redirect_uri": _redirect_uri(),
         "response_type": "code",
-        "state": _encode_oauth_state("kakao", return_page, get_or_create_guest_id()),
+        "state": _encode_oauth_state("kakao", return_page, get_or_create_guest_id(), native),
     }
     return f"{KAKAO_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
@@ -198,11 +206,11 @@ def mock_kakao_login() -> tuple[int, bool, bool]:
     return mock_provider_login("kakao")
 
 
-def _exchange_kakao_code(code: str, native: bool = False) -> tuple[str | None, str | None]:
+def _exchange_kakao_code(code: str) -> tuple[str | None, str | None]:
     data = {
         "grant_type": "authorization_code",
         "client_id": os.environ.get("KAKAO_REST_API_KEY", "").strip(),
-        "redirect_uri": _redirect_uri(native),
+        "redirect_uri": _redirect_uri(),
         "code": code,
     }
     secret = os.environ.get("KAKAO_CLIENT_SECRET", "").strip()
@@ -256,7 +264,7 @@ def handle_oauth_callback() -> bool:
     if not code:
         return False
 
-    provider_key, return_page, gid = _decode_oauth_state(st.query_params.get("state"))
+    provider_key, return_page, gid, native = _decode_oauth_state(st.query_params.get("state"))
     if gid:
         # 콜백이 앱의 gid 없이 열린 세션(기기 기본 브라우저)이어도, state에
         # 실어 보낸 원래 기기 gid를 여기서 복원해야 finalize_login()이 부르는
@@ -275,8 +283,7 @@ def handle_oauth_callback() -> bool:
         provider = "fincert"
         provider_uid = _exchange_fincert_code(code)
     elif provider_key == "kakao" and kakao_configured():
-        native = st.query_params.get("native") == "1"
-        provider_uid, error = _exchange_kakao_code(code, native)
+        provider_uid, error = _exchange_kakao_code(code)
     else:
         st.error("간편인증 설정이 올바르지 않습니다. 관리자에게 문의해 주세요.")
         for key in ("code", "state", "error", "error_description"):
@@ -296,6 +303,23 @@ def handle_oauth_callback() -> bool:
     for key in ("code", "state", "error", "error_description"):
         if key in st.query_params:
             del st.query_params[key]
+
+    if native:
+        # 로그인은 이미 위에서 다 끝났다(이 Custom Tab 세션 안에서 올바른
+        # gid에 정상적으로 연결됨) — 이제 앱 전용 커스텀 스킴으로 한 번 더
+        # 이동시켜, Custom Tab이 이걸 감지하고 자동으로 앱에 복귀시키게
+        # 한다(streamlit-webview.tsx의 openAuthSessionAsync 참고). 앱은
+        # 복귀 즉시 자기 웹뷰를 새로고침해서(restore_member_from_guest)
+        # 방금 연결된 로그인을 그대로 이어받는다 — 여기서 st.rerun()으로
+        # 이 페이지를 계속 그리면 그 사이 리다이렉트 스크립트가 씹힐 수
+        # 있어 바로 멈춘다.
+        import streamlit.components.v1 as components
+
+        components.html(
+            f"<script>window.location.href = {NATIVE_KAKAO_REDIRECT_URI!r};</script>",
+            height=0,
+        )
+        st.stop()
     return True
 
 

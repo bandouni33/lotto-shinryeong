@@ -53,15 +53,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // (utils/fresh-start.ts 설명 참고). 홈 버튼 등으로 잠깐 백그라운드 갔다 온
   // 경우나, 앱 안에서 다른 화면으로 이동한 경우엔 false.
   const [isFreshStart] = useState(() => consumeFreshStartFlag());
-  // 카카오 로그인(Custom Tab) 완료 후 돌려받은 code/state — 딱 한 번, 다음
-  // 웹뷰 로드에만 실어 보내면 되는 값이라 별도 state로 둔다(아래
-  // handleKakaoAuth/onLoadEnd 참고).
-  const [oauthExtraParams, setOauthExtraParams] = useState<Record<string, string> | null>(null);
-  const mergedParams = {
-    ...(extraParams || {}),
-    ...(isFreshStart ? { fresh_start: '1' } : {}),
-    ...(oauthExtraParams || {}),
-  };
+  const mergedParams = isFreshStart ? { ...extraParams, fresh_start: '1' } : extraParams;
   const uri = getStreamlitPageUrl(page, guestId, mergedParams);
 
   // QR 스캔 후 넘어오는 것처럼 ?qr=... 붙은 페이지에서, Streamlit이 그 1회성
@@ -126,23 +118,22 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 완전히 던져버리면, 로그인이 끝나도 그 결과는 그 브라우저 세션 안에만
   // 남고 앱(이 웹뷰)으로 자동으로 돌아오는 절차가 없다 — 로그인 직후 앱에
   // 돌아와도 계속 로그인 안 된 것처럼 보이던 문제의 원인이었다. 대신
-  // Custom Tab(WebBrowser.openAuthSessionAsync)으로 열어서, 로그인이
-  // myapp://oauth/kakao로 리다이렉트되는 순간 자동으로 감지·복귀시키고
-  // (Expo 공식 문서: redirectUrl 매칭 시 promise가 자동으로 resolve됨,
-  // 별도 Linking 리스너 불필요), 받은 code/state를 그대로 웹뷰 재로드
-  // URL에 실어 보내 로그인 처리 자체가 앱의 실제 gid를 아는 이 웹뷰
-  // 세션 안에서 끝나게 한다(auth_providers.py의 native=1 분기 참고).
+  // Custom Tab(WebBrowser.openAuthSessionAsync)으로 열되, 카카오 자체는
+  // 리다이렉트로 커스텀 스킴을 등록조차 못 하게 막아서(콘솔에서 "유효하지
+  // 않은 URL"로 거부됨) 카카오에는 항상 기존 https 리다이렉트를 그대로
+  // 쓴다. 대신 그 https 콜백 페이지(auth_providers.handle_oauth_callback,
+  // 로그인 처리를 다 끝낸 뒤 — 이 시점에 이미 올바른 gid로 로그인이
+  // 완료돼 있다)가 JS로 한 번 더 myapp://oauth/kakao로 이동시키고, 이
+  // "2차 이동"만 Custom Tab이 자동 감지해 앱으로 복귀시킨다(Expo 공식
+  // 문서: redirectUrl 매칭 시 promise가 자동 resolve됨, 별도 Linking
+  // 리스너 불필요). 복귀 즉시 이 웹뷰를 새로고침해서 방금 완료된 로그인을
+  // restore_member_from_guest()로 이어받는다.
   const KAKAO_OAUTH_REDIRECT = ExpoLinking.createURL('oauth/kakao');
   const handleKakaoAuth = useCallback(async (authUrl: string) => {
     try {
       const result = await WebBrowser.openAuthSessionAsync(authUrl, KAKAO_OAUTH_REDIRECT);
-      if (result.type === 'success' && result.url) {
-        const parsed = new URL(result.url);
-        const code = parsed.searchParams.get('code');
-        const state = parsed.searchParams.get('state');
-        if (code) {
-          setOauthExtraParams(state ? { code, state } : { code });
-        }
+      if (result.type === 'success') {
+        webViewRef.current?.reload();
       }
       // 'cancel'/'dismiss'(사용자가 취소) — 그냥 로그인 배너 화면 그대로 둔다.
     } catch {
@@ -294,16 +285,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onMessage={onMessage}
           onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => {
-            setLoading(false);
-            // 카카오 로그인 code/state는 1회용 — 이 로드로 이미 서버에
-            // 전달됐으니 지워서, 이후 이 컴포넌트가 다른 이유로(예: QR
-            // 스캔 결과 반영) 다시 렌더링돼도 만료된 code를 또 실어
-            // 보내지 않게 한다.
-            if (oauthExtraParams) {
-              setOauthExtraParams(null);
-            }
-          }}
+          onLoadEnd={() => setLoading(false)}
           onError={(e) => {
             setLoading(false);
             setError(e.nativeEvent.description || '연결 실패');
