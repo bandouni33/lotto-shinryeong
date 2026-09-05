@@ -13,8 +13,11 @@ import streamlit.components.v1 as components
 WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 SUBSCRIPTION_WEEKDAYS = ["화", "수", "목"]
 QUANTITY_OPTIONS = [5, 10, 15, 20]
-# 테스트 기간 기본: 구매 확정 시 인증 건너뜀. 출시 시 AUTO_PURCHASE_SKIP_AUTH=0
-AUTO_PURCHASE_SKIP_AUTH = os.environ.get("AUTO_PURCHASE_SKIP_AUTH", "1").strip().lower() in (
+# 2026-09-05: 9/10 정식출시 — 테스트 기간에만 "1"로 켜서 인증·차감을
+# 건너뛰던 스위치. 기본값을 "0"(인증·차감 정상 적용)으로 뒤집는다 — 이
+# 값을 잊고 안 지우면 그 자체로 "환경변수 없음=안전"이 되도록, 켜려면
+# 명시적으로 AUTO_PURCHASE_SKIP_AUTH=1을 설정해야 하는 구조로 바꿨다.
+AUTO_PURCHASE_SKIP_AUTH = os.environ.get("AUTO_PURCHASE_SKIP_AUTH", "0").strip().lower() in (
     "1",
     "true",
     "yes",

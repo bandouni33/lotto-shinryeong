@@ -327,7 +327,12 @@ def charge_dialog() -> None:
             disabled=True,
             use_container_width=True,
         )
-    else:
+    elif _testing_period_active():
+        # 2026-09-05: 이 버튼은 카카오 로그인이 아직 mock인 "출시 전 테스트
+        # 기간"에만 보여야 한다 — 예전엔 pg_configured()만 봐서, 카카오
+        # 로그인이 실제로 연동된 뒤에도(=실사용자가 진짜 로그인한 뒤에도)
+        # PG만 아직이면 누구나 눌러서 무한 포인트를 받을 수 있었다(실제
+        # 무료 악용 가능 상태 — 2026-09-05 발견).
         st.caption("PG 미연동 · 테스트는 Mock 결제를 이용하세요.")
         if st.button("Mock 결제 (테스트)", type="primary", use_container_width=True):
             ref = f"pg:mock:{member_id}:{uuid.uuid4().hex[:10]}"
@@ -335,6 +340,8 @@ def charge_dialog() -> None:
                 st.session_state.wallet_toast = f"{won_amount:,}원 · {points:,}P 충전 완료"
                 st.rerun()
             st.error("충전에 실패했습니다.")
+    else:
+        st.info("결제 연동 준비 중입니다. 조금만 기다려주세요.")
 
 
 @_dialog_decorator("적립금 이용 안내")
