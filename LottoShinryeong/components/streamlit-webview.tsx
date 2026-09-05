@@ -69,22 +69,72 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     return () => clearTimeout(timer);
   }, [loading, uri]);
 
-  const onNavigationStateChange = useCallback((navState: { canGoBack: boolean }) => {
-    setCanGoBack(navState.canGoBack);
+  // "안티조합·액땜조합" 진입 링크(?page=hedge&qrscan=1)를 QR 촬영 화면으로 보내는
+  // 경로를 세 겹으로 둔다 — 실기기마다 어느 게 실제로 걸리는지가 달라서
+  // (2026-08-19~22 여러 차례 확인) 하나에만 의존하면 특정 기종에서 아예 안 걸린다.
+  // 한 번 넘어가면 qrScanRedirected.current로 잠가서 세 경로가 중복으로 넘어가지
+  // 않게 한다.
+  const qrScanRedirected = useRef(false);
+  const goToQrScan = useCallback(() => {
+    if (qrScanRedirected.current) {
+      return;
+    }
+    qrScanRedirected.current = true;
+    router.replace({ pathname: '/qr-scan', params: { target: 'hedge' } });
   }, []);
 
-  // "안티조합·액땜조합" 진입 링크(?page=hedge&qrscan=1)만 골라서 실제 웹뷰 로드를
-  // 취소하고 네이티브 QR 촬영 화면으로 대신 보낸다. qrscan=1은 이 진입 링크에만
-  // 쓰이는 마커라 그 외의 정상 로드(초기 로드, QR 스캔 후 ?qr=...로 돌아오는 로드,
-  // "직접입력" 폴백으로 넘어가는 순수 ?page=hedge 로드)와는 절대 겹치지 않는다 —
-  // 그래서 로딩 유형(클릭/최초로드 등)을 구분할 필요 없이 이 문자열 하나만 보면 된다.
-  const onShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
-    if (request.url.includes('qrscan=1')) {
-      router.push({ pathname: '/qr-scan', params: { target: 'hedge' } });
-      return false;
-    }
-    return true;
-  }, []);
+  // 1) onNavigationStateChange — 웹뷰의 실제 URL이 바뀔 때마다 항상 불리는(리액티브)
+  // 이벤트라 세 경로 중 가장 신뢰도가 높다. 실기기(Android 16, Samsung SM-M166S)에서
+  // window.ReactNativeWebView 자체가 안 만들어져 2)의 postMessage 경로가 완전히
+  // 무력화되는 게 실측으로 확인됐다(2026-08-22, page_hedge.py의 진단 배너로 확인) —
+  // 그 대체 경로로 추가함.
+  const onNavigationStateChange = useCallback(
+    (navState: { canGoBack: boolean; url?: string }) => {
+      setCanGoBack(navState.canGoBack);
+      if (navState.url && navState.url.includes('qrscan=1')) {
+        goToQrScan();
+      }
+    },
+    [goToQrScan]
+  );
+
+  // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
+  // (2026-08-19: 메인 화면 진입 링크에서는 이 방식이 잘 됐는데, 안티/액땜 상세페이지
+  // 자체에 새로 넣은 "QR스캔" 버튼(같은 페이지 안에서 쿼리파라미터만 바뀌는 링크)을
+  // 누르면 실기기에서 인터셉트가 안 걸리고 그냥 페이지가 다시 로드되는 문제가
+  // 보고됐다 — 안드로이드 웹뷰가 "같은 경로, 쿼리만 다른" 네비게이션을 이 콜백
+  // 없이 처리하는 경우가 있는 것으로 보인다.) 그래도 되는 기종에서는 이게 가장
+  // 빠르게(실제 로드 자체를 막으면서) 넘어가므로 그대로 둔다.
+  const onShouldStartLoadWithRequest = useCallback(
+    (request: { url: string }) => {
+      if (request.url.includes('qrscan=1')) {
+        goToQrScan();
+        return false;
+      }
+      return true;
+    },
+    [goToQrScan]
+  );
+
+  // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
+  // window.ReactNativeWebView 자체가 없는 기기에서는 이 경로가 애초에 실행조차
+  // 안 되지만(위 1번 설명 참고), 되는 기기에서는 가장 즉각적이라 그대로 둔다.
+  // window.ReactNativeWebView가 없는 일반 브라우저에서는 페이지 쪽(page_hedge.py)이
+  // 이 메시지를 아예 안 보내고 URL 폴백만 쓰도록 이미 분기해뒀다.
+  const onMessage = useCallback(
+    (event: { nativeEvent: { data: string } }) => {
+      let payload: { type?: string; target?: string } | null = null;
+      try {
+        payload = JSON.parse(event.nativeEvent.data);
+      } catch {
+        return;
+      }
+      if (payload?.type === 'openQrScan') {
+        goToQrScan();
+      }
+    },
+    [goToQrScan]
+  );
 
   const goToStreamlitHome = useCallback(() => {
     router.replace('/');
@@ -168,11 +218,22 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+          onMessage={onMessage}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onError={(e) => {
             setLoading(false);
             setError(e.nativeEvent.description || '연결 실패');
+          }}
+          // 2026-08-30: "결과저장 후 화면이 까맣게 죽고 앱을 완전히 닫아야만 풀린다"
+          // 신고 — 강제 다크모드로 인한 색 반전(위 forceDarkOn으로 대응)과는 별개로,
+          // 안드로이드 웹뷰 렌더러 프로세스 자체가 죽어도(메모리 압박 등) 이 핸들러가
+          // 없으면 웹뷰가 빈/검은 화면인 채로 완전히 멈춰버리고 앱 안에서는 복구할
+          // 방법이 없었다(재시작만이 유일한 탈출구였던 이유). 렌더러가 죽는 순간
+          // 자동으로 reload해서 앱을 안 닫아도 복구되게 한다.
+          onRenderProcessGone={(e) => {
+            console.warn('WebView render process gone', e.nativeEvent);
+            webViewRef.current?.reload();
           }}
           onHttpError={(e) => {
             if (e.nativeEvent.statusCode >= 400) {
@@ -200,6 +261,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
                 // https) 제거한 채로 둔다.
                 setBuiltInZoomControls: true,
                 setDisplayZoomControls: false,
+                // 2026-08-30: "번개조합 결과저장 후 화면이 반전된 채 안 돌아온다(앱을
+                // 완전히 닫아야만 풀림)" 신고 — page_thunder.py/page_hedge.py가 이미
+                // CSS(color-scheme:light)로 안드로이드 웹뷰의 "강제 다크모드" 자동 색
+                // 반전에 대응하고 있었지만, CSS는 웹뷰가 이미 반전 여부를 판단한
+                // *이후*에나 적용돼 타이밍에 따라 못 막을 때가 있었다(기존 주석 참고).
+                // forceDarkOn은 네이티브 웹뷰 레벨에서 이 자동 반전 알고리즘 자체를
+                // 끄는 설정이라 타이밍 문제 없이 근본적으로 막는다 — CSS 쪽 대응은
+                // 안전망으로 그대로 둔다. (문서상 "not persistent" — 매 웹뷰 생성 시
+                // 다시 걸어야 하는데, 이 prop은 렌더마다 항상 실려 있으니 문제 없음.)
+                forceDarkOn: false,
               }
             : {})}
         />
