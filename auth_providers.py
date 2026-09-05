@@ -312,15 +312,38 @@ def handle_oauth_callback() -> bool:
         # 복귀 즉시 자기 웹뷰를 새로고침해서(restore_member_from_guest)
         # 방금 연결된 로그인을 그대로 이어받는다.
         #
-        # 2026-09-05: 처음엔 components.html()로 <script>window.location.href=...
-        # 를 넣었는데, components.html()은 격리된(sandboxed) iframe 안에서
-        # 실행돼 그 안에서 아무리 location을 옮겨도 iframe 자기 자신만
-        # 이동하려 하고 막힌다 — 바깥의 실제 브라우저 탭(Custom Tab)은 전혀
-        # 안 움직여서 그 화면에 멈춰 있었다(실기기에서 재현 확인). st.markdown은
-        # (components.html과 달리) 메인 문서에 직접 렌더링되므로, <script> 대신
-        # 브라우저가 항상 최상위 문서에 적용하는 <meta refresh>로 리다이렉트한다.
+        # 2026-09-05 시도1: components.html()로 <script>window.location.href=...>
+        # — 격리된(sandboxed) iframe 안에서 실행돼 iframe 자기 자신만 이동하려
+        # 하고 막힘. 바깥 브라우저 탭(Custom Tab)은 전혀 안 움직임(실기기 확인).
+        #
+        # 2026-09-05 시도2: st.markdown + <meta http-equiv="refresh"> — 메인
+        # 문서에 직접 렌더링되니 iframe 문제는 없앴지만, 이번엔 안드로이드
+        # 크롬이 "사용자 제스처 없는 자동 리다이렉트로 외부 앱(커스텀 스킴)을
+        #여는 것" 자체를 보안상 조용히 차단해서 여전히 그 화면에 멈춤
+        # (실기기 확인 — 알림/오류 없이 그냥 무시됨).
+        #
+        # 최종: 자동 복귀를 포기하고, 사용자가 직접 탭하는 버튼으로 확실하게
+        # 만든다 — 실제 탭(사용자 제스처)이면 안드로이드가 커스텀 스킴 이동을
+        # 막지 않는다.
         st.markdown(
-            f'<meta http-equiv="refresh" content="0;url={NATIVE_KAKAO_REDIRECT_URI}">',
+            f"""
+            <div style="text-align:center; padding:32px 16px; font-family:sans-serif;">
+                <div style="font-size:40px; margin-bottom:12px;">✅</div>
+                <div style="font-size:18px; font-weight:700; color:#222; margin-bottom:8px;">
+                    로그인이 완료되었습니다
+                </div>
+                <div style="font-size:14px; color:#666; margin-bottom:24px;">
+                    아래 버튼을 눌러 로또신령 앱으로 돌아가세요
+                </div>
+                <a href="{NATIVE_KAKAO_REDIRECT_URI}"
+                   style="display:inline-block; background:#fee500; color:#191919;
+                          font-weight:700; font-size:16px; padding:14px 32px;
+                          border-radius:10px; text-decoration:none;">
+                    로또신령 앱으로 돌아가기
+                </a>
+            </div>
+            <meta http-equiv="refresh" content="0;url={NATIVE_KAKAO_REDIRECT_URI}">
+            """,
             unsafe_allow_html=True,
         )
         st.stop()
