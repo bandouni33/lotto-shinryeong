@@ -28,6 +28,27 @@ if handle_oauth_callback():
     st.rerun()
 init_guest_scope()
 
+# 임시 진단(2026-09-06) — 1240회차 자동동기화가 왜 안 되는지 확인 후 바로 제거.
+if st.query_params.get("debug_draw") == "1":
+    st.markdown("### 진단: draw_results 동기화 상태")
+    try:
+        import draw_results_db
+
+        draw_results_db.init_draw_results_table()
+        st.write("DB 최신 회차:", draw_results_db.get_latest_draw_round())
+        st.write("DB 전체 건수:", draw_results_db.get_draw_results_count())
+        remote = draw_results_db.fetch_latest_from_dhlottery()
+        st.write("동행복권 실시간 조회:", remote)
+        synced = draw_results_db.sync_latest_from_dhlottery()
+        st.write("sync_latest_from_dhlottery() 결과:", synced)
+        st.write("DB 최신 회차(동기화 후):", draw_results_db.get_latest_draw_round())
+    except Exception as exc:
+        import traceback
+
+        st.error(f"예외 발생: {exc}")
+        st.code(traceback.format_exc())
+    st.stop()
+
 # 네이티브 앱이 콜드 스타트(=완전히 껐다 다시 켬) 직후 최초 로드에만 ?fresh_start=1을
 # 실어보낸다(LottoShinryeong/utils/fresh-start.ts 참고 — 백그라운드 전환/앱 내
 # 화면 이동에서는 안 붙는다). 그 신호가 오면 이 기기의 자동 로그인 연결을 끊어서,
