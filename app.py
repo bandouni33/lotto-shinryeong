@@ -10,6 +10,16 @@ from admission_control import check_admission
 
 check_admission()
 
+# 2026-09-05: 1241회차부터 다음 회차 조합(1차+2차+4차 필터)을 사람 손 없이
+# 매주 자동 생성 — UptimeRobot이 앱을 깨우려고 주기적으로 찌르는 요청에
+# 얹어서 트리거한다. 실패해도 절대 사용자 화면에 영향 주면 안 된다.
+try:
+    from combo_gen_trigger import maybe_trigger_weekly_generation
+
+    maybe_trigger_weekly_generation()
+except Exception:
+    pass
+
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 

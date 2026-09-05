@@ -219,9 +219,22 @@ def _marketing_db():
 
 
 def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
+    # 2026-09-05: 1241회차부터 1~5등은 "실제 판매 조합의 진짜 당첨 여부"가
+    # 아니라 "그 회차 필터 통과 조합군 전체엔 이만큼의 당첨가능조합이
+    # 있었다"는 참고용 통계로 바뀐다 — draw_reference_ranks에 값이 있는
+    # 회차만 덮어쓰고, 그 기록이 없는 옛 회차(~1240)는 기존처럼 실제
+    # win_rank 집계값을 그대로 보여준다.
+    mdb = _marketing_db()
     rows = []
     for item in stats:
         pattern_count = item.get("pattern_count")
+        ref = None
+        if not is_mock:
+            try:
+                ref = mdb.get_reference_ranks(item["draw_round"])
+            except Exception:
+                ref = None
+        ranks = ref if ref is not None else item
         rows.append(
             {
                 "회차": item["draw_round"],
@@ -229,11 +242,11 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
                 # 그 회차 조합을 추출한 "그 순간" 필터 규칙 수(draw_pattern_counts) —
                 # 이 기록이 생기기 전에 추출된 옛 회차는 기록이 없어 "—"로 표시한다.
                 "적용패턴수": f"{pattern_count:,}" if pattern_count is not None else "—",
-                "1등": item["rank_1"],
-                "2등": item["rank_2"],
-                "3등": item["rank_3"],
-                "4등": item["rank_4"],
-                "5등": item["rank_5"],
+                "1등": ranks["rank_1"],
+                "2등": ranks["rank_2"],
+                "3등": ranks["rank_3"],
+                "4등": ranks["rank_4"],
+                "5등": ranks["rank_5"],
             }
         )
     df = pd.DataFrame(rows)

@@ -63,6 +63,22 @@ def init_marketing_tables():
         CREATE INDEX IF NOT EXISTS idx_sms_queue_status
         ON sms_queue(send_status, created_at)
     """)
+    # 2026-09-05: 1241회차부터 — "이 회차 필터 통과 조합군 전체엔 이만큼의
+    # 당첨가능조합이 있었다"는 참고용 통계. 실제 판매된 조합의 진짜 당첨
+    # 여부(lotto_combinations.win_rank)와는 별개의 값이라 별도 테이블에 둔다
+    # — 고객 개인의 실제 당첨 판정 로직은 이 테이블과 전혀 무관하게 그대로
+    # 유지된다.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS draw_reference_ranks (
+            draw_round INTEGER PRIMARY KEY,
+            ref_rank_1 INTEGER NOT NULL,
+            ref_rank_2 INTEGER NOT NULL,
+            ref_rank_3 INTEGER NOT NULL,
+            ref_rank_4 INTEGER NOT NULL,
+            ref_rank_5 INTEGER NOT NULL,
+            computed_at TEXT NOT NULL
+        )
+    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS lotto_combinations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1240,6 +1256,55 @@ def delete_lotto_combinations_by_draw(draw_round: int) -> int:
     conn.commit()
     conn.close()
     return deleted
+
+
+def set_reference_ranks(
+    draw_round: int, ranks: tuple[int, int, int, int, int]
+) -> None:
+    """1241회차부터 — 필터 통과 조합군 전체 기준 참고용 당첨가능 통계 저장
+    (실제 판매 조합의 진짜 당첨 여부와는 무관, get_draw_extraction_stats의
+    실제 win_rank 집계와 별개)."""
+    from datetime import datetime
+
+    r1, r2, r3, r4, r5 = (int(x) for x in ranks)
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO draw_reference_ranks
+            (draw_round, ref_rank_1, ref_rank_2, ref_rank_3, ref_rank_4, ref_rank_5, computed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(draw_round) DO UPDATE SET
+            ref_rank_1 = excluded.ref_rank_1,
+            ref_rank_2 = excluded.ref_rank_2,
+            ref_rank_3 = excluded.ref_rank_3,
+            ref_rank_4 = excluded.ref_rank_4,
+            ref_rank_5 = excluded.ref_rank_5,
+            computed_at = excluded.computed_at
+        """,
+        (int(draw_round), r1, r2, r3, r4, r5, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_reference_ranks(draw_round: int) -> dict | None:
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT ref_rank_1, ref_rank_2, ref_rank_3, ref_rank_4, ref_rank_5 "
+        "FROM draw_reference_ranks WHERE draw_round = ?",
+        (int(draw_round),),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {
+        "rank_1": int(row["ref_rank_1"]),
+        "rank_2": int(row["ref_rank_2"]),
+        "rank_3": int(row["ref_rank_3"]),
+        "rank_4": int(row["ref_rank_4"]),
+        "rank_5": int(row["ref_rank_5"]),
+    }
 
 
 def get_win_rank_counts_by_draw(draw_round: int) -> dict[int, int]:
