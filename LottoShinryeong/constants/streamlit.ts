@@ -40,11 +40,6 @@ export function getStreamlitPageUrl(
   if (guestId) {
     url += `&gid=${encodeURIComponent(guestId)}`;
   }
-  // 2026-09-05: 서버(auth_providers.py)가 "이 요청이 네이티브 앱에서 왔다"를
-  // 구분하는 유일한 신호 — 카카오 로그인 시 웹 브라우저용 HTTPS 리다이렉트가
-  // 아니라 앱 전용 커스텀 스킴(myapp://oauth/kakao)으로 보내야 하는지 여기로
-  // 판단한다(streamlit-webview.tsx의 카카오 인증 세션 처리 참고).
-  url += '&native=1';
   if (extraParams) {
     for (const [key, value] of Object.entries(extraParams)) {
       url += `&${key}=${encodeURIComponent(value)}`;

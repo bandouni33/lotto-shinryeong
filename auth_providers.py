@@ -37,45 +37,30 @@ def _redirect_uri() -> str:
     return os.environ.get("KAKAO_REDIRECT_URI", "http://localhost:8501").strip()
 
 
-def _encode_oauth_state(provider: str, return_page: str = "main", gid: str | None = None) -> str:
+def _encode_oauth_state(provider: str, return_page: str = "main") -> str:
     page = (return_page or "main").strip() or "main"
     allowed = ("main", "thunder", "auto", "stats", "birthday", "advanced")
     if page not in allowed:
         page = "main"
-    encoded = f"{provider}:{urllib.parse.quote(page, safe='')}"
-    if gid:
-        # 2026-09-05: 카카오 로그인이 앱 내장 웹뷰가 아니라 기기 기본 브라우저에서
-        # 열리게 되면서(WebView OAuth 차단 대응) 콜백도 그 브라우저의 별도
-        # Streamlit 세션에서 처리된다 — 그 세션엔 앱이 매 요청 실어 보내는
-        # ?gid=...가 없어 get_or_create_guest_id()가 엉뚱한 새 guest_id를
-        # 만들어버리고, 로그인이 그 새 guest_id에 연결돼 앱으로 돌아와도
-        # 로그인 상태가 안 보이는 문제로 이어졌다. state에 원래 기기 gid를
-        # 실어 보내 콜백 쪽에서 복원한다(handle_oauth_callback 참고).
-        encoded += f":{urllib.parse.quote(gid, safe='')}"
-    return encoded
+    return f"{provider}:{urllib.parse.quote(page, safe='')}"
 
 
-def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None]:
+def _decode_oauth_state(state: str | None) -> tuple[str, str]:
     raw = (state or "kakao").strip() or "kakao"
-    parts = raw.split(":")
-    provider = (parts[0] or "kakao").strip() or "kakao"
-    page = "main"
-    if len(parts) > 1 and parts[1]:
-        page = urllib.parse.unquote(parts[1]).strip() or "main"
-    gid = None
-    if len(parts) > 2 and parts[2]:
-        gid = urllib.parse.unquote(parts[2]).strip() or None
-    return provider, page, gid
+    if ":" in raw:
+        provider, page = raw.split(":", 1)
+        provider = (provider or "kakao").strip() or "kakao"
+        page = urllib.parse.unquote(page).strip() or "main"
+        return provider, page
+    return raw, "main"
 
 
 def get_kakao_authorize_url(return_page: str = "main") -> str:
-    from user_scope import get_or_create_guest_id
-
     params = {
         "client_id": os.environ.get("KAKAO_REST_API_KEY", "").strip(),
         "redirect_uri": _redirect_uri(),
         "response_type": "code",
-        "state": _encode_oauth_state("kakao", return_page, get_or_create_guest_id()),
+        "state": _encode_oauth_state("kakao", return_page),
     }
     return f"{KAKAO_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
@@ -242,14 +227,7 @@ def handle_oauth_callback() -> bool:
     if not code:
         return False
 
-    provider_key, return_page, gid = _decode_oauth_state(st.query_params.get("state"))
-    if gid:
-        # 콜백이 앱의 gid 없이 열린 세션(기기 기본 브라우저)이어도, state에
-        # 실어 보낸 원래 기기 gid를 여기서 복원해야 finalize_login()이 부르는
-        # get_or_create_guest_id()가 엉뚱한 새 guest_id를 만들지 않는다.
-        from user_scope import GUEST_ID_QUERY_KEY
-
-        st.query_params[GUEST_ID_QUERY_KEY] = gid
+    provider_key, return_page = _decode_oauth_state(st.query_params.get("state"))
     provider_uid: str | None = None
     provider = "kakao"
     error: str | None = None
@@ -281,14 +259,6 @@ def handle_oauth_callback() -> bool:
     for key in ("code", "state", "error", "error_description"):
         if key in st.query_params:
             del st.query_params[key]
-
-    # 2026-09-05: 카카오 로그인이 기기 기본 브라우저에서 끝나면(native=1),
-    # 자동으로 앱에 복귀시키는 걸 여러 방식으로 시도했지만(Custom Tab 감지,
-    # <meta refresh> 등) 실기기(삼성)에서 전부 막혀 실패했다 — 자동 복귀는
-    # 포기하고, 로그인은 여기서 정상 완료(위에서 이미 끝남 + 올바른 gid 연결)
-    # 시킨 뒤 그냥 평소와 같은 로그인 완료 화면을 보여준다. 사용자가 직접
-    # 앱으로 돌아오면(뒤로가기·앱 전환 후 새로고침 버튼) restore_member_
-    # from_guest()가 이 gid 연결을 보고 조용히 로그인 상태를 이어준다.
     return True
 
 
