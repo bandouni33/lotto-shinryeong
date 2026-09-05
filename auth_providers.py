@@ -16,6 +16,14 @@ KAKAO_AUTH_URL = "https://kauth.kakao.com/oauth/authorize"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_URL = "https://kapi.kakao.com/v2/user/me"
 
+# 2026-09-05: 네이티브 앱(LottoShinryeong)은 카카오 로그인을 앱 내장 웹뷰가
+# 아니라 Custom Tab(streamlit-webview.tsx의 openAuthSessionAsync)으로 열고,
+# 이 커스텀 스킴으로 리다이렉트되는 순간을 감지해 자동으로 앱에 복귀시킨다
+# (Expo 표준 패턴). 시크릿이 아니라 그냥 앱의 scheme(app.json)이라 하드코딩—
+# Kakao Developers 콘솔에 이 값을 "카카오 로그인 Redirect URI"로 추가 등록해야
+# 한다(기존 https 리다이렉트 URI는 일반 웹 접속용으로 그대로 둔다).
+NATIVE_KAKAO_REDIRECT_URI = "myapp://oauth/kakao"
+
 
 def _dev_mock_enabled() -> bool:
     return os.environ.get("LOTTO_DEV_MOCK_AUTH", "1").strip() not in ("0", "false", "False")
@@ -33,7 +41,9 @@ def fincert_configured() -> bool:
     return bool(os.environ.get("FINCERT_CLIENT_ID", "").strip())
 
 
-def _redirect_uri() -> str:
+def _redirect_uri(native: bool = False) -> str:
+    if native:
+        return NATIVE_KAKAO_REDIRECT_URI
     return os.environ.get("KAKAO_REDIRECT_URI", "http://localhost:8501").strip()
 
 
@@ -71,9 +81,13 @@ def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None]:
 def get_kakao_authorize_url(return_page: str = "main") -> str:
     from user_scope import get_or_create_guest_id
 
+    # 네이티브 앱은 매 요청 ?native=1을 실어 보낸다(constants/streamlit.ts) —
+    # 이게 있으면 Custom Tab이 자동 감지할 수 있는 앱 전용 커스텀 스킴으로,
+    # 없으면(일반 웹 접속) 기존 https 리다이렉트로 인가 URL을 만든다.
+    native = st.query_params.get("native") == "1"
     params = {
         "client_id": os.environ.get("KAKAO_REST_API_KEY", "").strip(),
-        "redirect_uri": _redirect_uri(),
+        "redirect_uri": _redirect_uri(native),
         "response_type": "code",
         "state": _encode_oauth_state("kakao", return_page, get_or_create_guest_id()),
     }
@@ -184,11 +198,11 @@ def mock_kakao_login() -> tuple[int, bool, bool]:
     return mock_provider_login("kakao")
 
 
-def _exchange_kakao_code(code: str) -> tuple[str | None, str | None]:
+def _exchange_kakao_code(code: str, native: bool = False) -> tuple[str | None, str | None]:
     data = {
         "grant_type": "authorization_code",
         "client_id": os.environ.get("KAKAO_REST_API_KEY", "").strip(),
-        "redirect_uri": _redirect_uri(),
+        "redirect_uri": _redirect_uri(native),
         "code": code,
     }
     secret = os.environ.get("KAKAO_CLIENT_SECRET", "").strip()
@@ -261,7 +275,8 @@ def handle_oauth_callback() -> bool:
         provider = "fincert"
         provider_uid = _exchange_fincert_code(code)
     elif provider_key == "kakao" and kakao_configured():
-        provider_uid, error = _exchange_kakao_code(code)
+        native = st.query_params.get("native") == "1"
+        provider_uid, error = _exchange_kakao_code(code, native)
     else:
         st.error("간편인증 설정이 올바르지 않습니다. 관리자에게 문의해 주세요.")
         for key in ("code", "state", "error", "error_description"):

@@ -12,6 +12,8 @@ import {
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import * as ExpoLinking from 'expo-linking';
 
 import { getStreamlitBaseUrl, getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
@@ -51,7 +53,15 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // (utils/fresh-start.ts 설명 참고). 홈 버튼 등으로 잠깐 백그라운드 갔다 온
   // 경우나, 앱 안에서 다른 화면으로 이동한 경우엔 false.
   const [isFreshStart] = useState(() => consumeFreshStartFlag());
-  const mergedParams = isFreshStart ? { ...extraParams, fresh_start: '1' } : extraParams;
+  // 카카오 로그인(Custom Tab) 완료 후 돌려받은 code/state — 딱 한 번, 다음
+  // 웹뷰 로드에만 실어 보내면 되는 값이라 별도 state로 둔다(아래
+  // handleKakaoAuth/onLoadEnd 참고).
+  const [oauthExtraParams, setOauthExtraParams] = useState<Record<string, string> | null>(null);
+  const mergedParams = {
+    ...(extraParams || {}),
+    ...(isFreshStart ? { fresh_start: '1' } : {}),
+    ...(oauthExtraParams || {}),
+  };
   const uri = getStreamlitPageUrl(page, guestId, mergedParams);
 
   // QR 스캔 후 넘어오는 것처럼 ?qr=... 붙은 페이지에서, Streamlit이 그 1회성
@@ -112,6 +122,35 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     }
   })();
 
+  // 2026-09-05: 카카오 로그인을 그냥 기기 기본 브라우저(Linking.openURL)로
+  // 완전히 던져버리면, 로그인이 끝나도 그 결과는 그 브라우저 세션 안에만
+  // 남고 앱(이 웹뷰)으로 자동으로 돌아오는 절차가 없다 — 로그인 직후 앱에
+  // 돌아와도 계속 로그인 안 된 것처럼 보이던 문제의 원인이었다. 대신
+  // Custom Tab(WebBrowser.openAuthSessionAsync)으로 열어서, 로그인이
+  // myapp://oauth/kakao로 리다이렉트되는 순간 자동으로 감지·복귀시키고
+  // (Expo 공식 문서: redirectUrl 매칭 시 promise가 자동으로 resolve됨,
+  // 별도 Linking 리스너 불필요), 받은 code/state를 그대로 웹뷰 재로드
+  // URL에 실어 보내 로그인 처리 자체가 앱의 실제 gid를 아는 이 웹뷰
+  // 세션 안에서 끝나게 한다(auth_providers.py의 native=1 분기 참고).
+  const KAKAO_OAUTH_REDIRECT = ExpoLinking.createURL('oauth/kakao');
+  const handleKakaoAuth = useCallback(async (authUrl: string) => {
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, KAKAO_OAUTH_REDIRECT);
+      if (result.type === 'success' && result.url) {
+        const parsed = new URL(result.url);
+        const code = parsed.searchParams.get('code');
+        const state = parsed.searchParams.get('state');
+        if (code) {
+          setOauthExtraParams(state ? { code, state } : { code });
+        }
+      }
+      // 'cancel'/'dismiss'(사용자가 취소) — 그냥 로그인 배너 화면 그대로 둔다.
+    } catch {
+      // Custom Tab 실행 자체가 실패해도 앱이 죽으면 안 되니 조용히 무시 —
+      // 사용자는 로그인 배너에서 다시 시도할 수 있다.
+    }
+  }, [KAKAO_OAUTH_REDIRECT]);
+
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
   // (2026-08-19: 메인 화면 진입 링크에서는 이 방식이 잘 됐는데, 안티/액땜 상세페이지
   // 자체에 새로 넣은 "QR스캔" 버튼(같은 페이지 안에서 쿼리파라미터만 바뀌는 링크)을
@@ -134,6 +173,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (/^https?:\/\//i.test(request.url) && ownHostname) {
         try {
           const requestHostname = new URL(request.url).hostname;
+          if (requestHostname === 'kauth.kakao.com') {
+            handleKakaoAuth(request.url);
+            return false;
+          }
           if (requestHostname !== ownHostname) {
             Linking.openURL(request.url).catch(() => {});
             return false;
@@ -144,7 +187,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       }
       return true;
     },
-    [goToQrScan, ownHostname]
+    [goToQrScan, ownHostname, handleKakaoAuth]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
@@ -251,7 +294,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onMessage={onMessage}
           onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
+          onLoadEnd={() => {
+            setLoading(false);
+            // 카카오 로그인 code/state는 1회용 — 이 로드로 이미 서버에
+            // 전달됐으니 지워서, 이후 이 컴포넌트가 다른 이유로(예: QR
+            // 스캔 결과 반영) 다시 렌더링돼도 만료된 code를 또 실어
+            // 보내지 않게 한다.
+            if (oauthExtraParams) {
+              setOauthExtraParams(null);
+            }
+          }}
           onError={(e) => {
             setLoading(false);
             setError(e.nativeEvent.description || '연결 실패');
