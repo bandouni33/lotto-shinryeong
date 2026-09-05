@@ -310,14 +310,18 @@ def handle_oauth_callback() -> bool:
         # 이동시켜, Custom Tab이 이걸 감지하고 자동으로 앱에 복귀시키게
         # 한다(streamlit-webview.tsx의 openAuthSessionAsync 참고). 앱은
         # 복귀 즉시 자기 웹뷰를 새로고침해서(restore_member_from_guest)
-        # 방금 연결된 로그인을 그대로 이어받는다 — 여기서 st.rerun()으로
-        # 이 페이지를 계속 그리면 그 사이 리다이렉트 스크립트가 씹힐 수
-        # 있어 바로 멈춘다.
-        import streamlit.components.v1 as components
-
-        components.html(
-            f"<script>window.location.href = {NATIVE_KAKAO_REDIRECT_URI!r};</script>",
-            height=0,
+        # 방금 연결된 로그인을 그대로 이어받는다.
+        #
+        # 2026-09-05: 처음엔 components.html()로 <script>window.location.href=...
+        # 를 넣었는데, components.html()은 격리된(sandboxed) iframe 안에서
+        # 실행돼 그 안에서 아무리 location을 옮겨도 iframe 자기 자신만
+        # 이동하려 하고 막힌다 — 바깥의 실제 브라우저 탭(Custom Tab)은 전혀
+        # 안 움직여서 그 화면에 멈춰 있었다(실기기에서 재현 확인). st.markdown은
+        # (components.html과 달리) 메인 문서에 직접 렌더링되므로, <script> 대신
+        # 브라우저가 항상 최상위 문서에 적용하는 <meta refresh>로 리다이렉트한다.
+        st.markdown(
+            f'<meta http-equiv="refresh" content="0;url={NATIVE_KAKAO_REDIRECT_URI}">',
+            unsafe_allow_html=True,
         )
         st.stop()
     return True
