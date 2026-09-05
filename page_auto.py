@@ -325,7 +325,12 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
         next_round = _next_draw_round()
     except Exception:
         next_round = None
-    if next_round is not None and (not stats or stats[0]["draw_round"] != next_round):
+    # 2026-09-05: draw_round DESC 정렬이라 "1위 행 = 다음 회차"라고 가정했는데,
+    # 회차 체계와 무관한 테스트용 값(예: 9001)이 lotto_combinations에 남아있으면
+    # 숫자가 더 커서 1위를 차지해버려 next_round가 이미 존재해도 중복으로
+    # 미리보기 행이 또 끼워 넣어졌다(실제로 발생 확인, 2026-09-05) — "1위
+    # 행"이 아니라 "목록 전체에 next_round가 있는지"로 판단하도록 수정.
+    if next_round is not None and not any(s["draw_round"] == next_round for s in stats):
         live_count = _load_latest_filter_pattern_count()
         stats.insert(
             0,
