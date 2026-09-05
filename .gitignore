@@ -90,3 +90,18 @@ htmlcov/
 
 # 모바일 앱 빌드 산출물 (수동 Play Console 업로드용, 수십MB — git에는 안 올림)
 builds/
+
+# 2026-09-05: 조합생성 필터 규칙을 직접 설계·검증하는 원본 작업 파일들 —
+# 이 회사의 핵심 자산(어떤 조합이 통과하는지 결정하는 로직 원본)이라 공개
+# 저장소는 물론 어떤 커밋 이력에도 절대 들어가면 안 된다. 이미 검증이
+# 끝난 결과만 combo_filter_rules_stage*.json으로 압축해 프로덕션에 반영하고,
+# 원본 워크북 자체는 로컬에만 둔다. git add -A/git add . 로 실수로 딸려
+# 들어가는 걸 막기 위한 안전장치 — 실제로 커밋해야 할 새 데이터 파일이
+# 생기면 git add -f로 예외 처리할 것.
+조합생성*.xlsx
+조합생성*.xlsx.bak
+조합생성*.xlsx.*.bak
+*.xlsb
+*.xlsx.beforedefnameremoval.bak
+*.xlsx.beforelinkremoval.bak
+~$*.xlsx
