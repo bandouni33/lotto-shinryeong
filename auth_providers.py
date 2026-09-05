@@ -16,16 +16,6 @@ KAKAO_AUTH_URL = "https://kauth.kakao.com/oauth/authorize"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_URL = "https://kapi.kakao.com/v2/user/me"
 
-# 2026-09-05: 네이티브 앱(LottoShinryeong)은 카카오 로그인을 앱 내장 웹뷰가
-# 아니라 Custom Tab(streamlit-webview.tsx의 openAuthSessionAsync)으로 연다.
-# 카카오는 REST API 카카오 로그인의 redirect_uri로 커스텀 스킴(myapp://...)을
-# 등록조차 못 하게 막는다("유효하지 않은 URL") — 그래서 카카오에는 항상 기존
-# https redirect_uri만 쓴다. 대신 그 https 콜백 페이지(handle_oauth_callback,
-# 로그인 처리를 다 끝낸 뒤)가 "2차 리다이렉트"로 이 커스텀 스킴에 JS로 한 번
-# 더 이동시킨다 — Custom Tab이 이 두 번째 이동만 감지해서(Kakao와는 무관하게,
-# 우리 앱이 소유한 scheme이라 앱이 자동으로 가로챔) 앱으로 복귀시킨다.
-NATIVE_KAKAO_REDIRECT_URI = "myapp://oauth/kakao"
-
 
 def _dev_mock_enabled() -> bool:
     return os.environ.get("LOTTO_DEV_MOCK_AUTH", "1").strip() not in ("0", "false", "False")
@@ -47,15 +37,13 @@ def _redirect_uri() -> str:
     return os.environ.get("KAKAO_REDIRECT_URI", "http://localhost:8501").strip()
 
 
-def _encode_oauth_state(
-    provider: str, return_page: str = "main", gid: str | None = None, native: bool = False
-) -> str:
+def _encode_oauth_state(provider: str, return_page: str = "main", gid: str | None = None) -> str:
     page = (return_page or "main").strip() or "main"
     allowed = ("main", "thunder", "auto", "stats", "birthday", "advanced")
     if page not in allowed:
         page = "main"
     encoded = f"{provider}:{urllib.parse.quote(page, safe='')}"
-    if gid or native:
+    if gid:
         # 2026-09-05: 카카오 로그인이 앱 내장 웹뷰가 아니라 기기 기본 브라우저에서
         # 열리게 되면서(WebView OAuth 차단 대응) 콜백도 그 브라우저의 별도
         # Streamlit 세션에서 처리된다 — 그 세션엔 앱이 매 요청 실어 보내는
@@ -63,15 +51,11 @@ def _encode_oauth_state(
         # 만들어버리고, 로그인이 그 새 guest_id에 연결돼 앱으로 돌아와도
         # 로그인 상태가 안 보이는 문제로 이어졌다. state에 원래 기기 gid를
         # 실어 보내 콜백 쪽에서 복원한다(handle_oauth_callback 참고).
-        encoded += f":{urllib.parse.quote(gid, safe='') if gid else ''}"
-    if native:
-        # 콜백 처리 후 커스텀 스킴으로 2차 리다이렉트할지 여부 —
-        # NATIVE_KAKAO_REDIRECT_URI 설명 참고.
-        encoded += ":1"
+        encoded += f":{urllib.parse.quote(gid, safe='')}"
     return encoded
 
 
-def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None, bool]:
+def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None]:
     raw = (state or "kakao").strip() or "kakao"
     parts = raw.split(":")
     provider = (parts[0] or "kakao").strip() or "kakao"
@@ -81,23 +65,17 @@ def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None, bool]:
     gid = None
     if len(parts) > 2 and parts[2]:
         gid = urllib.parse.unquote(parts[2]).strip() or None
-    native = len(parts) > 3 and parts[3] == "1"
-    return provider, page, gid, native
+    return provider, page, gid
 
 
 def get_kakao_authorize_url(return_page: str = "main") -> str:
     from user_scope import get_or_create_guest_id
 
-    # 카카오는 redirect_uri로 항상 등록된 https 주소만 받는다(커스텀 스킴은
-    # "유효하지 않은 URL"로 거부됨) — native=1이어도 여기선 redirect_uri를
-    # 그대로 두고, state에만 native 표식을 실어 콜백(handle_oauth_callback)이
-    # 처리 후 2차 리다이렉트를 할지 판단하게 한다.
-    native = st.query_params.get("native") == "1"
     params = {
         "client_id": os.environ.get("KAKAO_REST_API_KEY", "").strip(),
         "redirect_uri": _redirect_uri(),
         "response_type": "code",
-        "state": _encode_oauth_state("kakao", return_page, get_or_create_guest_id(), native),
+        "state": _encode_oauth_state("kakao", return_page, get_or_create_guest_id()),
     }
     return f"{KAKAO_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
@@ -264,7 +242,7 @@ def handle_oauth_callback() -> bool:
     if not code:
         return False
 
-    provider_key, return_page, gid, native = _decode_oauth_state(st.query_params.get("state"))
+    provider_key, return_page, gid = _decode_oauth_state(st.query_params.get("state"))
     if gid:
         # 콜백이 앱의 gid 없이 열린 세션(기기 기본 브라우저)이어도, state에
         # 실어 보낸 원래 기기 gid를 여기서 복원해야 finalize_login()이 부르는
@@ -304,49 +282,13 @@ def handle_oauth_callback() -> bool:
         if key in st.query_params:
             del st.query_params[key]
 
-    if native:
-        # 로그인은 이미 위에서 다 끝났다(이 Custom Tab 세션 안에서 올바른
-        # gid에 정상적으로 연결됨) — 이제 앱 전용 커스텀 스킴으로 한 번 더
-        # 이동시켜, Custom Tab이 이걸 감지하고 자동으로 앱에 복귀시키게
-        # 한다(streamlit-webview.tsx의 openAuthSessionAsync 참고). 앱은
-        # 복귀 즉시 자기 웹뷰를 새로고침해서(restore_member_from_guest)
-        # 방금 연결된 로그인을 그대로 이어받는다.
-        #
-        # 2026-09-05 시도1: components.html()로 <script>window.location.href=...>
-        # — 격리된(sandboxed) iframe 안에서 실행돼 iframe 자기 자신만 이동하려
-        # 하고 막힘. 바깥 브라우저 탭(Custom Tab)은 전혀 안 움직임(실기기 확인).
-        #
-        # 2026-09-05 시도2: st.markdown + <meta http-equiv="refresh"> — 메인
-        # 문서에 직접 렌더링되니 iframe 문제는 없앴지만, 이번엔 안드로이드
-        # 크롬이 "사용자 제스처 없는 자동 리다이렉트로 외부 앱(커스텀 스킴)을
-        #여는 것" 자체를 보안상 조용히 차단해서 여전히 그 화면에 멈춤
-        # (실기기 확인 — 알림/오류 없이 그냥 무시됨).
-        #
-        # 최종: 자동 복귀를 포기하고, 사용자가 직접 탭하는 버튼으로 확실하게
-        # 만든다 — 실제 탭(사용자 제스처)이면 안드로이드가 커스텀 스킴 이동을
-        # 막지 않는다.
-        st.markdown(
-            f"""
-            <div style="text-align:center; padding:32px 16px; font-family:sans-serif;">
-                <div style="font-size:40px; margin-bottom:12px;">✅</div>
-                <div style="font-size:18px; font-weight:700; color:#222; margin-bottom:8px;">
-                    로그인이 완료되었습니다
-                </div>
-                <div style="font-size:14px; color:#666; margin-bottom:24px;">
-                    아래 버튼을 눌러 로또신령 앱으로 돌아가세요
-                </div>
-                <a href="{NATIVE_KAKAO_REDIRECT_URI}"
-                   style="display:inline-block; background:#fee500; color:#191919;
-                          font-weight:700; font-size:16px; padding:14px 32px;
-                          border-radius:10px; text-decoration:none;">
-                    로또신령 앱으로 돌아가기
-                </a>
-            </div>
-            <meta http-equiv="refresh" content="0;url={NATIVE_KAKAO_REDIRECT_URI}">
-            """,
-            unsafe_allow_html=True,
-        )
-        st.stop()
+    # 2026-09-05: 카카오 로그인이 기기 기본 브라우저에서 끝나면(native=1),
+    # 자동으로 앱에 복귀시키는 걸 여러 방식으로 시도했지만(Custom Tab 감지,
+    # <meta refresh> 등) 실기기(삼성)에서 전부 막혀 실패했다 — 자동 복귀는
+    # 포기하고, 로그인은 여기서 정상 완료(위에서 이미 끝남 + 올바른 gid 연결)
+    # 시킨 뒤 그냥 평소와 같은 로그인 완료 화면을 보여준다. 사용자가 직접
+    # 앱으로 돌아오면(뒤로가기·앱 전환 후 새로고침 버튼) restore_member_
+    # from_guest()가 이 gid 연결을 보고 조용히 로그인 상태를 이어준다.
     return True
 
 

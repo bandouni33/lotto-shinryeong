@@ -12,8 +12,6 @@ import {
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import * as ExpoLinking from 'expo-linking';
 
 import { getStreamlitBaseUrl, getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
@@ -114,34 +112,6 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     }
   })();
 
-  // 2026-09-05: 카카오 로그인을 그냥 기기 기본 브라우저(Linking.openURL)로
-  // 완전히 던져버리면, 로그인이 끝나도 그 결과는 그 브라우저 세션 안에만
-  // 남고 앱(이 웹뷰)으로 자동으로 돌아오는 절차가 없다 — 로그인 직후 앱에
-  // 돌아와도 계속 로그인 안 된 것처럼 보이던 문제의 원인이었다. 대신
-  // Custom Tab(WebBrowser.openAuthSessionAsync)으로 열되, 카카오 자체는
-  // 리다이렉트로 커스텀 스킴을 등록조차 못 하게 막아서(콘솔에서 "유효하지
-  // 않은 URL"로 거부됨) 카카오에는 항상 기존 https 리다이렉트를 그대로
-  // 쓴다. 대신 그 https 콜백 페이지(auth_providers.handle_oauth_callback,
-  // 로그인 처리를 다 끝낸 뒤 — 이 시점에 이미 올바른 gid로 로그인이
-  // 완료돼 있다)가 JS로 한 번 더 myapp://oauth/kakao로 이동시키고, 이
-  // "2차 이동"만 Custom Tab이 자동 감지해 앱으로 복귀시킨다(Expo 공식
-  // 문서: redirectUrl 매칭 시 promise가 자동 resolve됨, 별도 Linking
-  // 리스너 불필요). 복귀 즉시 이 웹뷰를 새로고침해서 방금 완료된 로그인을
-  // restore_member_from_guest()로 이어받는다.
-  const KAKAO_OAUTH_REDIRECT = ExpoLinking.createURL('oauth/kakao');
-  const handleKakaoAuth = useCallback(async (authUrl: string) => {
-    try {
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, KAKAO_OAUTH_REDIRECT);
-      if (result.type === 'success') {
-        webViewRef.current?.reload();
-      }
-      // 'cancel'/'dismiss'(사용자가 취소) — 그냥 로그인 배너 화면 그대로 둔다.
-    } catch {
-      // Custom Tab 실행 자체가 실패해도 앱이 죽으면 안 되니 조용히 무시 —
-      // 사용자는 로그인 배너에서 다시 시도할 수 있다.
-    }
-  }, [KAKAO_OAUTH_REDIRECT]);
-
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
   // (2026-08-19: 메인 화면 진입 링크에서는 이 방식이 잘 됐는데, 안티/액땜 상세페이지
   // 자체에 새로 넣은 "QR스캔" 버튼(같은 페이지 안에서 쿼리파라미터만 바뀌는 링크)을
@@ -155,6 +125,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 시도를 보안상 차단하기 때문이었다. 우리 서버와 다른 hostname으로 나가는
   // 요청은 웹뷰에서 막고 기기 기본 브라우저(Linking.openURL)로 넘겨, 로그인은
   // 정상 브라우저에서 끝내고 콜백으로 우리 앱(같은 hostname)에 돌아오게 한다.
+  //
+  // (한때 카카오 로그인만 Custom Tab(WebBrowser.openAuthSessionAsync)으로
+  // 열어 로그인 후 자동으로 앱에 복귀시키려 시도했는데, 실기기(삼성)에서
+  // Custom Tab이 리다이렉트를 감지 못 하고 그 화면에 멈추는 문제가 있어
+  // 되돌렸다 — 로그인 자체는 기기 기본 브라우저에서 확실하게 되고, 사용자가
+  // 직접 앱으로 돌아오면 gid 연결로 로그인 상태를 알아본다. 혹시 몰라
+  // 툴바에 새로고침 버튼을 추가해 뒀다 — 자동으로 안 됐을 때 확실한 탈출구.)
   const onShouldStartLoadWithRequest = useCallback(
     (request: { url: string }) => {
       if (request.url.includes('qrscan=1')) {
@@ -164,10 +141,6 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (/^https?:\/\//i.test(request.url) && ownHostname) {
         try {
           const requestHostname = new URL(request.url).hostname;
-          if (requestHostname === 'kauth.kakao.com') {
-            handleKakaoAuth(request.url);
-            return false;
-          }
           if (requestHostname !== ownHostname) {
             Linking.openURL(request.url).catch(() => {});
             return false;
@@ -178,7 +151,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       }
       return true;
     },
-    [goToQrScan, ownHostname, handleKakaoAuth]
+    [goToQrScan, ownHostname]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
@@ -253,6 +226,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         <Text style={styles.title} numberOfLines={1}>
           {title ?? page}
         </Text>
+        {/* 2026-09-05: 카카오 로그인은 앱 밖 브라우저에서 진행되고 자동으로
+            돌아오지 않는다 — 로그인 끝내고 직접 앱으로 돌아온 사용자가 언제든
+            눌러서 로그인 상태를 확실히 반영시킬 수 있는 확실한 탈출구. */}
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={() => webViewRef.current?.reload()}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.refreshText}>⟳ 새로고침</Text>
+        </TouchableOpacity>
       </View>
 
       {error ? (
@@ -371,6 +354,13 @@ const styles = StyleSheet.create({
   backPlaceholder: { width: 72 },
   backText: { color: '#f9a825', fontWeight: '700', fontSize: 14 },
   title: { flex: 1, color: '#e0e0e0', fontWeight: '700', fontSize: 15 },
+  refreshBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#1c2645',
+  },
+  refreshText: { color: '#90caf9', fontWeight: '700', fontSize: 13 },
   webview: { flex: 1, backgroundColor: '#12182b' },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
