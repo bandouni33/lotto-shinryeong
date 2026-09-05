@@ -89,7 +89,8 @@ def init_marketing_tables():
             num4 INTEGER NOT NULL,
             num5 INTEGER NOT NULL,
             num6 INTEGER NOT NULL,
-            win_rank INTEGER NULL
+            win_rank INTEGER NULL,
+            top3_mask INTEGER NULL
         )
     """)
     conn.execute("""
@@ -258,9 +259,20 @@ def _migrate_lotto_combinations(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE lotto_combinations ADD COLUMN allocated_at TEXT NULL")
     if "auto_order_id" not in cols:
         conn.execute("ALTER TABLE lotto_combinations ADD COLUMN auto_order_id INTEGER NULL")
+    # 2026-09-05: 격차순위(gap_order) 1~3위 숫자 포함 여부 비트마스크
+    # (1위=1, 2위=2, 3위=4) — 구매 배포 시 "5개=1묶음"을 5가지 겹침
+    # 조합({1,2}/{1,3}/{1,2,3}/{2,3}/{3}만)으로 정확히 채우는 데 쓴다.
+    # 관리자 CSV 업로드 등 top3_numbers 없이 저장된 기존/구버전 행은 NULL로
+    # 남아 묶음 배분에선 제외되고 부족분 채우기(leftover)에만 쓰인다.
+    if "top3_mask" not in cols:
+        conn.execute("ALTER TABLE lotto_combinations ADD COLUMN top3_mask INTEGER NULL")
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_lotto_combinations_allocate
         ON lotto_combinations(draw_round, allocated_at)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lotto_combinations_top3_mask
+        ON lotto_combinations(draw_round, allocated_at, top3_mask)
     """)
     # get_combinations_by_auto_order_id()가 auto_order_id로 조회하는데 이 컬럼엔
     # 인덱스가 없었다 — lotto_combinations는 회차마다 수천 행씩 계속 쌓이는 테이블이라,
@@ -343,7 +355,7 @@ def _fetch_pending_rows(conn: sqlite3.Connection, draw_round: int) -> list:
     conn.row_factory = sqlite3.Row
     return conn.execute(
         """
-        SELECT id, num1, num2, num3, num4, num5, num6
+        SELECT id, num1, num2, num3, num4, num5, num6, top3_mask
         FROM lotto_combinations
         WHERE draw_round = ? AND allocated_at IS NULL
         ORDER BY id
@@ -444,7 +456,7 @@ def _verify_claims_alive(conn, claimed_ids: set, auto_order_id: int) -> list:
     placeholders = ",".join("?" * len(claimed_ids))
     return conn.execute(
         f"""
-        SELECT id, num1, num2, num3, num4, num5, num6
+        SELECT id, num1, num2, num3, num4, num5, num6, top3_mask
         FROM lotto_combinations
         WHERE id IN ({placeholders}) AND auto_order_id = ?
         """,
@@ -592,6 +604,59 @@ def _pick_spread_indices(pool_size: int, count: int) -> list[int]:
     return indices
 
 
+# 2026-09-05 확정(사용자 지정): 구매 5개 = "1묶음". 격차순위(gap_order) 1~3위
+# 숫자를 어떤 조합으로 겹쳐서 포함하는지에 따라 5가지로 나눠 정확히 1개씩
+# 채운다 — 순수 1위만/2위만 포함 조합은 흔해서 묶음에서 제외하고, 겹치는(드문)
+# 조합들을 고르게 배분해 다양성을 보장한다. 비트: 1위=1, 2위=2, 3위=4.
+_BUNDLE_MASKS = (3, 5, 7, 6, 4)  # {1,2} / {1,3} / {1,2,3} / {2,3} / {3}만
+_BUNDLE_SIZE = len(_BUNDLE_MASKS)
+
+
+def _bundle_mask_quota(count: int) -> dict[int, int]:
+    """count(5의 배수 기준)를 5가지 마스크에 균등 배분한 목표 수량.
+    5의 배수가 아니면 나머지를 앞에서부터 1개씩 얹는다(방어적 처리 —
+    현재 구매 수량 선택지는 5/10개뿐이라 실제로는 항상 딱 떨어진다)."""
+    bundles, leftover = divmod(count, _BUNDLE_SIZE)
+    quota = {mask: bundles for mask in _BUNDLE_MASKS}
+    for mask in _BUNDLE_MASKS[:leftover]:
+        quota[mask] += 1
+    return quota
+
+
+def _pick_bundle_candidates(pending: list, quota_remaining: dict[int, int]) -> list:
+    """마스크별 부족분을 그 마스크 버킷 안에서 분산선택(_pick_spread_indices)으로
+    채운다. 특정 마스크 재고가 모자라면 남은 총량만큼 나머지 pending(마스크
+    무관, NULL 포함)에서 채워 최소한 need는 맞춘다."""
+    by_mask: dict[int, list] = {}
+    for row in pending:
+        by_mask.setdefault(int(row["top3_mask"]) if row["top3_mask"] is not None else 0, []).append(row)
+
+    picked: list = []
+    picked_ids: set[int] = set()
+    for mask, need in quota_remaining.items():
+        if need <= 0:
+            continue
+        bucket = by_mask.get(mask, [])
+        if not bucket:
+            continue
+        idxs = _pick_spread_indices(len(bucket), min(need, len(bucket)))
+        for i in idxs:
+            row = bucket[i]
+            rid = int(row["id"])
+            if rid not in picked_ids:
+                picked_ids.add(rid)
+                picked.append(row)
+
+    still_need = sum(quota_remaining.values()) - len(picked)
+    if still_need > 0:
+        leftover = [row for row in pending if int(row["id"]) not in picked_ids]
+        if leftover:
+            idxs = _pick_spread_indices(len(leftover), min(still_need, len(leftover)))
+            picked.extend(leftover[i] for i in idxs)
+
+    return picked
+
+
 def allocate_lotto_combinations_random_sequential(
     draw_round: int,
     count: int,
@@ -618,6 +683,11 @@ def allocate_lotto_combinations_random_sequential(
     rotated = False
     claimed_rows: list = []
     claimed_ids: set[int] = set()
+    # count가 5의 배수(현재 구매 수량 선택지는 5/10개뿐)면 "1~3위 절대수
+    # 겹침 조합 5종 묶음" 배분을 적용 — 그 외(예: 관리자 도구의 임의 수량
+    # 호출)는 기존 순수 분산선택 그대로.
+    use_bundle_quota = count % _BUNDLE_SIZE == 0
+    full_quota = _bundle_mask_quota(count) if use_bundle_quota else None
     try:
         total = _count_total_combinations(conn, draw_round)
         if total < count:
@@ -655,8 +725,19 @@ def allocate_lotto_combinations_random_sequential(
             if not pending:
                 continue
 
-            pick_indices = _pick_spread_indices(len(pending), min(need, len(pending)))
-            candidates = [pending[i] for i in pick_indices]
+            if use_bundle_quota:
+                claimed_mask_counts = Counter(
+                    int(r["top3_mask"]) if r["top3_mask"] is not None else 0
+                    for r in claimed_rows
+                )
+                quota_remaining = {
+                    mask: full_quota[mask] - claimed_mask_counts.get(mask, 0)
+                    for mask in full_quota
+                }
+                candidates = _pick_bundle_candidates(pending, quota_remaining)[:need]
+            else:
+                pick_indices = _pick_spread_indices(len(pending), min(need, len(pending)))
+                candidates = [pending[i] for i in pick_indices]
             now = datetime.now().isoformat()
             newly_claimed = _claim_pending_ids(
                 conn, [int(row["id"]) for row in candidates], auto_order_id, now
@@ -683,13 +764,19 @@ def allocate_lotto_combinations_random_sequential(
     finally:
         conn.close()
 
+    result_rows = claimed_rows[:count]
+    if use_bundle_quota:
+        # "묶음 랜덤방식" — 5종류를 순서대로 채웠어도 사용자에게 보여줄
+        # 때는 카테고리 순서가 드러나지 않도록 섞는다.
+        random.shuffle(result_rows)
+
     return [
         {
             "id": int(row["id"]),
             "combo": _combo_nums_from_row(row),
             "rotated": rotated,
         }
-        for row in claimed_rows[:count]
+        for row in result_rows
     ]
 
 
@@ -1141,11 +1228,29 @@ def parse_combination_rows_from_dataframe(df) -> list[tuple[int, int, int, int, 
     return rows
 
 
+def _compute_top3_mask(
+    combo: tuple[int, ...], top3_numbers: tuple[int, int, int]
+) -> int:
+    """격차순위 1~3위 숫자 포함 여부 비트마스크(1위=1, 2위=2, 3위=4)."""
+    combo_set = set(combo)
+    mask = 0
+    for bit, num in zip((1, 2, 4), top3_numbers):
+        if num in combo_set:
+            mask |= bit
+    return mask
+
+
 def bulk_insert_lotto_combinations(
     draw_round: int,
     combinations: list,
+    top3_numbers: tuple[int, int, int] | None = None,
 ) -> int:
-    """익명 로또 조합 대량 등록 (win_rank는 NULL)."""
+    """익명 로또 조합 대량 등록 (win_rank는 NULL).
+
+    top3_numbers(격차순위 1~3위 숫자)를 주면 조합마다 top3_mask를 같이
+    계산해 저장한다 — combo_gen_worker.py가 매주 생성분에 대해 넘긴다.
+    관리자 CSV 업로드 등 안 넘기는 경로는 그대로 top3_mask=NULL.
+    """
     draw_round = int(draw_round)
     if draw_round < 1:
         raise ValueError("draw_round는 1 이상이어야 합니다.")
@@ -1155,7 +1260,8 @@ def bulk_insert_lotto_combinations(
         combo = row if isinstance(row, tuple) else _normalize_combo(row)
         if combo is None:
             continue
-        payload.append((draw_round, *combo))
+        mask = _compute_top3_mask(combo, top3_numbers) if top3_numbers else None
+        payload.append((draw_round, *combo, mask))
 
     if not payload:
         return 0
@@ -1164,8 +1270,8 @@ def bulk_insert_lotto_combinations(
     conn.executemany(
         """
         INSERT INTO lotto_combinations
-            (draw_round, num1, num2, num3, num4, num5, num6, win_rank)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            (draw_round, num1, num2, num3, num4, num5, num6, win_rank, top3_mask)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
         """,
         payload,
     )

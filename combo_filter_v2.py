@@ -194,7 +194,7 @@ def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
 
     stage4_mask = stage2_mask & cond1 & cond2
 
-    return combos, combo_oh, stage4_mask, int(base_mask.sum()), int(stage2_mask.sum())
+    return combos, combo_oh, stage4_mask, int(base_mask.sum()), int(stage2_mask.sum()), gap_order
 
 
 def generate_next_round_combos(history_desc: list[dict]) -> tuple[int, list[tuple[int, ...]], dict]:
@@ -204,7 +204,7 @@ def generate_next_round_combos(history_desc: list[dict]) -> tuple[int, list[tupl
     anchor_round = history_asc[-1]["draw_round"]
     target_round = anchor_round + 1
 
-    combos, combo_oh, stage4_mask, static_gap_count, stage2_count = (
+    combos, combo_oh, stage4_mask, static_gap_count, stage2_count, gap_order = (
         _compute_pool_for_anchor(history_asc, anchor_round)
     )
     passing = combos[stage4_mask]
@@ -214,6 +214,10 @@ def generate_next_round_combos(history_desc: list[dict]) -> tuple[int, list[tupl
         "static_gap_count": static_gap_count,
         "stage2_count": stage2_count,
         "final_count": int(stage4_mask.sum()),
+        # 2026-09-05: 구매조합 배포 시 "1~3위 절대수 겹침 조합" 5종 묶음 배분에
+        # 쓰는 격차순위 1~3위 숫자(gap_order[:3]과 동일) — combo_gen_worker.py가
+        # bulk_insert_lotto_combinations에 그대로 넘겨 조합마다 top3_mask를 매긴다.
+        "top3_numbers": tuple(int(x) for x in gap_order[:3]),
     }
     return target_round, [tuple(int(x) for x in row) for row in passing], stats
 
@@ -237,7 +241,7 @@ def compute_reference_stats(
         return None
     anchor_round = history_asc[idx - 1]["draw_round"]
 
-    combos, combo_oh, stage4_mask, _, _ = _compute_pool_for_anchor(
+    combos, combo_oh, stage4_mask, _, _, _ = _compute_pool_for_anchor(
         history_asc, anchor_round
     )
     pool_oh = combo_oh[stage4_mask]

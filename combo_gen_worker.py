@@ -57,7 +57,9 @@ def main() -> int:
 
         sample_size = math.floor(len(combos) * EXTRACT_RATE)
         sample = random.sample(combos, sample_size) if sample_size < len(combos) else combos
-        inserted = marketing_db.bulk_insert_lotto_combinations(target_round, sample)
+        inserted = marketing_db.bulk_insert_lotto_combinations(
+            target_round, sample, top3_numbers=stats.get("top3_numbers")
+        )
         marketing_db.record_draw_pattern_count(target_round, PATTERN_COUNT_DISPLAY)
 
         # 지난 회차(이미 추첨된, 더는 팔 수 없는) 조합은 정리 — 안 지우면
