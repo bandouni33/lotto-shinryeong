@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -12,7 +13,7 @@ import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
-import { getStreamlitPageUrl } from '@/constants/streamlit';
+import { getStreamlitBaseUrl, getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
 import { consumeFreshStartFlag } from '@/utils/fresh-start';
 
@@ -98,6 +99,19 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     [goToQrScan]
   );
 
+  // 카카오 로그인처럼 앱 밖 도메인(kauth.kakao.com 등)으로 나가야 하는 링크를
+  // 웹뷰 자체 호스트와 구분하기 위한 기준 hostname. 카카오 로그인이 끝나고
+  // 우리 서버(base)로 돌아오는 콜백 리다이렉트는 hostname이 같으므로 계속
+  // 웹뷰 안에서 처리되고, kauth.kakao.com/accounts.kakao.com 같은 제3자
+  // 도메인만 아래에서 기기 기본 브라우저로 넘어간다.
+  const ownHostname = (() => {
+    try {
+      return new URL(getStreamlitBaseUrl()).hostname;
+    } catch {
+      return null;
+    }
+  })();
+
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
   // (2026-08-19: 메인 화면 진입 링크에서는 이 방식이 잘 됐는데, 안티/액땜 상세페이지
   // 자체에 새로 넣은 "QR스캔" 버튼(같은 페이지 안에서 쿼리파라미터만 바뀌는 링크)을
@@ -105,15 +119,32 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 보고됐다 — 안드로이드 웹뷰가 "같은 경로, 쿼리만 다른" 네비게이션을 이 콜백
   // 없이 처리하는 경우가 있는 것으로 보인다.) 그래도 되는 기종에서는 이게 가장
   // 빠르게(실제 로드 자체를 막으면서) 넘어가므로 그대로 둔다.
+  //
+  // 2026-09-05: "카카오로 시작하기"를 누르면 kauth.kakao.com이 웹뷰 안에서
+  // 빈 화면으로 뜨는 문제 — 카카오가 앱 내장 웹뷰(인앱 브라우저)에서의 로그인
+  // 시도를 보안상 차단하기 때문이었다. 우리 서버와 다른 hostname으로 나가는
+  // 요청은 웹뷰에서 막고 기기 기본 브라우저(Linking.openURL)로 넘겨, 로그인은
+  // 정상 브라우저에서 끝내고 콜백으로 우리 앱(같은 hostname)에 돌아오게 한다.
   const onShouldStartLoadWithRequest = useCallback(
     (request: { url: string }) => {
       if (request.url.includes('qrscan=1')) {
         goToQrScan();
         return false;
       }
+      if (/^https?:\/\//i.test(request.url) && ownHostname) {
+        try {
+          const requestHostname = new URL(request.url).hostname;
+          if (requestHostname !== ownHostname) {
+            Linking.openURL(request.url).catch(() => {});
+            return false;
+          }
+        } catch {
+          // URL 파싱 실패 시 안전하게 웹뷰 내부 로드로 처리
+        }
+      }
       return true;
     },
-    [goToQrScan]
+    [goToQrScan, ownHostname]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
