@@ -27,6 +27,13 @@ def maybe_trigger_weekly_generation() -> None:
     import draw_results_db
     import marketing_db
 
+    # 2026-09-05 확정: "회차 감지되는 즉시"가 아니라 매주 월요일 오전
+    # 10시대(10:00~10:59 KST)에만 생성 — 구매자 랜덤배정 자체는 이 시간과
+    # 무관하게 상시 작동(자동구매는 이미 저장된 풀에서 바로 배정하므로).
+    now = _now_kst()
+    if not (now.weekday() == 0 and now.hour == 10):
+        return
+
     app_settings.init_settings_table()
 
     last_check_str = app_settings.get_setting("combo_gen_last_check_at", "")

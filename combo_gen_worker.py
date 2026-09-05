@@ -73,6 +73,10 @@ def main() -> int:
             old_round = int(row[0])
             cleaned += marketing_db.delete_lotto_combinations_by_draw(old_round)
 
+        # 번개조합/안티조합/액땜조합 저장분(guest_generated_combos)도 최근
+        # 2회차만 남기고 정리 — 이 테이블은 지금까지 정리 로직이 없었다.
+        cleaned_guest = marketing_db.cleanup_old_guest_generated_combos(keep_rounds=2)
+
         # 방금 막 추첨된 anchor_round 자체의 "참고용 당첨가능 통계"를
         # 계산해서 기록 — 그 전주에 이 조합군이 어떻게 나왔을지 재현한 뒤
         # 이번에 나온 진짜 당첨번호와 대조한다(1241회부터만 의미 있음 —
@@ -94,6 +98,7 @@ def main() -> int:
             inserted=inserted,
             sample_size=sample_size,
             cleaned_old_rows=cleaned,
+            cleaned_guest_rows=cleaned_guest,
             stats=stats,
             reference_stats_for_anchor=ref_note,
         )

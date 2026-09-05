@@ -927,6 +927,27 @@ def list_guest_generated_combos(guest_id: str, source: str | None = None, limit:
     return [batches[k] for k in order[:limit]]
 
 
+def cleanup_old_guest_generated_combos(keep_rounds: int = 2) -> int:
+    """guest_generated_combos(번개조합/안티조합/액땜조합 저장분) — 최근
+    N개 회차만 남기고 그 이전은 삭제. 이 테이블은 여지껏 정리 로직이 없어
+    무한정 쌓이고 있었다(2026-09-05 확인)."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT DISTINCT draw_round FROM guest_generated_combos ORDER BY draw_round DESC"
+    ).fetchall()
+    keep = {int(r[0]) for r in rows[:keep_rounds]}
+    old_rounds = [int(r[0]) for r in rows[keep_rounds:]]
+    deleted = 0
+    for old_round in old_rounds:
+        cur = conn.execute(
+            "DELETE FROM guest_generated_combos WHERE draw_round = ?", (old_round,)
+        )
+        deleted += int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def get_generated_combo_pending_draw_rounds() -> list[int]:
     """win_rank가 아직 비어 있는 생성조합이 존재하는 회차 목록 — 당첨마킹 동기화 대상."""
     conn = _connect()
