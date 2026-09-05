@@ -192,10 +192,10 @@ div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) {
 }
 div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) label p,
 .auth-banner-consent-item {
-    color: #cfd8dc !important;
-    font-size: 11.5px !important;
-    line-height: 1.4 !important;
-    margin: 2px 0 !important;
+    color: #e8eef2 !important;
+    font-size: 13.5px !important;
+    line-height: 1.7 !important;
+    margin: 6px 0 !important;
 }
 .st-key-auth_banner_kakao a,
 .st-key-auth_banner_kakao button[kind="primary"] {
