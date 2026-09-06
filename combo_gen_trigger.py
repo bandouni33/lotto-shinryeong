@@ -51,11 +51,21 @@ def maybe_trigger_weekly_generation() -> None:
     app_settings.set_setting("combo_gen_last_check_at", _now_kst().isoformat())
 
     draw_results_db.init_draw_results_table()
-    new_round = draw_results_db.sync_latest_from_dhlottery()
-    if new_round is None:
+    # 2026-09-06 버그 수정: sync_latest_from_dhlottery()는 "이번 호출에서
+    # 새로 발견된" 회차만 반환하고, 이미 알고 있던 회차면 None을 준다(다른
+    # 경로— 시간별 자동동기화 등 —로 미리 동기화돼 있던 경우가 흔함). 예전
+    # 코드는 이 None을 "할 일 없음"으로 오해해서 그 자리에서 조용히
+    # 종료했는데, 그 바람에 1240회가 이미 알려진 상태였던 첫 일요일에
+    # 1241회 조합 생성이 통째로 스킵됐다(실측 확인). 새로 발견됐든 이미
+    # 알고 있던 회차든 상관없이, "지금 알고 있는 최신 회차" 기준으로
+    # target_round를 계산해야 한다 — 아래 get_combination_count_by_draw
+    # 체크가 어차피 중복 생성은 막아주므로 안전하다.
+    draw_results_db.sync_latest_from_dhlottery()
+    latest_round = draw_results_db.get_latest_draw_round()
+    if latest_round is None:
         return
 
-    target_round = new_round + 1
+    target_round = latest_round + 1
     if marketing_db.get_combination_count_by_draw(target_round) > 0:
         return  # 이미 생성됨
 
