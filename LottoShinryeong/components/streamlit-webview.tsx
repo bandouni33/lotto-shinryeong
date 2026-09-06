@@ -17,6 +17,7 @@ import { login as kakaoNativeLogin } from '@react-native-seoul/kakao-login';
 import { getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
 import { consumeFreshStartFlag } from '@/utils/fresh-start';
+import { clearBackgroundedMark, isSessionTimedOut, markBackgrounded } from '@/utils/session-timeout';
 
 type Props = {
   page: string;
@@ -72,30 +73,49 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 안드로이드에서 신뢰할 수 없다는 게 실사용 습관(뒤로가기로 종료 후 최근
   // 앱 목록에서 모두 닫기)으로 확인됐다 — 그렇게 "완전히" 닫아도 OS가 프로세스
   // 자체는 한동안 캐싱해두는 경우가 흔해서, 10분 넘게 지나도 로그인이 그대로
-  // 유지되는 문제가 있었다. 은행앱들이 쓰는 방식(시간 기준 재인증)으로 보완:
-  // 앱이 백그라운드로 간 시각을 기록해두고, 다시 포그라운드로 돌아왔을 때
-  // 3분 이상 지났으면 위 fresh_start와 동일한 신호를 보낸다. 프로세스가
-  // 실제로 죽었는지와 무관하게 항상 일관되게 동작한다.
-  const BACKGROUND_LOGOUT_MS = 3 * 60 * 1000;
-  const backgroundedAtRef = useRef<number | null>(null);
+  // 유지되는 문제가 있었다. 은행앱들이 쓰는 방식(시간 기준 재인증)으로 보완.
+  //
+  // 처음엔 이 기록을 컴포넌트 안 useRef(메모리)로만 들고 있었는데, 실기기
+  // 테스트에서 2시간 넘게 지나도 로그인이 그대로 유지되는 문제가 또
+  // 보고됐다 — 화면 전환 등으로 이 컴포넌트가 다시 마운트되면 메모리
+  // 기록이 조용히 초기화될 수 있어(원인 특정은 못 했지만 실측상 재현됨)
+  // 신뢰할 수 없었다. getOrCreateGuestId()와 동일하게 AsyncStorage(기기
+  // 저장소)에 기록하도록 바꾼다 — 컴포넌트가 몇 번을 다시 마운트되든,
+  // 심지어 프로세스가 완전히 재시작돼도 기록이 그대로 남아있어 훨씬
+  // 신뢰할 수 있다. 마운트 시점에도 한 번 확인해서, "백그라운드로 간 채
+  // 프로세스가 재시작된" 경우(콜드스타트 사이 3분 이상 경과)도 놓치지 않는다.
   const [timeoutLogoutTrigger, setTimeoutLogoutTrigger] = useState(0);
   const sentTimeoutTriggerRef = useRef(0);
   useEffect(() => {
     sentTimeoutTriggerRef.current = timeoutLogoutTrigger;
   }, [timeoutLogoutTrigger]);
   useEffect(() => {
+    let cancelled = false;
+    const checkAndClear = () => {
+      isSessionTimedOut()
+        .then((timedOut) => {
+          if (!cancelled && timedOut) {
+            setTimeoutLogoutTrigger((n) => n + 1);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            clearBackgroundedMark();
+          }
+        });
+    };
+    checkAndClear(); // 마운트 시점(콜드스타트 포함) 1회 확인
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        const bgAt = backgroundedAtRef.current;
-        backgroundedAtRef.current = null;
-        if (bgAt !== null && Date.now() - bgAt >= BACKGROUND_LOGOUT_MS) {
-          setTimeoutLogoutTrigger((n) => n + 1);
-        }
-      } else if (backgroundedAtRef.current === null) {
-        backgroundedAtRef.current = Date.now();
+        checkAndClear();
+      } else {
+        markBackgrounded();
       }
     });
-    return () => sub.remove();
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, []);
   const shouldSendFreshStart =
     (isFreshStart && !freshStartConsumedRef.current) ||
