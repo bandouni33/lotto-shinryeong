@@ -2,20 +2,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * 앱이 백그라운드로 간 지 일정 시간(TIMEOUT_MS)이 지나면 자동 로그아웃시키기
- * 위한 "마지막 백그라운드 진입 시각" 기록.
+ * 위한 "마지막 활동 시각" 기록.
  *
- * 2026-09-06: 처음엔 이 값을 컴포넌트 안의 JS 변수(useRef)로만 들고 있었는데,
- * 실기기 테스트에서 2시간 넘게 백그라운드에 있다 돌아와도 로그인이 그대로
- * 유지되는 문제가 보고됐다 — 화면 전환·리렌더 등으로 그 컴포넌트가 다시
- * 마운트되면 메모리에 있던 기록이 조용히 초기화될 수 있어 신뢰할 수 없는
- * 방식이었다. getOrCreateGuestId()와 동일하게 AsyncStorage(기기 저장소)에
- * 기록해두면, 컴포넌트가 몇 번을 다시 마운트되든(심지어 프로세스가 완전히
- * 재시작돼도) 값이 그대로 남아있어 훨씬 신뢰할 수 있다.
+ * 2026-09-06: 처음엔 "백그라운드로 가는 바로 그 순간에" 기록하는 방식이었는데,
+ * 실기기에서 계속 실패했다 — 조사 결과, 안드로이드는 백그라운드 전환/강제종료
+ * 시점에 프로세스를 곧바로 정리해버릴 수 있어서, 그 순간에 시작한 비동기
+ * AsyncStorage 쓰기가 완료되기 전에 죽어버릴 위험이 실제로 보고된 바 있다
+ * (react-native 커뮤니티에 유사 사례 다수). 게다가 이 앱처럼 "뒤로가기로
+ * 종료"하는 경로에서는 AppState의 'active' 복귀 이벤트 자체가 안정적으로
+ * 오지 않는다는 React Native 공식 이슈(#32720)도 확인됨.
+ *
+ * 그래서 "위험한 순간에 급하게 쓰기"가 아니라, **앱이 정상적으로 켜져있는
+ * 동안 계속(하트비트) 미리미리 기록**해두는 방식으로 바꾼다 — 앱이 어떤
+ * 방식으로 갑자기 죽든, 죽기 직전까지 이미 안전하게 저장된 "마지막 활동
+ * 시각"이 항상 남아있고, 다음에 켜질 때(이벤트 수신 여부와 무관하게, 마운트
+ * 시점에 직접) 그 기록과 지금 시각을 비교하기만 하면 되므로 특정 이벤트가
+ * 안정적으로 오는지에 의존하지 않는다.
  */
-const STORAGE_KEY = 'lotto_backgrounded_at';
+const STORAGE_KEY = 'lotto_last_active_at';
 export const BACKGROUND_LOGOUT_MS = 3 * 60 * 1000;
+/** 하트비트 주기 — 이 간격보다 오래 못 쓰고 죽는 경우는 없다고 가정할 만큼
+ * 짧게(20초) 잡는다. 지나치게 잦으면 배터리/저장소에 불필요한 부담. */
+export const HEARTBEAT_MS = 20 * 1000;
 
-export async function markBackgrounded(): Promise<void> {
+export async function touchLastActive(): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, String(Date.now()));
   } catch {
@@ -23,27 +33,18 @@ export async function markBackgrounded(): Promise<void> {
   }
 }
 
-/** 백그라운드 진입 기록을 지운다(다시 활성화됐을 때, 판단이 끝난 뒤 호출). */
-export async function clearBackgroundedMark(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // 무시 — 다음에 또 기록되면 그만이다.
-  }
-}
-
-/** 저장된 "백그라운드 진입 시각"이 TIMEOUT_MS 이상 지났으면 true. */
+/** 저장된 "마지막 활동 시각"이 BACKGROUND_LOGOUT_MS 이상 지났으면 true. */
 export async function isSessionTimedOut(): Promise<boolean> {
   try {
     const stored = await AsyncStorage.getItem(STORAGE_KEY);
     if (!stored) {
       return false;
     }
-    const backgroundedAt = parseInt(stored, 10);
-    if (Number.isNaN(backgroundedAt)) {
+    const lastActive = parseInt(stored, 10);
+    if (Number.isNaN(lastActive)) {
       return false;
     }
-    return Date.now() - backgroundedAt >= BACKGROUND_LOGOUT_MS;
+    return Date.now() - lastActive >= BACKGROUND_LOGOUT_MS;
   } catch {
     return false;
   }

@@ -17,7 +17,7 @@ import { login as kakaoNativeLogin } from '@react-native-seoul/kakao-login';
 import { getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
 import { consumeFreshStartFlag } from '@/utils/fresh-start';
-import { clearBackgroundedMark, isSessionTimedOut, markBackgrounded } from '@/utils/session-timeout';
+import { HEARTBEAT_MS, isSessionTimedOut, touchLastActive } from '@/utils/session-timeout';
 
 type Props = {
   page: string;
@@ -71,19 +71,23 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   }, []);
   // 2026-09-06: "완전 종료했는지"를 프로세스 생존 여부로 판단하는 위 방식은
   // 안드로이드에서 신뢰할 수 없다는 게 실사용 습관(뒤로가기로 종료 후 최근
-  // 앱 목록에서 모두 닫기)으로 확인됐다 — 그렇게 "완전히" 닫아도 OS가 프로세스
-  // 자체는 한동안 캐싱해두는 경우가 흔해서, 10분 넘게 지나도 로그인이 그대로
-  // 유지되는 문제가 있었다. 은행앱들이 쓰는 방식(시간 기준 재인증)으로 보완.
+  // 앱 목록에서 모두 닫기)으로 확인됐다 — 은행앱들이 쓰는 방식(시간 기준
+  // 재인증)으로 보완했었는데, 그다음 두 번의 시도(메모리 기록 → AsyncStorage
+  // 기록)도 전부 실기기에서 실패했다. 원인을 조사한 결과 두 가지가 겹친
+  // 것으로 보인다: (1) 이 앱처럼 "뒤로가기로 종료"하는 경로에서는 AppState의
+  // 'active' 복귀 이벤트 자체가 안정적으로 안 온다는 React Native 공식 이슈
+  // (facebook/react-native#32720), (2) "백그라운드로 가는 바로 그 순간에"
+  // 기록하려는 시도는, 안드로이드가 그 순간 프로세스를 곧바로 정리해버릴 수
+  // 있어 비동기 저장이 완료되기 전에 죽는 경쟁 상태가 실제로 보고된 바 있다.
+  // 즉 "위험한 순간에 급하게 쓰기 + 특정 이벤트가 오길 기다리기" 두 가지
+  // 전제 자체가 불안정했다.
   //
-  // 처음엔 이 기록을 컴포넌트 안 useRef(메모리)로만 들고 있었는데, 실기기
-  // 테스트에서 2시간 넘게 지나도 로그인이 그대로 유지되는 문제가 또
-  // 보고됐다 — 화면 전환 등으로 이 컴포넌트가 다시 마운트되면 메모리
-  // 기록이 조용히 초기화될 수 있어(원인 특정은 못 했지만 실측상 재현됨)
-  // 신뢰할 수 없었다. getOrCreateGuestId()와 동일하게 AsyncStorage(기기
-  // 저장소)에 기록하도록 바꾼다 — 컴포넌트가 몇 번을 다시 마운트되든,
-  // 심지어 프로세스가 완전히 재시작돼도 기록이 그대로 남아있어 훨씬
-  // 신뢰할 수 있다. 마운트 시점에도 한 번 확인해서, "백그라운드로 간 채
-  // 프로세스가 재시작된" 경우(콜드스타트 사이 3분 이상 경과)도 놓치지 않는다.
+  // 그래서 이벤트를 기다리지 않는 하트비트 방식으로 바꾼다: 앱이 정상적으로
+  // 켜져있는 동안 20초마다 "마지막 활동 시각"을 미리미리 기록해두고,
+  // 마운트될 때마다(콜드스타트든 화면 재진입이든, 어떤 이벤트가 왔는지와
+  // 무관하게) 그 기록과 지금 시각을 비교한다. 앱이 어떤 방식으로 갑자기
+  // 죽든 최대 20초 전에는 이미 안전하게 저장된 기록이 남아있으므로,
+  // 특정 전환 이벤트가 안정적으로 오는지에 더 이상 의존하지 않는다.
   const [timeoutLogoutTrigger, setTimeoutLogoutTrigger] = useState(0);
   const sentTimeoutTriggerRef = useRef(0);
   useEffect(() => {
@@ -91,7 +95,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   }, [timeoutLogoutTrigger]);
   useEffect(() => {
     let cancelled = false;
-    const checkAndClear = () => {
+    const checkAndTouch = () => {
       isSessionTimedOut()
         .then((timedOut) => {
           if (!cancelled && timedOut) {
@@ -100,20 +104,26 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         })
         .finally(() => {
           if (!cancelled) {
-            clearBackgroundedMark();
+            touchLastActive();
           }
         });
     };
-    checkAndClear(); // 마운트 시점(콜드스타트 포함) 1회 확인
+    checkAndTouch(); // 마운트 시점(콜드스타트 포함) 1회 확인 + 즉시 갱신
+    const heartbeat = setInterval(() => {
+      touchLastActive();
+    }, HEARTBEAT_MS);
+    // AppState 이벤트가 이 기기/경로에서 안 오더라도(위 #32720 참고) 위
+    // 하트비트가 이미 최근 활동 시각을 계속 갱신해두므로 안전하다 — 이
+    // 리스너는 'active' 복귀 시 더 빠르게(20초 기다리지 않고) 판정해주는
+    // 보조 수단일 뿐, 이것 하나에만 의존하지 않는다.
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        checkAndClear();
-      } else {
-        markBackgrounded();
+        checkAndTouch();
       }
     });
     return () => {
       cancelled = true;
+      clearInterval(heartbeat);
       sub.remove();
     };
   }, []);
@@ -328,7 +338,18 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             <Text style={styles.retryText}>다시 시도</Text>
           </TouchableOpacity>
         </View>
-      ) : guestId === null ? null : (
+      ) : guestId === null ? (
+        // 2026-09-06: 기기 식별자(guestId)를 AsyncStorage에서 비동기로 불러오는
+        // 동안 예전엔 아무것도 안 그려서(null), 네이티브 스플래시가 내려간
+        // 직후부터 실제 웹뷰가 뜨기 전까지 빈 화면이 잠깐 보이는 "멈춘 듯한"
+        // 인상을 줬다 — 아래 로딩 오버레이와 똑같은 스피너를 여기서도 보여줘서
+        // 그 틈을 없앤다(실제 대기 시간은 그대로지만, 사용자에게는 "로딩 중"이
+        // 명확히 보이므로 멈춘 것처럼 느껴지지 않는다).
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#f9a825" />
+          <Text style={styles.loadingText}>로또신령 불러오는 중…</Text>
+        </View>
+      ) : (
         // TODO(update-banner-link): target="_blank" 링크(예: user_page.py의 업데이트 안내
         // 배너 "지금 업데이트" st.link_button)가 새 탭이 아니라 이 웹뷰 안에서 그대로 열림 —
         // setSupportMultipleWindows/onOpenWindow 핸들러가 없기 때문. update_url이 스토어
