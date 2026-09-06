@@ -230,7 +230,16 @@ def _fire_kakao_native_login_trigger() -> None:
     (2026-08-22 실기기 확인, QR스캔에서 이미 검증된 우회법). iframe 안에서
     최상위 문서에 직접 <script> 엘리먼트를 심어 그 스크립트가 최상위 문서
     컨텍스트에서 실행되게 하면, 거기서 보는 window.ReactNativeWebView는
-    진짜 그 프레임에 심어진 브릿지를 가리킨다."""
+    진짜 그 프레임에 심어진 브릿지를 가리킨다.
+
+    2026-09-06: 처음엔 postMessage 브릿지 하나에만 의존했는데, QR스캔에서
+    이미 겪었던 것과 같은 기기(브릿지 객체 자체가 최상위 문서에 안 심어지는
+    실기기)에서 로그인 버튼이 조용히 아무 반응도 안 하는 문제가 실측 확인됐다.
+    QR스캔과 동일하게 "브릿지가 있으면 postMessage만, 없으면 URL 트리거로
+    폴백"하는 판단을 최상위 문서 스크립트 안에서 직접 하도록 만든다 — 둘 다
+    항상 실행하면(QR스캔에서 겪은 부작용, 위 _fire_qr_scan_trigger 독스트링
+    참고) 브릿지가 성공했을 때도 URL 이동이 같이 걸려 화면이 깜빡이며
+    되돌아오는 문제가 생길 수 있어 피한다."""
     components.html(
         """<script>
         (function () {
@@ -242,11 +251,23 @@ def _fire_kakao_native_login_trigger() -> None:
                     "var rnwv = window.ReactNativeWebView;" +
                     "if(rnwv && typeof rnwv.postMessage === 'function'){" +
                     "rnwv.postMessage(JSON.stringify({type:'kakaoNativeLogin'}));" +
+                    "}else{" +
+                    "var u = new URL(window.location.href);" +
+                    "u.searchParams.set('kakao_native_trigger', '1');" +
+                    "window.location.href = u.toString();" +
                     "}" +
                     "}catch(e){}";
                 top.document.head.appendChild(s);
                 s.parentNode.removeChild(s);
-            } catch (e) {}
+            } catch (e) {
+                // 최상위 문서에 스크립트를 못 심을 정도로 예외적인 상황이면
+                // 최소한 이 폴백만이라도 시도한다.
+                try {
+                    var u2 = new URL(top.location.href);
+                    u2.searchParams.set('kakao_native_trigger', '1');
+                    top.location.href = u2.toString();
+                } catch (e2) {}
+            }
         })();
         </script>""",
         height=0,

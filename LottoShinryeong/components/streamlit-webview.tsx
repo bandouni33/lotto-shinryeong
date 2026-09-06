@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   Platform,
   StyleSheet,
@@ -102,14 +103,36 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 받은 access_token은 서버가 카카오에 직접 검증하도록 다음 웹뷰 로드에
   // 실어 보낸다(로그인 자체가 이미 끝난 뒤라 앱 밖으로 나갈 필요가 없다).
   const handleKakaoNativeLogin = useCallback(async () => {
+    // ↓↓↓ 2026-09-06 임시 진단 코드 — "로그인이 내정보에 안 이어지는" 문제가
+    // 여기(네이티브 SDK 호출 자체)에서 끊기는지 확인하기 위해 Alert로 강제 노출.
+    // 원인 파악되면 바로 제거할 것.
     try {
+      Alert.alert('진단', 'handleKakaoNativeLogin 호출됨 — login() 시작');
       const token = await kakaoNativeLogin();
+      Alert.alert('진단', 'login() 성공 — accessToken 앞 10자: ' + String(token.accessToken).slice(0, 10));
       setNativeKakaoToken(token.accessToken);
-    } catch {
-      // 사용자가 취소했거나 카카오 로그인 자체가 실패 — 로그인 배너에서
-      // 다시 시도할 수 있으니 조용히 무시한다.
+      Alert.alert('진단', 'setNativeKakaoToken 호출 완료');
+    } catch (e) {
+      Alert.alert('진단 - 에러', String(e));
     }
+    // ↑↑↑ 임시 진단 코드 끝
   }, []);
+
+  // 2026-09-06: QR스캔에서 이미 겪은 문제(위 qrScanRedirected 부근 주석 —
+  // 특정 실기기에서 window.ReactNativeWebView 자체가 안 만들어져 postMessage
+  // 경로가 완전히 무력화됨) 카카오 로그인 트리거도 똑같이 postMessage 단일
+  // 경로에만 의존하고 있었다 — QR스캔과 동일하게 URL 트리거 경로를 겹쳐 보내는
+  // 이중화로 바꾼다. 두 경로가 동시에 걸려도 한 번만 실행되도록 락을 건다.
+  const kakaoLoginLockRef = useRef(false);
+  const triggerKakaoNativeLoginOnce = useCallback(() => {
+    if (kakaoLoginLockRef.current) {
+      return;
+    }
+    kakaoLoginLockRef.current = true;
+    handleKakaoNativeLogin().finally(() => {
+      kakaoLoginLockRef.current = false;
+    });
+  }, [handleKakaoNativeLogin]);
 
   // 1) onNavigationStateChange — 웹뷰의 실제 URL이 바뀔 때마다 항상 불리는(리액티브)
   // 이벤트라 세 경로 중 가장 신뢰도가 높다. 실기기(Android 16, Samsung SM-M166S)에서
@@ -122,8 +145,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (navState.url && navState.url.includes('qrscan=1')) {
         goToQrScan();
       }
+      if (navState.url && navState.url.includes('kakao_native_trigger=1')) {
+        triggerKakaoNativeLoginOnce();
+      }
     },
-    [goToQrScan]
+    [goToQrScan, triggerKakaoNativeLoginOnce]
   );
 
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
@@ -139,9 +165,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         goToQrScan();
         return false;
       }
+      if (request.url.includes('kakao_native_trigger=1')) {
+        triggerKakaoNativeLoginOnce();
+        return false;
+      }
       return true;
     },
-    [goToQrScan]
+    [goToQrScan, triggerKakaoNativeLoginOnce]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
@@ -160,10 +190,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (payload?.type === 'openQrScan') {
         goToQrScan();
       } else if (payload?.type === 'kakaoNativeLogin') {
-        handleKakaoNativeLogin();
+        // 2026-09-06 임시 진단: 브릿지 메시지가 실제로 여기 도착하는지부터 확인.
+        Alert.alert('진단', 'onMessage: kakaoNativeLogin 수신됨');
+        triggerKakaoNativeLoginOnce();
       }
     },
-    [goToQrScan, handleKakaoNativeLogin]
+    [goToQrScan, triggerKakaoNativeLoginOnce]
   );
 
   const goToStreamlitHome = useCallback(() => {
