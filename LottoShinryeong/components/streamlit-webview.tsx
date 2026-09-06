@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   Platform,
   StyleSheet,
@@ -67,6 +68,38 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   useEffect(() => {
     freshStartConsumedRef.current = true;
   }, []);
+  // 2026-09-06: "완전 종료했는지"를 프로세스 생존 여부로 판단하는 위 방식은
+  // 안드로이드에서 신뢰할 수 없다는 게 실사용 습관(뒤로가기로 종료 후 최근
+  // 앱 목록에서 모두 닫기)으로 확인됐다 — 그렇게 "완전히" 닫아도 OS가 프로세스
+  // 자체는 한동안 캐싱해두는 경우가 흔해서, 10분 넘게 지나도 로그인이 그대로
+  // 유지되는 문제가 있었다. 은행앱들이 쓰는 방식(시간 기준 재인증)으로 보완:
+  // 앱이 백그라운드로 간 시각을 기록해두고, 다시 포그라운드로 돌아왔을 때
+  // 3분 이상 지났으면 위 fresh_start와 동일한 신호를 보낸다. 프로세스가
+  // 실제로 죽었는지와 무관하게 항상 일관되게 동작한다.
+  const BACKGROUND_LOGOUT_MS = 3 * 60 * 1000;
+  const backgroundedAtRef = useRef<number | null>(null);
+  const [timeoutLogoutTrigger, setTimeoutLogoutTrigger] = useState(0);
+  const sentTimeoutTriggerRef = useRef(0);
+  useEffect(() => {
+    sentTimeoutTriggerRef.current = timeoutLogoutTrigger;
+  }, [timeoutLogoutTrigger]);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        const bgAt = backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+        if (bgAt !== null && Date.now() - bgAt >= BACKGROUND_LOGOUT_MS) {
+          setTimeoutLogoutTrigger((n) => n + 1);
+        }
+      } else if (backgroundedAtRef.current === null) {
+        backgroundedAtRef.current = Date.now();
+      }
+    });
+    return () => sub.remove();
+  }, []);
+  const shouldSendFreshStart =
+    (isFreshStart && !freshStartConsumedRef.current) ||
+    timeoutLogoutTrigger > sentTimeoutTriggerRef.current;
   // 2026-09-06: 카카오 네이티브 SDK 로그인(handleKakaoNativeLogin)이 성공하면
   // 받은 access_token을 여기 담아 다음 웹뷰 로드 한 번에만 실어 보낸다 —
   // 서버가 그 토큰을 카카오에 직접 검증해 로그인을 끝낸다(auth_providers.py
@@ -74,7 +107,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const [nativeKakaoToken, setNativeKakaoToken] = useState<string | null>(null);
   const mergedParams = {
     ...(extraParams || {}),
-    ...(isFreshStart && !freshStartConsumedRef.current ? { fresh_start: '1' } : {}),
+    ...(shouldSendFreshStart ? { fresh_start: '1' } : {}),
     ...(nativeKakaoToken ? { native_kakao_token: nativeKakaoToken } : {}),
   };
   const uri = getStreamlitPageUrl(page, guestId, mergedParams);
