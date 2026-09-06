@@ -131,10 +131,16 @@ def init_wallet_tables() -> None:
             guest_id TEXT PRIMARY KEY,
             member_id INTEGER NOT NULL,
             linked_at TEXT NOT NULL,
+            last_seen_at TEXT,
             FOREIGN KEY (member_id) REFERENCES members(id)
         );
         """
     )
+    # 2026-09-06: 기존 DB 호환 ALTER — marketing_db._migrate_lotto_combinations와
+    # 동일한 패턴(PRAGMA table_info로 이미 있는지 확인 후에만 추가).
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(guest_member_links)")}
+    if "last_seen_at" not in cols:
+        conn.execute("ALTER TABLE guest_member_links ADD COLUMN last_seen_at TEXT NULL")
     conn.commit()
     conn.close()
     _WALLET_TABLES_READY = True
@@ -144,13 +150,17 @@ def link_guest_to_member(guest_id: str, member_id: int) -> None:
     """로그인 성공 시 기기 식별자(guest_id, 네이티브 앱이면 재실행해도 유지됨)를
     회원과 연결해둔다 — 다음에 세션이 끊겼다가 재연결될 때(백그라운드 전환, 네트워크
     끊김 등) 이 연결로 자동 재로그인시켜서, 매번 간편인증 화면이 다시 뜨는 걸 막는다."""
+    now = _now_iso()
     conn = _connect()
     conn.execute(
         """
-        INSERT INTO guest_member_links (guest_id, member_id, linked_at) VALUES (?, ?, ?)
-        ON CONFLICT(guest_id) DO UPDATE SET member_id = excluded.member_id, linked_at = excluded.linked_at
+        INSERT INTO guest_member_links (guest_id, member_id, linked_at, last_seen_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(guest_id) DO UPDATE SET
+            member_id = excluded.member_id,
+            linked_at = excluded.linked_at,
+            last_seen_at = excluded.last_seen_at
         """,
-        (str(guest_id), int(member_id), _now_iso()),
+        (str(guest_id), int(member_id), now, now),
     )
     conn.commit()
     conn.close()
@@ -163,6 +173,49 @@ def get_member_for_guest(guest_id: str) -> int | None:
     ).fetchone()
     conn.close()
     return int(row["member_id"]) if row else None
+
+
+def _parse_kst(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=KST)
+
+
+def guest_idle_seconds(guest_id: str) -> float | None:
+    """이 guest_id가 마지막으로 서버에 요청을 보낸 뒤 몇 초가 지났는지.
+    2026-09-06: 클라이언트(앱) 쪽에서 "백그라운드로 간 지 3분 지났는지"를
+    직접 감지하려던 시도(메모리 기록 → AsyncStorage 기록 → 하트비트 →
+    웹뷰 캐시버스팅)가 실기기에서 네 번 연속 실패했다 — 뒤로가기 종료 시
+    AppState 이벤트 신뢰성, 안드로이드 프로세스 종료 타이밍, 웹뷰 캐싱 등
+    클라이언트 쪽 변수가 너무 많았기 때문으로 보인다.
+    앱이 백그라운드에 있는 동안은 이 앱(웹뷰) 쪽에서 서버로 요청 자체가
+    전혀 안 간다는 사실은 변하지 않으므로, 클라이언트가 스스로 경과 시간을
+    재려 하지 말고 "서버가 마지막으로 이 기기의 요청을 받은 시각"만
+    기록해두면 똑같은 정보를 훨씬 안정적으로 얻을 수 있다 — 특정 이벤트가
+    안정적으로 오는지, 캐시가 새 요청을 실제로 통과시키는지 같은 클라이언트
+    쪽 불확실성에 전혀 의존하지 않는다."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT last_seen_at FROM guest_member_links WHERE guest_id = ?", (str(guest_id),)
+    ).fetchone()
+    conn.close()
+    if not row or not row["last_seen_at"]:
+        return None
+    try:
+        last_seen = _parse_kst(row["last_seen_at"])
+    except ValueError:
+        return None
+    return (datetime.now(KST) - last_seen).total_seconds()
+
+
+def touch_guest_last_seen(guest_id: str) -> None:
+    """이 guest_id가 방금 서버에 요청을 보냈다는 걸 기록 — 정상적으로 링크가
+    있는 guest에 대해서만 의미가 있으므로, 링크가 없으면 조용히 넘어간다."""
+    conn = _connect()
+    conn.execute(
+        "UPDATE guest_member_links SET last_seen_at = ? WHERE guest_id = ?",
+        (_now_iso(), str(guest_id)),
+    )
+    conn.commit()
+    conn.close()
 
 
 def unlink_guest_from_member(guest_id: str) -> None:

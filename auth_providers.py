@@ -150,18 +150,44 @@ def _link_guest_to_member_safe(guest_id: str, member_id: int) -> None:
 def restore_member_from_guest() -> int | None:
     """세션이 끊겼다 재연결됐을 때(백그라운드 전환·네트워크 끊김 등) member_id가
     사라져 매번 간편인증 배너가 다시 뜨는 문제 — 이 기기(guest_id)가 이미 로그인한
-    적 있는 회원과 연결돼 있으면 조용히 다시 로그인시킨다(인증 절차 없이)."""
-    if st.session_state.get("member_id"):
-        return None
+    적 있는 회원과 연결돼 있으면 조용히 다시 로그인시킨다(인증 절차 없이).
+
+    2026-09-06: "앱을 3분 이상 백그라운드에 뒀다가 돌아오면 자동 로그아웃"을
+    앱(클라이언트) 쪽에서 직접 감지하려던 시도(메모리 기록 → AsyncStorage
+    기록 → 하트비트 → 웹뷰 캐시버스팅)가 실기기에서 네 번 연속 실패했다.
+    뒤로가기 종료 시 AppState 이벤트 신뢰성, 안드로이드 프로세스 종료
+    타이밍, 웹뷰 캐싱 등 클라이언트 쪽에 통제 못 하는 변수가 너무 많았기
+    때문으로 보인다. 앱이 백그라운드에 있는 동안은 이 앱이 서버로 요청
+    자체를 전혀 안 보낸다는 사실은 변하지 않으므로, "서버가 이 기기의
+    요청을 마지막으로 받은 시각"만 기록해두면 클라이언트의 협조 없이도
+    똑같은 정보를 훨씬 안정적으로 얻을 수 있다 — 이 함수는 이미 로그인된
+    세션에서도(page.py가 매 렌더마다 호출하므로) 매번 idle 시간을 확인해서,
+    3분 넘게 아무 요청도 없었다면 강제 로그아웃시킨다."""
     from user_scope import bind_identity_on_login, get_or_create_guest_id
-    from wallet_db import get_member_for_guest, init_wallet_tables
+    from wallet_db import (
+        get_member_for_guest,
+        guest_idle_seconds,
+        init_wallet_tables,
+        touch_guest_last_seen,
+    )
 
     init_wallet_tables()
     guest_id = get_or_create_guest_id()
+
+    idle_seconds = guest_idle_seconds(guest_id)
+    if idle_seconds is not None and idle_seconds >= 180:
+        logout()
+        return None
+
+    if st.session_state.get("member_id"):
+        touch_guest_last_seen(guest_id)
+        return None
+
     member_id = get_member_for_guest(guest_id)
     if not member_id:
         return None
     bind_identity_on_login(member_id)
+    touch_guest_last_seen(guest_id)
     return member_id
 
 
