@@ -19,6 +19,8 @@ from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
 from birthday_db import init_birthday_table
 from auth_providers import (
+    _fetch_kakao_uid_with_token,
+    finalize_login,
     finalize_login_with_native_token,
     handle_oauth_callback,
     restore_member_from_guest,
@@ -38,6 +40,18 @@ init_guest_scope()
 _native_kakao_token = st.query_params.get("native_kakao_token")
 if _native_kakao_token:
     del st.query_params["native_kakao_token"]
+    # ↓↓↓ 2026-09-06 임시 진단 코드 — "내정보에서 로그인이 안 이어지는" 문제
+    # 원인 파악용. 원인 확인되면 바로 제거할 것.
+    _dbg_uid, _dbg_err = _fetch_kakao_uid_with_token(_native_kakao_token)
+    if _dbg_uid:
+        st.success(f"[진단] 카카오 서버 검증 성공 — uid 앞 4자리: {_dbg_uid[:4]}")
+        _dbg_result = finalize_login("kakao", _dbg_uid)
+        st.success(f"[진단] finalize_login 결과(member_id, is_new, bonus): {_dbg_result}")
+        st.info(f"[진단] session_state.member_id = {st.session_state.get('member_id')}")
+    else:
+        st.error(f"[진단] 카카오 토큰 검증 실패: {_dbg_err}")
+    st.stop()
+    # ↑↑↑ 임시 진단 코드 끝
     if finalize_login_with_native_token(_native_kakao_token):
         st.rerun()
 
