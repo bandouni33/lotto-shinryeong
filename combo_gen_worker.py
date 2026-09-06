@@ -62,18 +62,13 @@ def main() -> int:
         )
         marketing_db.record_draw_pattern_count(target_round, PATTERN_COUNT_DISPLAY)
 
-        # 지난 회차(이미 추첨된, 더는 팔 수 없는) 조합은 정리 — 안 지우면
-        # lotto_combinations가 매주 계속 쌓인다.
-        conn = marketing_db._connect()
-        rows = conn.execute(
-            "SELECT DISTINCT draw_round FROM lotto_combinations WHERE draw_round <= ?",
-            (anchor_round,),
-        ).fetchall()
-        conn.close()
-        cleaned = 0
-        for row in rows:
-            old_round = int(row[0])
-            cleaned += marketing_db.delete_lotto_combinations_by_draw(old_round)
+        # 2026-09-06 버그 수정: 예전엔 anchor_round(방금 추첨된 회차) 이하를
+        # 전부 즉시 삭제했는데, 이건 "최근 2회차까지는 보관"이라는 확립된
+        # 규칙(guest_generated_combos에 이미 올바르게 구현돼 있던 것과 동일한
+        # 규칙)을 어기고 있었다 — 그 결과 1237~1240회차 데이터가 복구
+        # 불가능하게 삭제됨(실측 확인). cleanup_old_guest_generated_combos와
+        # 똑같은 "최근 N개 회차만 보관" 함수로 교체한다.
+        cleaned = marketing_db.cleanup_old_lotto_combinations(keep_rounds=2)
 
         # 번개조합/안티조합/액땜조합 저장분(guest_generated_combos)도 최근
         # 2회차만 남기고 정리 — 이 테이블은 지금까지 정리 로직이 없었다.

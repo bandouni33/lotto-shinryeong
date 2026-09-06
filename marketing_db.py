@@ -1405,6 +1405,29 @@ def delete_lotto_combinations_by_draw(draw_round: int) -> int:
     return deleted
 
 
+def cleanup_old_lotto_combinations(keep_rounds: int = 2) -> int:
+    """lotto_combinations(자동구매 메인 풀) — 최근 N개 회차만 남기고 그
+    이전은 삭제. cleanup_old_guest_generated_combos와 정확히 같은 규칙
+    ("최근 2회차까지는 보관")을 따르는데, combo_gen_worker.py가 지금까지
+    이 규칙 없이 anchor_round(방금 추첨된 회차) 이하를 전부 즉시 삭제하고
+    있었다(2026-09-06 실측 확인 — 1237~1240회차 데이터가 이 버그로
+    복구 불가능하게 삭제됨). 앞으로는 이 함수로 일관되게 처리한다."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT DISTINCT draw_round FROM lotto_combinations ORDER BY draw_round DESC"
+    ).fetchall()
+    old_rounds = [int(r[0]) for r in rows[keep_rounds:]]
+    deleted = 0
+    for old_round in old_rounds:
+        cur = conn.execute(
+            "DELETE FROM lotto_combinations WHERE draw_round = ?", (old_round,)
+        )
+        deleted += int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def set_reference_ranks(
     draw_round: int, ranks: tuple[int, int, int, int, int]
 ) -> None:
