@@ -137,7 +137,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const [nativeKakaoToken, setNativeKakaoToken] = useState<string | null>(null);
   const mergedParams = {
     ...(extraParams || {}),
-    ...(shouldSendFreshStart ? { fresh_start: '1' } : {}),
+    // 2026-09-06: 안드로이드 웹뷰가 "기본 URL만 같으면 쿼리스트링이 달라져도
+    // 캐시된 예전 페이지를 그대로 보여주는" 문제가 react-native-webview에서
+    // 다수 보고됨(cacheEnabled=false를 꺼도 해결 안 되는 경우 다수) — 지난
+    // 두 번의 자동 로그아웃 수정이 전부 실패한 진짜 원인이 여기 있었을 가능성이
+    // 높다(JS 쪽 판단 로직 자체는 처음부터 맞았는데, fresh_start=1을 실은
+    // 새 URL이 서버까지 실제로 도달을 못 하고 있었을 수 있음). 캐시 설정에
+    // 기대지 않고, 이 신호를 보낼 때만 URL에 매번 다른 값(현재 시각)을 끼워
+    // 넣어 웹뷰가 "완전히 새로운 주소"로 인식하고 무조건 새로 요청하게
+    // 만든다(RFC 7234 — 캐시 키는 항상 쿼리스트링 포함 전체 URL).
+    ...(shouldSendFreshStart ? { fresh_start: '1', _cb: String(Date.now()) } : {}),
     ...(nativeKakaoToken ? { native_kakao_token: nativeKakaoToken } : {}),
   };
   const uri = getStreamlitPageUrl(page, guestId, mergedParams);
@@ -432,6 +441,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
                 // 안전망으로 그대로 둔다. (문서상 "not persistent" — 매 웹뷰 생성 시
                 // 다시 걸어야 하는데, 이 prop은 렌더마다 항상 실려 있으니 문제 없음.)
                 forceDarkOn: false,
+                // 2026-09-06: 위 캐시버스팅(_cb) URL 파라미터가 근본 해결책이지만,
+                // 이 로드(자동 로그아웃 신호를 보내는 바로 그 순간)만큼은 이중
+                // 안전장치로 캐시 자체도 꺼둔다 — 평소 탐색에는 안 걸어서(성능
+                // 저하 방지) 정상적인 캐싱 이득은 그대로 유지한다.
+                ...(shouldSendFreshStart
+                  ? { cacheEnabled: false, cacheMode: 'LOAD_NO_CACHE' as const }
+                  : {}),
               }
             : {})}
         />
