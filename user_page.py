@@ -25,7 +25,7 @@ from auth_providers import (
     handle_oauth_callback,
     restore_member_from_guest,
 )
-from user_scope import init_guest_scope
+from user_scope import get_or_create_guest_id, init_guest_scope
 
 init_wallet_tables()
 init_zero_phone_tables()
@@ -42,12 +42,24 @@ if _native_kakao_token:
     del st.query_params["native_kakao_token"]
     # ↓↓↓ 2026-09-06 임시 진단 코드 — "내정보에서 로그인이 안 이어지는" 문제
     # 원인 파악용. 원인 확인되면 바로 제거할 것.
+    _dbg_gid = get_or_create_guest_id()
+    st.warning(f"[진단] guest_id = {_dbg_gid} (?gid= 쿼리파라미터: {st.query_params.get('gid')})")
     _dbg_uid, _dbg_err = _fetch_kakao_uid_with_token(_native_kakao_token)
     if _dbg_uid:
         st.success(f"[진단] 카카오 서버 검증 성공 — uid 앞 4자리: {_dbg_uid[:4]}")
         _dbg_result = finalize_login("kakao", _dbg_uid)
         st.success(f"[진단] finalize_login 결과(member_id, is_new, bonus): {_dbg_result}")
         st.info(f"[진단] session_state.member_id = {st.session_state.get('member_id')}")
+        # 방금 쓴 guest_member_links를 같은 세션에서 즉시 다시 읽어본다 —
+        # DB 쓰기 자체가 실패/유실되고 있는지, 아니면 다음 세션에서 guest_id가
+        # 달라져서 못 찾는 건지 구분하기 위함.
+        try:
+            from wallet_db import get_member_for_guest
+
+            _dbg_readback = get_member_for_guest(_dbg_gid)
+            st.info(f"[진단] 방금 쓴 링크 즉시 재조회 결과: get_member_for_guest({_dbg_gid}) = {_dbg_readback}")
+        except Exception as _dbg_exc:
+            st.error(f"[진단] guest_member_links 재조회 중 예외: {_dbg_exc!r}")
     else:
         st.error(f"[진단] 카카오 토큰 검증 실패: {_dbg_err}")
     st.stop()
