@@ -51,6 +51,22 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // (utils/fresh-start.ts 설명 참고). 홈 버튼 등으로 잠깐 백그라운드 갔다 온
   // 경우나, 앱 안에서 다른 화면으로 이동한 경우엔 false.
   const [isFreshStart] = useState(() => consumeFreshStartFlag());
+  // 2026-09-06: isFreshStart는 컴포넌트가 살아있는 동안 계속 true로 남아있는데,
+  // mergedParams(아래)는 렌더될 때마다 다시 계산되므로 — 카카오 네이티브
+  // 로그인이 webview를 다시 로드시킬 때마다(토큰 실어 보낼 때, 토큰 지울 때)
+  // fresh_start=1이 매번 다시 실려 나가고 있었다. 서버(user_page.py)는 이
+  // 신호를 받을 때마다 "이 기기의 로그인 연결을 끊어라"로 해석해서
+  // (kakao_configured()가 켜진 뒤로는 무조건 실행됨), 로그인 직후 새로
+  // 만든 guest-member 연결을 곧바로 다시 끊어버리고 있었다 — 이게 "서버는
+  // 로그인 성공(member_id 할당)까지 다 되는데 내정보에는 반영이 안 되는"
+  // 증상의 진짜 원인이었다. 최초 1회 uri 계산에만 실리게 하고 그 이후로는
+  // 다시 안 실리도록 소비 처리한다(nativeKakaoToken과 달리 "로드 완료" 시점을
+  // 기다릴 필요가 없다 — 이 신호는 서버가 실제로 받았는지 확인할 필요 없이
+  // "한 번만 시도하면 충분"하기 때문에 즉시 소비해도 안전하다).
+  const freshStartConsumedRef = useRef(false);
+  useEffect(() => {
+    freshStartConsumedRef.current = true;
+  }, []);
   // 2026-09-06: 카카오 네이티브 SDK 로그인(handleKakaoNativeLogin)이 성공하면
   // 받은 access_token을 여기 담아 다음 웹뷰 로드 한 번에만 실어 보낸다 —
   // 서버가 그 토큰을 카카오에 직접 검증해 로그인을 끝낸다(auth_providers.py
@@ -58,7 +74,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const [nativeKakaoToken, setNativeKakaoToken] = useState<string | null>(null);
   const mergedParams = {
     ...(extraParams || {}),
-    ...(isFreshStart ? { fresh_start: '1' } : {}),
+    ...(isFreshStart && !freshStartConsumedRef.current ? { fresh_start: '1' } : {}),
     ...(nativeKakaoToken ? { native_kakao_token: nativeKakaoToken } : {}),
   };
   const uri = getStreamlitPageUrl(page, guestId, mergedParams);
