@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Platform,
   StyleSheet,
@@ -103,19 +102,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 받은 access_token은 서버가 카카오에 직접 검증하도록 다음 웹뷰 로드에
   // 실어 보낸다(로그인 자체가 이미 끝난 뒤라 앱 밖으로 나갈 필요가 없다).
   const handleKakaoNativeLogin = useCallback(async () => {
-    // ↓↓↓ 2026-09-06 임시 진단 코드 — "로그인이 내정보에 안 이어지는" 문제가
-    // 여기(네이티브 SDK 호출 자체)에서 끊기는지 확인하기 위해 Alert로 강제 노출.
-    // 원인 파악되면 바로 제거할 것.
+    // 2026-09-06: 클라이언트 쪽 3단계(브릿지 수신 → login() 성공 → 토큰 세팅)는
+    // Alert 진단으로 이미 확인 완료 — 매번 뜨는 팝업이 오히려 뒤 화면(서버
+    // 진단 결과)을 가려서 제거한다. 이제 서버 쪽 결과만 화면에서 직접 확인한다.
     try {
-      Alert.alert('진단', 'handleKakaoNativeLogin 호출됨 — login() 시작');
       const token = await kakaoNativeLogin();
-      Alert.alert('진단', 'login() 성공 — accessToken 앞 10자: ' + String(token.accessToken).slice(0, 10));
       setNativeKakaoToken(token.accessToken);
-      Alert.alert('진단', 'setNativeKakaoToken 호출 완료');
-    } catch (e) {
-      Alert.alert('진단 - 에러', String(e));
+    } catch {
+      // 사용자가 취소했거나 카카오 로그인 자체가 실패 — 로그인 배너에서
+      // 다시 시도할 수 있으니 조용히 무시한다.
     }
-    // ↑↑↑ 임시 진단 코드 끝
   }, []);
 
   // 2026-09-06: QR스캔에서 이미 겪은 문제(위 qrScanRedirected 부근 주석 —
@@ -190,8 +186,6 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (payload?.type === 'openQrScan') {
         goToQrScan();
       } else if (payload?.type === 'kakaoNativeLogin') {
-        // 2026-09-06 임시 진단: 브릿지 메시지가 실제로 여기 도착하는지부터 확인.
-        Alert.alert('진단', 'onMessage: kakaoNativeLogin 수신됨');
         triggerKakaoNativeLoginOnce();
       }
     },
@@ -296,7 +290,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             // 후에 지운다(QR스캔 폴백에서 이미 쓰던 것과 같은 여유시간대,
             // page_hedge.py의 5~6초 지연 참고).
             if (nativeKakaoToken) {
-              setTimeout(() => setNativeKakaoToken(null), 4000);
+              // 2026-09-06 임시: 서버 진단 화면(성공/실패 색깔 박스)을 화면
+              // 캡처로 확인할 시간을 넉넉히 주기 위해 이번 진단 라운드에서만
+              // 20초로 늘림. 원인 확정되면 다시 짧게 되돌릴 것.
+              setTimeout(() => setNativeKakaoToken(null), 20000);
             }
           }}
           onError={(e) => {
