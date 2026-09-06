@@ -284,11 +284,19 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => {
             setLoading(false);
-            // 카카오 access_token은 1회용 — 이 로드로 이미 서버에 전달됐으니
-            // 지워서, 이후 다른 이유로(예: QR 스캔 결과 반영) 다시 렌더링돼도
-            // 이미 쓴 토큰을 또 실어 보내지 않게 한다.
+            // 2026-09-06: 카카오 access_token은 1회용이라 여기서 지워야
+            // 하는 건 맞지만, onLoadEnd는 Streamlit의 SPA 껍데기(정적
+            // HTML/JS 번들)가 화면에 뜨는 순간 곧바로 발생한다 — 실제
+            // 로그인 처리(카카오 서버 검증 + DB 기록)는 그 뒤에 웹소켓으로
+            // 별도 실행되는데, onLoadEnd에서 즉시 토큰을 지우면 uri가
+            // 바뀌면서 웹뷰가 통째로 새로고침되고, 이게 아직 끝나지 않은
+            // 로그인 처리를 중간에 끊어버리는 경쟁 상태가 실기기에서
+            // 확인됐다(진단 Alert는 전부 성공했는데 로그인은 안 잡히는
+            // 증상). 로그인 처리가 끝날 시간을 확실히 벌어주기 위해 지연
+            // 후에 지운다(QR스캔 폴백에서 이미 쓰던 것과 같은 여유시간대,
+            // page_hedge.py의 5~6초 지연 참고).
             if (nativeKakaoToken) {
-              setNativeKakaoToken(null);
+              setTimeout(() => setNativeKakaoToken(null), 4000);
             }
           }}
           onError={(e) => {
