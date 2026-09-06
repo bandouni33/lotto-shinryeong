@@ -18,7 +18,11 @@ st.set_page_config(page_title="로\u200b또신령", page_icon="K-325.jpg", layou
 from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
 from birthday_db import init_birthday_table
-from auth_providers import handle_oauth_callback, restore_member_from_guest
+from auth_providers import (
+    finalize_login_with_native_token,
+    handle_oauth_callback,
+    restore_member_from_guest,
+)
 from user_scope import init_guest_scope
 
 init_wallet_tables()
@@ -27,6 +31,15 @@ init_birthday_table()
 if handle_oauth_callback():
     st.rerun()
 init_guest_scope()
+
+# 2026-09-06: 카카오 네이티브 SDK(streamlit-webview.tsx의 handleKakaoNativeLogin)가
+# 로그인을 이미 끝내고 발급받은 access_token을 여기로 실어 보낸다 — code/state
+# 리다이렉트를 아예 안 거치므로 handle_oauth_callback과는 완전히 별개 경로다.
+_native_kakao_token = st.query_params.get("native_kakao_token")
+if _native_kakao_token:
+    del st.query_params["native_kakao_token"]
+    if finalize_login_with_native_token(_native_kakao_token):
+        st.rerun()
 
 # 네이티브 앱이 콜드 스타트(=완전히 껐다 다시 켬) 직후 최초 로드에만 ?fresh_start=1을
 # 실어보낸다(LottoShinryeong/utils/fresh-start.ts 참고 — 백그라운드 전환/앱 내

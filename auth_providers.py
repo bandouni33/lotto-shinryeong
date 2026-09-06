@@ -169,6 +169,28 @@ def mock_kakao_login() -> tuple[int, bool, bool]:
     return mock_provider_login("kakao")
 
 
+def _fetch_kakao_uid_with_token(access_token: str) -> tuple[str | None, str | None]:
+    """카카오 access_token으로 사용자 정보를 직접 조회 — REST API 코드교환
+    (_exchange_kakao_code)과 네이티브 SDK 토큰(finalize_login_with_native_token)
+    양쪽에서 공유하는 마지막 단계. 클라이언트가 보낸 토큰을 그대로 믿지 않고
+    카카오 서버에 직접 물어봐서 확인하므로, 위조된 토큰/ID로는 통과할 수 없다."""
+    try:
+        user_resp = requests.get(
+            KAKAO_USER_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        return None, f"카카오 사용자 조회 실패: {exc}"
+    if user_resp.status_code != 200:
+        detail = user_resp.text[:200] if user_resp.text else user_resp.reason
+        return None, f"카카오 사용자 조회 오류 ({user_resp.status_code}): {detail}"
+    uid = str(user_resp.json().get("id", "")) or None
+    if not uid:
+        return None, "카카오 사용자 ID를 받지 못했습니다."
+    return uid, None
+
+
 def _exchange_kakao_code(code: str) -> tuple[str | None, str | None]:
     data = {
         "grant_type": "authorization_code",
@@ -189,21 +211,19 @@ def _exchange_kakao_code(code: str) -> tuple[str | None, str | None]:
     token = resp.json().get("access_token")
     if not token:
         return None, "카카오 access_token이 없습니다."
-    try:
-        user_resp = requests.get(
-            KAKAO_USER_URL,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=15,
-        )
-    except requests.RequestException as exc:
-        return None, f"카카오 사용자 조회 실패: {exc}"
-    if user_resp.status_code != 200:
-        detail = user_resp.text[:200] if user_resp.text else user_resp.reason
-        return None, f"카카오 사용자 조회 오류 ({user_resp.status_code}): {detail}"
-    uid = str(user_resp.json().get("id", "")) or None
+    return _fetch_kakao_uid_with_token(token)
+
+
+def finalize_login_with_native_token(access_token: str) -> tuple[int, bool, bool] | None:
+    """네이티브 앱(@react-native-seoul/kakao-login)이 카카오톡 앱/Custom Tab을
+    통해 이미 발급받은 access_token으로 로그인을 완료한다. REST API 코드교환
+    (kauth.kakao.com 리다이렉트) 자체를 안 거치므로 웹뷰 관련 문제가 애초에
+    발생할 수 없다 — 앱이 보낸 토큰은 신뢰하지 않고 카카오 서버에 직접
+    검증한다(_fetch_kakao_uid_with_token)."""
+    uid, error = _fetch_kakao_uid_with_token(access_token)
     if not uid:
-        return None, "카카오 사용자 ID를 받지 못했습니다."
-    return uid, None
+        return None
+    return finalize_login("kakao", uid)
 
 
 def _exchange_pass_code(code: str) -> str | None:

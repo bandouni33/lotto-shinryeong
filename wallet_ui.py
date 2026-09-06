@@ -6,6 +6,7 @@ import html
 import uuid
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from auth_providers import (
     _dev_mock_enabled,
@@ -220,6 +221,38 @@ div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) label p,
     )
 
 
+def _fire_kakao_native_login_trigger() -> None:
+    """네이티브 앱(streamlit-webview.tsx)에게 카카오 네이티브 SDK 로그인을
+    시작하라는 신호를 보낸다 — page_hedge.py의 QR스캔 트리거(_fire_qr_scan_
+    trigger)와 완전히 같은 기법: components.html은 항상 iframe 안에서
+    실행되는데, 안드로이드 웹뷰가 심어주는 window.ReactNativeWebView 브릿지는
+    보안상 최상위 프레임에만 존재해서 iframe 안에서는 그 자리에 아예 없다
+    (2026-08-22 실기기 확인, QR스캔에서 이미 검증된 우회법). iframe 안에서
+    최상위 문서에 직접 <script> 엘리먼트를 심어 그 스크립트가 최상위 문서
+    컨텍스트에서 실행되게 하면, 거기서 보는 window.ReactNativeWebView는
+    진짜 그 프레임에 심어진 브릿지를 가리킨다."""
+    components.html(
+        """<script>
+        (function () {
+            var top = window.top;
+            try {
+                var s = top.document.createElement('script');
+                s.textContent =
+                    "try{" +
+                    "var rnwv = window.ReactNativeWebView;" +
+                    "if(rnwv && typeof rnwv.postMessage === 'function'){" +
+                    "rnwv.postMessage(JSON.stringify({type:'kakaoNativeLogin'}));" +
+                    "}" +
+                    "}catch(e){}";
+                top.document.head.appendChild(s);
+                s.parentNode.removeChild(s);
+            } catch (e) {}
+        })();
+        </script>""",
+        height=0,
+    )
+
+
 def _render_auth_banner_form() -> None:
     reason = st.session_state.get(AUTH_BANNER_REASON, "")
     reason_html = html.escape(reason)
@@ -243,13 +276,27 @@ def _render_auth_banner_form() -> None:
     return_page = st.query_params.get("page", "main")
 
     if kakao_configured():
+        # 2026-09-06: 네이티브 앱(?native=1)에서는 REST API+웹뷰 리다이렉트
+        # 방식(카카오 공식 미지원 — devtalk.kakao.com 답변)을 버리고, 카카오
+        # 네이티브 SDK를 직접 호출하는 버튼으로 바꾼다. 일반 웹 접속은
+        # 기존 방식 그대로 둔다(영향 없음).
+        is_native_app = st.query_params.get("native") == "1"
         with st.container(key="auth_banner_kakao"):
-            st.link_button(
-                "카카오로 시작하기",
-                get_kakao_authorize_url(return_page),
-                use_container_width=True,
-                type="primary",
-            )
+            if is_native_app:
+                if st.button(
+                    "카카오로 시작하기",
+                    use_container_width=True,
+                    type="primary",
+                    key="auth_banner_kakao_native",
+                ):
+                    _fire_kakao_native_login_trigger()
+            else:
+                st.link_button(
+                    "카카오로 시작하기",
+                    get_kakao_authorize_url(return_page),
+                    use_container_width=True,
+                    type="primary",
+                )
         st.caption("카카오 로그인 후 이 페이지로 돌아옵니다.")
     elif _dev_mock_enabled():
         with st.container(key="auth_banner_kakao"):

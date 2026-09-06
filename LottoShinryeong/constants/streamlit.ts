@@ -40,6 +40,11 @@ export function getStreamlitPageUrl(
   if (guestId) {
     url += `&gid=${encodeURIComponent(guestId)}`;
   }
+  // 2026-09-06: 서버(wallet_ui.py)가 "이 요청이 네이티브 앱에서 왔다"를
+  // 구분하는 유일한 신호 — 카카오 로그인 버튼을 앱에서는 네이티브 SDK
+  // 트리거로, 일반 웹에서는 기존 REST API 리다이렉트 링크로 다르게
+  // 렌더링해야 하므로 필요하다(streamlit-webview.tsx 참고).
+  url += '&native=1';
   if (extraParams) {
     for (const [key, value] of Object.entries(extraParams)) {
       url += `&${key}=${encodeURIComponent(value)}`;

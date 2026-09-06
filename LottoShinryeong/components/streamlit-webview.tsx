@@ -11,6 +11,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { login as kakaoNativeLogin } from '@react-native-seoul/kakao-login';
 
 import { getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
@@ -50,7 +51,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // (utils/fresh-start.ts 설명 참고). 홈 버튼 등으로 잠깐 백그라운드 갔다 온
   // 경우나, 앱 안에서 다른 화면으로 이동한 경우엔 false.
   const [isFreshStart] = useState(() => consumeFreshStartFlag());
-  const mergedParams = isFreshStart ? { ...extraParams, fresh_start: '1' } : extraParams;
+  // 2026-09-06: 카카오 네이티브 SDK 로그인(handleKakaoNativeLogin)이 성공하면
+  // 받은 access_token을 여기 담아 다음 웹뷰 로드 한 번에만 실어 보낸다 —
+  // 서버가 그 토큰을 카카오에 직접 검증해 로그인을 끝낸다(auth_providers.py
+  // finalize_login_with_native_token 참고). 1회용이라 로드 완료 후 지운다.
+  const [nativeKakaoToken, setNativeKakaoToken] = useState<string | null>(null);
+  const mergedParams = {
+    ...(extraParams || {}),
+    ...(isFreshStart ? { fresh_start: '1' } : {}),
+    ...(nativeKakaoToken ? { native_kakao_token: nativeKakaoToken } : {}),
+  };
   const uri = getStreamlitPageUrl(page, guestId, mergedParams);
 
   // QR 스캔 후 넘어오는 것처럼 ?qr=... 붙은 페이지에서, Streamlit이 그 1회성
@@ -81,6 +91,24 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     }
     qrScanRedirected.current = true;
     router.replace({ pathname: '/qr-scan', params: { target: 'hedge' } });
+  }, []);
+
+  // 2026-09-06: 카카오 로그인을 REST API+웹뷰 방식에서 네이티브 SDK로 전환 —
+  // 카카오 공식 지원 사유(devtalk.kakao.com 답변: "웹뷰는 플랫폼마다 동작이
+  // 달라 공식 지원 불가, 네이티브 SDK 사용 권장")로, 어제 겪었던 웹뷰 차단·
+  // 외부 브라우저 복귀 실패 문제가 구조적으로 발생할 수 없다. 카카오톡 앱이
+  // 설치돼 있으면 그 앱과 직접 통신(웹뷰/외부 브라우저 전혀 안 거침), 없으면
+  // 라이브러리가 자동으로 Custom Tab 기반 계정 로그인으로 대체한다.
+  // 받은 access_token은 서버가 카카오에 직접 검증하도록 다음 웹뷰 로드에
+  // 실어 보낸다(로그인 자체가 이미 끝난 뒤라 앱 밖으로 나갈 필요가 없다).
+  const handleKakaoNativeLogin = useCallback(async () => {
+    try {
+      const token = await kakaoNativeLogin();
+      setNativeKakaoToken(token.accessToken);
+    } catch {
+      // 사용자가 취소했거나 카카오 로그인 자체가 실패 — 로그인 배너에서
+      // 다시 시도할 수 있으니 조용히 무시한다.
+    }
   }, []);
 
   // 1) onNavigationStateChange — 웹뷰의 실제 URL이 바뀔 때마다 항상 불리는(리액티브)
@@ -131,9 +159,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       }
       if (payload?.type === 'openQrScan') {
         goToQrScan();
+      } else if (payload?.type === 'kakaoNativeLogin') {
+        handleKakaoNativeLogin();
       }
     },
-    [goToQrScan]
+    [goToQrScan, handleKakaoNativeLogin]
   );
 
   const goToStreamlitHome = useCallback(() => {
@@ -220,7 +250,15 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onMessage={onMessage}
           onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
+          onLoadEnd={() => {
+            setLoading(false);
+            // 카카오 access_token은 1회용 — 이 로드로 이미 서버에 전달됐으니
+            // 지워서, 이후 다른 이유로(예: QR 스캔 결과 반영) 다시 렌더링돼도
+            // 이미 쓴 토큰을 또 실어 보내지 않게 한다.
+            if (nativeKakaoToken) {
+              setNativeKakaoToken(null);
+            }
+          }}
           onError={(e) => {
             setLoading(false);
             setError(e.nativeEvent.description || '연결 실패');
