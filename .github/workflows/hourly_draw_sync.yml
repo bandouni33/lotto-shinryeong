@@ -27,8 +27,18 @@ jobs:
         # import 체인과 항상 일치하게 한다.
         run: pip install -r requirements.txt
 
-      - name: 당첨번호 확인·반영
+      - name: 당첨번호 확인·반영 (최대 3회 재시도)
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: python hourly_draw_sync.py
+        run: |
+          for attempt in 1 2 3; do
+            echo "── 시도 $attempt/3 ──"
+            if python hourly_draw_sync.py; then
+              exit 0
+            fi
+            echo "시도 $attempt 실패 — 30초 후 재시도"
+            sleep 30
+          done
+          echo "3회 모두 실패"
+          exit 1
