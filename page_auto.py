@@ -241,7 +241,6 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
         rows.append(
             {
                 "회차": item["draw_round"],
-                "추출수량": item["total_count"],
                 # 그 회차 조합을 추출한 "그 순간" 필터 규칙 수(draw_pattern_counts) —
                 # 이 기록이 생기기 전에 추출된 옛 회차는 기록이 없어 "—"로 표시한다.
                 "적용패턴수": f"{pattern_count:,}" if pattern_count is not None else "—",
@@ -2012,9 +2011,9 @@ def render():
         .auto-stats-table th:nth-child(1),
         .auto-stats-table td:nth-child(1) { width: 14%; }
         .auto-stats-table th:nth-child(2),
-        .auto-stats-table td:nth-child(2) { width: 18%; }
+        .auto-stats-table td:nth-child(2) { width: 13.6%; }
         .auto-stats-table th:nth-child(n+3),
-        .auto-stats-table td:nth-child(n+3) { width: 13.6%; }
+        .auto-stats-table td:nth-child(n+3) { width: 17.2%; }
         .auto-back-main-btn {
             display: flex;
             align-items: center;
