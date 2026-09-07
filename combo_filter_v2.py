@@ -117,7 +117,12 @@ def _prep_history(history_desc: list[dict]) -> list[dict]:
         raise ValueError("역대 데이터가 부족합니다(최소 101회차 필요).")
     history_asc = list(reversed(history_desc))
     for h in history_asc:
-        h["nums"] = [h["num1"], h["num2"], h["num3"], h["num4"], h["num5"], h["num6"]]
+        # 2026-09-06 버그 수정: draw_results_db.get_all_draw_results()는
+        # num1~num6이 아니라 numbers(리스트) 키로 반환하는데, 이 함수는
+        # num1~num6 개별 키를 기대하고 있어서 실제 자동생성 워커 실행 시
+        # KeyError('num1')로 매번 실패하고 있었다(실측 확인 — 1241회차
+        # 조합이 한 번도 자동 생성된 적 없었던 근본 원인 중 하나).
+        h["nums"] = list(h["numbers"])
     return history_asc
 
 

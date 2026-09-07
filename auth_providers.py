@@ -174,36 +174,17 @@ def restore_member_from_guest() -> int | None:
     init_wallet_tables()
     guest_id = get_or_create_guest_id()
 
-    # ↓↓↓ 2026-09-07 임시 방어코드 — touch_guest_last_seen이 실기기에서 전혀
-    # 기록되지 않는 원인을 찾기 위해, 조용히 삼켜지던 예외를 last_seen_at
-    # 자리에 그대로 남겨서(화면 노출 없이 DB로만 확인) 무슨 일이 있었는지
-    # 알아낸다. 원인 확인되면 바로 제거할 것.
-    try:
-        idle_seconds = guest_idle_seconds(guest_id)
-        if idle_seconds is not None and idle_seconds >= 180:
-            logout()
-            return None
-
-        if st.session_state.get("member_id"):
-            touch_guest_last_seen(guest_id)
-            return None
-    except Exception as _dbg_exc:  # noqa: BLE001
-        import traceback
-
-        from wallet_db import _connect as _dbg_connect
-
-        try:
-            _dbg_conn = _dbg_connect()
-            _dbg_conn.execute(
-                "UPDATE guest_member_links SET last_seen_at = ? WHERE guest_id = ?",
-                (f"[진단오류] {traceback.format_exc()[:400]}", str(guest_id)),
-            )
-            _dbg_conn.commit()
-            _dbg_conn.close()
-        except Exception:
-            pass
+    # 2026-09-07: 서버 idle 로그아웃 정상 동작 확인 완료(2026-09-07 실기기
+    # 백그라운드→재접속 테스트로 검증) — 검증 과정에서 원인 추적용으로 넣었던
+    # 임시 진단 코드(예외를 last_seen_at에 기록)는 확인 완료 후 제거함.
+    idle_seconds = guest_idle_seconds(guest_id)
+    if idle_seconds is not None and idle_seconds >= 180:
+        logout()
         return None
-    # ↑↑↑ 임시 방어코드 끝
+
+    if st.session_state.get("member_id"):
+        touch_guest_last_seen(guest_id)
+        return None
 
     member_id = get_member_for_guest(guest_id)
     if not member_id:
