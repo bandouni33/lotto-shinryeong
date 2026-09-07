@@ -111,6 +111,22 @@ def init_marketing_tables():
             recorded_at TEXT NOT NULL
         )
     """)
+    # 2026-09-08: combo_gen_worker.py가 매주 계산하는 "4차 필터 통과 조합
+    # 총개수"와 그 회차의 격차순위 1~3위 숫자는 지금까지 combo_gen_job.status
+    # 파일에만 잠깐 남고 다음 실행 때 덮어써져 사라졌다 — 추첨 후 "당첨번호에
+    # 1~2위 예측이 포함됐는지" 같은 후속 기능에 쓸 데이터라 영구 보관이
+    # 필요해졌다.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS draw_generation_stats (
+            draw_round INTEGER PRIMARY KEY,
+            stage2_count INTEGER NOT NULL,
+            stage4_count INTEGER NOT NULL,
+            rank1_num INTEGER NOT NULL,
+            rank2_num INTEGER NOT NULL,
+            rank3_num INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL
+        )
+    """)
     # 테스트 기간(AUTO_PURCHASE_SKIP_AUTH) 구매내역 — 로그인 없이도 앱을 다시 켰을 때
     # 구매내역이 남아있도록, 쿠키로 유지되는 guest_id에 주문 메타데이터를 묶어 저장한다.
     # 조합 자체는 이미 lotto_combinations.auto_order_id로 영속돼 있으니, 여기엔
@@ -1350,6 +1366,62 @@ def get_pattern_count_for_draw(draw_round: int) -> int | None:
     ).fetchone()
     conn.close()
     return int(row[0]) if row else None
+
+
+def record_draw_generation_stats(
+    draw_round: int,
+    stage2_count: int,
+    stage4_count: int,
+    top3_numbers: tuple[int, int, int],
+) -> None:
+    """이 회차 조합 생성 시점의 2차/4차 필터 통과 총개수와 격차순위 1~3위
+    숫자를 영구 기록한다(combo_gen_worker.py가 매 회차 생성 직후 호출).
+    record_draw_pattern_count와 같은 패턴 — 같은 회차를 나중에 다시 생성하면
+    그 시점 값으로 덮어쓴다."""
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO draw_generation_stats
+            (draw_round, stage2_count, stage4_count, rank1_num, rank2_num, rank3_num, recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(draw_round) DO UPDATE SET
+            stage2_count = excluded.stage2_count,
+            stage4_count = excluded.stage4_count,
+            rank1_num = excluded.rank1_num,
+            rank2_num = excluded.rank2_num,
+            rank3_num = excluded.rank3_num,
+            recorded_at = excluded.recorded_at
+        """,
+        (
+            int(draw_round),
+            int(stage2_count),
+            int(stage4_count),
+            int(top3_numbers[0]),
+            int(top3_numbers[1]),
+            int(top3_numbers[2]),
+            datetime.now().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_draw_generation_stats(draw_round: int) -> dict | None:
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM draw_generation_stats WHERE draw_round = ?",
+        (int(draw_round),),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "draw_round": int(row["draw_round"]),
+        "stage2_count": int(row["stage2_count"]),
+        "stage4_count": int(row["stage4_count"]),
+        "top3_numbers": (int(row["rank1_num"]), int(row["rank2_num"]), int(row["rank3_num"])),
+    }
 
 
 def is_win_rank_synced(draw_round: int, source: str) -> bool:

@@ -133,6 +133,9 @@ def main() -> int:
             target_round, sample, top3_numbers=stats.get("top3_numbers")
         )
         marketing_db.record_draw_pattern_count(target_round, PATTERN_COUNT_DISPLAY)
+        marketing_db.record_draw_generation_stats(
+            target_round, stats["stage2_count"], stats["final_count"], stats["top3_numbers"]
+        )
         local_copy_path = save_local_verification_copy(target_round, sample)
 
         # 2026-09-06 버그 수정: 예전엔 anchor_round(방금 추첨된 회차) 이하를
