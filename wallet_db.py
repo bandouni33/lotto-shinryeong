@@ -605,6 +605,28 @@ def list_completed_auto_orders(member_id: int, limit: int = 20) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def cleanup_old_auto_orders(keep_rounds: int = 2) -> int:
+    """auto_orders(회원 기준 자동구매 주문) — 최근 N개 회차만 남기고 그 이전은
+    삭제. marketing_db.cleanup_old_guest_auto_orders와 동일한 규칙 — 실결제
+    연동 전엔 이 테이블에 실제로 쓰는 경로가 없어(전부 guest_auto_orders로만
+    기록됨) 지금은 대부분 비어있겠지만, 나중에 실결제가 붙어 이 테이블도
+    쌓이기 시작했을 때 처음부터 규칙이 적용돼 있도록 미리 맞춰둔다."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT DISTINCT draw_round FROM auto_orders WHERE draw_round IS NOT NULL ORDER BY draw_round DESC"
+    ).fetchall()
+    old_rounds = [int(r[0]) for r in rows[keep_rounds:]]
+    deleted = 0
+    for old_round in old_rounds:
+        cur = conn.execute(
+            "DELETE FROM auto_orders WHERE draw_round = ?", (old_round,)
+        )
+        deleted += int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def fail_auto_order(order_id: int) -> None:
     conn = _connect()
     conn.execute(

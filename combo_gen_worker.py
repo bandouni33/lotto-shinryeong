@@ -37,6 +37,7 @@ def main() -> int:
         import combo_filter_v2
         import draw_results_db
         import marketing_db
+        import wallet_db
         import app_settings
 
         draw_results_db.init_draw_results_table()
@@ -74,6 +75,14 @@ def main() -> int:
         # 2회차만 남기고 정리 — 이 테이블은 지금까지 정리 로직이 없었다.
         cleaned_guest = marketing_db.cleanup_old_guest_generated_combos(keep_rounds=2)
 
+        # 2026-09-07: 자동구매 주문(guest_auto_orders/auto_orders)도 같은
+        # "최근 2회차만 보관" 규칙을 적용 — 이전엔 화면(page_auto.py)에서만
+        # 최근 2회차로 잘라 보여줄 뿐 실제 행은 삭제되지 않고 계속 쌓이고
+        # 있었다(자동구매/번개조합/안티·액땜조합 공통 4대 원칙 중 "최근
+        # 2회차만 보관 후 자동삭제"를 자동구매만 어기고 있던 gap).
+        cleaned_guest_auto_orders = marketing_db.cleanup_old_guest_auto_orders(keep_rounds=2)
+        cleaned_auto_orders = wallet_db.cleanup_old_auto_orders(keep_rounds=2)
+
         # 방금 막 추첨된 anchor_round 자체의 "참고용 당첨가능 통계"를
         # 계산해서 기록 — 그 전주에 이 조합군이 어떻게 나왔을지 재현한 뒤
         # 이번에 나온 진짜 당첨번호와 대조한다(1241회부터만 의미 있음 —
@@ -96,6 +105,8 @@ def main() -> int:
             sample_size=sample_size,
             cleaned_old_rows=cleaned,
             cleaned_guest_rows=cleaned_guest,
+            cleaned_guest_auto_orders=cleaned_guest_auto_orders,
+            cleaned_auto_orders=cleaned_auto_orders,
             stats=stats,
             reference_stats_for_anchor=ref_note,
         )

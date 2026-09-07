@@ -1035,6 +1035,30 @@ def cleanup_old_guest_generated_combos(keep_rounds: int = 2) -> int:
     return deleted
 
 
+def cleanup_old_guest_auto_orders(keep_rounds: int = 2) -> int:
+    """guest_auto_orders(자동구매 주문 메타데이터) — 최근 N개 회차만 남기고
+    그 이전은 삭제. 2026-09-07 확인: 이 테이블은 지금까지 정리 로직이 없어
+    "구매 시 자동저장 → 추첨 후 자동마킹 → 최근 2회차만 보관 후 자동삭제"라는
+    3개 화면(자동구매/번개조합/안티·액땜조합) 공통 규칙 중 자동구매만 4번째
+    (자동삭제)를 어기고 있었다 — 화면(page_auto.py MAX_HISTORY_ROUNDS)에서만
+    최근 2회차로 잘라 보여줬을 뿐 실제 행은 무한정 쌓이고 있었음.
+    cleanup_old_guest_generated_combos와 완전히 동일한 규칙으로 맞춘다."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT DISTINCT draw_round FROM guest_auto_orders ORDER BY draw_round DESC"
+    ).fetchall()
+    old_rounds = [int(r[0]) for r in rows[keep_rounds:]]
+    deleted = 0
+    for old_round in old_rounds:
+        cur = conn.execute(
+            "DELETE FROM guest_auto_orders WHERE draw_round = ?", (old_round,)
+        )
+        deleted += int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def get_generated_combo_pending_draw_rounds() -> list[int]:
     """win_rank가 아직 비어 있는 생성조합이 존재하는 회차 목록 — 당첨마킹 동기화 대상."""
     conn = _connect()
