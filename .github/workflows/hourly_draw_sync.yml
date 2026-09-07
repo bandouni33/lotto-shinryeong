@@ -1,11 +1,12 @@
-name: 매시 정각 당첨번호 확인
+name: 토요일 밤 당첨번호 확인
 
 on:
   schedule:
-    # UTC 기준 매시 정각 — 방문자 유무와 무관하게 항상 확인한다(요일·시간
-    # 조건 없이 상시 실행: 이미 최신이면 sync_latest_from_dhlottery()가
-    # 아무 일도 하지 않고 조용히 끝난다).
-    - cron: "0 * * * *"
+    # 2026-09-07 수정: 추첨이 토요일 20:30 KST뿐이라 매시간 돌릴 필요가
+    # 없다는 지적 반영 — 토요일 22:00·23:00 KST(=13:00·14:00 UTC) 딱 2번만
+    # 확인한다. 그래도 이미 최신이면 sync_latest_from_dhlottery()가 아무
+    # 일도 안 하고 조용히 끝나는 건 동일.
+    - cron: "0 13,14 * * 6"
   workflow_dispatch: {}
 
 jobs:
@@ -19,7 +20,12 @@ jobs:
           python-version: "3.12"
 
       - name: 의존성 설치
-        run: pip install requests libsql-client
+        # db_turso.py가 최상단에서 streamlit을 그대로 import하기 때문에
+        # (st.cache_resource 데코레이터 등에 씀) requests/libsql-client만
+        # 설치하면 ModuleNotFoundError('streamlit')로 실패한다(2026-09-07
+        # 첫 실행 실패로 확인) — requirements.txt 전체를 설치해 실제
+        # import 체인과 항상 일치하게 한다.
+        run: pip install -r requirements.txt
 
       - name: 당첨번호 확인·반영
         env:
