@@ -573,35 +573,21 @@ def allocate_lotto_combinations(
 
 def _pick_spread_indices(pool_size: int, count: int) -> list[int]:
     """
-    풀 전체에 count개를 불규칙 간격으로 분산 (1-indexed 예: 1, 3, 6, 10, 14).
-    시작 위치 + 매번 랜덤 gap(최소 1)으로 앞쪽부터 퍼뜨림.
+    풀 전체에서 count개를 골라 오름차순으로 반환 (1-indexed 예: 1, 3, 6, 10, 14처럼
+    불규칙 간격으로 퍼져 보임 — 하지만 실제로는 풀 전체에서 균등확률로 뽑은 것).
+
+    2026-09-07 수정: 예전엔 "시작 위치를 풀 앞쪽 1/3 안에서 고른 뒤 랜덤 gap으로
+    전진"하는 방식이었는데, 시뮬레이션으로 실측한 결과 count>=2일 때 앞쪽 구간이
+    뒤쪽 구간보다 최대 6배 더 자주 뽑히는 편향이 있었다(10개 구매 시 마스크당
+    2개씩 뽑는 경로가 바로 이 케이스). random.sample로 전체 풀에서 균등하게
+    count개를 뽑아 정렬하는 방식으로 교체 — 여전히 "간격을 두고 퍼진" 오름차순
+    인덱스를 반환하지만 편향은 없다.
     """
     if count <= 0:
         return []
-    if count == 1:
-        return [random.randrange(pool_size)]
     if count >= pool_size:
         return sorted(random.sample(range(pool_size), pool_size))
-
-    head_room = pool_size - count
-    max_start = max(0, min(head_room, pool_size // 3))
-    pos = random.randint(0, max_start)
-    indices = [pos]
-    picks_left = count - 1
-
-    for remaining_picks in range(picks_left, 0, -1):
-        slots_left = pool_size - pos - 1
-        min_gap = 1
-        max_gap = max(min_gap, slots_left - remaining_picks + 1)
-        if max_gap > min_gap + 1 and random.random() < 0.6:
-            upper = max(min_gap + 1, max_gap // 2 + random.randint(0, max(0, max_gap // 3)))
-            gap = random.randint(min_gap, min(upper, max_gap))
-        else:
-            gap = random.randint(min_gap, max_gap)
-        pos += gap
-        indices.append(pos)
-
-    return indices
+    return sorted(random.sample(range(pool_size), count))
 
 
 # 2026-09-05 확정(사용자 지정): 구매 5개 = "1묶음". 격차순위(gap_order) 1~3위

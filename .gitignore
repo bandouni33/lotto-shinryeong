@@ -60,6 +60,11 @@ data/users/
 # Streamlit
 .streamlit/cache/
 
+# 2026-09-07: 매주 조합생성 때 combo_gen_worker.py가 남기는 "확인용" 로컬
+# 사본(배포용 저장본은 Turso DB에 별도로 있음) — 감사·검증 전용이라 git에는
+# 올리지 않는다. 폴더명은 "{회차}회차" (예: 1241회차).
+[0-9][0-9][0-9][0-9]회차/
+
 # OS files
 .DS_Store
 .DS_Store?

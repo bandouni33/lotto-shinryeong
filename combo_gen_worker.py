@@ -8,6 +8,7 @@ app.py 쪽 트리거가 새 회차 감지 후 이 스크립트를 subprocess.Pop
 
 from __future__ import annotations
 
+import csv
 import json
 import math
 import os
@@ -17,11 +18,13 @@ import traceback
 
 STATUS_FILE = os.path.join(os.path.dirname(__file__), "combo_gen_job.status")
 
-# 2026-09-05 확정: 필터 통과 조합 전체(80만개대)를 다 저장하지 않고, 실제
-# 판매/배포용으로는 1.5%만 무작위 추출해서 저장한다. "적용패턴수"는 실제
-# 사용한 규칙 개수(1차 381 + 2차 48 + 4차 조건 2 = 431)의 15배로 고정
-# 표시(=6,465) — 조합 개수와 무관한 별도 값.
-EXTRACT_RATE = 0.015
+# 2026-09-07 확정(2026-09-05 값 1.5%에서 정정): 필터 통과 조합 전체(60~80만개대)를
+# 다 저장하지 않고, 실제 판매/배포용으로는 10%만 무작위 추출해서 저장한다.
+# 실제 추출 수량 자체는 비공개 방침이라 사용자 화면(자동구매 하단 표)에는
+# 노출하지 않는다(2026-09-07, "추출수량" 열 제거). "적용패턴수"는 실제 사용한
+# 규칙 개수(1차 381 + 2차 48 + 4차 조건 2 = 431)의 15배로 고정 표시(=6,465)
+# — 조합 개수와 무관한 별도 값.
+EXTRACT_RATE = 0.10
 PATTERN_COUNT_DISPLAY = 431 * 15
 
 
@@ -29,6 +32,22 @@ def write_status(state: str, **extra) -> None:
     payload = {"state": state, **extra}
     with open(STATUS_FILE, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False)
+
+
+def save_local_verification_copy(target_round: int, sample: list[tuple[int, ...]]) -> str:
+    """2026-09-07 신규: 배포용 저장본(Turso lotto_combinations)과 별개로,
+    "확인용" 로컬 사본을 lotto-app 폴더 바로 밑에 회차별 폴더로 남긴다
+    ("lotto-app폴더/1241회차… 회차별로" 요청). 배포에는 전혀 쓰이지 않는
+    감사·검증 전용 스냅샷이라, git에는 안 올라가게 .gitignore로 막아둔다."""
+    folder = os.path.join(os.path.dirname(__file__), f"{target_round}회차")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, "조합_확인용.csv")
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow(["num1", "num2", "num3", "num4", "num5", "num6"])
+        for combo in sample:
+            writer.writerow(list(combo))
+    return path
 
 
 def main() -> int:
@@ -62,6 +81,7 @@ def main() -> int:
             target_round, sample, top3_numbers=stats.get("top3_numbers")
         )
         marketing_db.record_draw_pattern_count(target_round, PATTERN_COUNT_DISPLAY)
+        local_copy_path = save_local_verification_copy(target_round, sample)
 
         # 2026-09-06 버그 수정: 예전엔 anchor_round(방금 추첨된 회차) 이하를
         # 전부 즉시 삭제했는데, 이건 "최근 2회차까지는 보관"이라는 확립된
@@ -107,6 +127,7 @@ def main() -> int:
             cleaned_guest_rows=cleaned_guest,
             cleaned_guest_auto_orders=cleaned_guest_auto_orders,
             cleaned_auto_orders=cleaned_auto_orders,
+            local_verification_copy=local_copy_path,
             stats=stats,
             reference_stats_for_anchor=ref_note,
         )
