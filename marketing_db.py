@@ -590,39 +590,64 @@ def _pick_spread_indices(pool_size: int, count: int) -> list[int]:
     return sorted(random.sample(range(pool_size), count))
 
 
-# 2026-09-05 확정(사용자 지정): 구매 5개 = "1묶음". 격차순위(gap_order) 1~3위
-# 숫자를 어떤 조합으로 겹쳐서 포함하는지에 따라 5가지로 나눠 정확히 1개씩
-# 채운다 — 순수 1위만/2위만 포함 조합은 흔해서 묶음에서 제외하고, 겹치는(드문)
-# 조합들을 고르게 배분해 다양성을 보장한다. 비트: 1위=1, 2위=2, 3위=4.
-_BUNDLE_MASKS = (3, 5, 7, 6, 4)  # {1,2} / {1,3} / {1,2,3} / {2,3} / {3}만
-_BUNDLE_SIZE = len(_BUNDLE_MASKS)
+# 2026-09-08 최종 확정(여러 차례 재확인): 구매 5개 = "1묶음". 격차순위
+# (gap_order) 1~3위 숫자 포함 여부로 조합을 3개 그룹으로 나눈다(서로 안
+# 겹치고 합치면 전체와 같음) — 1위그룹(1위 숫자 포함, 2·3위 무관) / 2위그룹
+# (2위 포함, 1위는 제외) / 3위그룹(3위 포함, 1·2위 둘 다 제외). 1묶음(5개)은
+# 이 3개 그룹에서 자연 비율이 아니라 **2:2:1**로 강제 배분한다 — 반드시
+# combo_gen_worker.py의 RANK_TIER_RATIO(추출 단계)와 똑같은 값을 유지할 것
+# (추출 비율과 배포 소진 비율이 어긋나면 특정 그룹만 먼저 바닥난다).
+# (2026-09-08 이전엔 "5개 마스크 각 1개씩"이었으나 사용자 본인 텍스트
+# 착오로 확인돼 이 3그룹·2:2:1 규칙으로 정정했다.)
+RANK_TIER_RATIO = (2, 2, 1)  # (1위그룹, 2위그룹, 3위그룹)
+_BUNDLE_SIZE = sum(RANK_TIER_RATIO)
 
 
-def _bundle_mask_quota(count: int) -> dict[int, int]:
-    """count(5의 배수 기준)를 5가지 마스크에 균등 배분한 목표 수량.
-    5의 배수가 아니면 나머지를 앞에서부터 1개씩 얹는다(방어적 처리 —
-    현재 구매 수량 선택지는 5/10개뿐이라 실제로는 항상 딱 떨어진다)."""
-    bundles, leftover = divmod(count, _BUNDLE_SIZE)
-    quota = {mask: bundles for mask in _BUNDLE_MASKS}
-    for mask in _BUNDLE_MASKS[:leftover]:
-        quota[mask] += 1
-    return quota
+def _rank_tier_from_mask(mask: int) -> int | None:
+    """top3_mask(비트: 1위=1, 2위=2, 3위=4)로부터 1위그룹(0)/2위그룹(1)/
+    3위그룹(2)을 판정. mask=0(NULL, 관리자 수기 업로드 등 top3 정보 없는
+    행)은 정식 그룹이 없어 None — 배분 시 leftover로만 채워진다."""
+    if mask & 1:
+        return 0
+    if mask & 2:
+        return 1
+    if mask & 4:
+        return 2
+    return None
 
 
-def _pick_bundle_candidates(pending: list, quota_remaining: dict[int, int]) -> list:
-    """마스크별 부족분을 그 마스크 버킷 안에서 분산선택(_pick_spread_indices)으로
-    채운다. 특정 마스크 재고가 모자라면 남은 총량만큼 나머지 pending(마스크
-    무관, NULL 포함)에서 채워 최소한 need는 맞춘다."""
-    by_mask: dict[int, list] = {}
+def _rank_tier_quota(count: int) -> list[int]:
+    """count(5의 배수 기준)를 1위/2위/3위그룹에 2:2:1로 배분한 목표 수량
+    [1위그룹, 2위그룹, 3위그룹]. 5의 배수가 아니면 나머지를 비율이 큰
+    그룹부터 1개씩 얹는다(방어적 처리 — 현재 구매 수량 선택지는 5/10개뿐이라
+    실제로는 항상 딱 떨어진다)."""
+    unit, leftover = divmod(count, _BUNDLE_SIZE)
+    targets = [unit * r for r in RANK_TIER_RATIO]
+    order = sorted(range(len(RANK_TIER_RATIO)), key=lambda i: -RANK_TIER_RATIO[i])
+    for i in range(leftover):
+        targets[order[i % len(order)]] += 1
+    return targets
+
+
+def _pick_bundle_candidates(pending: list, quota_remaining: list[int]) -> list:
+    """1위/2위/3위그룹별 부족분을 그 그룹 버킷 안에서 분산선택
+    (_pick_spread_indices)으로 채운다. quota_remaining은
+    [1위그룹필요수, 2위그룹필요수, 3위그룹필요수]. 특정 그룹 재고가 모자라면
+    남은 총량만큼 나머지 pending(그룹 무관, NULL 포함)에서 채워 최소한
+    need는 맞춘다."""
+    by_tier: dict[int, list] = {0: [], 1: [], 2: []}
     for row in pending:
-        by_mask.setdefault(int(row["top3_mask"]) if row["top3_mask"] is not None else 0, []).append(row)
+        mask = int(row["top3_mask"]) if row["top3_mask"] is not None else 0
+        tier = _rank_tier_from_mask(mask)
+        if tier is not None:
+            by_tier[tier].append(row)
 
     picked: list = []
     picked_ids: set[int] = set()
-    for mask, need in quota_remaining.items():
+    for tier, need in enumerate(quota_remaining):
         if need <= 0:
             continue
-        bucket = by_mask.get(mask, [])
+        bucket = by_tier.get(tier, [])
         if not bucket:
             continue
         idxs = _pick_spread_indices(len(bucket), min(need, len(bucket)))
@@ -633,7 +658,7 @@ def _pick_bundle_candidates(pending: list, quota_remaining: dict[int, int]) -> l
                 picked_ids.add(rid)
                 picked.append(row)
 
-    still_need = sum(quota_remaining.values()) - len(picked)
+    still_need = sum(quota_remaining) - len(picked)
     if still_need > 0:
         leftover = [row for row in pending if int(row["id"]) not in picked_ids]
         if leftover:
@@ -669,11 +694,11 @@ def allocate_lotto_combinations_random_sequential(
     rotated = False
     claimed_rows: list = []
     claimed_ids: set[int] = set()
-    # count가 5의 배수(현재 구매 수량 선택지는 5/10개뿐)면 "1~3위 절대수
-    # 겹침 조합 5종 묶음" 배분을 적용 — 그 외(예: 관리자 도구의 임의 수량
-    # 호출)는 기존 순수 분산선택 그대로.
+    # count가 5의 배수(현재 구매 수량 선택지는 5/10개뿐)면 "1~3위그룹
+    # 2:2:1 묶음" 배분을 적용 — 그 외(예: 관리자 도구의 임의 수량 호출)는
+    # 기존 순수 분산선택 그대로.
     use_bundle_quota = count % _BUNDLE_SIZE == 0
-    full_quota = _bundle_mask_quota(count) if use_bundle_quota else None
+    full_quota = _rank_tier_quota(count) if use_bundle_quota else None
     try:
         total = _count_total_combinations(conn, draw_round)
         if total < count:
@@ -712,14 +737,14 @@ def allocate_lotto_combinations_random_sequential(
                 continue
 
             if use_bundle_quota:
-                claimed_mask_counts = Counter(
-                    int(r["top3_mask"]) if r["top3_mask"] is not None else 0
+                claimed_tier_counts = Counter(
+                    _rank_tier_from_mask(int(r["top3_mask"]) if r["top3_mask"] is not None else 0)
                     for r in claimed_rows
                 )
-                quota_remaining = {
-                    mask: full_quota[mask] - claimed_mask_counts.get(mask, 0)
-                    for mask in full_quota
-                }
+                quota_remaining = [
+                    full_quota[tier] - claimed_tier_counts.get(tier, 0)
+                    for tier in range(3)
+                ]
                 candidates = _pick_bundle_candidates(pending, quota_remaining)[:need]
             else:
                 pick_indices = _pick_spread_indices(len(pending), min(need, len(pending)))
@@ -1276,15 +1301,22 @@ def bulk_insert_lotto_combinations(
     if not payload:
         return 0
 
+    # 2026-09-08: EXTRACT_RATE를 1.5%→10%로 올리면서(회차당 약 6~8만개) 이
+    # payload 전체를 한 번의 executemany(=Turso batch 요청 1건)로 보내다가
+    # db_turso.py의 10초 타임아웃 가드에 계속 걸려 회차 재생성이 실패했다
+    # (2026-09-08 1241회차 재생성 중 실측 확인 — 1.5% 시절엔 요청 1건이
+    # 10초 안에 끝났지만, 6~7배 커진 batch는 못 끝냄). 하나의 요청으로
+    # 몰아 보내지 않고 작은 묶음으로 나눠 여러 번 보내면 각 요청은 여전히
+    # 10초 안에 끝나면서 전체는 다 들어간다.
+    _INSERT_CHUNK_SIZE = 3000
     conn = _connect()
-    conn.executemany(
-        """
+    sql = """
         INSERT INTO lotto_combinations
             (draw_round, num1, num2, num3, num4, num5, num6, win_rank, top3_mask)
         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
-        """,
-        payload,
-    )
+        """
+    for start in range(0, len(payload), _INSERT_CHUNK_SIZE):
+        conn.executemany(sql, payload[start : start + _INSERT_CHUNK_SIZE])
     conn.commit()
     conn.close()
     return len(payload)

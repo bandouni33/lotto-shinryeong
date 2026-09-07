@@ -50,6 +50,58 @@ def save_local_verification_copy(target_round: int, sample: list[tuple[int, ...]
     return path
 
 
+# 2026-09-08 확정(사용자 지정, 여러 차례 재확인 후 최종 정리): 4차 필터
+# 통과 조합(격차순위 1~3위 중 최소 1개 포함)은 항상 아래 3개 그룹 중
+# 정확히 하나에만 속한다(서로 안 겹치고, 합치면 전체와 같음):
+#   1위그룹: 1위 숫자 포함(2·3위 포함 여부 무관)
+#   2위그룹: 2위 숫자 포함, 1위는 제외
+#   3위그룹: 3위 숫자 포함, 1·2위 둘 다 제외
+# "10% 추출 방식은 배포방식(구매 시 배정 비율)과 동일해야 한다"는 지시에
+# 따라, 세 그룹의 자연 비율이 아니라 배포 시 실제 소진 비율과 똑같은
+# 2:2:1로 강제 배분한다 — marketing_db.RANK_TIER_RATIO와 반드시 같은 값을
+# 유지할 것(둘 중 하나만 바뀌면 추출 비율과 배포 소진 비율이 어긋나서
+# 특정 그룹만 먼저 바닥나는 문제가 재발한다).
+RANK_TIER_RATIO = (2, 2, 1)  # (1위그룹, 2위그룹, 3위그룹)
+
+
+def _rank_tier(combo: tuple[int, ...], top3_numbers: tuple[int, int, int]) -> int:
+    """combo가 1위그룹(0)/2위그룹(1)/3위그룹(2) 중 어디에 속하는지."""
+    rank1, rank2, rank3 = top3_numbers
+    combo_set = set(combo)
+    if rank1 in combo_set:
+        return 0
+    if rank2 in combo_set:
+        return 1
+    return 2  # 4차 조건상 이 시점엔 rank3가 반드시 포함돼 있음
+
+
+def extract_sample_by_rank_tier_ratio(
+    combos: list[tuple[int, ...]], top3_numbers: tuple[int, int, int]
+) -> list[tuple[int, ...]]:
+    """전체 4차 통과 조합의 10%를 뽑되, 1위/2위/3위그룹 자연 비율이 아니라
+    RANK_TIER_RATIO(2:2:1)로 강제 배분한다 — 배포 시 5개 구매(1묶음)마다
+    1위그룹 2개+2위그룹 2개+3위그룹 1개를 소진하는 것과 똑같은 비율로
+    미리 저장해둬야, 어느 한쪽 그룹만 먼저 바닥나지 않는다."""
+    groups: tuple[list, list, list] = ([], [], [])
+    for combo in combos:
+        groups[_rank_tier(combo, top3_numbers)].append(combo)
+
+    total_target = math.floor(len(combos) * EXTRACT_RATE)
+    ratio_sum = sum(RANK_TIER_RATIO)
+    unit, leftover = divmod(total_target, ratio_sum)
+    # 나머지는 비율이 큰 그룹부터 1개씩 얹는다(5의 배수가 아닐 때의 방어적 처리).
+    targets = [unit * r for r in RANK_TIER_RATIO]
+    order = sorted(range(len(RANK_TIER_RATIO)), key=lambda i: -RANK_TIER_RATIO[i])
+    for i in range(leftover):
+        targets[order[i % len(order)]] += 1
+
+    sample: list = []
+    for group, target in zip(groups, targets):
+        n = min(target, len(group))
+        sample.extend(random.sample(group, n) if n < len(group) else group)
+    return sample
+
+
 def main() -> int:
     write_status("running", pid=os.getpid())
     try:
@@ -75,8 +127,8 @@ def main() -> int:
             )
             return 0
 
-        sample_size = math.floor(len(combos) * EXTRACT_RATE)
-        sample = random.sample(combos, sample_size) if sample_size < len(combos) else combos
+        sample = extract_sample_by_rank_tier_ratio(combos, stats["top3_numbers"])
+        sample_size = len(sample)
         inserted = marketing_db.bulk_insert_lotto_combinations(
             target_round, sample, top3_numbers=stats.get("top3_numbers")
         )
