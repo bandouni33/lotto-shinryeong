@@ -50,6 +50,33 @@ def save_local_verification_copy(target_round: int, sample: list[tuple[int, ...]
     return path
 
 
+def save_full_stage4_pool(target_round: int, combos: list[tuple[int, ...]]) -> str:
+    """2026-09-08 신규: 4차 필터 통과 조합 전체(80만개대, 10% 추출 전 원본
+    풀) — 추첨 후 "당첨번호에 1~2위 예측이 포함됐는지" 확인하는 이벤트
+    기능에 쓸 데이터. 용량이 크므로(회차당 80만행 안팎) DB가 아니라 로컬
+    파일로만 남기고, 사용자 지시대로 "해당 회차 추첨 확인 후 이벤트 끝나면"
+    delete_full_stage4_pool()로 지운다 — 영구 보관 대상이 아니다."""
+    folder = os.path.join(os.path.dirname(__file__), f"{target_round}회차")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, "4차필터_전체풀.csv")
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow(["num1", "num2", "num3", "num4", "num5", "num6"])
+        for combo in combos:
+            writer.writerow(list(combo))
+    return path
+
+
+def delete_full_stage4_pool(target_round: int) -> bool:
+    """save_full_stage4_pool()로 남긴 대용량 파일을 지운다 — 해당 회차
+    추첨 확인 후 축하배너 이벤트 처리가 끝나면 호출할 것."""
+    path = os.path.join(os.path.dirname(__file__), f"{target_round}회차", "4차필터_전체풀.csv")
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+    return False
+
+
 # 2026-09-08 확정(사용자 지정, 여러 차례 재확인 후 최종 정리): 4차 필터
 # 통과 조합(격차순위 1~3위 중 최소 1개 포함)은 항상 아래 3개 그룹 중
 # 정확히 하나에만 속한다(서로 안 겹치고, 합치면 전체와 같음):
@@ -137,6 +164,7 @@ def main() -> int:
             target_round, stats["stage2_count"], stats["final_count"], stats["top3_numbers"]
         )
         local_copy_path = save_local_verification_copy(target_round, sample)
+        full_pool_path = save_full_stage4_pool(target_round, combos)
 
         # 2026-09-06 버그 수정: 예전엔 anchor_round(방금 추첨된 회차) 이하를
         # 전부 즉시 삭제했는데, 이건 "최근 2회차까지는 보관"이라는 확립된
@@ -183,6 +211,7 @@ def main() -> int:
             cleaned_guest_auto_orders=cleaned_guest_auto_orders,
             cleaned_auto_orders=cleaned_auto_orders,
             local_verification_copy=local_copy_path,
+            full_stage4_pool=full_pool_path,
             stats=stats,
             reference_stats_for_anchor=ref_note,
         )
