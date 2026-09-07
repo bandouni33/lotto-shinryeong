@@ -1,0 +1,28 @@
+name: 매시 정각 당첨번호 확인
+
+on:
+  schedule:
+    # UTC 기준 매시 정각 — 방문자 유무와 무관하게 항상 확인한다(요일·시간
+    # 조건 없이 상시 실행: 이미 최신이면 sync_latest_from_dhlottery()가
+    # 아무 일도 하지 않고 조용히 끝난다).
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 의존성 설치
+        run: pip install requests libsql-client
+
+      - name: 당첨번호 확인·반영
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python hourly_draw_sync.py
