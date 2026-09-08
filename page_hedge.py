@@ -858,7 +858,12 @@ def render():
 
             ref = f"hedge:{mid}:{uuid.uuid4().hex[:10]}"
             if not deduct_after_result(mid, "hedge", ref, quantity=total_count):
-                st.session_state["hedge_purchase_error"] = "적립금이 부족합니다."
+                # 2026-09-08(사용자 지시): 자동구매·번개조합과 동일 — "부족합니다"
+                # 문구만 띄우지 않고 그 자리에서 바로 충전할 수 있는 통합 창을 띄운다.
+                from wallet_db import calc_hedge_cost
+                from wallet_ui import open_insufficient_balance_dialog
+
+                open_insufficient_balance_dialog(calc_hedge_cost(total_count))
                 return
             anti_results = generate_anti_combinations(pending_lines, pending_count)
             aek_results = generate_aekddaem_combinations(pending_lines, pending_count)
@@ -890,6 +895,11 @@ def render():
     hedge_purchase_error = st.session_state.pop("hedge_purchase_error", None)
     if hedge_purchase_error:
         st.error(f"❌ {hedge_purchase_error}")
+
+    from wallet_ui import INSUFFICIENT_BALANCE_OPEN, insufficient_balance_dialog
+
+    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
+        insufficient_balance_dialog()
 
     # hedge_results는 방금 자동저장된 결과를 한 번만 보여주기 위한 1회성 플래시다 —
     # pop으로 꺼내 쓰기 때문에 다음 재실행부턴 저절로 사라지고(중복 표시 없음),

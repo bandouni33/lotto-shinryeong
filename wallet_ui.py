@@ -385,23 +385,18 @@ def auth_dialog() -> bool:
     return False
 
 
-@_dialog_decorator("적립금 충전")
-def charge_dialog() -> None:
-    member_id = current_member_id()
-    if not member_id:
-        return
-
-    balance = get_balance(member_id)
-    st.markdown(f"현재 잔액 **{balance:,}P**")
-    won_amount = st.radio(
-        "충전 금액",
-        CHARGE_WON_AMOUNTS,
-        format_func=lambda w: f"{w:,}원 → {won_to_points(w):,}P",
-        horizontal=True,
-    )
-    points = won_to_points(won_amount)
-
+def _render_charge_actions(member_id: int) -> None:
+    """충전 버튼/안내 렌더링 — charge_dialog()와 insufficient_balance_dialog()가
+    공유한다(2026-09-08 분리). 두 곳에 똑같은 로직을 복붙해두면 나중에 금액·문구를
+    한쪽만 고치고 다른 쪽을 놓치는 사고로 이어지므로, 결제 관련 코드는 항상 여기
+    한 곳만 고치면 두 다이얼로그 모두에 반영되게 한다."""
     if pg_configured():
+        won_amount = st.radio(
+            "충전 금액",
+            CHARGE_WON_AMOUNTS,
+            format_func=lambda w: f"{w:,}원 → {won_to_points(w):,}P",
+            horizontal=True,
+        )
         st.info("PG 결제창 연동은 계약 후 활성화됩니다. (카드정보는 서버에 저장하지 않습니다.)")
         st.link_button(
             "결제창 열기 (준비중)",
@@ -415,15 +410,77 @@ def charge_dialog() -> None:
         # 로그인이 실제로 연동된 뒤에도(=실사용자가 진짜 로그인한 뒤에도)
         # PG만 아직이면 누구나 눌러서 무한 포인트를 받을 수 있었다(실제
         # 무료 악용 가능 상태 — 2026-09-05 발견).
-        st.caption("PG 미연동 · 테스트는 Mock 결제를 이용하세요.")
-        if st.button("Mock 결제 (테스트)", type="primary", use_container_width=True):
+        # 2026-09-08 임시 조치(사용자 지시): 테스트 기간이 길어지면서 테스터들
+        # 적립금이 바닥나는 문제 — 정식 결제 전까지는 실제 돈이 오가지 않는
+        # Mock 결제이므로, 금액 선택 라디오(4종) 없이 1만원→1,000P 한 가지만
+        # 반복해서 누를 수 있게 단순화한다. CHARGE_WON_AMOUNTS(4종)는 PG 연동
+        # 후 실 결제 화면(위 pg_configured() 분기)에서 그대로 쓰이므로 건드리지
+        # 않았다 — 원인 확인되면(=테스트 종료·PG 연동 시) 이 분기 자체가 안
+        # 타므로 별도 원복 작업 불필요.
+        test_won_amount = 10000
+        test_points = won_to_points(test_won_amount)
+        st.caption(f"PG 미연동 · 테스트 기간 임시 고정 금액 — {test_won_amount:,}원 → {test_points:,}P")
+        if st.button(
+            f"Mock 결제 (테스트) — {test_points:,}P 충전",
+            type="primary",
+            use_container_width=True,
+        ):
             ref = f"pg:mock:{member_id}:{uuid.uuid4().hex[:10]}"
-            if charge_points(member_id, points, ref):
-                st.session_state.wallet_toast = f"{won_amount:,}원 · {points:,}P 충전 완료"
+            if charge_points(member_id, test_points, ref):
+                st.session_state.wallet_toast = f"{test_won_amount:,}원 · {test_points:,}P 충전 완료"
+                # insufficient_balance_dialog()에서 호출된 경우, 충전 성공 후에도
+                # 이 플래그가 남아있으면 다음 렌더에서 "부족합니다" 창이 또 뜬다 —
+                # charge_dialog()에서 호출된 경우엔 애초에 없는 키라 pop이 그냥
+                # 무시된다(두 다이얼로그가 이 함수를 공유하므로 항상 같이 정리).
+                st.session_state.pop(INSUFFICIENT_BALANCE_OPEN, None)
                 st.rerun()
             st.error("충전에 실패했습니다.")
     else:
         st.info("결제 연동 준비 중입니다. 조금만 기다려주세요.")
+
+
+@_dialog_decorator("적립금 충전")
+def charge_dialog() -> None:
+    member_id = current_member_id()
+    if not member_id:
+        return
+
+    balance = get_balance(member_id)
+    st.markdown(f"현재 잔액 **{balance:,}P**")
+    _render_charge_actions(member_id)
+
+
+INSUFFICIENT_BALANCE_OPEN = "insufficient_balance_open"
+INSUFFICIENT_BALANCE_NEED = "insufficient_balance_need"
+
+
+def open_insufficient_balance_dialog(need_points: int) -> None:
+    """자동구매/번개조합/안티·액땜조합 세 화면 공통 — 구매 확정 시 적립금이
+    부족하면 이 함수 하나로 "부족합니다 + 충전하시겠습니까?" 통합 창을 띄운다.
+
+    2026-09-08(사용자 지시): 예전엔 각 화면이 "적립금이 부족합니다" 에러 문구만
+    보여주고 끝나서, 사용자가 직접 내정보→충전으로 따로 이동해야 했다. 그 자리에서
+    바로 충전까지 이어지도록 세 화면 모두 이 함수로 통일한다(한 화면만 고치면
+    나머지가 방치되는 문제가 반복 지적됐음 — apply_fixes_to_all_three_purchase_screens
+    메모 참고)."""
+    st.session_state[INSUFFICIENT_BALANCE_OPEN] = True
+    st.session_state[INSUFFICIENT_BALANCE_NEED] = int(need_points)
+
+
+@_dialog_decorator("적립금 부족")
+def insufficient_balance_dialog() -> None:
+    member_id = current_member_id()
+    if not member_id:
+        st.session_state.pop(INSUFFICIENT_BALANCE_OPEN, None)
+        return
+    need = int(st.session_state.get(INSUFFICIENT_BALANCE_NEED, 0))
+    balance = get_balance(member_id)
+    st.error(f"❌ 적립금이 부족합니다. (필요 {need:,}P / 보유 {balance:,}P)")
+    st.markdown("**충전하시겠습니까?**")
+    _render_charge_actions(member_id)
+    if st.button("닫기", use_container_width=True, key="insufficient_balance_close"):
+        st.session_state.pop(INSUFFICIENT_BALANCE_OPEN, None)
+        st.rerun()
 
 
 POINTS_NOTICE_SEEN_ONCE = "points_notice_seen_once"

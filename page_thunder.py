@@ -13,7 +13,14 @@ from user_scope import (
     guest_id_cookie_sync_html,
     init_guest_scope,
 )
-from wallet_ui import deduct_after_result, points_notice_dialog
+from wallet_ui import (
+    deduct_after_result,
+    insufficient_balance_dialog,
+    open_insufficient_balance_dialog,
+    points_notice_dialog,
+    INSUFFICIENT_BALANCE_OPEN,
+)
+from wallet_db import calc_thunder_cost
 
 # ── 번개조합 선택 색상 단일 정의 (삭제수/고정수/행운수) ──
 # 이 3가지 색상은 반드시 여기서만 정의합니다. 다른 파일·CSS 블록에 중복 정의하지 마세요.
@@ -133,7 +140,10 @@ def render():
                 return
             ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
             if not deduct_after_result(mid, "thunder", ref, game_count=g):
-                st.session_state["thunder_purchase_error"] = "적립금이 부족합니다."
+                # 2026-09-08(사용자 지시): "부족합니다" 문구만 띄우고 끝내지 않고,
+                # 그 자리에서 바로 충전할 수 있는 통합 창을 띄운다(자동구매·
+                # 안티·액땜조합과 동일 — wallet_ui.open_insufficient_balance_dialog).
+                open_insufficient_balance_dialog(calc_thunder_cost(g))
                 return
             st.session_state["thunder_approved"] = True
             st.session_state["thunder_auto_run"] = g
@@ -351,6 +361,9 @@ def render():
     thunder_purchase_error = st.session_state.pop("thunder_purchase_error", None)
     if thunder_purchase_error:
         st.error(f"❌ {thunder_purchase_error}")
+
+    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
+        insufficient_balance_dialog()
 
     # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
     # streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 지웠다(옆 "생일/행운수 관리"는

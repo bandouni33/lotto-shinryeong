@@ -2695,7 +2695,18 @@ def render():
                                 _append_purchase_history(entry)
                                 st.session_state["auto_history_blink"] = True
                             elif outcome.get("error") == "insufficient_balance":
-                                st.session_state["auto_purchase_error"] = "적립금이 부족합니다."
+                                # 2026-09-08(사용자 지시): 번개조합·안티·액땜조합과
+                                # 동일 — "부족합니다" 문구만 띄우지 않고 그 자리에서
+                                # 바로 충전할 수 있는 통합 창을 띄운다. cost는
+                                # auto_purchase_service.process_auto_purchase가 실제
+                                # 시도한 값을 그대로 쓴다(별도로 다시 계산하지 않음 —
+                                # selected_quantity와 어긋날 여지를 없앤다).
+                                from wallet_db import calc_auto_cost
+                                from wallet_ui import open_insufficient_balance_dialog
+
+                                open_insufficient_balance_dialog(
+                                    outcome.get("cost") or calc_auto_cost(selected_quantity)
+                                )
                             elif outcome.get("error") == "next_draw_pool_missing":
                                 st.session_state["auto_purchase_error"] = (
                                     outcome.get("message") or NEXT_DRAW_POOL_BANNER
@@ -2714,6 +2725,11 @@ def render():
                     _auto_purchase_error = st.session_state.pop("auto_purchase_error", None)
                     if _auto_purchase_error:
                         st.error(_auto_purchase_error)
+
+                    from wallet_ui import INSUFFICIENT_BALANCE_OPEN, insufficient_balance_dialog
+
+                    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
+                        insufficient_balance_dialog()
 
             with col_visual:
                 pass

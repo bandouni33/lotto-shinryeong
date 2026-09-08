@@ -361,20 +361,42 @@ def _render_extra_draw_gate():
 
         def _tarot_dialog_close(confirmed: bool) -> None:
             st.session_state["open_tarot_dialog"] = False
-            if confirmed:
-                from auth_kakao import current_member_id
-                from wallet_db import TAROT_EXTRA_DRAW_COST, deduct_points
+            from wallet_ui import _testing_period_active
 
-                mid = current_member_id()
-                if mid:
-                    import uuid
+            if _testing_period_active():
+                # 테스트 기간이라 취소를 눌러도 추가 뽑기를 그대로 열어준다(기존 설계
+                # 그대로 유지 — _testing_period_active() 독스트링 참고).
+                st.session_state["tarot_paid_extra_unlocked"] = True
+                return
+            if not confirmed:
+                return
+            # 2026-09-08 수정: 실연동(카카오 로그인 완료) 후에도 deduct_points()
+            # 성공 여부와 무관하게 무조건 통과시키던 leftover 버그 — 오늘
+            # 번개조합/안티·액땜조합에서 고친 것과 똑같은 유형(적립금 없어도
+            # 무료로 이용 가능)이라 같이 고친다. 차감이 실제로 성공했을 때만
+            # 추가 뽑기를 열어준다.
+            from auth_kakao import current_member_id
+            from wallet_db import TAROT_EXTRA_DRAW_COST, deduct_points
 
-                    ref = f"tarot:{mid}:{uuid.uuid4().hex[:10]}"
-                    deduct_points(mid, TAROT_EXTRA_DRAW_COST, "tarot:extra_draw", ref)
-            # 테스트 기간이라 취소를 눌러도 추가 뽑기를 그대로 열어준다.
+            mid = current_member_id()
+            if not mid:
+                return
+            import uuid
+
+            ref = f"tarot:{mid}:{uuid.uuid4().hex[:10]}"
+            if not deduct_points(mid, TAROT_EXTRA_DRAW_COST, "tarot:extra_draw", ref):
+                from wallet_ui import open_insufficient_balance_dialog
+
+                open_insufficient_balance_dialog(TAROT_EXTRA_DRAW_COST)
+                return
             st.session_state["tarot_paid_extra_unlocked"] = True
 
         points_notice_dialog("tarot", on_close=_tarot_dialog_close)
+
+        from wallet_ui import INSUFFICIENT_BALANCE_OPEN, insufficient_balance_dialog
+
+        if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
+            insufficient_balance_dialog()
 
     if st.button("처음으로", use_container_width=True, key="tarot_extra_gate_home"):
         _reset()
