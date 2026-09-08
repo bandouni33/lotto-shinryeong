@@ -306,6 +306,13 @@ def get_balance(member_id: int) -> int:
 
 
 def deduct_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool:
+    """2026-09-08 수정: 예전엔 "잔액 조회 → 파이썬에서 뺄셈 → UPDATE"로 나뉘어
+    있어서, 같은 회원이 동시에 두 번 구매(다른 탭·다른 기기 등)하면 둘 다
+    같은 잔액을 읽어 통과한 뒤 마지막에 쓴 UPDATE만 반영되는 레이스
+    컨디션이 있었다 — ledger엔 두 건 다 기록되는데 실제 balance는 한 번만
+    차감돼, 사실상 한쪽 구매가 무료가 되는 결함(실측하진 않았지만 코드
+    구조상 명백한 버그). UPDATE 자체에 조건을 걸어(balance >= amount) DB가
+    원자적으로 처리하게 바꿔 이 레이스를 근본적으로 없앤다."""
     if amount <= 0:
         raise ValueError("amount must be positive")
     conn = _connect()
@@ -317,23 +324,22 @@ def deduct_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool
             conn.close()
             return True
 
-        row = conn.execute(
-            "SELECT balance FROM wallets WHERE member_id = ?", (member_id,)
-        ).fetchone()
-        if not row:
-            conn.close()
-            return False
-        balance = int(row["balance"])
-        if balance < amount:
-            conn.close()
-            return False
-
-        new_balance = balance - amount
         now = _now_iso()
-        conn.execute(
-            "UPDATE wallets SET balance = ? WHERE member_id = ?",
-            (new_balance, member_id),
+        cur = conn.execute(
+            """
+            UPDATE wallets SET balance = balance - ?
+            WHERE member_id = ? AND balance >= ?
+            RETURNING balance
+            """,
+            (amount, member_id, amount),
         )
+        row = cur.fetchone()
+        if not row:
+            # member_id가 없거나(지갑 미생성) 잔액 부족 — 둘 다 실패로 처리.
+            conn.close()
+            return False
+        new_balance = int(row["balance"])
+
         conn.execute(
             """
             INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
@@ -496,7 +502,11 @@ def won_to_points(won: int) -> int:
 
 
 def charge_points(member_id: int, amount: int, pg_ref_id: str) -> bool:
-    """PG 충전 — 카드정보 미저장, ledger ref_id로 멱등."""
+    """PG 충전 — 카드정보 미저장, ledger ref_id로 멱등.
+
+    2026-09-08 수정: deduct_points와 같은 이유(동시 충전 시 잔액 조회→가산이
+    나뉘어 있으면 레이스로 한쪽 충전이 유실될 수 있음)로 원자적 UPDATE로
+    교체."""
     if amount <= 0:
         raise ValueError("amount must be positive")
     conn = _connect()
@@ -508,25 +518,27 @@ def charge_points(member_id: int, amount: int, pg_ref_id: str) -> bool:
             conn.close()
             return True
 
-        row = conn.execute(
-            "SELECT balance FROM wallets WHERE member_id = ?", (member_id,)
-        ).fetchone()
+        now = _now_iso()
+        cur = conn.execute(
+            """
+            UPDATE wallets SET balance = balance + ?
+            WHERE member_id = ?
+            RETURNING balance
+            """,
+            (amount, member_id),
+        )
+        row = cur.fetchone()
         if not row:
             conn.close()
             return False
+        new_balance = int(row["balance"])
 
-        new_balance = int(row["balance"]) + amount
-        now = _now_iso()
         conn.execute(
             """
             INSERT INTO pg_charges (member_id, amount, pg_ref_id, status, created_at)
             VALUES (?, ?, ?, 'completed', ?)
             """,
             (member_id, amount, pg_ref_id, now),
-        )
-        conn.execute(
-            "UPDATE wallets SET balance = ? WHERE member_id = ?",
-            (new_balance, member_id),
         )
         conn.execute(
             """
