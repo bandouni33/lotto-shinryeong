@@ -260,7 +260,12 @@ def _fire_qr_scan_trigger() -> None:
                     "if(state === 'C'){" +
                     "rnwv.postMessage(JSON.stringify({type:'openQrScan',target:'hedge'}));" +
                     "}else{" +
-                    "setTimeout(function(){ window.location.href='?page=hedge&qrscan=1'; }, 5000);" +
+                    // 2026-09-09 수정: 고정 문자열 '?page=hedge&qrscan=1'로 그냥 덮어쓰면
+                    // 현재 URL에 실려있던 gid가 통째로 날아가 게스트 식별자가 새로 발급되는
+                    // 원인이 됐다(브라우저 접속자에게 "저장내역 사라짐"/"로그인 반복"으로
+                    // 나타남) — 기존 쿼리스트링에 page/qrscan만 덮어써 gid 등 나머지는
+                    // 그대로 보존한다.
+                    "setTimeout(function(){ var u=new URL(window.location.href); u.searchParams.set('page','hedge'); u.searchParams.set('qrscan','1'); window.location.href=u.pathname+u.search; }, 5000);" +
                     "}" +
                     "}catch(e){}";
                 top.document.head.appendChild(s);
@@ -269,7 +274,10 @@ def _fire_qr_scan_trigger() -> None:
                 // 최상위 문서에 스크립트를 못 심을 정도로 예외적인 상황이면(교차 출처 등)
                 // 최소한 이 폴백만이라도 시도한다.
                 try {
-                    top.location.href = '?page=hedge&qrscan=1';
+                    var u2 = new URL(top.location.href);
+                    u2.searchParams.set('page', 'hedge');
+                    u2.searchParams.set('qrscan', '1');
+                    top.location.href = u2.pathname + u2.search;
                 } catch (e2) {}
             }
         })();

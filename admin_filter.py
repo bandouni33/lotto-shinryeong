@@ -1451,18 +1451,24 @@ if st.query_params.get("af_notice") == "dismiss":
     st.rerun()
 
 if not _af_notice_dismissed_today():
+    from user_scope import internal_nav_href
+
+    # 2026-09-09: 정적 href="?page=advanced&af_notice=dismiss"는 현재 URL의 gid를
+    # 지워버려 게스트 식별자가 새로 발급되는 원인이 된다 — 다른 내부이동 링크들과
+    # 동일하게 gid를 실어보내도록 치환한다.
+    _af_dismiss_href = internal_nav_href("advanced", af_notice="dismiss")
     st.markdown(
         """
 <div class="af-mobile-notice-banner" role="dialog" aria-label="PC 이용 안내">
-  <a class="af-mobile-notice-close" href="?page=advanced&af_notice=dismiss" aria-label="닫기">✕</a>
+  <a class="af-mobile-notice-close" href="__AF_DISMISS_HREF__" aria-label="닫기">✕</a>
   <div class="af-mobile-notice-inner">
     <p class="af-mobile-notice-lead">본 페이지는 전문 분석가를<br>위해 설계되었습니다.</p>
     <p class="af-mobile-notice-body">PC 환경에서 이용하시면<br>전체 패턴을 한눈에<br>파악하실 수 있습니다.</p>
     <p class="af-mobile-notice-foot">깊이 있는 분석을 위한 공간,<br>PC의 넓은 화면에서 진가를<br>발휘합니다.</p>
-    <a class="af-mobile-notice-dismiss-today" href="?page=advanced&af_notice=dismiss">오늘 더이상 열지않음</a>
+    <a class="af-mobile-notice-dismiss-today" href="__AF_DISMISS_HREF__">오늘 더이상 열지않음</a>
   </div>
 </div>
-<style>
+<style>""".replace("__AF_DISMISS_HREF__", _af_dismiss_href) + """
 .af-mobile-notice-banner {
     display: none;
     position: fixed;

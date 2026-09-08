@@ -12,6 +12,7 @@ from user_scope import (
     get_or_create_guest_id,
     guest_id_cookie_sync_html,
     init_guest_scope,
+    internal_nav_href,
 )
 from wallet_ui import (
     deduct_after_result,
@@ -1422,7 +1423,7 @@ def render():
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<a id="th_save_real_link" class="th-save-real-btn" href="?page=thunder">💾 결과저장</a>',
+        f'<a id="th_save_real_link" class="th-save-real-btn" href="{internal_nav_href("thunder")}">💾 결과저장</a>',
         unsafe_allow_html=True,
     )
     components.html(

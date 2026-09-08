@@ -23,7 +23,7 @@ from auth_providers import (
     handle_oauth_callback,
     restore_member_from_guest,
 )
-from user_scope import init_guest_scope
+from user_scope import init_guest_scope, internal_nav_href
 
 init_wallet_tables()
 init_zero_phone_tables()
@@ -724,7 +724,7 @@ if current_page == "main":
         """, unsafe_allow_html=True)
 
     # 🟢 2. 하단 4버튼 메뉴 (모바일 앱 스타일, 강한 햅틱 진동 추가)
-    st.markdown("""
+    _menu_grid_html = """
     <style>
     .menu-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 10px; margin-top: 7px; }
     .menu-grid > a { display: flex; min-height: 0; }
@@ -882,7 +882,23 @@ if current_page == "main":
         </div>
     </a>
 </div>
-    """, unsafe_allow_html=True)
+    """
+    # 2026-09-09 수정: 이 링크들이 gid를 안 실어보내서, 일반 브라우저 접속자가 화면을
+    # 옮길 때마다(자동구매↔번개조합 등은 real <a href> 네비게이션이라 브라우저 완전
+    # 새로고침 — st.session_state가 통째로 사라짐) 쿠키 폴백에 기대야 했는데, 실측
+    # 결과 그 쿠키가 서버에 안정적으로 전달되지 않아 매번 새 guest_id가 발급됐다 —
+    # "타로 무료뽑기 무한사용"/"카카오 로그인 배너 반복"/"저장내역이 사라짐"의 공통
+    # 원인이었다. CSS 중괄호가 많아 f-string으로 바꾸기 위험하므로, 정적 문자열은
+    # 그대로 두고 href만 골라 치환한다(user_scope.internal_nav_href 참고).
+    for _menu_page, _menu_extra in (
+        ("tarot", {}), ("auto", {}), ("thunder", {"fresh": "1"}), ("hedge", {}),
+        ("advanced", {}), ("stats", {}),
+    ):
+        _old_href = f"?page={_menu_page}" + ("&fresh=1" if _menu_extra.get("fresh") else "")
+        _menu_grid_html = _menu_grid_html.replace(
+            f'href="{_old_href}"', f'href="{internal_nav_href(_menu_page, **_menu_extra)}"'
+        )
+    st.markdown(_menu_grid_html, unsafe_allow_html=True)
 
     components.html("""
     <script>

@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 from birthday_db import init_birthday_table, get_user_birthdays, upsert_birthday, delete_birthday
-from user_scope import current_birthday_scope, init_guest_scope
+from user_scope import current_birthday_scope, init_guest_scope, internal_nav_href
 from lucky_numbers import (
     get_life_path_number,
     get_lucky_numbers_from_life_path,
@@ -25,7 +25,7 @@ def _render_birthday_nav_html() -> str:
     return (
         brand_home_link_css()
         + brand_home_link_html()
-        + '<a href="?page=thunder" style="text-align:center;background:#fff;color:#1E293B;'
+        + f'<a href="{internal_nav_href("thunder")}" style="text-align:center;background:#fff;color:#1E293B;'
         "border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;"
         'display:flex;align-items:center;justify-content:center;box-sizing:border-box;'
         'margin-bottom:12px;">← 번개조합</a>'

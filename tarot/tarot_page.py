@@ -24,7 +24,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from tarot_data import SUBCATEGORIES, CARDS, SPREADS
-from user_scope import get_or_create_guest_id, guest_id_cookie_sync_html
+from user_scope import get_or_create_guest_id, guest_id_cookie_sync_html, internal_nav_href
 
 BASE_DIR = Path(__file__).parent
 IMAGE_DIR = BASE_DIR / "images"
@@ -831,13 +831,13 @@ def _render_result():
         <div class="tarot-cta">
             <div class="tarot-cta-lead">오늘 마음에 담은 카드, 번호에도 그 기운을 실어볼까요</div>
             <div class="tarot-cta-grid">
-                <a class="tarot-cta-card primary" href="?page=auto" target="_self">
+                <a class="tarot-cta-card primary" href="{internal_nav_href('auto')}" target="_self">
                     <span class="tarot-cta-badge">지금 이 흐름대로</span>
                     <div class="tarot-cta-icon">💎</div>
                     <div class="tarot-cta-title">자동구매</div>
                     <div class="tarot-cta-desc">고민 없이, 오늘의 조합을<br>바로 받아보세요</div>
                 </a>
-                <a class="tarot-cta-card secondary" href="?page=thunder&fresh=1" target="_self">
+                <a class="tarot-cta-card secondary" href="{internal_nav_href('thunder', fresh='1')}" target="_self">
                     <div class="tarot-cta-icon">⚡</div>
                     <div class="tarot-cta-title">번개조합</div>
                     <div class="tarot-cta-desc">전문가 분석 기반으로<br>번호를 직접 골라보세요</div>

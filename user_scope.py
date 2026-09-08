@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import urllib.parse
 import streamlit as st
 
 GUEST_SCOPE = "guest_local"
@@ -159,6 +160,22 @@ def thunder_reveal_storage_suffix() -> str:
 
 GUEST_ID_COOKIE_KEY = "lotto_guest_id"
 GUEST_ID_QUERY_KEY = "gid"
+
+
+def internal_nav_href(page: str, **extra_params: str) -> str:
+    """페이지 안의 `<a href="?page=...">` 내부이동 링크를 만들 때 항상 이 함수를 써야
+    한다 — 2026-09-09 발견: 이 링크들이 gid를 안 실어보내서, 네이티브 앱(쿼리파라미터로
+    guest_id 영속)과 달리 일반 브라우저 접속자는 화면을 옮길 때마다(자동구매↔번개조합
+    등 real <a href> 네비게이션은 브라우저 완전 새로고침이라 st.session_state가 통째로
+    사라진다) 쿠키 폴백에 기대야 했는데, 실측 결과 Streamlit Community Cloud의 중첩
+    iframe 구조에서는 그 쿠키가 서버에 안정적으로 전달되지 않아 매번 새 guest_id가
+    발급됐다 — 이게 "타로 무료뽑기 무한사용", "카카오 로그인 배너 반복", "저장내역이
+    사라짐"의 공통 원인이었다(전부 guest_id가 안 이어지는 데서 비롯됨). 네이티브 앱과
+    동일하게 모든 내부이동 링크에 현재 guest_id를 쿼리파라미터로 실어보내면, 브라우저
+    접속자도 get_or_create_guest_id()의 최우선 분기(query)를 그대로 타게 돼 안정된다.
+    """
+    query = urllib.parse.urlencode({"page": page, GUEST_ID_QUERY_KEY: get_or_create_guest_id(), **extra_params})
+    return f"?{query}"
 
 
 def get_or_create_guest_id() -> str:
