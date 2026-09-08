@@ -120,13 +120,21 @@ def render():
 
         def _thunder_dialog_close(confirmed: bool, g: int = g) -> None:
             st.session_state["open_thunder_dialog"] = False
-            if confirmed:
-                mid = current_member_id()
-                if mid:
-                    ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
-                    deduct_after_result(mid, "thunder", ref, game_count=g)
-            # 지금은 실제 인증·결제가 연결되지 않은 테스트 기간이라, 취소를 눌러도
-            # (차감 성공 여부와 무관하게) 그대로 조합 생성을 진행시킨다.
+            if not confirmed:
+                return
+            # 2026-09-08 수정: "테스트 기간이라 차감 성공 여부와 무관하게 진행"
+            # 하던 leftover 로직이 카카오 실연동 후에도 그대로 남아있어서,
+            # 적립금이 부족해도 조합 생성이 그냥 진행되는 버그가 있었다(실측
+            # 확인: member 105 잔액 0인 상태). 차감이 실제로 성공했을 때만
+            # 진행시킨다.
+            mid = current_member_id()
+            if not mid:
+                st.session_state["thunder_purchase_error"] = "로그인이 필요합니다."
+                return
+            ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
+            if not deduct_after_result(mid, "thunder", ref, game_count=g):
+                st.session_state["thunder_purchase_error"] = "적립금이 부족합니다."
+                return
             st.session_state["thunder_approved"] = True
             st.session_state["thunder_auto_run"] = g
 
@@ -339,6 +347,10 @@ def render():
 
     if st.session_state.pop("thunder_save_toast", False):
         st.success("✅ 결과가 저장됐어요! 아래로 스크롤하면 저장내역에서 확인할 수 있어요.")
+
+    thunder_purchase_error = st.session_state.pop("thunder_purchase_error", None)
+    if thunder_purchase_error:
+        st.error(f"❌ {thunder_purchase_error}")
 
     # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
     # streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 지웠다(옆 "생일/행운수 관리"는

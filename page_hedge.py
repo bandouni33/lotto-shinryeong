@@ -840,18 +840,26 @@ def render():
 
             pending_lines = st.session_state.pop("hedge_pending_lines", None) or []
             st.session_state.pop("hedge_pending_count", None)
+            if not confirmed:
+                return
             # 2026-08-27: "조합시작 한 번으로 개별리셋·전체리셋 동시 생성" 요청 —
             # 적립금은 두 종류를 합친 개수만큼 차감된다(기본 5개 선택 시
             # 개별 5 + 전체 5 = 10개 → 100P).
             total_count = pending_count * 2
-            if confirmed:
-                mid = current_member_id()
-                if mid:
-                    import uuid
+            # 2026-09-08 수정: "테스트 기간이라 차감 성공 여부와 무관하게 진행"
+            # 하던 leftover 로직이 카카오 실연동 후에도 그대로 남아있어서,
+            # 적립금이 부족해도 생성이 그냥 진행되는 버그가 있었다(page_thunder.py와
+            # 동일한 결함). 차감이 실제로 성공했을 때만 진행시킨다.
+            mid = current_member_id()
+            if not mid:
+                st.session_state["hedge_purchase_error"] = "로그인이 필요합니다."
+                return
+            import uuid
 
-                    ref = f"hedge:{mid}:{uuid.uuid4().hex[:10]}"
-                    deduct_after_result(mid, "hedge", ref, quantity=total_count)
-            # 테스트 기간이라 취소를 눌러도 그대로 생성을 진행시킨다.
+            ref = f"hedge:{mid}:{uuid.uuid4().hex[:10]}"
+            if not deduct_after_result(mid, "hedge", ref, quantity=total_count):
+                st.session_state["hedge_purchase_error"] = "적립금이 부족합니다."
+                return
             anti_results = generate_anti_combinations(pending_lines, pending_count)
             aek_results = generate_aekddaem_combinations(pending_lines, pending_count)
             st.session_state["hedge_results"] = {"anti": anti_results, "aekddaem": aek_results}
@@ -878,6 +886,10 @@ def render():
             st.session_state["hedge_history_blink"] = True
 
         points_notice_dialog("hedge", quantity=pending_count * 2, on_close=_hedge_dialog_close)
+
+    hedge_purchase_error = st.session_state.pop("hedge_purchase_error", None)
+    if hedge_purchase_error:
+        st.error(f"❌ {hedge_purchase_error}")
 
     # hedge_results는 방금 자동저장된 결과를 한 번만 보여주기 위한 1회성 플래시다 —
     # pop으로 꺼내 쓰기 때문에 다음 재실행부턴 저절로 사라지고(중복 표시 없음),
