@@ -1207,7 +1207,15 @@ def enqueue_sms(phone: str, purchase_type: str, send_status: str = "WAIT") -> in
     purchase_type = str(purchase_type).strip()
     send_status = str(send_status).strip().upper()
 
-    if not phone:
+    # 2026-08-29: '수신 번호' 입력칸을 화면에서 없애면서(당분간 SMS 미발송
+    # 확정, 알리고 미연동) phone은 항상 빈 문자열로 넘어온다 — 그런데 이
+    # 검증은 그대로 남아있어서 자동구매를 시도할 때마다 여기서 예외가 터져
+    # 화면에 트레이스백이 그대로 노출되는 상태였다(2026-09-08 사용자 실사용
+    # 중 발견 — 자동구매 100% 실패). 실제 발송이 일어나지 않는 BANNER_ONLY
+    # 상태에서는 전화번호가 없어도 안전하므로 그 경우만 허용한다 — 나중에
+    # SMS_ENABLED가 다시 켜져 WAIT/SENT 등 실제 발송 상태로 호출되면 그때는
+    # 여전히 전화번호를 요구한다.
+    if not phone and send_status != "BANNER_ONLY":
         raise ValueError("전화번호가 비어 있습니다.")
     if purchase_type not in PURCHASE_TYPES:
         raise ValueError("purchase_type은 '정기구독' 또는 '일반구매'만 허용됩니다.")
