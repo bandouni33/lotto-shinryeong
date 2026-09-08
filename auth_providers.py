@@ -177,20 +177,48 @@ def restore_member_from_guest() -> int | None:
     # 2026-09-07: 서버 idle 로그아웃 정상 동작 확인 완료(2026-09-07 실기기
     # 백그라운드→재접속 테스트로 검증) — 검증 과정에서 원인 추적용으로 넣었던
     # 임시 진단 코드(예외를 last_seen_at에 기록)는 확인 완료 후 제거함.
-    idle_seconds = guest_idle_seconds(guest_id)
+    #
+    # 2026-09-08 수정: 이 함수는 이미 로그인된 세션에서도 매 렌더(=구매
+    # 버튼 클릭 등 모든 상호작용)마다 호출되는데, db_turso.py의 _guarded()는
+    # Turso가 응답 없을 때 일부러 TimeoutError를 던지도록 설계돼 있고
+    # (호출부가 잡아서 폴백하라는 의도 — db_turso.py 주석 참고), libsql_client
+    # 자체도 간헐적으로 KeyError('result')를 던지는 게 이 세션에서만도 여러 번
+    # 실측됐다. 여기서 이 예외를 안 잡고 있어서, Turso가 잠깐 느려지거나
+    # 흔들릴 때마다 "구매할 때마다 로그인창이 뜬다"는 신고로 이어졌을 가능성이
+    # 높다(idle 판정이 실패하면서 로그인 상태를 못 이어받음). 일시적 조회
+    # 실패는 강제 로그아웃과는 전혀 다른 사안이므로 — 실패하면 그냥 이번
+    # 렌더는 판정을 건너뛰고 기존 세션 상태를 그대로 둔다(안전한 쪽으로
+    # fail-open; 진짜 3분 이상 idle이면 다음 정상 조회 때 어차피 잡힌다).
+    try:
+        idle_seconds = guest_idle_seconds(guest_id)
+    except Exception:
+        idle_seconds = None
+
     if idle_seconds is not None and idle_seconds >= 180:
         logout()
         return None
 
     if st.session_state.get("member_id"):
-        touch_guest_last_seen(guest_id)
+        try:
+            touch_guest_last_seen(guest_id)
+        except Exception:
+            pass
         return None
 
-    member_id = get_member_for_guest(guest_id)
+    try:
+        member_id = get_member_for_guest(guest_id)
+    except Exception:
+        # 이 조회가 실패하면 이미 연결된 회원인지 알 수 없다 — 로그인
+        # 배너가 한 번 더 뜨는 게 최악의 경우이고(로그인 상태를 잃지는
+        # 않음), 예외를 그대로 흘려서 페이지 자체가 죽는 것보단 안전하다.
+        return None
     if not member_id:
         return None
     bind_identity_on_login(member_id)
-    touch_guest_last_seen(guest_id)
+    try:
+        touch_guest_last_seen(guest_id)
+    except Exception:
+        pass
     return member_id
 
 
