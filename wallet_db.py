@@ -469,7 +469,11 @@ def activate_paid_advanced_sub(member_id: int, days: int) -> bool:
 
 THUNDER_COST_PER_GAME = 10
 HEDGE_COST_PER_COMBO = 10
-AUTO_COST_PER_UNIT = 100
+# 2026-09-08 정정: 100P/개는 착오였음 — 자동구매도 번개조합과 동일하게
+# 10P/개(5개=50P)가 맞는 단가. legal_notices.py의 PRICING["auto_per_unit"]도
+# 같이 맞출 것 — 이 둘이 어긋나면 화면에 안내되는 금액과 실제 차감액이
+# 달라진다.
+AUTO_COST_PER_UNIT = 10
 TAROT_EXTRA_DRAW_COST = 50  # 하루 1회 무료 이후 추가 뽑기 1회당
 
 
