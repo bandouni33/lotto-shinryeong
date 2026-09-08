@@ -131,17 +131,29 @@ def _testing_period_active() -> bool:
     return _dev_mock_enabled() and not kakao_configured()
 
 
+AUTH_BANNER_SEEN_ONCE = "auth_banner_seen_once"
+
+
 def ensure_member_or_banner(*, resume: str, reason: str, resume_data: dict | None = None) -> bool:
     """로그인됐으면 True. 아니면 배너만 띄우고 False.
 
     테스트 기간엔 "카카오로 시작하기" 배너를 띄우는 대신 조용히 로그인시키고
     바로 진행한다 — _testing_period_active() 참고.
-    """
+
+    2026-09-08 추가(사용자 지시): 구매·내정보·충전 등을 시도할 때마다 매번
+    이 배너가 다시 뜨는 게 번거롭다는 신고 — 이 배너는 세션(앱을 닫기 전까지)당
+    **한 번만** 띄우고, 그 뒤로는 다시 안 띄운다(로그인이 안 됐어도 조용히
+    False만 반환). 로그인 여부와 무관하게 "이미 한 번 안내했다"는 사실 자체를
+    기억하는 플래그라, 이후 세션 중간에 실제로 로그아웃(idle 등)이 다시
+    발생해도 이 배너는 두 번째부터는 안 뜬다 — 이게 의도와 다르면 알려줄 것."""
     if current_member_id():
         return True
     if _testing_period_active():
         mock_kakao_login()
         return True
+    if st.session_state.get(AUTH_BANNER_SEEN_ONCE):
+        return False
+    st.session_state[AUTH_BANNER_SEEN_ONCE] = True
     open_auth_banner(reason=reason, resume=resume, resume_data=resume_data)
     st.rerun()
     return False
@@ -414,6 +426,9 @@ def charge_dialog() -> None:
         st.info("결제 연동 준비 중입니다. 조금만 기다려주세요.")
 
 
+POINTS_NOTICE_SEEN_ONCE = "points_notice_seen_once"
+
+
 @_dialog_decorator("적립금 이용 안내")
 def points_notice_dialog(
     service: str,
@@ -435,11 +450,24 @@ def points_notice_dialog(
     테스트 기간엔(_testing_period_active) 이 안내창 자체를 아예 안 띄우고
     바로 확인 처리한다 — 매번 조합 만들 때마다 안내창이 뜨는 게 번거롭다는
     사용자 요청. 정식 출시 시 어떻게 다시 노출할지는 _testing_period_active
-    독스트링의 "숙제" 참고."""
+    독스트링의 "숙제" 참고.
+
+    2026-09-08 추가(사용자 지시): 실연동 후에도 구매할 때마다 이 확인창이
+    매번 뜨는 게 번거롭다는 신고 — 세션(앱을 닫기 전까지)당 **한 번**
+    보여준 뒤로는 다시 안 띄우고 바로 확인 처리한다(위 테스트 기간 분기와
+    동일하게 on_close(True)). 단, 이후 실제로 적립금이 부족하면 그건 이
+    안내창과 별개로 각 화면의 실패 안내(예: page_thunder.py의 "적립금이
+    부족합니다")가 그대로 뜬다 — "확인하시겠습니까" 질문만 한 번으로
+    줄이는 것이지, 부족 안내 자체를 없애는 게 아니다."""
     if _testing_period_active():
         on_close(True)
         st.rerun()
         return
+    if st.session_state.get(POINTS_NOTICE_SEEN_ONCE):
+        on_close(True)
+        st.rerun()
+        return
+    st.session_state[POINTS_NOTICE_SEEN_ONCE] = True
     member_id = current_member_id()
     balance = get_balance(member_id) if member_id else 0
 
@@ -588,10 +616,17 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
             st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
             with st.container(key="my_info_trigger_wrap"):
                 if st.button("👤 내정보", key="my_info_trigger_btn", use_container_width=True):
-                    open_auth_banner(
-                        reason="내정보(구매내역·적립금)를 보려면 간편인증이 필요합니다.",
-                        resume="my_info_dialog",
-                    )
+                    # 2026-09-08 수정: 이 버튼은 ensure_member_or_banner()를 안 거치고
+                    # open_auth_banner()를 직접 불러서, "세션당 한 번만" 가드가 적용
+                    # 안 되고 있었다(사용자가 지적한 "내정보 볼 때마다 로그인창" 사례 —
+                    # 구매 쪽 가드만 고치고 이 경로를 놓쳤던 것) — 같은 플래그를 공유해서
+                    # 한 번만 뜨게 통일한다.
+                    if not st.session_state.get(AUTH_BANNER_SEEN_ONCE):
+                        st.session_state[AUTH_BANNER_SEEN_ONCE] = True
+                        open_auth_banner(
+                            reason="내정보(구매내역·적립금)를 보려면 간편인증이 필요합니다.",
+                            resume="my_info_dialog",
+                        )
                     st.rerun()
         return None
 
