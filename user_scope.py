@@ -279,23 +279,42 @@ def local_storage_gid_recovery_html() -> str:
     브라우저 localStorage에 별도로 게스트ID를 저장해두고 — 주소창에 gid가 없는
     채로 페이지가 뜨면 파이썬 로직이 뭘 하기 전에 즉시 localStorage 값을 붙여
     새로고침한다. 모든 페이지 렌더 맨 앞에서 항상 이 스크립트 하나만 심으면 되고,
-    현재 guest_id를 파이썬에서 넘겨줄 필요 없이 URL 자체에서 읽어 판단한다."""
+    현재 guest_id를 파이썬에서 넘겨줄 필요 없이 URL 자체에서 읽어 판단한다.
+
+    2026-09-09 수정: 처음 버전은 이 iframe(components.html) 안에서 곧바로
+    top.location.replace(...)를 불렀는데, 실기기/브라우저 콘솔에서 "Unsafe
+    attempt to initiate navigation ... sandboxed, but the flag of
+    'allow-top-navigation' ... is not set" 에러로 조용히 막히는 걸 확인했다
+    (Streamlit의 components.html iframe sandbox엔 allow-top-navigation이 없어
+    최상위 창 네비게이션 자체가 금지됨). page_hedge.py의 QR스캔 트리거가 이미
+    쓰던 우회법과 동일하게, 최상위 문서에 <script> 엘리먼트를 직접 심어 그
+    스크립트가(iframe이 아니라) 최상위 문서 컨텍스트에서 실행되게 한다 —
+    localStorage 읽기/쓰기 자체는 sandbox 제약이 없어 원래도 잘 됐지만,
+    실제 새로고침(location.replace)만 이 방식으로 바꿔야 한다."""
     return f"""
     <script>
     (function() {{
         try {{
-            var top = window.top;
-            var url = new URL(top.location.href);
-            var urlGid = url.searchParams.get({GUEST_ID_QUERY_KEY!r});
-            var midOauth = !!url.searchParams.get('code');
-            var stored = null;
-            try {{ stored = top.localStorage.getItem({LOCAL_STORAGE_GID_KEY!r}); }} catch (e) {{}}
-            if (urlGid) {{
-                try {{ top.localStorage.setItem({LOCAL_STORAGE_GID_KEY!r}, urlGid); }} catch (e) {{}}
-            }} else if (stored && !midOauth) {{
-                url.searchParams.set({GUEST_ID_QUERY_KEY!r}, stored);
-                top.location.replace(url.pathname + url.search);
-            }}
+            var topDoc = window.top.document;
+            var s = topDoc.createElement('script');
+            s.textContent =
+                "(function(){{" +
+                "try{{" +
+                "var url = new URL(location.href);" +
+                "var urlGid = url.searchParams.get({GUEST_ID_QUERY_KEY!r});" +
+                "var midOauth = !!url.searchParams.get('code');" +
+                "var stored = null;" +
+                "try{{ stored = localStorage.getItem({LOCAL_STORAGE_GID_KEY!r}); }}catch(e){{}}" +
+                "if(urlGid){{" +
+                "try{{ localStorage.setItem({LOCAL_STORAGE_GID_KEY!r}, urlGid); }}catch(e){{}}" +
+                "}} else if(stored && !midOauth){{" +
+                "url.searchParams.set({GUEST_ID_QUERY_KEY!r}, stored);" +
+                "location.replace(url.pathname + url.search);" +
+                "}}" +
+                "}}catch(e){{}}" +
+                "}})();";
+            topDoc.head.appendChild(s);
+            s.parentNode.removeChild(s);
         }} catch (e) {{}}
     }})();
     </script>
