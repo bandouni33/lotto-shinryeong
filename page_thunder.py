@@ -324,12 +324,17 @@ def render():
         .th-save-real-btn:active { transform: scale(0.97); }
         /* 2026-08-29: "조합시작"에서 적립금이 이미 차감된 뒤, 번호 생성 자체는
            iframe 안 JS가 담당해서(서버는 결과저장 클릭 전까진 실제 번호를 모름)
-           생성=저장을 한 몸으로 묶는 게 구조적으로 불가능하다. 반대로 차감을
-           저장 시점으로 미루면 "적립금 안 깎이는 걸 확인하고 결과만 보고 나가는"
-           역이용이 가능해진다는 지적 — 그래서 차감 시점은 그대로 두고, 대신
-           "저장 안 하면 사라진다"를 눈에 띄게 안내해 사용자 과실로 인한 분쟁
-           소지를 줄인다(고지 후 사용자 선택으로 전환).
-           색상은 이 파일에서 이미 경고 용도로 쓰던 #fbbf24(luckyWarn)와 통일. */
+           생성=저장을 한 몸으로 묶는 게 구조적으로 불가능하다 — 라고 결론 냈었으나,
+           2026-09-09에 사용자 재지시로 자동저장 방식을 다시 검토. 예전엔 "결과저장을
+           스크립트로 대신 눌러주는 것"이 iframe sandbox 제약(allow-top-navigation
+           권한 없음)으로 실기기에서 불가능하다고 확인돼 있었는데, 같은 날 localStorage
+           게스트ID 복구 기능을 만들며 그 sandbox를 우회하는 방법(최상위 문서에
+           <script> 엘리먼트를 직접 심어 그 스크립트가 iframe이 아니라 최상위 문서
+           컨텍스트에서 실행되게 하는 방식, QR스캔 트리거가 이미 쓰던 것과 동일 계열)을
+           확인해서, 이제는 결과가 다 나오면 사람이 누르지 않아도 자동으로 저장된다
+           (아래 스크립트의 doc.createElement('script') 주입 부분 참고). 수동 버튼은
+           "혹시 자동저장이 실패하면" 대비 안전망으로 작게 남겨둔다.
+           색상은 이 파일에서 이미 안내 용도로 쓰던 #fbbf24(luckyWarn)와 통일. */
         .th-save-warn {
             margin: 4px 0 10px;
             padding: 10px 12px;
@@ -1431,12 +1436,15 @@ def render():
         components.html(thunder_ui_html, height=thunder_iframe_height, scrolling=True)
 
     st.markdown(
-        '<div class="th-save-warn">⚠️ 결과저장을 누르지 않고 화면을 벗어나면 생성된 조합이 사라집니다.'
-        ' 차감된 적립금은 복구되지 않으니 꼭 저장해주세요.</div>',
+        '<div class="th-save-warn">✅ 조합이 결정되면 잠시 후 자동으로 저장됩니다.'
+        ' 혹시 자동저장이 안 되면 아래 링크를 눌러 직접 저장해주세요.</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<a id="th_save_real_link" class="th-save-real-btn" href="{internal_nav_href("thunder")}">💾 결과저장</a>',
+        f'<a id="th_save_real_link" class="th-save-real-btn" style="opacity:0.55;font-size:13px;height:36px;'
+        f'background:linear-gradient(180deg,#475569 0%,#334155 55%,#1e293b 100%);'
+        f'box-shadow:0 3px 0 #0f172a,0 5px 10px rgba(0,0,0,0.3);"'
+        f' href="{internal_nav_href("thunder")}">저장 안 되면 여기를 눌러주세요</a>',
         unsafe_allow_html=True,
     )
     components.html(
@@ -1459,10 +1467,41 @@ def render():
                 // 갱신해 버리면 일부만 저장되므로, 목표 게임 수(expectedGameCount)만큼
                 // 다 찼을 때만 갱신한다.
                 if (!results || !expected || results.length < expected) return;
+                const saveParam = results.map(function(g) { return g.join('-'); }).join(',');
                 const u = new URL(doc.location.href);
                 u.searchParams.set('page', 'thunder');
-                u.searchParams.set('th_save', results.map(function(g) { return g.join('-'); }).join(','));
+                u.searchParams.set('th_save', saveParam);
                 link.setAttribute('href', u.pathname + u.search);
+
+                // 2026-09-09(사용자 지시): "결과저장" 버튼을 사람이 누르길 기다리지
+                // 않고 결과가 다 나오면 자동으로 저장한다. link는 이 폴링 iframe이
+                // 아니라 최상위 문서(doc)에 속한 진짜 엘리먼트라, 이 iframe의
+                // sandbox 제약과 무관하게 최상위 문서에 <script>를 심어 그 스크립트가
+                // 최상위 문서 컨텍스트에서 직접 location을 옮기게 한다(QR스캔
+                // 트리거와 동일 계열의 우회법 — 위 CSS 주석 참고).
+                // 폴링 iframe은 Streamlit이 rerun될 때마다 새로 만들어져 지역
+                // 변수로는 "이미 트리거했는지" 기억이 안 되므로, 최상위 문서에
+                // 계속 남아있는 link 엘리먼트 자체에 표시(dataset)해 중복 저장을
+                // 막는다 — 우연히 두 번 트리거돼도 같은 조합이 저장내역에 두 번
+                // 찍히는 사고를 방지.
+                if (link.dataset.autoSaveArmed === saveParam) return;
+                link.dataset.autoSaveArmed = saveParam;
+                setTimeout(function() {
+                    try {
+                        const s = doc.createElement('script');
+                        s.textContent =
+                            "(function(){" +
+                            "try{" +
+                            "var u=new URL(location.href);" +
+                            "u.searchParams.set('page','thunder');" +
+                            "u.searchParams.set('th_save'," + JSON.stringify(saveParam) + ");" +
+                            "location.href=u.pathname+u.search;" +
+                            "}catch(e){}" +
+                            "})();";
+                        doc.head.appendChild(s);
+                        s.parentNode.removeChild(s);
+                    } catch (e) {}
+                }, 2500);
             }
             // 이 작은 폴링 iframe은 Streamlit이 rerun될 때마다 통째로 새로 만들어지는데,
             // 예전엔 "한 번만 setInterval 걸기" 플래그를 최상위 document(재생성돼도 안
