@@ -42,17 +42,27 @@ def _encode_oauth_state(provider: str, return_page: str = "main") -> str:
     allowed = ("main", "thunder", "auto", "stats", "birthday", "advanced")
     if page not in allowed:
         page = "main"
-    return f"{provider}:{urllib.parse.quote(page, safe='')}"
+    # 2026-09-09 수정: 카카오 로그인 버튼을 누른 시점의 guest_id를 state에 실어서
+    # 콜백 때 복원한다 — 예전엔 안 실었는데, 카카오의 redirect_uri는 고정 URL이라
+    # 우리 쪽 ?gid= 파라미터를 못 실어보내고, 그러면 로그인 완료 직후 이 콜백
+    # 요청 자체가 "gid 없는 새 요청"이 돼서 방금까지 쓰던 guest_id와 다른 새
+    # guest_id가 발급되고, 로그인이 그 새 guest_id에만 연결돼버렸다. 그 뒤
+    # 사용자가 원래 쓰던(주소창에 남아있던) guest_id로 다시 이동하면 로그인
+    # 연결이 없는 것처럼 보여 "구매할 때마다 재인증창이 뜬다"는 신고로 이어짐 —
+    # state에 담아 콜백에서 그대로 복원해 이 단절을 없앤다.
+    from user_scope import get_or_create_guest_id
+
+    guest_id = get_or_create_guest_id()
+    return f"{provider}:{urllib.parse.quote(page, safe='')}:{urllib.parse.quote(guest_id, safe='')}"
 
 
-def _decode_oauth_state(state: str | None) -> tuple[str, str]:
+def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None]:
     raw = (state or "kakao").strip() or "kakao"
-    if ":" in raw:
-        provider, page = raw.split(":", 1)
-        provider = (provider or "kakao").strip() or "kakao"
-        page = urllib.parse.unquote(page).strip() or "main"
-        return provider, page
-    return raw, "main"
+    parts = raw.split(":", 2)
+    provider = (parts[0] or "kakao").strip() or "kakao" if parts else "kakao"
+    page = urllib.parse.unquote(parts[1]).strip() if len(parts) > 1 and parts[1] else "main"
+    guest_id = urllib.parse.unquote(parts[2]).strip() if len(parts) > 2 and parts[2] else None
+    return provider, (page or "main"), (guest_id or None)
 
 
 def get_kakao_authorize_url(return_page: str = "main") -> str:
@@ -299,12 +309,22 @@ def _exchange_fincert_code(code: str) -> str | None:
 
 
 def handle_oauth_callback() -> bool:
+    from user_scope import GUEST_ID_QUERY_KEY
+
     init_wallet_tables()
     code = st.query_params.get("code")
     if not code:
         return False
 
-    provider_key, return_page = _decode_oauth_state(st.query_params.get("state"))
+    provider_key, return_page, saved_guest_id = _decode_oauth_state(st.query_params.get("state"))
+    if saved_guest_id:
+        # 카카오 redirect_uri가 고정 URL이라 이 콜백 요청 자체엔 원래 쓰던 gid가
+        # 안 실려 있다 — state에서 복원해 session_state에 먼저 심어둔다. 이 다음에
+        # 실행되는 get_or_create_guest_id() 호출들(_link_guest_to_member_safe 등)이
+        # 전부 이 값을 그대로 쓰게 되어, 로그인 전 guest_id와 로그인이 연결되는
+        # guest_id가 어긋나지 않는다.
+        st.session_state["_guest_id"] = saved_guest_id
+        st.session_state["_guest_id_confirmed"] = True
     provider_uid: str | None = None
     provider = "kakao"
     error: str | None = None
@@ -333,6 +353,11 @@ def handle_oauth_callback() -> bool:
 
     finalize_login(provider, provider_uid)
     st.query_params["page"] = return_page
+    if saved_guest_id:
+        # 세션 안에서만이 아니라 주소창(다음 새로고침/공유 등)에도 원래 gid가
+        # 그대로 남아있어야, 로그인 직후 첫 화면부터 계속 같은 guest_id로
+        # 이어진다.
+        st.query_params[GUEST_ID_QUERY_KEY] = saved_guest_id
     for key in ("code", "state", "error", "error_description"):
         if key in st.query_params:
             del st.query_params[key]
