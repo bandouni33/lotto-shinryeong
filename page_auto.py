@@ -24,24 +24,13 @@ AUTO_PURCHASE_SKIP_AUTH = os.environ.get("AUTO_PURCHASE_SKIP_AUTH", "0").strip()
 )
 ADMIN_COMBO_SAVE_FILE = "saved_combinations.csv"
 
-AUTO_DEPLOY_WINDOW_BANNER = (
-    "배포 가능 시간이 아닙니다. "
-    "매주 화요일 09:00부터 토요일 19:55까지만 구매(배포)할 수 있습니다."
-)
-
-
-def _is_auto_deploy_window_open(now: datetime | None = None) -> bool:
-    """KST — 화 09:00 ~ 토 19:55 (그 외 배포 불가)."""
-    now = now or datetime.now(ZoneInfo("Asia/Seoul"))
-    weekday = now.weekday()  # 월=0 … 일=6
-    clock = now.time()
-    if weekday in (6, 0):  # 일, 월
-        return False
-    if weekday == 1:  # 화
-        return clock >= time(9, 0)
-    if weekday == 5:  # 토
-        return clock <= time(19, 55)
-    return weekday in (2, 3, 4)  # 수, 목, 금
+# 2026-09-09: 번개조합·안티액땜조합에도 동일 적용하기로 하면서 sales_window.py로
+# 옮겼다 — 세 화면이 각자 복붙해 갖고 있으면 시간대가 바뀔 때 한 곳을 빠뜨리는
+# 사고로 이어지므로, 이제 이 모듈 하나만 고치면 세 화면 전부 반영된다. 기존
+# 이름(AUTO_DEPLOY_WINDOW_BANNER/_is_auto_deploy_window_open)은 이 파일 안
+# 호출부를 안 건드리려고 별칭으로 그대로 남겨둔다.
+from sales_window import SALES_WINDOW_BANNER as AUTO_DEPLOY_WINDOW_BANNER
+from sales_window import is_sales_window_open as _is_auto_deploy_window_open
 
 
 from user_scope import get_or_create_guest_id as _get_or_create_guest_id

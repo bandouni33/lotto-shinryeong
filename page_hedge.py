@@ -816,8 +816,14 @@ def render():
             st.error("최소 1줄 이상 입력해 주세요 (6개씩 선택).")
         else:
             from wallet_ui import ensure_member_or_banner
+            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
 
-            if ensure_member_or_banner(
+            # 2026-09-09(사용자 지시): 자동구매와 동일한 방식으로 판매시간대
+            # 제한 확정 적용 — sales_window.py 공용 모듈 사용(세 화면이 각자
+            # 복붙하면 나중에 시간대 변경 시 하나를 빠뜨리는 사고로 이어짐).
+            if not is_sales_window_open():
+                st.session_state["hedge_purchase_error"] = SALES_WINDOW_BANNER
+            elif ensure_member_or_banner(
                 resume="open_hedge_dialog",
                 reason="조합 생성을 위해 간편인증이 필요합니다.",
                 resume_data={"lines": lines, "count": count},
@@ -845,6 +851,13 @@ def render():
             # 적립금은 두 종류를 합친 개수만큼 차감된다(기본 5개 선택 시
             # 개별 5 + 전체 5 = 10개 → 100P).
             total_count = pending_count * 2
+            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
+
+            if not is_sales_window_open():
+                # 다이얼로그가 열려있는 사이 판매시간대 경계를 넘는 경우 대비
+                # (자동구매와 동일하게 확정 시점에도 한 번 더 확인).
+                st.session_state["hedge_purchase_error"] = SALES_WINDOW_BANNER
+                return
             # 2026-09-08 수정: "테스트 기간이라 차감 성공 여부와 무관하게 진행"
             # 하던 leftover 로직이 카카오 실연동 후에도 그대로 남아있어서,
             # 적립금이 부족해도 생성이 그냥 진행되는 버그가 있었다(page_thunder.py와

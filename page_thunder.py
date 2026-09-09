@@ -135,6 +135,13 @@ def render():
             # 적립금이 부족해도 조합 생성이 그냥 진행되는 버그가 있었다(실측
             # 확인: member 105 잔액 0인 상태). 차감이 실제로 성공했을 때만
             # 진행시킨다.
+            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
+
+            if not is_sales_window_open():
+                # 다이얼로그가 열려있는 사이 판매시간대 경계를 넘는 경우 대비
+                # (자동구매와 동일하게 확정 시점에도 한 번 더 확인).
+                st.session_state["thunder_purchase_error"] = SALES_WINDOW_BANNER
+                return
             mid = current_member_id()
             if not mid:
                 st.session_state["thunder_purchase_error"] = "로그인이 필요합니다."
@@ -406,8 +413,14 @@ def render():
             key="th_generate_btn",
         ):
             from wallet_ui import ensure_member_or_banner
+            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
 
-            if ensure_member_or_banner(
+            # 2026-09-09(사용자 지시): 자동구매와 동일한 방식으로 판매시간대 제한
+            # 확정 적용 — 세 화면이 각자 따로 관리하면 시간대가 바뀔 때 하나를
+            # 빠뜨리는 사고로 이어지므로 sales_window.py 공용 모듈을 그대로 쓴다.
+            if not is_sales_window_open():
+                st.session_state["thunder_purchase_error"] = SALES_WINDOW_BANNER
+            elif ensure_member_or_banner(
                 resume="open_thunder_dialog",
                 reason="번개조합 생성을 위해 간편인증이 필요합니다.",
                 resume_data={"games": selected_game_count},
