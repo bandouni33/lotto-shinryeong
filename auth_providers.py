@@ -317,6 +317,26 @@ def handle_oauth_callback() -> bool:
         return False
 
     provider_key, return_page, saved_guest_id = _decode_oauth_state(st.query_params.get("state"))
+    # 2026-09-09 임시 진단(화면 노출 없음, DB만 기록) — state 복원이 실제 카카오
+    # 왕복에서도 정상 동작하는지 실사용 데이터로 확인하기 위함. 원인 확인되면
+    # 바로 제거할 것.
+    try:
+        from wallet_db import _connect, _now_iso
+
+        _c = _connect()
+        _c.execute(
+            """CREATE TABLE IF NOT EXISTS _diag_oauth_restore_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, state_raw TEXT,
+                saved_guest_id TEXT, return_page TEXT, created_at TEXT NOT NULL)"""
+        )
+        _c.execute(
+            "INSERT INTO _diag_oauth_restore_log (state_raw, saved_guest_id, return_page, created_at) VALUES (?, ?, ?, ?)",
+            (st.query_params.get("state"), saved_guest_id, return_page, _now_iso()),
+        )
+        _c.commit()
+        _c.close()
+    except Exception:
+        pass
     if saved_guest_id:
         # 카카오 redirect_uri가 고정 URL이라 이 콜백 요청 자체엔 원래 쓰던 gid가
         # 안 실려 있다 — state에서 복원해 session_state에 먼저 심어둔다. 이 다음에
