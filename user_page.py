@@ -23,7 +23,15 @@ from auth_providers import (
     handle_oauth_callback,
     restore_member_from_guest,
 )
-from user_scope import init_guest_scope, internal_nav_href
+from user_scope import init_guest_scope, internal_nav_href, local_storage_gid_recovery_html
+
+# 2026-09-09: 모바일에서 Streamlit 웹소켓이 끊겼다 재연결되면(알려진 Streamlit
+# 플랫폼 이슈 — 화면 잠금·네트워크 전환 등으로 흔히 발생) 세션이 통째로 새로
+# 만들어지면서 주소창의 gid가 없는 채로 첫 렌더가 도는 경우가 실측 로그로
+# 확인됐다(15~40초 간격 반복, 게스트ID/로그인/저장내역이 매번 끊기는 근본원인).
+# 쿠키는 이 환경에서 서버가 못 읽는 걸 이미 확인했으므로, 다른 로직이 돌기 전에
+# 가장 먼저 localStorage에서 gid를 복구해 URL에 붙이고 새로고침한다.
+components.html(local_storage_gid_recovery_html(), height=0)
 
 init_wallet_tables()
 init_zero_phone_tables()

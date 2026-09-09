@@ -265,3 +265,38 @@ def guest_id_cookie_sync_html(guest_id: str) -> str:
     }})();
     </script>
     """
+
+
+LOCAL_STORAGE_GID_KEY = "lotto_guest_id_ls"
+
+
+def local_storage_gid_recovery_html() -> str:
+    """2026-09-09 추가 — 모바일 브라우저에서 Streamlit 웹소켓이 끊겼다 재연결되면
+    (알려진 Streamlit 플랫폼 이슈: streamlit/streamlit#8901 등, 화면 잠금·네트워크
+    전환 등으로 흔히 발생) 세션이 통째로 새로 만들어지면서 주소창의 ?gid=가 유실된
+    채로 첫 스크립트가 실행되는 경우가 실측 로그로 확인됐다(약 15~40초 간격으로
+    반복). 쿠키는 이 환경에서 서버가 안정적으로 못 읽는 것을 이미 확인했으므로,
+    브라우저 localStorage에 별도로 게스트ID를 저장해두고 — 주소창에 gid가 없는
+    채로 페이지가 뜨면 파이썬 로직이 뭘 하기 전에 즉시 localStorage 값을 붙여
+    새로고침한다. 모든 페이지 렌더 맨 앞에서 항상 이 스크립트 하나만 심으면 되고,
+    현재 guest_id를 파이썬에서 넘겨줄 필요 없이 URL 자체에서 읽어 판단한다."""
+    return f"""
+    <script>
+    (function() {{
+        try {{
+            var top = window.top;
+            var url = new URL(top.location.href);
+            var urlGid = url.searchParams.get({GUEST_ID_QUERY_KEY!r});
+            var midOauth = !!url.searchParams.get('code');
+            var stored = null;
+            try {{ stored = top.localStorage.getItem({LOCAL_STORAGE_GID_KEY!r}); }} catch (e) {{}}
+            if (urlGid) {{
+                try {{ top.localStorage.setItem({LOCAL_STORAGE_GID_KEY!r}, urlGid); }} catch (e) {{}}
+            }} else if (stored && !midOauth) {{
+                url.searchParams.set({GUEST_ID_QUERY_KEY!r}, stored);
+                top.location.replace(url.pathname + url.search);
+            }}
+        }} catch (e) {{}}
+    }})();
+    </script>
+    """
