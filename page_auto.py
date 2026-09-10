@@ -828,13 +828,15 @@ def _render_auto_history_content():
     # 로그인을 안 해도 그 폰에서 예전에 산 조합이 그대로 보였다 — 폰을 빌려주거나
     # 공용기기면 남의 구매내역이 인증 없이 노출됨. 로그인 상태에서만 보여준다.
     if not mid:
-        # 2026-09-10: 저장내역 패널을 기본 노출로 바꾸면서, 여기서 login_gate()를
-        # 부르면 자동구매 화면에 들어오기만 해도 로그인 배너가 강제로 떠버린다 —
-        # 패널에서는 수동 안내만 보여주고, 실제 배너는 유저가 조합시작 등을
-        # 직접 눌렀을 때만 뜨게 한다.
+        # 로그인 안내는 무조건 통합 게이트(login_gate)로만 — 별도 안내창을 따로
+        # 만들지 않는다(사용자 지시). 이 패널은 로그인 상태에서만 기본으로
+        # 펼쳐지므로(아래 render() 참고), 여기서 login_gate가 배너를 띄우는 건
+        # 유저가 "저장내역" 버튼을 직접 눌러 연 경우뿐이다.
+        from wallet_ui import login_gate
         from combo_history_ui import render_login_required_notice
 
-        render_login_required_notice()
+        if not login_gate():
+            render_login_required_notice()
         return
     history_items = _collect_purchase_history_items(mid)
     if not history_items:
@@ -2654,10 +2656,17 @@ def render():
 
                         with col_history:
                             history_blink = bool(st.session_state.pop("auto_history_blink", False))
-                            # 2026-09-10(사용자 지시): 번개조합·안티액땜처럼 저장내역이
-                            # 로그인 직후부터 바로 보이게 한다 — 예전엔 패널이 접힌 채라
-                            # "저장내역" 버튼을 누르거나 조합시작을 한 번 해야(blink) 열렸다.
-                            st.session_state.setdefault("auto_history_panel_open_6n36s5", True)
+                            # 2026-09-10(사용자 지시): 로그인하면 저장내역이 바로
+                            # 보이게 — 로그인 상태로 넘어온 첫 렌더에서 패널을
+                            # 펼친다(예전엔 접힌 채라 버튼을 누르거나 조합시작을
+                            # 한 번 해야 열렸음). 미로그인일 땐 접어둔다 — 안 그러면
+                            # 화면 진입만 해도 패널 안 login_gate가 배너를 띄운다.
+                            from auth_providers import current_member_id as _cmid_auto
+                            _auto_logged_in = bool(_cmid_auto())
+                            if _auto_logged_in and not st.session_state.get("_auto_hist_prev_login"):
+                                st.session_state["auto_history_panel_open_6n36s5"] = True
+                            st.session_state["_auto_hist_prev_login"] = _auto_logged_in
+                            st.session_state.setdefault("auto_history_panel_open_6n36s5", False)
                             if history_blink:
                                 st.session_state["auto_history_panel_open_6n36s5"] = True
                             with st.container(key="auto_purchase_history_zone_6n36s5"):
@@ -2671,7 +2680,7 @@ def render():
                                 ):
                                     st.session_state["auto_history_panel_open_6n36s5"] = (
                                         not st.session_state.get(
-                                            "auto_history_panel_open_6n36s5", True
+                                            "auto_history_panel_open_6n36s5", False
                                         )
                                     )
 
@@ -2688,7 +2697,7 @@ def render():
                     # 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면 번호 6개가
                     # 잘려 보이고, 화면 중앙 팝업으로 띄우면 "구매 확정" 버튼을
                     # 가려버리는 문제가 있었다(2026-08-23).
-                    if st.session_state.get("auto_history_panel_open_6n36s5", True):
+                    if st.session_state.get("auto_history_panel_open_6n36s5", False):
                         with st.container(key="auto_purchase_history_panel_6n36s5"):
                             if history_blink:
                                 st.markdown(
