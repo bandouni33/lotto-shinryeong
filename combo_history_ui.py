@@ -334,6 +334,8 @@ def render_history_button(*, container_key: str, blink_flag_key: str, title: str
     """저장내역 열기/닫기 버튼만 렌더. 패널은 render_history_panel이 그린다 —
     자동구매처럼 버튼은 좁은 열에, 패널은 전체 폭 아래에 둬야 하는 화면 때문에
     분리했다. 버튼+패널을 붙여서 쓰려면 render_history_section을 쓰면 된다."""
+    from auth_kakao import current_member_id as _cmid
+
     st.markdown(history_css(), unsafe_allow_html=True)
     panel_open_key = _resolve_history_panel_state(blink_flag_key)
     toggled_key = f"{panel_open_key}_user_toggled"
@@ -342,7 +344,16 @@ def render_history_button(*, container_key: str, blink_flag_key: str, title: str
     with st.container(key=container_key):
         if st.button(title, type="primary", use_container_width=True, key=f"{container_key}_open_btn"):
             st.session_state[toggled_key] = True
-            st.session_state[panel_open_key] = not st.session_state.get(panel_open_key, False)
+            opening = not st.session_state.get(panel_open_key, False)
+            st.session_state[panel_open_key] = opening
+            # 미로그인인데 "저장내역"을 눌러 펼치는 경우에만 여기서 로그인 배너를
+            # 띄운다. 패널 쪽(render_history_panel)에서는 배너를 열지 않는다 —
+            # 안 그러면 배너를 [닫기]로 닫아도 패널이 아직 펼침 상태라 다음
+            # 렌더에서 login_gate가 배너를 다시 열어 "반복해서 뜨는" 문제가 생긴다.
+            if opening and not _cmid():
+                from wallet_ui import login_gate
+
+                login_gate()  # 배너 오픈 + st.rerun()
 
 
 def render_history_panel(
@@ -377,10 +388,11 @@ def render_history_panel(
         # 2026-09-10(사용자 지시): 저장내역은 guest_id(기기 식별자)에 묶여 있어서,
         # 로그인을 안 해도 그 폰에서 예전에 저장한 게 그대로 보였다 — 공용기기면
         # 남의 내역이 인증 없이 노출됨. 로그인 상태에서만 실제 내역을 보여준다.
-        # 로그인 안내는 무조건 통합 login_gate로만(사용자 지시).
-        from wallet_ui import login_gate
+        # 로그인 배너를 "여는" 건 render_history_button(버튼 클릭 시점)만 담당한다 —
+        # 여기서는 미로그인이면 안내 한 줄만 남긴다(배너 반복 오픈 방지).
+        from auth_kakao import current_member_id as _cmid
 
-        if not login_gate():
+        if not _cmid():
             render_login_required_notice()
             return
 
