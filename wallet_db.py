@@ -175,6 +175,25 @@ def get_member_for_guest(guest_id: str) -> int | None:
     return int(row["member_id"]) if row else None
 
 
+def get_guest_ids_for_member(member_id: int) -> list[str]:
+    """이 회원에 연결된 적 있는 모든 guest_id(최신 연결순).
+
+    2026-09-10: guest_id가 Streamlit 웹소켓 재연결 등으로 세션마다 새로
+    발급되는 문제가 있어서, 구매/저장 내역이 여러 guest_id에 흩어져 저장된다.
+    로그인 상태면 이 회원에 묶인 guest_id를 전부 모아 내역을 합쳐 보여줘야
+    "방금 샀는데 구매내역이 안 보인다"는 신고를 막을 수 있다."""
+    try:
+        conn = _connect()
+        rows = conn.execute(
+            "SELECT guest_id FROM guest_member_links WHERE member_id = ? ORDER BY linked_at DESC",
+            (int(member_id),),
+        ).fetchall()
+        conn.close()
+        return [str(r["guest_id"]) for r in rows]
+    except Exception:
+        return []
+
+
 def _parse_kst(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=KST)
 

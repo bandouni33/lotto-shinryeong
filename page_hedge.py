@@ -931,9 +931,11 @@ def render():
         )
         st.caption("💾 자동으로 저장됐습니다 — 아래 저장내역에서 확인할 수 있어요.")
 
+    from user_scope import history_guest_ids
+
     render_history_section(
         container_key="hedge_history_zone_6n36s5",
-        guest_id=guest_id,
+        guest_id=history_guest_ids(),
         sources=["anti", "aekddaem"],
         blink_flag_key="hedge_history_blink",
         label_for_source={"anti": "개별리셋", "aekddaem": "전체리셋"},

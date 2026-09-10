@@ -212,6 +212,30 @@ def get_or_create_guest_id() -> str:
     return new_id
 
 
+def history_guest_ids() -> list[str]:
+    """구매/저장 내역을 조회할 때 써야 하는 guest_id 목록 — 현재 guest_id + (로그인
+    상태면) 이 회원에 묶인 적 있는 모든 guest_id. 2026-09-10: guest_id churn으로
+    내역이 여러 id에 흩어져도 로그인 상태면 전부 합쳐 보여주기 위함. 현재 id를
+    맨 앞에 두고 중복 제거."""
+    current = get_or_create_guest_id()
+    ids = [current]
+    mid = current_member_id()
+    if mid:
+        try:
+            from wallet_db import get_guest_ids_for_member
+
+            # 최근 연결된 것부터 최대 15개까지만 — 구매/저장 내역은 어차피 최근
+            # 2회차만 보관되므로(cleanup_old_*), 그보다 오래된 guest_id를 조회해봐야
+            # 데이터가 없다. 회원당 guest_id가 수십 개까지 쌓일 수 있어(churn)
+            # 상한 없이 다 조회하면 렌더마다 수십 번 DB 조회가 발생한다.
+            for gid in get_guest_ids_for_member(mid)[:15]:
+                if gid and gid not in ids:
+                    ids.append(gid)
+        except Exception:
+            pass
+    return ids
+
+
 def _log_guest_id_branch(branch: str, guest_id: str) -> None:
     """2026-09-08 임시 진단 코드 — guest_id가 화면 이동마다 계속 새로 발급되는
     문제의 원인을 찾기 위해, 매 호출마다 어느 분기를 탔는지(query/session_state

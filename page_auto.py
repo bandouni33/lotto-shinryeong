@@ -730,11 +730,20 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
     )
 
     init_marketing_tables()
-    guest_orders = [
-        order
-        for order in list_guest_auto_orders(_get_or_create_guest_id(), limit=20)
-        if int(order["auto_order_id"]) not in seen_combo_order_ids
-    ]
+    # 2026-09-10: guest_id가 세션마다 churn되면서 "방금 샀는데 구매내역이 안
+    # 보인다"는 신고 — 로그인 상태면 이 회원에 묶인 모든 guest_id의 주문을
+    # 합쳐 보여준다(user_scope.history_guest_ids). 비로그인이면 현재 id 하나뿐.
+    from user_scope import history_guest_ids
+
+    _seen_auto_order = set()
+    guest_orders = []
+    for _gid in history_guest_ids():
+        for order in list_guest_auto_orders(_gid, limit=20):
+            _oid = int(order["auto_order_id"])
+            if _oid in seen_combo_order_ids or _oid in _seen_auto_order:
+                continue
+            _seen_auto_order.add(_oid)
+            guest_orders.append(order)
     candidate_rounds = [item.get("draw_round") for item in items]
     candidate_rounds += [order.get("draw_round") for order in guest_orders]
     kept_rounds: list = []

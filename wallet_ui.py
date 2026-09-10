@@ -20,6 +20,7 @@ from legal_notices import (
     AUTH_CONSENT_ITEMS,
     AUTH_PROMPT_SUBTITLE,
     NOTICE_VERSION,
+    PRICING,
     format_advanced_points_notice,
     format_auto_points_notice,
     format_hedge_points_notice,
@@ -489,8 +490,29 @@ def insufficient_balance_dialog() -> None:
 
 POINTS_NOTICE_SEEN_ONCE = "points_notice_seen_once"
 
+# 조합시작/구매확정 → points_notice_dialog를 여는 트리거 플래그들. dialog가 X로
+# 닫히거나(버튼 클릭 없이) 하면 이 플래그가 남아 다음 렌더에서 다시 뜨는데,
+# 예전엔 그 재-렌더가 SEEN_ONCE 자동통과 분기를 타면서 사용자가 취소했는데도
+# 적립금이 차감되는 사고로 이어졌다(2026-09-10 사용자 지적 — 분쟁 리스크).
+# on_dismiss에서 이 플래그를 모두 지워 "X로 닫음 = 취소"가 되게 한다.
+_PN_TRIGGER_FLAGS = ("open_thunder_dialog", "open_hedge_dialog", "auto_show_points")
 
-@_dialog_decorator("적립금 이용 안내")
+
+def _points_notice_on_dismiss() -> None:
+    for _k in _PN_TRIGGER_FLAGS:
+        st.session_state.pop(_k, None)
+
+
+def _points_notice_dialog_decorator(title: str):
+    if hasattr(st, "dialog"):
+        try:
+            return st.dialog(title, on_dismiss=_points_notice_on_dismiss)
+        except TypeError:
+            return st.dialog(title)
+    return _dialog_decorator(title)
+
+
+@_points_notice_dialog_decorator("적립금 이용 안내")
 def points_notice_dialog(
     service: str,
     *,
@@ -513,35 +535,47 @@ def points_notice_dialog(
     사용자 요청. 정식 출시 시 어떻게 다시 노출할지는 _testing_period_active
     독스트링의 "숙제" 참고.
 
-    2026-09-08 추가(사용자 지시): 실연동 후에도 구매할 때마다 이 확인창이
-    매번 뜨는 게 번거롭다는 신고 — 세션(앱을 닫기 전까지)당 **한 번**
-    보여준 뒤로는 다시 안 띄우고 바로 확인 처리한다(위 테스트 기간 분기와
-    동일하게 on_close(True)). 단, 이후 실제로 적립금이 부족하면 그건 이
-    안내창과 별개로 각 화면의 실패 안내(예: page_thunder.py의 "적립금이
-    부족합니다")가 그대로 뜬다 — "확인하시겠습니까" 질문만 한 번으로
-    줄이는 것이지, 부족 안내 자체를 없애는 게 아니다."""
-    if _testing_period_active():
-        on_close(True)
-        st.rerun()
-        return
-    if st.session_state.get(POINTS_NOTICE_SEEN_ONCE):
-        on_close(True)
-        st.rerun()
-        return
-    st.session_state[POINTS_NOTICE_SEEN_ONCE] = True
+    2026-09-08: "매번 뜨는 게 번거롭다"는 요청으로 세션당 1회만 전체 안내를
+    보여주고 이후엔 자동 통과(on_close(True))시켰었는데, 2026-09-10에 사용자가
+    "그러면 조합시작/구매확정을 실수로 눌러도(또는 이 창을 X로 닫아도) 바로
+    적립금이 차감돼 분쟁 소지가 크다"고 지적 — 자동 통과를 없앤다. 적립금이
+    실제로 차감되는 확정은 **매번 명시적인 '확인' 클릭**을 거쳐야 한다. 대신
+    두 번째부터는 긴 고지문 대신 한 줄짜리 간단 확인만 보여줘 번거로움을
+    줄인다. X로 닫으면(on_dismiss) 취소로 처리돼 차감되지 않는다."""
     member_id = current_member_id()
     balance = get_balance(member_id) if member_id else 0
+    first_time = not st.session_state.get(POINTS_NOTICE_SEEN_ONCE)
+    st.session_state[POINTS_NOTICE_SEEN_ONCE] = True
 
-    if service == "thunder":
-        st.markdown(format_thunder_points_notice(game_count, balance))
-    elif service == "hedge":
-        st.markdown(format_hedge_points_notice(quantity, balance))
-    elif service == "auto":
-        st.markdown(format_auto_points_notice(quantity, balance))
-    elif service == "tarot":
-        st.markdown(format_tarot_points_notice(balance))
+    if first_time:
+        if service == "thunder":
+            st.markdown(format_thunder_points_notice(game_count, balance))
+        elif service == "hedge":
+            st.markdown(format_hedge_points_notice(quantity, balance))
+        elif service == "auto":
+            st.markdown(format_auto_points_notice(quantity, balance))
+        elif service == "tarot":
+            st.markdown(format_tarot_points_notice(balance))
+        else:
+            st.error("알 수 없는 서비스")
     else:
-        st.error("알 수 없는 서비스")
+        # 두 번째부터: 한 줄 간단 확인
+        _svc_label = {
+            "thunder": f"번개조합 {game_count}게임",
+            "hedge": f"안티·액땜조합 {quantity}개",
+            "auto": f"자동구매 {quantity}개",
+            "tarot": "타로 추가뽑기",
+        }.get(service, "구매")
+        _amt = {
+            "thunder": calc_thunder_cost(game_count),
+            "hedge": calc_hedge_cost(quantity),
+            "auto": calc_auto_cost(quantity),
+            "tarot": PRICING["tarot_extra_draw"],
+        }.get(service, 0)
+        st.markdown(
+            f"**{_svc_label}** — 결과 생성 후 **{_amt:,}P** 차감됩니다."
+            f"\n\n현재 잔액: **{balance:,}P**"
+        )
 
     c1, c2 = st.columns(2)
     with c1:

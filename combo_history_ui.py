@@ -294,7 +294,8 @@ def paired_batch_card_html(
 def render_history_section(
     *,
     container_key: str,
-    guest_id: str,
+    guest_id,  # str 또는 list[str] — 2026-09-10: guest_id churn 대응으로 로그인 시
+               # 이 회원에 묶인 모든 guest_id를 넘길 수 있게 함(user_scope.history_guest_ids)
     sources: list[str],
     blink_flag_key: str,
     title: str = "저장내역",
@@ -336,11 +337,18 @@ def render_history_section(
 
     if st.session_state.get(panel_open_key, False):
         with st.container(key=f"{container_key}_panel"):
+            _gids = [guest_id] if isinstance(guest_id, str) else list(guest_id or [])
             batches = []
-            for source in sources:
-                for batch in list_guest_generated_combos(guest_id, source=source, limit=limit_per_source):
-                    batch["_source"] = source
-                    batches.append(batch)
+            _seen_batch = set()
+            for _gid in _gids:
+                for source in sources:
+                    for batch in list_guest_generated_combos(_gid, source=source, limit=limit_per_source):
+                        _bkey = (batch.get("batch_id"), batch.get("created_at"), source)
+                        if _bkey in _seen_batch:
+                            continue
+                        _seen_batch.add(_bkey)
+                        batch["_source"] = source
+                        batches.append(batch)
             batches.sort(key=lambda b: b.get("created_at") or "", reverse=True)
             batches = _limit_to_recent_rounds(batches)
 

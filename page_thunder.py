@@ -1539,9 +1539,11 @@ def render():
     # ─── 저장내역 (구매내역과 동일한 카드 디자인 — combo_history_ui 공용 모듈) ───
     from combo_history_ui import render_history_section
 
+    from user_scope import history_guest_ids
+
     render_history_section(
         container_key="th_history_zone_6n36s5",
-        guest_id=get_or_create_guest_id(),
+        guest_id=history_guest_ids(),
         sources=["thunder"],
         blink_flag_key="thunder_history_blink",
     )
