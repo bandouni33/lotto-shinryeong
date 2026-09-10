@@ -148,6 +148,9 @@ def render():
             # 행운수 선택을 자동으로 비운다 — 다음 iframe 렌더에서 localStorage를
             # 지우도록 플래그를 남긴다(지난 선택이 남은 걸 모르고 또 생성하는 것 방지).
             st.session_state["thunder_clear_selections"] = True
+        # 생성·저장이 끝났으니 "생성 중" 상태 해제 — 조합시작 버튼/게임수 선택을
+        # 다시 활성화한다(아래 참고).
+        st.session_state.pop("thunder_approved", None)
         st.rerun()
 
     if st.session_state.get("open_thunder_dialog"):
@@ -191,7 +194,14 @@ def render():
         points_notice_dialog("thunder", game_count=g, on_close=_thunder_dialog_close)
 
     th_auto_run = st.session_state.pop("thunder_auto_run", None)
-    th_approved_js = "true" if st.session_state.get("thunder_approved") else "false"
+    # thunder_approved는 "방금 확정 → 자동 생성 도는 중" 표시로만 쓴다. 이번 렌더가
+    # 그 자동 생성 사이클(th_auto_run 있음)이 아니면, 남아 있는 approved는 이미
+    # 끝난(또는 중간에 끊긴) 생성의 잔재이므로 지운다 — 안 지우면 생성 실패 시
+    # 조합시작 버튼이 계속 비활성으로 묶여 다시 시작을 못 한다.
+    if not th_auto_run:
+        st.session_state.pop("thunder_approved", None)
+    thunder_generating = bool(st.session_state.get("thunder_approved"))
+    th_approved_js = "true" if thunder_generating else "false"
     th_auto_run_js = str(th_auto_run) if th_auto_run else "null"
     reveal_version_js = str(st.session_state.get("thunder_reveal_version", 1))
     # 조합 저장 직후 1회: iframe이 localStorage의 고정수·삭제수·행운수 선택을 비운다.
@@ -449,13 +459,19 @@ def render():
             index=0,
             key="th_game_count_select",
             label_visibility="collapsed",
+            # 생성 중에는 못 바꾸게 — 스크롤하다 실수로 건드리면 st.rerun()이
+            # 걸려 iframe이 재생성되고 생성 중이던 조합이 통째로 사라진다.
+            disabled=thunder_generating,
         )
     with gcol2:
         if st.button(
-            "⚡ 조합시작",
+            "⚡ 생성 중…" if thunder_generating else "⚡ 조합시작",
             type="primary",
             use_container_width=True,
             key="th_generate_btn",
+            # 생성 중 재클릭 방지 — 스크롤하다 실수로 눌러 확정창이 다시 뜨고
+            # 생성이 멈추는 문제(사용자 신고 2026-09-10)를 막는다.
+            disabled=thunder_generating,
         ):
             from wallet_ui import ensure_member_or_banner
             from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
@@ -1237,6 +1253,16 @@ def render():
                 return {{ game, attempts, gaveUp }};
             }}
 
+            // 2026-09-10(사용자 신고): 게임이 하나씩 나올 때마다 그 행으로
+            // 스크롤을 따라가서, 사용자가 생성 화면을 보려고 위로 올리면 다음
+            // 게임이 나오는 순간 다시 아래로 홱 끌어내려 "생성 화면에 머무를 수
+            // 없다"는 문제가 있었다. 첫 게임이 나올 때 한 번만 결과 영역으로
+            // 스크롤하고, 그 뒤로는 사용자 스크롤을 건드리지 않는다.
+            function scrollToResultsIfFirst() {{
+                const area = document.getElementById('resultArea');
+                if (area && area.children.length <= 1) scrollResultsIntoView(area);
+            }}
+
             function scrollResultsIntoView(anchorEl) {{
                 const target = anchorEl || document.getElementById('resultArea');
                 if (!target) return;
@@ -1347,7 +1373,7 @@ def render():
                 }});
 
                 document.getElementById('resultArea').appendChild(row);
-                scrollResultsIntoView(row);
+                scrollToResultsIfFirst();
 
                 aura.animate([
                     {{ opacity: 0, transform: 'scaleY(0)' }},
@@ -1403,7 +1429,7 @@ def render():
                 }});
 
                 document.getElementById('resultArea').appendChild(row);
-                scrollResultsIntoView(row);
+                scrollToResultsIfFirst();
 
                 rift.animate([
                     {{ opacity: 0, transform: 'scale(0.7) rotate(0deg)' }},
@@ -1482,7 +1508,7 @@ def render():
                     row.appendChild(ball);
                 }});
                 document.getElementById('resultArea').appendChild(row);
-                scrollResultsIntoView(row);
+                scrollToResultsIfFirst();
             }}
 
             window.addEventListener('message', function(e) {{
