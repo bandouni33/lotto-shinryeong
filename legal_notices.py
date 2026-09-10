@@ -40,7 +40,7 @@ def format_thunder_points_notice(game_count: int, balance: int | None = None) ->
     amount = per * max(1, game_count)
     lines = [
         f"**선택: {game_count}게임** → 필요 적립금 **{amount:,}P** (1게임당 {per}P)",
-        "**※ 조합 결과가 표시된 후** 적립금이 차감됩니다.",
+        "**※ 조합시작 시** 적립금이 차감됩니다.",
     ]
     if balance is not None:
         lines.append(f"현재 잔액: **{balance:,}P**")

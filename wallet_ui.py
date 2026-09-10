@@ -573,7 +573,7 @@ def points_notice_dialog(
             "tarot": PRICING["tarot_extra_draw"],
         }.get(service, 0)
         st.markdown(
-            f"**{_svc_label}** — 결과 생성 후 **{_amt:,}P** 차감됩니다."
+            f"**{_svc_label}** — 확인 시 **{_amt:,}P** 차감됩니다."
             f"\n\n현재 잔액: **{balance:,}P**"
         )
 
