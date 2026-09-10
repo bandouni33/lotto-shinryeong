@@ -16,6 +16,18 @@ import streamlit as st
 
 RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
 
+
+def render_login_required_notice() -> None:
+    """저장내역을 로그인 없이 열었을 때 보여주는 안내 — 자동구매/번개조합/
+    안티·액땜조합 세 화면이 똑같이 쓴다(2026-09-10 사용자 지시: 가운데 정렬 +
+    글자 키우기 + 세 화면 통일)."""
+    st.markdown(
+        '<div style="text-align:center; padding:26px 12px; color:#cbd5e1;'
+        ' font-size:16px; font-weight:700; line-height:1.7;">'
+        '🔒 로그인 후<br>저장내역을 확인할 수 있습니다</div>',
+        unsafe_allow_html=True,
+    )
+
 # 2026-08-27: 자동구매 "구매내역"(page_auto.py)은 회차 기준으로 최근 2개
 # 회차분만 표시하는데, 여기(번개조합/안티·액땜조합 "저장내역")는 회차와
 # 무관하게 "최근 저장 10건"만 보여주고 있어 세 화면의 표시 기준이 서로 달랐다
@@ -344,7 +356,7 @@ def render_history_section(
             from user_scope import current_member_id
 
             if not current_member_id():
-                st.caption("로그인 후 저장내역을 확인할 수 있습니다.")
+                render_login_required_notice()
                 return
             _gids = [guest_id] if isinstance(guest_id, str) else list(guest_id or [])
             batches = []
