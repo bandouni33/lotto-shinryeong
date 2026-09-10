@@ -828,11 +828,13 @@ def _render_auto_history_content():
     # 로그인을 안 해도 그 폰에서 예전에 산 조합이 그대로 보였다 — 폰을 빌려주거나
     # 공용기기면 남의 구매내역이 인증 없이 노출됨. 로그인 상태에서만 보여준다.
     if not mid:
-        from wallet_ui import login_gate
+        # 2026-09-10: 저장내역 패널을 기본 노출로 바꾸면서, 여기서 login_gate()를
+        # 부르면 자동구매 화면에 들어오기만 해도 로그인 배너가 강제로 떠버린다 —
+        # 패널에서는 수동 안내만 보여주고, 실제 배너는 유저가 조합시작 등을
+        # 직접 눌렀을 때만 뜨게 한다.
         from combo_history_ui import render_login_required_notice
 
-        if not login_gate():
-            render_login_required_notice()
+        render_login_required_notice()
         return
     history_items = _collect_purchase_history_items(mid)
     if not history_items:
