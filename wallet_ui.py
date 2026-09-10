@@ -137,12 +137,13 @@ AUTH_BANNER_SEEN_ONCE = "auth_banner_seen_once"
 
 def login_gate(*, resume: str | None = None, resume_data: dict | None = None) -> bool:
     """로그인이 필요한 기능의 **단일 게이트**. 로그인됐으면 True(기능 진행).
-    아니면 안내창(login_gate.py 문구)을 예약하고 False.
+    아니면 통합 안내창(login_gate.py 문구)을 띄우고 False.
 
-    노출 규칙: 앱을 닫기 전까지 이 안내창은 **딱 한 번**만 뜬다
-    (AUTH_BANNER_SEEN_ONCE). 그 뒤로는 로그인 안 한 채로 막힌 기능을 또 눌러도
-    안내창은 다시 안 뜨고 조용히 False만 반환한다 — 호출부가 필요하면 그 자리에
-    login_gate.GATE_INLINE_HINT 한 줄만 남긴다.
+    노출 규칙(2026-09-10 사용자 확정): 로그인 안 한 채로 막힌 기능을 누르면
+    **매번** 이 안내창을 띄운다("상태 1"). 안내창이 이미 떠 있는 동안은 다시
+    안 띄운다(AUTH_BANNER_OPEN 가드) — login_gate는 버튼 클릭뿐 아니라 저장내역
+    패널 렌더 중에도 불리므로, 이 가드가 없으면 st.rerun() 무한 루프가 된다.
+    사용자가 "닫기"로 안내창을 닫은 뒤 다른 막힌 기능을 누르면 다시 뜬다.
 
     테스트 기간엔(_testing_period_active) 안내창 대신 조용히 로그인시키고 진행."""
     if current_member_id():
@@ -150,9 +151,8 @@ def login_gate(*, resume: str | None = None, resume_data: dict | None = None) ->
     if _testing_period_active():
         mock_kakao_login()
         return True
-    if st.session_state.get(AUTH_BANNER_SEEN_ONCE):
+    if st.session_state.get(AUTH_BANNER_OPEN):
         return False
-    st.session_state[AUTH_BANNER_SEEN_ONCE] = True
     open_auth_banner(resume=resume, resume_data=resume_data)
     st.rerun()
     return False
@@ -653,6 +653,37 @@ def advanced_subscription_dialog(*, on_close) -> None:
     return None
 
 
+def inject_app_haptic() -> None:
+    """앱 전역 햅틱 — 최상위 문서에서 버튼/링크/셀렉트 등 상호작용 요소 클릭 시
+    짧게 진동. render_wallet_bar가 모든 페이지에서 부르므로 한 곳에서 전체 커버.
+    (2026-09-10: 예전엔 메인 6버튼·번개조합 일부에만 개별로 붙어 있어서 내정보·
+    조합시작·저장내역·QR스캔·카카오 로그인·닫기·타로 버튼 등에 진동이 빠져
+    있었다. 이벤트 위임 한 개로 통일.) page_thunder의 숫자판 iframe 안 클릭은
+    별도 문서라 여기서 못 잡으므로 거기 자체 safeVibrate는 그대로 둔다."""
+    components.html(
+        """
+        <script>
+        (function() {
+            var doc = window.parent.document;
+            if (doc.__appHapticBound) return;
+            doc.__appHapticBound = true;
+            function vib() {
+                try { if (navigator.vibrate) navigator.vibrate(28); } catch (e) {}
+            }
+            var SEL = 'button, a[href], summary, [role="button"], label[data-baseweb], '
+                    + 'div[data-testid="stButton"], div[data-testid="stFormSubmitButton"], '
+                    + 'div[data-baseweb="select"]';
+            doc.addEventListener('click', function(e) {
+                var t = e.target;
+                if (t && t.closest && t.closest(SEL)) vib();
+            }, true);
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     """로그인 시에만 상단 잔액 바. 미로그인 시 배너는 인증 필요 클릭 때만.
 
@@ -661,6 +692,7 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     from shared_ui_styles import wallet_bar_button_css
     from zero_phone_db import TEST_USER_ID, get_user, init_zero_phone_tables, login_test_user
 
+    inject_app_haptic()
     init_zero_phone_tables()
 
     if current_member_id() and st.session_state.get(AUTH_RESUME_FLAG):
@@ -711,17 +743,11 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
             st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
             with st.container(key="my_info_trigger_wrap"):
                 if st.button("👤 내정보", key="my_info_trigger_btn", use_container_width=True):
-                    # 2026-09-08 수정: 이 버튼은 ensure_member_or_banner()를 안 거치고
-                    # open_auth_banner()를 직접 불러서, "세션당 한 번만" 가드가 적용
-                    # 안 되고 있었다(사용자가 지적한 "내정보 볼 때마다 로그인창" 사례 —
-                    # 구매 쪽 가드만 고치고 이 경로를 놓쳤던 것) — 같은 플래그를 공유해서
-                    # 한 번만 뜨게 통일한다.
-                    if not st.session_state.get(AUTH_BANNER_SEEN_ONCE):
-                        st.session_state[AUTH_BANNER_SEEN_ONCE] = True
-                        open_auth_banner(
-                            reason="내정보(구매내역·적립금)를 보려면 간편인증이 필요합니다.",
-                            resume="my_info_dialog",
-                        )
+                    # 2026-09-10: 다른 막힌 기능과 동일하게 login_gate 경로로 통일 —
+                    # 로그인 안 했으면 통합 안내창을 매번 띄운다(AUTH_BANNER_OPEN
+                    # 가드로 이미 떠 있으면 중복 안 함).
+                    if not st.session_state.get(AUTH_BANNER_OPEN):
+                        open_auth_banner(resume="my_info_dialog")
                     st.rerun()
         return None
 
