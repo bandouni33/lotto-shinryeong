@@ -392,14 +392,26 @@ def _render_auth_banner_form() -> None:
 
 
 def render_auth_banner() -> None:
+    def _d(b):
+        try:
+            from wallet_db import _connect, _now_iso
+            c = _connect()
+            c.execute("CREATE TABLE IF NOT EXISTS _diag_render_banner (id INTEGER PRIMARY KEY AUTOINCREMENT, branch TEXT, open TEXT, page TEXT, at TEXT)")
+            c.execute("INSERT INTO _diag_render_banner (branch, open, page, at) VALUES (?,?,?,?)",
+                      (b, str(st.session_state.get(AUTH_BANNER_OPEN)), str(st.query_params.get("page")), _now_iso()))
+            c.commit(); c.close()
+        except Exception:
+            pass
     if current_member_id() and st.session_state.get(AUTH_RESUME_FLAG):
         _finish_auth_success()
         return
     if not st.session_state.get(AUTH_BANNER_OPEN):
+        _d("skip_not_open")
         return
     if current_member_id():
         _finish_auth_success()
         return
+    _d("render")
     _inject_auth_banner_css()
     _render_auth_banner_form()
 
