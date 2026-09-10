@@ -108,34 +108,14 @@ def render():
                 combos.append(tuple(int(n) for n in parts))
             except ValueError:
                 continue
-        # 같은 th_save 값이 두 번 들어와도(자동저장 JS + 수동 링크가 겹쳐 눌리는
-        # 등) 한 번만 저장·차감하도록 이번 세션에서 처리한 서명을 기록해 둔다.
-        _sig = raw.strip()
-        _done = st.session_state.setdefault("_thunder_saved_sigs", set())
-        if combos and _sig in _done:
-            combos = []
         if combos:
-            _done.add(_sig)
             from auto_purchase_service import _next_draw_round
             from marketing_db import init_marketing_tables, save_guest_generated_combos
 
             init_marketing_tables()
-            batch_id = save_guest_generated_combos(
+            save_guest_generated_combos(
                 get_or_create_guest_id(), "thunder", _next_draw_round(), combos
             )
-            # 2026-09-10(사용자 지시): 적립금 차감을 "조합시작 확정" 시점이 아니라
-            # 실제로 조합이 서버에 저장되는 이 시점으로 옮긴다 — 확정 후 클라이언트
-            # JS 생성이 실패하거나(앱 종료·네트워크 끊김 등) 로그인 유도창을 거쳐
-            # 돌아온 뒤 생성이 안 되면, 예전엔 조합은 없는데 적립금만 빠져 분쟁
-            # 소지가 컸다. batch_id를 ref로 써서 같은 저장이 두 번 차감되지 않게
-            # 한다(멱등). 저장 시점에 로그인이 풀려 있으면(드문 churn) 차감을
-            # 건너뛴다 — "가끔 공짜 조합"이 "자주 나오는 분쟁"보다 낫다.
-            _mid = current_member_id()
-            if _mid:
-                from wallet_db import deduct_points
-
-                _cost = calc_thunder_cost(len(combos))
-                deduct_points(_mid, _cost, f"thunder:{len(combos)}games", f"thunder:save:{batch_id}")
             st.session_state["thunder_history_blink"] = True
             # 저장 후 페이지가 맨 위로 리로드되는데, 저장내역은 화면 맨 아래(스크롤
             # 필요)에 있어서 저장이 됐는지 안 됐는지 알기 어렵다는 신고가 있었다 —
@@ -166,12 +146,11 @@ def render():
             if not mid:
                 st.session_state["thunder_purchase_error"] = "로그인이 필요합니다."
                 return
-            # 2026-09-10: 여기서 차감하지 않는다 — 조합이 실제로 저장되는 시점
-            # (위 th_save 처리부)으로 차감을 옮겼다. 여기서는 잔액이 충분한지만
-            # 확인하고, 부족하면 충전 안내창을 띄운다.
-            from wallet_db import get_balance
-
-            if get_balance(mid) < calc_thunder_cost(g):
+            ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
+            if not deduct_after_result(mid, "thunder", ref, game_count=g):
+                # 2026-09-08(사용자 지시): "부족합니다" 문구만 띄우고 끝내지 않고,
+                # 그 자리에서 바로 충전할 수 있는 통합 창을 띄운다(자동구매·
+                # 안티·액땜조합과 동일 — wallet_ui.open_insufficient_balance_dialog).
                 open_insufficient_balance_dialog(calc_thunder_cost(g))
                 return
             st.session_state["thunder_approved"] = True
