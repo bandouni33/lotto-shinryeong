@@ -22,7 +22,7 @@ AUTH_CONSENT_ITEMS = [
     "만 19세 이상, 이용약관 동의 (부정가입 시 적립금 회수)",
 ]
 
-# ── 적립금 요금 (차감: 결과 생성 성공 후) ──
+# ── 적립금 요금 (차감: 조합시작/확인 시점) ──
 PRICING = {
     "thunder_per_game": 10,
     "hedge_per_combo": 10,
@@ -52,7 +52,7 @@ def format_hedge_points_notice(combo_count: int, balance: int | None = None) -> 
     amount = per * max(1, combo_count)
     lines = [
         f"**선택: {combo_count}개 조합 생성** → 필요 적립금 **{amount:,}P** (1개당 {per}P)",
-        "**※ 조합 결과가 표시된 후** 적립금이 차감됩니다.",
+        "**※ 조합시작 시** 적립금이 차감됩니다.",
     ]
     if balance is not None:
         lines.append(f"현재 잔액: **{balance:,}P**")
@@ -75,7 +75,7 @@ def format_auto_points_notice(quantity: int, balance: int | None = None) -> str:
     amount = per * max(1, quantity)
     lines = [
         f"**선택: {quantity}개** → 필요 적립금 **{amount:,}P** (1개당 {per}P)",
-        "**※ 추출·발송 처리 완료(결과 생성) 후** 적립금이 차감됩니다.",
+        "**※ 조합시작 시** 적립금이 차감됩니다.",
         "본 서비스는 **현금 직접 결제를 지원하지 않습니다.** (적립금 충전 후 이용)",
     ]
     if balance is not None:
