@@ -729,9 +729,9 @@ def render():
             if login_gate():
                 _fire_qr_scan_trigger()
             else:
-                from login_gate import GATE_INLINE_HINT
+                from combo_history_ui import render_login_required_notice
 
-                st.caption(f"🔒 {GATE_INLINE_HINT}")
+                render_login_required_notice()
     st.markdown(
         '<div class="hedge-mode-desc">'
         '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'

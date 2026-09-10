@@ -18,13 +18,15 @@ RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
 
 
 def render_login_required_notice() -> None:
-    """저장내역을 로그인 없이 열었을 때 보여주는 안내 — 자동구매/번개조합/
-    안티·액땜조합 세 화면이 똑같이 쓴다(2026-09-10 사용자 지시: 가운데 정렬 +
-    글자 키우기 + 세 화면 통일)."""
+    """로그인 안내창(login_gate)을 이미 한 번 본 뒤, 로그인 안 한 채로 막힌 기능을
+    또 눌렀을 때 그 자리에 남기는 한 줄. 저장내역·QR스캔 등 전 화면이 똑같이 쓴다
+    (문구는 login_gate.GATE_INLINE_HINT — 거기만 고치면 일괄 반영)."""
+    from login_gate import GATE_INLINE_HINT
+
     st.markdown(
         '<div style="text-align:center; padding:26px 12px; color:#cbd5e1;'
         ' font-size:16px; font-weight:700; line-height:1.7;">'
-        '🔒 로그인 후<br>저장내역을 확인할 수 있습니다</div>',
+        f'🔒 {GATE_INLINE_HINT}</div>',
         unsafe_allow_html=True,
     )
 

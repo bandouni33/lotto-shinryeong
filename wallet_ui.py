@@ -145,37 +145,13 @@ def login_gate(*, resume: str | None = None, resume_data: dict | None = None) ->
     login_gate.GATE_INLINE_HINT 한 줄만 남긴다.
 
     테스트 기간엔(_testing_period_active) 안내창 대신 조용히 로그인시키고 진행."""
-    def _diag(branch: str) -> None:
-        try:
-            from wallet_db import _connect, _now_iso
-
-            c = _connect()
-            c.execute(
-                "CREATE TABLE IF NOT EXISTS _diag_login_gate (id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                " branch TEXT, seen_once TEXT, banner_open TEXT, page TEXT, created_at TEXT)"
-            )
-            c.execute(
-                "INSERT INTO _diag_login_gate (branch, seen_once, banner_open, page, created_at)"
-                " VALUES (?,?,?,?,?)",
-                (branch, str(st.session_state.get(AUTH_BANNER_SEEN_ONCE)),
-                 str(st.session_state.get(AUTH_BANNER_OPEN)),
-                 str(st.query_params.get("page")), _now_iso()),
-            )
-            c.commit(); c.close()
-        except Exception:
-            pass
-
     if current_member_id():
-        _diag("logged_in")
         return True
     if _testing_period_active():
         mock_kakao_login()
-        _diag("testing_period")
         return True
     if st.session_state.get(AUTH_BANNER_SEEN_ONCE):
-        _diag("seen_once_skip")
         return False
-    _diag("open_banner")
     st.session_state[AUTH_BANNER_SEEN_ONCE] = True
     open_auth_banner(resume=resume, resume_data=resume_data)
     st.rerun()
@@ -392,26 +368,14 @@ def _render_auth_banner_form() -> None:
 
 
 def render_auth_banner() -> None:
-    def _d(b):
-        try:
-            from wallet_db import _connect, _now_iso
-            c = _connect()
-            c.execute("CREATE TABLE IF NOT EXISTS _diag_render_banner (id INTEGER PRIMARY KEY AUTOINCREMENT, branch TEXT, open TEXT, page TEXT, at TEXT)")
-            c.execute("INSERT INTO _diag_render_banner (branch, open, page, at) VALUES (?,?,?,?)",
-                      (b, str(st.session_state.get(AUTH_BANNER_OPEN)), str(st.query_params.get("page")), _now_iso()))
-            c.commit(); c.close()
-        except Exception:
-            pass
     if current_member_id() and st.session_state.get(AUTH_RESUME_FLAG):
         _finish_auth_success()
         return
     if not st.session_state.get(AUTH_BANNER_OPEN):
-        _d("skip_not_open")
         return
     if current_member_id():
         _finish_auth_success()
         return
-    _d("render")
     _inject_auth_banner_css()
     _render_auth_banner_form()
 
