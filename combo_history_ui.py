@@ -337,6 +337,15 @@ def render_history_section(
 
     if st.session_state.get(panel_open_key, False):
         with st.container(key=f"{container_key}_panel"):
+            # 2026-09-10(사용자 지시): 저장내역은 guest_id(기기 식별자)에 묶여
+            # 있어서, 로그인을 안 해도 그 폰에서 예전에 저장한 조합이 그대로
+            # 보였다 — 폰을 빌려주거나 공용기기면 남의 조합이 인증 없이 노출됨.
+            # 로그인 상태에서만 실제 내역을 보여준다.
+            from user_scope import current_member_id
+
+            if not current_member_id():
+                st.caption("로그인 후 저장내역을 확인할 수 있습니다.")
+                return
             _gids = [guest_id] if isinstance(guest_id, str) else list(guest_id or [])
             batches = []
             _seen_batch = set()
