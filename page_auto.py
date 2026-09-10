@@ -2562,7 +2562,9 @@ def render():
                         col_confirm, col_history = st.columns(2, gap="small")
                         with col_confirm:
                             if st.button(
-                                "구매 확정",
+                                # 2026-09-10(사용자 지시): 번개조합·안티액땜의
+                                # "조합시작"과 같은 동작이므로 명칭 통일.
+                                "조합시작",
                                 type="primary",
                                 use_container_width=True,
                                 key="auto_purchase_confirm_6n36s5",
@@ -2618,7 +2620,7 @@ def render():
 
                                     if ensure_member_or_banner(
                                         resume="auto_show_points",
-                                        reason="구매 확정을 위해 간편인증이 필요합니다.",
+                                        reason="조합시작을 위해 간편인증이 필요합니다.",
                                     ):
                                         st.session_state["auto_show_points"] = True
 
