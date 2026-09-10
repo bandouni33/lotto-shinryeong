@@ -828,11 +828,11 @@ def _render_auto_history_content():
     # 로그인을 안 해도 그 폰에서 예전에 산 조합이 그대로 보였다 — 폰을 빌려주거나
     # 공용기기면 남의 구매내역이 인증 없이 노출됨. 로그인 상태에서만 보여준다.
     if not mid:
-        st.caption("로그인 후 구매내역을 확인할 수 있습니다.")
+        st.caption("로그인 후 저장내역을 확인할 수 있습니다.")
         return
     history_items = _collect_purchase_history_items(mid)
     if not history_items:
-        st.caption("아직 구매 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다.")
+        st.caption("아직 저장한 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다.")
         return
     # 여러 회차 구매가 섞여 쌓일 수 있는데, 예전엔 조합 숫자만 보여주고 몇
     # 회차 것인지 표시가 없어서 어떤 조합이 어느 회차인지, 왜 동그라미가
@@ -2626,7 +2626,9 @@ def render():
                                 st.session_state["auto_history_panel_open_6n36s5"] = True
                             with st.container(key="auto_purchase_history_zone_6n36s5"):
                                 if st.button(
-                                    "구매내역",
+                                    # 2026-09-10(사용자 지시): 번개조합·안티액땜의
+                                    # "저장내역"과 같은 기능이므로 명칭을 통일.
+                                    "저장내역",
                                     type="primary",
                                     use_container_width=True,
                                     key="auto_history_open_btn_6n36s5",
