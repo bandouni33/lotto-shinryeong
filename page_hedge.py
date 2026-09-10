@@ -722,7 +722,14 @@ def render():
             with qc2:
                 st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
         if qr_clicked:
-            _fire_qr_scan_trigger()
+            # 2026-09-10(사용자 지시): 로그인 안 한 상태로 QR스캔을 누르면
+            # 안내만 띄우고 스캔은 진행하지 않는다.
+            from auth_kakao import current_member_id
+
+            if not current_member_id():
+                st.warning("🔒 QR스캔은 로그인 후 이용해 주세요.")
+            else:
+                _fire_qr_scan_trigger()
     st.markdown(
         '<div class="hedge-mode-desc">'
         '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'
