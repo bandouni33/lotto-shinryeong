@@ -144,6 +144,10 @@ def render():
             # 필요)에 있어서 저장이 됐는지 안 됐는지 알기 어렵다는 신고가 있었다 —
             # 스크롤 없이 바로 보이는 위치(제목 바로 아래)에 저장 완료 안내를 띄운다.
             st.session_state["thunder_save_toast"] = True
+            # 2026-09-10(사용자 지시): 조합 생성·저장이 끝났으니 고정수·삭제수·
+            # 행운수 선택을 자동으로 비운다 — 다음 iframe 렌더에서 localStorage를
+            # 지우도록 플래그를 남긴다(지난 선택이 남은 걸 모르고 또 생성하는 것 방지).
+            st.session_state["thunder_clear_selections"] = True
         st.rerun()
 
     if st.session_state.get("open_thunder_dialog"):
@@ -190,6 +194,8 @@ def render():
     th_approved_js = "true" if st.session_state.get("thunder_approved") else "false"
     th_auto_run_js = str(th_auto_run) if th_auto_run else "null"
     reveal_version_js = str(st.session_state.get("thunder_reveal_version", 1))
+    # 조합 저장 직후 1회: iframe이 localStorage의 고정수·삭제수·행운수 선택을 비운다.
+    clear_selections_js = "true" if st.session_state.pop("thunder_clear_selections", False) else "false"
     # 연출 타입 순환 저장 키는 member_id(로그인 스코프) 대신 guest_id를 쓴다 — 개발용
     # Mock 카카오 로그인은 누를 때마다 매번 새 member_id를 발급하고(uuid4), 모바일에서는
     # Streamlit 세션 재연결(백그라운드 전환·네트워크 끊김 등)로 재로그인이 잦은데, 그때마다
@@ -872,6 +878,11 @@ def render():
                 }} catch (e) {{}}
             }}
             (function restoreSelections() {{
+                // 조합 저장 직후 1회: 선택을 자동으로 비운다(사용자 지시 2026-09-10).
+                if ({clear_selections_js}) {{
+                    try {{ localStorage.removeItem(THUNDER_SEL_STORE); }} catch (e) {{}}
+                    return;
+                }}
                 try {{
                     const raw = localStorage.getItem(THUNDER_SEL_STORE);
                     if (!raw) return;
