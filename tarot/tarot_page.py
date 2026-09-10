@@ -361,13 +361,11 @@ def _render_extra_draw_gate():
 
         def _tarot_dialog_close(confirmed: bool) -> None:
             st.session_state["open_tarot_dialog"] = False
-            from wallet_ui import _testing_period_active
-
-            if _testing_period_active():
-                # 테스트 기간이라 취소를 눌러도 추가 뽑기를 그대로 열어준다(기존 설계
-                # 그대로 유지 — _testing_period_active() 독스트링 참고).
-                st.session_state["tarot_paid_extra_unlocked"] = True
-                return
+            # 2026-09-10(사용자 지시): 번개조합·안티·액땜조합·자동구매와 완전히
+            # 동일하게 — 취소(또는 X로 닫기)를 누르면 아무 일도 일어나지 않는다.
+            # 예전엔 테스트 기간(_testing_period_active)에 한해 취소해도 추가
+            # 뽑기를 열어주는 분기가 있었는데, 네 화면의 취소 동작을 일치시키기
+            # 위해 제거했다.
             if not confirmed:
                 return
             # 2026-09-08 수정: 실연동(카카오 로그인 완료) 후에도 deduct_points()
