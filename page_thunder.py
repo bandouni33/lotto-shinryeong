@@ -850,6 +850,43 @@ def render():
             const patternRules = {js_pattern_rules};
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
+
+            // ── 고정수/삭제수/행운수 선택을 localStorage에 보존 ──
+            // 2026-09-10(중대 버그 수정): 이 선택값들은 components.html iframe의
+            // JS 메모리(let Set)에만 있었다. 그런데 "조합시작"을 누르면
+            //   ① 로그인 게이트 → st.rerun() (iframe 파기·재생성)
+            //   ② 적립금 확정창 "확인 후 진행" → st.rerun() (또 파기·재생성)
+            // 두 번의 재생성을 거친 뒤 autoRunCount로 자동 생성이 도는데, 그때
+            // iframe은 selectedFixed/selectedDelete가 빈 Set인 새 인스턴스라
+            // 사용자가 고른 고정수·삭제수가 전부 무시된 채 조합이 생성됐다
+            // ("고정수·삭제수 적용해도 엉터리"의 실제 원인). reveal 사이클처럼
+            // localStorage에 넣어 iframe이 다시 만들어져도 복원되게 한다.
+            const THUNDER_SEL_STORE = 'thunder_selections_v1';
+            function persistSelections() {{
+                try {{
+                    localStorage.setItem(THUNDER_SEL_STORE, JSON.stringify({{
+                        fixed: Array.from(selectedFixed),
+                        deleted: Array.from(selectedDelete),
+                        lucky: Array.from(luckyNumbers),
+                    }}));
+                }} catch (e) {{}}
+            }}
+            (function restoreSelections() {{
+                try {{
+                    const raw = localStorage.getItem(THUNDER_SEL_STORE);
+                    if (!raw) return;
+                    const s = JSON.parse(raw);
+                    if (Array.isArray(s.fixed)) selectedFixed = new Set(s.fixed.slice(0, 5));
+                    if (Array.isArray(s.deleted)) selectedDelete = new Set(s.deleted);
+                    if (Array.isArray(s.lucky) && s.lucky.length) {{
+                        luckyNumbers = new Set(s.lucky);
+                        luckyLoaded = true;
+                    }}
+                    // 같은 번호가 두 곳에 들어가는 모순 방지(삭제수 우선 제거)
+                    selectedDelete.forEach(n => {{ selectedFixed.delete(n); luckyNumbers.delete(n); }});
+                    selectedFixed.forEach(n => luckyNumbers.delete(n));
+                }} catch (e) {{}}
+            }})();
             // 최상위 문서(iframe 밖)의 결과저장 동기화 스크립트가 same-origin으로 읽어가야
             // 하므로, let이 아니라 window의 프로퍼티로 선언한다(let은 이 iframe의 window에도
             // 안 붙어서 외부에서 읽을 수 없다).
@@ -959,6 +996,7 @@ def render():
                             luckyNumbers = new Set();
                             showLuckyWarn(true);
                         }}
+                        persistSelections();
                     }}
                 }} else {{
                     showLuckyWarn(false);
@@ -996,6 +1034,7 @@ def render():
                         selectedFixed.delete(num);
                     }}
                 }}
+                persistSelections();
                 initGrid();
             }}
 
