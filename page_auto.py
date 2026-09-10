@@ -877,6 +877,29 @@ def render():
         # 렌더를 하나 놓치더라도 바로 다음 렌더에서 다시 시도돼 결국은 저장된다.
         _sync_guest_id_cookie(guest_id)
 
+    # 조합시작(구매) 직후 1회: 화면을 최상단으로 되돌린다 — 예전엔 구매 후
+    # 저장내역 패널 하단으로 화면이 밀려 내려가 홈 버튼이 안 보였다(사용자 신고
+    # 2026-09-10). iframe sandbox엔 allow-top-navigation만 없고 스크롤 제어는
+    # 되므로 최상위 문서에 스크립트를 심어 거기서 window.scrollTo를 부른다.
+    if st.session_state.pop("auto_scroll_top", False):
+        components.html(
+            """
+            <script>
+            (function() {
+                try {
+                    var s = window.top.document.createElement('script');
+                    s.textContent = "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}";
+                    window.top.document.head.appendChild(s);
+                    s.parentNode.removeChild(s);
+                } catch (e) {
+                    try { window.parent.scrollTo(0, 0); } catch (e2) {}
+                }
+            })();
+            </script>
+            """,
+            height=0,
+        )
+
     st.markdown(
         """
     <style>
@@ -2616,6 +2639,7 @@ def render():
                                     else:
                                         _append_purchase_history(entry)
                                         st.session_state["auto_history_blink"] = True
+                                        st.session_state["auto_scroll_top"] = True
                                         st.rerun()
                                 else:
                                     from wallet_ui import ensure_member_or_banner
@@ -2628,6 +2652,10 @@ def render():
 
                         with col_history:
                             history_blink = bool(st.session_state.pop("auto_history_blink", False))
+                            # 2026-09-10(사용자 지시): 번개조합·안티액땜처럼 저장내역이
+                            # 로그인 직후부터 바로 보이게 한다 — 예전엔 패널이 접힌 채라
+                            # "저장내역" 버튼을 누르거나 조합시작을 한 번 해야(blink) 열렸다.
+                            st.session_state.setdefault("auto_history_panel_open_6n36s5", True)
                             if history_blink:
                                 st.session_state["auto_history_panel_open_6n36s5"] = True
                             with st.container(key="auto_purchase_history_zone_6n36s5"):
@@ -2641,7 +2669,7 @@ def render():
                                 ):
                                     st.session_state["auto_history_panel_open_6n36s5"] = (
                                         not st.session_state.get(
-                                            "auto_history_panel_open_6n36s5", False
+                                            "auto_history_panel_open_6n36s5", True
                                         )
                                     )
 
@@ -2658,7 +2686,7 @@ def render():
                     # 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면 번호 6개가
                     # 잘려 보이고, 화면 중앙 팝업으로 띄우면 "구매 확정" 버튼을
                     # 가려버리는 문제가 있었다(2026-08-23).
-                    if st.session_state.get("auto_history_panel_open_6n36s5", False):
+                    if st.session_state.get("auto_history_panel_open_6n36s5", True):
                         with st.container(key="auto_purchase_history_panel_6n36s5"):
                             if history_blink:
                                 st.markdown(
@@ -2706,6 +2734,10 @@ def render():
                                 )
                                 _append_purchase_history(entry)
                                 st.session_state["auto_history_blink"] = True
+                                # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역
+                                # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
+                                # 다음 렌더에서 최상단으로 한 번 스크롤한다.
+                                st.session_state["auto_scroll_top"] = True
                             elif outcome.get("error") == "insufficient_balance":
                                 # 2026-09-08(사용자 지시): 번개조합·안티·액땜조합과
                                 # 동일 — "부족합니다" 문구만 띄우지 않고 그 자리에서

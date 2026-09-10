@@ -365,10 +365,22 @@ def handle_oauth_callback() -> bool:
         return False
 
     if not provider_uid:
-        st.error(error or "간편인증에 실패했습니다. 다시 시도해 주세요.")
         for key in ("code", "state", "error", "error_description"):
             if key in st.query_params:
                 del st.query_params[key]
+        # 카카오 인가코드(code)는 1회용이라, 이 콜백이 두 번 실행되면
+        # (Streamlit 리런·뒤로가기·새로고침 등으로 흔함) 두 번째는 카카오가
+        # KOE320("authorization code not found")로 거절한다. 예전엔 그 raw JSON
+        # 응답을 화면 최상단에 빨간 st.error로 그대로 노출해서, 실제로는 첫
+        # 콜백에서 로그인이 됐는데도 사용자에겐 "카카오 토큰 발급 오류 (400):
+        # {...}"가 계속 보였다(사용자 신고 2026-09-10). 이미 로그인돼 있으면
+        # 조용히 넘어가고, 아니면 원본 대신 짧은 토스트만 띄운다.
+        if current_member_id():
+            return False
+        try:
+            st.toast("로그인이 완료되지 않았어요. 다시 시도해 주세요.", icon="⚠️")
+        except Exception:
+            pass
         return False
 
     finalize_login(provider, provider_uid)
