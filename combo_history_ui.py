@@ -345,19 +345,20 @@ def render_history_section(
     if bool(st.session_state.pop(blink_flag_key, False)):
         st.session_state[panel_open_key] = True
 
-    # 2026-09-10(사용자 지시): 자동구매와 동일하게 — 로그인 상태로 넘어온 첫
-    # 렌더에서 저장내역 패널을 펼쳐 바로 보이게 한다. 미로그인일 땐 접어둔다
-    # (안 그러면 화면 진입만 해도 패널 안 login_gate가 로그인 배너를 띄운다).
+    # 2026-09-10(사용자 지시): 자동구매와 동일하게 — 유저가 직접 접기 전까진
+    # 로그인 상태면 매 렌더에서 저장내역 패널을 펼친 상태로 유지한다(조합시작
+    # 없이도 바로 보이게). 미로그인일 땐 접어둔다 — 안 그러면 화면 진입만 해도
+    # 패널 안 login_gate가 로그인 배너를 띄운다.
     from auth_kakao import current_member_id as _cmid_hist
 
-    _hist_prev_key = f"{panel_open_key}_prev_login"
+    _hist_toggled_key = f"{panel_open_key}_user_toggled"
     _hist_logged_in = bool(_cmid_hist())
-    if _hist_logged_in and not st.session_state.get(_hist_prev_key):
-        st.session_state[panel_open_key] = True
-    st.session_state[_hist_prev_key] = _hist_logged_in
+    if not st.session_state.get(_hist_toggled_key):
+        st.session_state[panel_open_key] = _hist_logged_in
 
     with st.container(key=container_key):
         if st.button(title, type="primary", use_container_width=True, key=f"{container_key}_open_btn"):
+            st.session_state[_hist_toggled_key] = True
             st.session_state[panel_open_key] = not st.session_state.get(panel_open_key, False)
 
     if st.session_state.get(panel_open_key, False):

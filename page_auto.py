@@ -2656,17 +2656,18 @@ def render():
 
                         with col_history:
                             history_blink = bool(st.session_state.pop("auto_history_blink", False))
-                            # 2026-09-10(사용자 지시): 로그인하면 저장내역이 바로
-                            # 보이게 — 로그인 상태로 넘어온 첫 렌더에서 패널을
-                            # 펼친다(예전엔 접힌 채라 버튼을 누르거나 조합시작을
-                            # 한 번 해야 열렸음). 미로그인일 땐 접어둔다 — 안 그러면
-                            # 화면 진입만 해도 패널 안 login_gate가 배너를 띄운다.
+                            # 2026-09-10(사용자 지시): 로그인하면 저장내역이 조합시작
+                            # 없이도 바로 보여야 한다. 유저가 직접 접기 전까진, 로그인
+                            # 상태면 매 렌더에서 패널을 펼친 상태로 유지한다(예전
+                            # "로그인 전환 첫 렌더에서만 연다" 방식은 그 렌더가 다른
+                            # rerun에 묻혀 놓치면 안 열리는 문제가 있었음). 미로그인일
+                            # 땐 접어둔다 — 안 그러면 화면 진입만 해도 패널 안
+                            # login_gate가 로그인 배너를 띄운다.
                             from auth_providers import current_member_id as _cmid_auto
                             _auto_logged_in = bool(_cmid_auto())
-                            if _auto_logged_in and not st.session_state.get("_auto_hist_prev_login"):
-                                st.session_state["auto_history_panel_open_6n36s5"] = True
-                            st.session_state["_auto_hist_prev_login"] = _auto_logged_in
-                            st.session_state.setdefault("auto_history_panel_open_6n36s5", False)
+                            _auto_hist_toggled = st.session_state.get("_auto_hist_user_toggled", False)
+                            if not _auto_hist_toggled:
+                                st.session_state["auto_history_panel_open_6n36s5"] = _auto_logged_in
                             if history_blink:
                                 st.session_state["auto_history_panel_open_6n36s5"] = True
                             with st.container(key="auto_purchase_history_zone_6n36s5"):
@@ -2678,6 +2679,7 @@ def render():
                                     use_container_width=True,
                                     key="auto_history_open_btn_6n36s5",
                                 ):
+                                    st.session_state["_auto_hist_user_toggled"] = True
                                     st.session_state["auto_history_panel_open_6n36s5"] = (
                                         not st.session_state.get(
                                             "auto_history_panel_open_6n36s5", False
