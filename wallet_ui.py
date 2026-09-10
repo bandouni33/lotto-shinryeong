@@ -835,8 +835,10 @@ def deduct_after_result(
     game_count: int = 5,
     quantity: int = 5,
 ) -> bool:
-    """thunder/hedge/auto — 결과 생성 성공 후 차감. 고급필터는 구독형이라
-    advanced_subscription_dialog()가 구독 시작 시점에 별도로 처리한다."""
+    """thunder/hedge/auto — 조합시작(구매확정) 시 차감. hedge/auto는 조합 생성·
+    배정을 확인한 뒤 이 함수를 부르고, thunder는 차감 후 번호 저장이 끝내
+    안 되면 wallet_db.sweep_stale_thunder_pending가 자동 환불한다. 고급필터는
+    구독형이라 advanced_subscription_dialog()가 구독 시작 시점에 별도 처리."""
     if service == "thunder":
         cost = calc_thunder_cost(game_count)
         reason = f"thunder:{game_count}games"

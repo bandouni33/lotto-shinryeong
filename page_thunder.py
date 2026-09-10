@@ -21,7 +21,12 @@ from wallet_ui import (
     points_notice_dialog,
     INSUFFICIENT_BALANCE_OPEN,
 )
-from wallet_db import calc_thunder_cost
+from wallet_db import (
+    calc_thunder_cost,
+    record_thunder_pending,
+    settle_thunder_pending,
+    sweep_stale_thunder_pending,
+)
 
 # ── 번개조합 선택 색상 단일 정의 (삭제수/고정수/행운수) ──
 # 이 3가지 색상은 반드시 여기서만 정의합니다. 다른 파일·CSS 블록에 중복 정의하지 마세요.
@@ -43,6 +48,16 @@ def render():
     # 캐릭터 이미지 주변 장식용 숫자 볼(user_page.py의 lucky_display)과 동일한,
     # admin이 매주 감으로 손수 입력하던 리스트가 조합 생성에까지 몰래 섞여 들어가고
     # 있었다(과거 데이터 근거 전혀 없음) — 조합에는 절대 반영되면 안 된다는 요청.
+    # 2026-09-10(사용자 지시): 조합시작 시 차감했지만 번호 생성·저장이 끝내
+    # 안 된 미정산 건을 자동 환불한다(안티·액땜/자동구매와 같은 "실패 시 환불"
+    # 정책 통일). 10분 지나도 저장 안 됐으면 환불. 정상 저장되면 th_save
+    # 처리부에서 먼저 정산 처리돼 여기 안 걸린다.
+    _sweep_mid = current_member_id()
+    if _sweep_mid:
+        _refunded = sweep_stale_thunder_pending(_sweep_mid)
+        if _refunded:
+            st.session_state["thunder_refund_toast"] = _refunded
+
     user_id = current_birthday_scope()
     birthdays = get_user_birthdays(user_id)
 
@@ -116,6 +131,14 @@ def render():
             save_guest_generated_combos(
                 get_or_create_guest_id(), "thunder", _next_draw_round(), combos
             )
+            # 번호가 실제로 저장됐으니, 조합시작 때 잡아둔 미정산 차감을 정산
+            # 완료로 표시한다(자동 환불 대상에서 제외). 세션에 ref가 남아 있으면
+            # 그걸로, 재연결 등으로 유실됐으면 이 회원의 가장 오래된 미정산 건을 정산.
+            _settle_mid = current_member_id()
+            if _settle_mid:
+                settle_thunder_pending(
+                    _settle_mid, st.session_state.pop("thunder_pending_ref", None)
+                )
             st.session_state["thunder_history_blink"] = True
             # 저장 후 페이지가 맨 위로 리로드되는데, 저장내역은 화면 맨 아래(스크롤
             # 필요)에 있어서 저장이 됐는지 안 됐는지 알기 어렵다는 신고가 있었다 —
@@ -153,6 +176,11 @@ def render():
                 # 안티·액땜조합과 동일 — wallet_ui.open_insufficient_balance_dialog).
                 open_insufficient_balance_dialog(calc_thunder_cost(g))
                 return
+            # 2026-09-10: 차감은 됐지만 번호는 아직 브라우저에서 생성 전 —
+            # '미정산'으로 기록해 두고, 번호가 저장되면(th_save) 정산, 10분 내
+            # 저장 안 되면(생성 실패·이탈) 다음 진입 때 자동 환불한다.
+            record_thunder_pending(mid, ref, calc_thunder_cost(g), g)
+            st.session_state["thunder_pending_ref"] = ref
             st.session_state["thunder_approved"] = True
             st.session_state["thunder_auto_run"] = g
 
@@ -370,6 +398,12 @@ def render():
 
     if st.session_state.pop("thunder_save_toast", False):
         st.success("✅ 결과가 저장됐어요! 아래로 스크롤하면 저장내역에서 확인할 수 있어요.")
+
+    _refund_toast = st.session_state.pop("thunder_refund_toast", None)
+    if _refund_toast:
+        st.info(
+            f"💸 이전에 조합시작 후 번호가 저장되지 않은 건이 있어 **{_refund_toast:,}P**를 자동 환불했어요."
+        )
 
     thunder_purchase_error = st.session_state.pop("thunder_purchase_error", None)
     if thunder_purchase_error:

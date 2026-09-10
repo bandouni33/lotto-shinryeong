@@ -134,6 +134,24 @@ def init_wallet_tables() -> None:
             last_seen_at TEXT,
             FOREIGN KEY (member_id) REFERENCES members(id)
         );
+
+        -- 2026-09-10: 번개조합은 번호가 브라우저(JS)에서 생성돼 서버가 실패를
+        -- 즉시 알 수 없다. 차감은 "조합시작 확정" 시점에 하되(번호만 보고 무한
+        -- 재생성하는 악용 방지), 번호가 저장내역에 저장되면(th_save) 정산 완료로
+        -- 표시하고, 끝내 저장이 안 된 미정산 건은 일정 시간 후 자동 환불한다.
+        -- settled: 0=미정산, 1=정산(저장완료), 2=환불됨
+        CREATE TABLE IF NOT EXISTS thunder_pending_charges (
+            ref_id TEXT PRIMARY KEY,
+            member_id INTEGER NOT NULL,
+            cost INTEGER NOT NULL,
+            game_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            settled INTEGER NOT NULL DEFAULT 0,
+            settled_at TEXT,
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_thunder_pending_member
+            ON thunder_pending_charges(member_id, settled);
         """
     )
     # 2026-09-06: 기존 DB 호환 ALTER — marketing_db._migrate_lotto_combinations와
@@ -626,6 +644,102 @@ def refund_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool
     except sqlite3.IntegrityError:
         conn.close()
         return True
+
+
+# ── 번개조합 미정산 차감(조합시작 시 차감 → 저장되면 정산, 안 되면 자동 환불) ──
+
+THUNDER_PENDING_STALE_MINUTES = 10
+
+
+def record_thunder_pending(member_id: int, ref_id: str, cost: int, game_count: int) -> None:
+    """번개조합 조합시작 확정 시, 차감(deduct_points)에 성공한 직후 호출 —
+    '아직 번호가 저장되지 않은 차감'으로 기록해 둔다. ref_id는 차감 때 쓴
+    ledger ref_id와 같은 값이라 PRIMARY KEY 충돌이 곧 멱등 처리(같은 확정을
+    두 번 기록하지 않음)."""
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO thunder_pending_charges
+                (ref_id, member_id, cost, game_count, created_at, settled)
+            VALUES (?, ?, ?, ?, ?, 0)
+            """,
+            (ref_id, member_id, int(cost), int(game_count), _now_iso()),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass
+    finally:
+        conn.close()
+
+
+def settle_thunder_pending(member_id: int, ref_id: str | None = None) -> None:
+    """번호가 실제로 저장내역에 저장되면(th_save 처리) 호출 — 해당 미정산 건을
+    '정산 완료'로 표시해 자동 환불 대상에서 뺀다. ref_id를 알면 그것으로,
+    모르면(세션 유실 등) 이 회원의 가장 오래된 미정산 건을 정산한다."""
+    conn = _connect()
+    try:
+        if ref_id:
+            conn.execute(
+                "UPDATE thunder_pending_charges SET settled = 1, settled_at = ? "
+                "WHERE ref_id = ? AND settled = 0",
+                (_now_iso(), ref_id),
+            )
+        else:
+            row = conn.execute(
+                "SELECT ref_id FROM thunder_pending_charges "
+                "WHERE member_id = ? AND settled = 0 ORDER BY created_at ASC LIMIT 1",
+                (member_id,),
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE thunder_pending_charges SET settled = 1, settled_at = ? WHERE ref_id = ?",
+                    (_now_iso(), row["ref_id"]),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def sweep_stale_thunder_pending(
+    member_id: int, *, stale_minutes: int = THUNDER_PENDING_STALE_MINUTES
+) -> int:
+    """번개조합 화면에 들어올 때마다 호출 — 조합시작 후 stale_minutes(기본 10분)이
+    지나도록 번호가 저장되지 않은 미정산 차감을 자동 환불한다. 환불한 총 P를
+    반환(0이면 없음). 번호 생성·저장이 정상 완료되면 settle_thunder_pending가
+    먼저 settled=1로 바꿔 여기 걸리지 않는다."""
+    # created_at은 _now_iso()로 저장되므로(KST, "%Y-%m-%d %H:%M:%S.%f") 문자열
+    # 비교가 성립하도록 컷오프도 같은 시계·같은 포맷으로 만든다.
+    cutoff = (datetime.now(KST) - timedelta(minutes=stale_minutes)).strftime(
+        "%Y-%m-%d %H:%M:%S.%f"
+    )
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT ref_id, cost FROM thunder_pending_charges "
+            "WHERE member_id = ? AND settled = 0 AND created_at < ?",
+            (member_id, cutoff),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    refunded_total = 0
+    for row in rows:
+        ok = refund_points(
+            member_id, int(row["cost"]), "thunder:refund:no_save", f"{row['ref_id']}:refund"
+        )
+        if ok:
+            _c = _connect()
+            try:
+                _c.execute(
+                    "UPDATE thunder_pending_charges SET settled = 2, settled_at = ? WHERE ref_id = ?",
+                    (_now_iso(), row["ref_id"]),
+                )
+                _c.commit()
+            finally:
+                _c.close()
+            refunded_total += int(row["cost"])
+    return refunded_total
 
 
 def create_auto_order(
