@@ -578,6 +578,56 @@ def charge_points(member_id: int, amount: int, pg_ref_id: str) -> bool:
         return True
 
 
+def refund_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool:
+    """차감(deduct_points) 후 상품 지급(조합 저장·구독 활성화 등)이 실패했을 때
+    되돌리는 환불. charge_points와 달리 pg_charges에는 기록하지 않고(PG 충전이
+    아니므로) ledger에만 +delta로 남긴다. ref_id로 멱등 — 같은 실패를 두 번
+    환불하지 않는다.
+
+    2026-09-10(사용자 지시): "조합 실패했는데 적립금은 소진돼 있으면 분쟁위험
+    큼" — deduct 성공 후 후속 처리가 예외로 끊기는 좁은 구간(자동구매의
+    complete_auto_order, 고급필터 구독 활성화)을 환불로 메우기 위해 추가."""
+    if amount <= 0:
+        raise ValueError("amount must be positive")
+    conn = _connect()
+    try:
+        dup = conn.execute(
+            "SELECT 1 FROM wallet_ledger WHERE ref_id = ?", (ref_id,)
+        ).fetchone()
+        if dup:
+            conn.close()
+            return True
+
+        now = _now_iso()
+        cur = conn.execute(
+            """
+            UPDATE wallets SET balance = balance + ?
+            WHERE member_id = ?
+            RETURNING balance
+            """,
+            (amount, member_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return False
+        new_balance = int(row["balance"])
+
+        conn.execute(
+            """
+            INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (member_id, amount, new_balance, reason, ref_id, now),
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except sqlite3.IntegrityError:
+        conn.close()
+        return True
+
+
 def create_auto_order(
     member_id: int,
     quantity: int,

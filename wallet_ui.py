@@ -643,11 +643,21 @@ def advanced_subscription_dialog(*, on_close) -> None:
             else:
                 ref = f"advanced:{plan}:{member_id}:{uuid.uuid4().hex[:10]}"
                 days = FREE_SUB_DAYS if plan == "monthly" else ADVANCED_3MONTH_DAYS
-                ok = deduct_points(member_id, cost, f"advanced:{plan}", ref) and activate_paid_advanced_sub(
-                    member_id, days
-                )
+                # 2026-09-10(사용자 지시): 차감은 성공했는데 구독 활성화가 실패/예외로
+                # 끊기면 적립금만 빠지고 구독이 안 걸린 상태가 된다 — 이 경우 즉시 환불.
+                if not deduct_points(member_id, cost, f"advanced:{plan}", ref):
+                    ok = False
+                else:
+                    try:
+                        ok = activate_paid_advanced_sub(member_id, days)
+                    except Exception:
+                        ok = False
+                    if not ok:
+                        from wallet_db import refund_points
+
+                        refund_points(member_id, cost, f"advanced:refund:{plan}", f"{ref}:refund")
             if not ok:
-                st.error("구독 처리에 실패했습니다.")
+                st.error("구독 처리에 실패했습니다. 적립금이 차감됐다면 곧 자동 환불됩니다.")
             on_close()
             st.rerun()
     return None

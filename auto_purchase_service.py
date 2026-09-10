@@ -23,6 +23,7 @@ from wallet_db import (
     fail_auto_order,
     get_balance,
     init_wallet_tables,
+    refund_points,
 )
 
 
@@ -138,7 +139,16 @@ def process_auto_purchase(
             fail_auto_order(order_id)
             return {"ok": False, "error": "deduct_failed", "order_id": order_id}
 
-        complete_auto_order(order_id, sms_id, draw_round, combo_count)
+        try:
+            complete_auto_order(order_id, sms_id, draw_round, combo_count)
+        except Exception:
+            # 2026-09-10(사용자 지시): 차감은 이미 성공했는데 주문 완료 처리가
+            # 예외로 끊기면 "조합 배정은 취소되고 적립금만 빠진" 상태가 된다 —
+            # 분쟁 위험이 커서 여기서 즉시 환불하고 배정도 되돌린다.
+            refund_points(member_id, cost, f"auto:refund:{quantity}qty", f"{ref}:refund")
+            release_lotto_combination_allocation(allocated_ids)
+            fail_auto_order(order_id)
+            return {"ok": False, "error": "complete_failed", "order_id": order_id, "refunded": True}
         return {
             "ok": True,
             "order_id": order_id,

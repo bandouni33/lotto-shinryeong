@@ -876,18 +876,30 @@ def render():
                 st.session_state["hedge_purchase_error"] = "로그인이 필요합니다."
                 return
             import uuid
+            from wallet_db import calc_hedge_cost, get_balance
+            from wallet_ui import open_insufficient_balance_dialog
+
+            # 2026-09-10(사용자 지시): 차감을 생성 "전"이 아니라 "후"로 옮긴다 —
+            # 예전엔 차감 먼저 하고 generate_*를 돌렸는데, 생성이 조합 수를 못
+            # 채우거나(필터 통과 조합 부족) 예외가 나면 조합은 없는데 적립금만
+            # 빠져 분쟁 소지가 컸다. ① 잔액 확인 → ② 생성 → ③ 목표 개수를 다
+            # 채웠을 때만 차감.
+            if get_balance(mid) < calc_hedge_cost(total_count):
+                open_insufficient_balance_dialog(calc_hedge_cost(total_count))
+                return
+
+            anti_results = generate_anti_combinations(pending_lines, pending_count)
+            aek_results = generate_aekddaem_combinations(pending_lines, pending_count)
+            if len(anti_results) < pending_count or len(aek_results) < pending_count:
+                st.session_state["hedge_purchase_error"] = (
+                    "조합 생성에 실패했습니다. 적립금은 차감되지 않았습니다. 잠시 후 다시 시도해 주세요."
+                )
+                return
 
             ref = f"hedge:{mid}:{uuid.uuid4().hex[:10]}"
             if not deduct_after_result(mid, "hedge", ref, quantity=total_count):
-                # 2026-09-08(사용자 지시): 자동구매·번개조합과 동일 — "부족합니다"
-                # 문구만 띄우지 않고 그 자리에서 바로 충전할 수 있는 통합 창을 띄운다.
-                from wallet_db import calc_hedge_cost
-                from wallet_ui import open_insufficient_balance_dialog
-
                 open_insufficient_balance_dialog(calc_hedge_cost(total_count))
                 return
-            anti_results = generate_anti_combinations(pending_lines, pending_count)
-            aek_results = generate_aekddaem_combinations(pending_lines, pending_count)
             st.session_state["hedge_results"] = {"anti": anti_results, "aekddaem": aek_results}
 
             # 2026-08-27: "번호 확정되면 즉시 자동저장" 요청 — 예전엔 결과가 화면에
