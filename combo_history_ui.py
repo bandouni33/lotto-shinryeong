@@ -353,9 +353,11 @@ def render_history_section(
             # 있어서, 로그인을 안 해도 그 폰에서 예전에 저장한 조합이 그대로
             # 보였다 — 폰을 빌려주거나 공용기기면 남의 조합이 인증 없이 노출됨.
             # 로그인 상태에서만 실제 내역을 보여준다.
-            from user_scope import current_member_id
+            from wallet_ui import login_gate
 
-            if not current_member_id():
+            if not login_gate():
+                # login_gate가 안내창을 처음 1회 띄웠으면 이 아래는 이번 렌더에서
+                # 실행 안 됨(rerun). 이미 봤으면 그 자리에 한 줄만 남긴다.
                 render_login_required_notice()
                 return
             _gids = [guest_id] if isinstance(guest_id, str) else list(guest_id or [])

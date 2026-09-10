@@ -135,18 +135,16 @@ def _testing_period_active() -> bool:
 AUTH_BANNER_SEEN_ONCE = "auth_banner_seen_once"
 
 
-def ensure_member_or_banner(*, resume: str, reason: str, resume_data: dict | None = None) -> bool:
-    """로그인됐으면 True. 아니면 배너만 띄우고 False.
+def login_gate(*, resume: str | None = None, resume_data: dict | None = None) -> bool:
+    """로그인이 필요한 기능의 **단일 게이트**. 로그인됐으면 True(기능 진행).
+    아니면 안내창(login_gate.py 문구)을 예약하고 False.
 
-    테스트 기간엔 "카카오로 시작하기" 배너를 띄우는 대신 조용히 로그인시키고
-    바로 진행한다 — _testing_period_active() 참고.
+    노출 규칙: 앱을 닫기 전까지 이 안내창은 **딱 한 번**만 뜬다
+    (AUTH_BANNER_SEEN_ONCE). 그 뒤로는 로그인 안 한 채로 막힌 기능을 또 눌러도
+    안내창은 다시 안 뜨고 조용히 False만 반환한다 — 호출부가 필요하면 그 자리에
+    login_gate.GATE_INLINE_HINT 한 줄만 남긴다.
 
-    2026-09-08 추가(사용자 지시): 구매·내정보·충전 등을 시도할 때마다 매번
-    이 배너가 다시 뜨는 게 번거롭다는 신고 — 이 배너는 세션(앱을 닫기 전까지)당
-    **한 번만** 띄우고, 그 뒤로는 다시 안 띄운다(로그인이 안 됐어도 조용히
-    False만 반환). 로그인 여부와 무관하게 "이미 한 번 안내했다"는 사실 자체를
-    기억하는 플래그라, 이후 세션 중간에 실제로 로그아웃(idle 등)이 다시
-    발생해도 이 배너는 두 번째부터는 안 뜬다 — 이게 의도와 다르면 알려줄 것."""
+    테스트 기간엔(_testing_period_active) 안내창 대신 조용히 로그인시키고 진행."""
     if current_member_id():
         return True
     if _testing_period_active():
@@ -155,9 +153,15 @@ def ensure_member_or_banner(*, resume: str, reason: str, resume_data: dict | Non
     if st.session_state.get(AUTH_BANNER_SEEN_ONCE):
         return False
     st.session_state[AUTH_BANNER_SEEN_ONCE] = True
-    open_auth_banner(reason=reason, resume=resume, resume_data=resume_data)
+    open_auth_banner(resume=resume, resume_data=resume_data)
     st.rerun()
     return False
+
+
+def ensure_member_or_banner(*, resume: str | None = None, reason: str = "", resume_data: dict | None = None) -> bool:
+    """하위 호환용 껍데기 — login_gate로 위임. reason은 더 이상 표시하지 않는다
+    (문구가 login_gate.py로 통일됨)."""
+    return login_gate(resume=resume, resume_data=resume_data)
 
 
 def _inject_auth_banner_css() -> None:
@@ -288,23 +292,19 @@ def _fire_kakao_native_login_trigger() -> None:
 
 
 def _render_auth_banner_form() -> None:
-    reason = st.session_state.get(AUTH_BANNER_REASON, "")
-    reason_html = html.escape(reason)
+    # 2026-09-10: 문구는 전부 login_gate.py 상수에서 온다(전 화면 일괄 반영).
+    from login_gate import GATE_BUTTON, GATE_LINES, GATE_RETURN_HINT, GATE_TITLE
+
     st.markdown(
         f'<div class="lotto-auth-banner">'
-        f'<p class="auth-banner-title">간편인증</p>'
-        f'<p class="auth-banner-sub">{reason_html}</p>'
-        f'<p class="auth-banner-bonus">최초 인증 시 적립금 {SIGNUP_BONUS:,}P 지급 · 현금 환불 불가</p>'
+        f'<p class="auth-banner-title">{html.escape(GATE_TITLE)}</p>'
         f"</div>",
         unsafe_allow_html=True,
     )
 
     with st.container():
         st.markdown('<div class="auth-banner-consent-marker"></div>', unsafe_allow_html=True)
-        # 체크박스로 하나씩 동의받던 걸 안내 문구로 바꿨다 — 지금은 테스트 기간이라
-        # 사용자 요청대로 "카카오로 시작하기"를 바로 누를 수 있어야 한다. 항목
-        # 자체는(적립금 지급/환불 불가 등 고지 목적) 계속 텍스트로 보여준다.
-        for item in AUTH_CONSENT_ITEMS:
+        for item in GATE_LINES:
             st.markdown(f'<p class="auth-banner-consent-item">· {html.escape(item)}</p>', unsafe_allow_html=True)
 
     return_page = st.query_params.get("page", "main")
@@ -318,7 +318,7 @@ def _render_auth_banner_form() -> None:
         with st.container(key="auth_banner_kakao"):
             if is_native_app:
                 if st.button(
-                    "카카오로 시작하기",
+                    GATE_BUTTON,
                     use_container_width=True,
                     type="primary",
                     key="auth_banner_kakao_native",
@@ -326,16 +326,16 @@ def _render_auth_banner_form() -> None:
                     _fire_kakao_native_login_trigger()
             else:
                 st.link_button(
-                    "카카오로 시작하기",
+                    GATE_BUTTON,
                     get_kakao_authorize_url(return_page),
                     use_container_width=True,
                     type="primary",
                 )
-        st.caption("카카오 로그인 후 이 페이지로 돌아옵니다.")
+        st.caption(GATE_RETURN_HINT)
     elif _dev_mock_enabled():
         with st.container(key="auth_banner_kakao"):
             if st.button(
-                "카카오로 시작하기",
+                GATE_BUTTON,
                 use_container_width=True,
                 type="primary",
                 key="auth_banner_kakao_mock",
@@ -346,7 +346,7 @@ def _render_auth_banner_form() -> None:
     else:
         with st.container(key="auth_banner_kakao"):
             st.button(
-                "카카오로 시작하기",
+                GATE_BUTTON,
                 use_container_width=True,
                 disabled=True,
                 key="auth_banner_kakao_unconfigured",

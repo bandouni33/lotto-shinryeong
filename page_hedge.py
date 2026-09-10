@@ -722,14 +722,16 @@ def render():
             with qc2:
                 st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
         if qr_clicked:
-            # 2026-09-10(사용자 지시): 로그인 안 한 상태로 QR스캔을 누르면
-            # 안내만 띄우고 스캔은 진행하지 않는다.
-            from auth_kakao import current_member_id
+            # 2026-09-10: 로그인 안 한 상태로 QR스캔을 누르면 통합 로그인 안내창
+            # (login_gate)을 띄우고 스캔은 진행하지 않는다.
+            from wallet_ui import login_gate
 
-            if not current_member_id():
-                st.warning("🔒 QR스캔은 로그인 후 이용해 주세요.")
-            else:
+            if login_gate():
                 _fire_qr_scan_trigger()
+            else:
+                from login_gate import GATE_INLINE_HINT
+
+                st.caption(f"🔒 {GATE_INLINE_HINT}")
     st.markdown(
         '<div class="hedge-mode-desc">'
         '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'
