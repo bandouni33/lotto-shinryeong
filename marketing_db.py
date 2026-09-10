@@ -860,6 +860,82 @@ def get_combinations_by_auto_order_id(auto_order_id: int) -> list[dict]:
     ]
 
 
+def get_combinations_by_auto_order_ids(auto_order_ids) -> dict[int, list[dict]]:
+    """여러 주문의 배정 조합을 한 번의 쿼리로 가져와 주문 id별로 묶어서 반환.
+
+    2026-09-11: 구매내역 렌더가 주문마다 get_combinations_by_auto_order_id를
+    따로 호출해 Turso HTTP 왕복이 20~30회씩 나던 걸(로딩 10~20초 + 간헐 실패)
+    IN (...) 한 방으로 줄인다."""
+    ids = sorted({int(x) for x in auto_order_ids if x is not None})
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        f"""
+        SELECT id, auto_order_id, num1, num2, num3, num4, num5, num6
+        FROM lotto_combinations
+        WHERE auto_order_id IN ({placeholders})
+        ORDER BY auto_order_id, id
+        """,
+        tuple(ids),
+    ).fetchall()
+    conn.close()
+    out: dict[int, list[dict]] = {i: [] for i in ids}
+    for row in rows:
+        out.setdefault(int(row["auto_order_id"]), []).append(
+            {"id": int(row["id"]), "combo": list(_combo_nums_from_row(row))}
+        )
+    return out
+
+
+def list_guest_auto_orders_multi(guest_ids, limit: int = 60) -> list[dict]:
+    """여러 guest_id의 자동구매 주문 메타데이터를 한 번의 쿼리로 최신순 반환.
+
+    2026-09-11: 구매내역 렌더가 guest_id마다 list_guest_auto_orders를 따로
+    호출하던 걸(회원당 최대 16회 왕복) IN (...) 한 방으로 줄인다."""
+    import json
+
+    gids = [str(g) for g in dict.fromkeys(guest_ids) if g]
+    if not gids:
+        return []
+    placeholders = ",".join("?" * len(gids))
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        f"""
+        SELECT auto_order_id, draw_round, combo_count, cost,
+               purchase_method, purchase_type, sms_days, created_at
+        FROM guest_auto_orders
+        WHERE guest_id IN ({placeholders})
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (*gids, int(limit)),
+    ).fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        try:
+            sms_days = json.loads(row["sms_days"]) if row["sms_days"] else []
+        except (TypeError, ValueError):
+            sms_days = []
+        result.append(
+            {
+                "auto_order_id": int(row["auto_order_id"]),
+                "draw_round": row["draw_round"],
+                "combo_count": row["combo_count"],
+                "cost": row["cost"],
+                "purchase_method": row["purchase_method"],
+                "purchase_type": row["purchase_type"],
+                "sms_days": sms_days,
+            }
+        )
+    return result
+
+
 def create_guest_auto_order(
     guest_id: str,
     draw_round: int,
@@ -1745,9 +1821,11 @@ __all__ = [
     "release_lotto_combination_allocation",
     "count_available_combinations",
     "get_combinations_by_auto_order_id",
+    "get_combinations_by_auto_order_ids",
     "create_guest_auto_order",
     "delete_guest_auto_order",
     "list_guest_auto_orders",
+    "list_guest_auto_orders_multi",
     "save_guest_generated_combos",
     "list_guest_generated_combos",
     "get_generated_combo_pending_draw_rounds",

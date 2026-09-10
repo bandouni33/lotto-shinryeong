@@ -9,6 +9,7 @@ import concurrent.futures
 import os
 import re
 import sqlite3
+import time
 
 import libsql_client
 import streamlit as st
@@ -88,14 +89,27 @@ class _ConnectionWrapper:
             ) from e
 
     def execute(self, sql, params=()):
-        try:
-            rs = self._guarded(self._client.execute, sql, list(params) if params else [])
-        except libsql_client.LibsqlError as e:
-            msg = str(e)
-            if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
-                raise sqlite3.IntegrityError(msg) from e
-            raise
-        return _CursorWrapper(rs)
+        # 2026-09-11: libsql_client/http.py가 에러/부분 응답을 받으면
+        # response["result"] 접근에서 KeyError('result')를 던지는 게 실측 확인됐다
+        # (일시적 서버·네트워크 문제로 추정, 재시도하면 대개 성공). 읽기 쿼리는
+        # 재시도해도 안전하므로 SELECT에 한해 짧게 몇 번 다시 시도한다. 쓰기는
+        # 부분 적용 위험이 있어 재시도하지 않는다(기존 동작 유지).
+        is_read = sql.lstrip()[:6].upper() == "SELECT"
+        attempts = 4 if is_read else 1
+        for i in range(attempts):
+            try:
+                rs = self._guarded(self._client.execute, sql, list(params) if params else [])
+                return _CursorWrapper(rs)
+            except libsql_client.LibsqlError as e:
+                msg = str(e)
+                if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
+                    raise sqlite3.IntegrityError(msg) from e
+                raise
+            except KeyError:
+                if i + 1 < attempts:
+                    time.sleep(0.35 * (i + 1))
+                    continue
+                raise
 
     def executemany(self, sql, params_list):
         stmts = [(sql, list(p)) for p in params_list]

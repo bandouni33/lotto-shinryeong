@@ -305,94 +305,138 @@ def paired_batch_card_html(
     """
 
 
-def render_history_section(
+def _history_panel_open_key(blink_flag_key: str) -> str:
+    return f"{blink_flag_key}_panel_open"
+
+
+def _resolve_history_panel_state(blink_flag_key: str) -> str:
+    """저장내역 패널 열림 상태를 공통 규칙으로 갱신하고 panel_open_key를 반환한다.
+
+    세 화면(번개조합·안티액땜·자동구매) 공통:
+    - 방금 저장/구매(blink)면 무조건 펼치고, 이전의 "직접 접음" 표시도 해제한다.
+    - 그 외에는, 유저가 "저장내역" 버튼으로 직접 접은 적이 없으면 로그인 상태면
+      펼침 / 미로그인이면 접힘. (미로그인 때 펼치면 패널 안 login_gate가 화면
+      진입만으로 배너를 띄우므로 접어둔다.)
+    """
+    from auth_kakao import current_member_id as _cmid
+
+    panel_open_key = _history_panel_open_key(blink_flag_key)
+    toggled_key = f"{panel_open_key}_user_toggled"
+    if bool(st.session_state.pop(blink_flag_key, False)):
+        st.session_state[panel_open_key] = True
+        st.session_state[toggled_key] = False
+    elif not st.session_state.get(toggled_key):
+        st.session_state[panel_open_key] = bool(_cmid())
+    return panel_open_key
+
+
+def render_history_button(*, container_key: str, blink_flag_key: str, title: str = "저장내역") -> None:
+    """저장내역 열기/닫기 버튼만 렌더. 패널은 render_history_panel이 그린다 —
+    자동구매처럼 버튼은 좁은 열에, 패널은 전체 폭 아래에 둬야 하는 화면 때문에
+    분리했다. 버튼+패널을 붙여서 쓰려면 render_history_section을 쓰면 된다."""
+    st.markdown(history_css(), unsafe_allow_html=True)
+    panel_open_key = _resolve_history_panel_state(blink_flag_key)
+    toggled_key = f"{panel_open_key}_user_toggled"
+    # 컨테이너 키는 기존과 동일하게 유지 — page_auto.py에 이 키(.st-key-...)를
+    # 겨냥한 버튼 스타일 CSS가 대량으로 있어서 바꾸면 버튼 모양이 깨진다.
+    with st.container(key=container_key):
+        if st.button(title, type="primary", use_container_width=True, key=f"{container_key}_open_btn"):
+            st.session_state[toggled_key] = True
+            st.session_state[panel_open_key] = not st.session_state.get(panel_open_key, False)
+
+
+def render_history_panel(
     *,
     container_key: str,
-    guest_id,  # str 또는 list[str] — 2026-09-10: guest_id churn 대응으로 로그인 시
-               # 이 회원에 묶인 모든 guest_id를 넘길 수 있게 함(user_scope.history_guest_ids)
-    sources: list[str],
     blink_flag_key: str,
-    title: str = "저장내역",
+    guest_id=None,  # str 또는 list[str] — content_renderer가 없을 때만 사용
+    sources: list[str] | None = None,  # content_renderer가 없을 때만 사용
     empty_caption: str = "아직 저장한 조합이 없습니다.",
     limit_per_source: int = 30,
     label_for_source: dict[str, str] | None = None,
+    content_renderer=None,  # 주면 login_gate 통과 후 이걸 호출(자동구매 구매내역 등)
 ) -> None:
-    """"저장내역" 전체(당첨마킹 동기화 + 버튼 트리거 + 인라인 패널)를 렌더링한다.
+    """저장내역 펼침 패널. panel_open이면 login_gate로 로그인을 확인한 뒤
+    content_renderer()(있으면) 또는 guest_generated_combos 목록을 그린다."""
+    panel_open_key = _history_panel_open_key(blink_flag_key)
+    if not st.session_state.get(panel_open_key, False):
+        return
 
-    sources가 여러 개면(예: 안티조합+액땜조합) 하나의 목록으로 합쳐 최신순으로 보여주고,
-    label_for_source로 각 소스의 표시 이름을 지정하면 회차 머리글에 "{이름} · N회차"로
-    구분해 표시한다(소스가 하나뿐이고 label_for_source도 없으면 회차만 표시).
+    if content_renderer is None:
+        try:
+            _sync_generated_combo_win_ranks_cached()
+        except Exception:
+            pass
 
-    자동구매 "구매내역"과 동일한 방식 — 진짜 st.button으로 열고 닫으며, 펼침 내용은
-    버튼 바로 밑에 전체 폭 인라인 패널로 그린다(팝업이나 좁은 열 안 펼침이 아님).
-
-    limit_per_source는 최종 표시 개수가 아니라 소스별 DB 조회 상한이다 — 실제
-    화면에 남는 범위는 언제나 _limit_to_recent_rounds가 정하는 "최근
-    MAX_HISTORY_ROUNDS개 회차"이며, 10건보다 더 자주 저장한 회차가 있어도
-    빠짐없이 그 회차 안에 들어오도록 여유 있게(기존 10 → 30) 조회한다.
-    """
-    try:
-        _sync_generated_combo_win_ranks_cached()
-    except Exception:
-        pass
-
-    from marketing_db import init_marketing_tables, list_guest_generated_combos
+    from marketing_db import init_marketing_tables
 
     init_marketing_tables()
     st.markdown(history_css(), unsafe_allow_html=True)
 
-    panel_open_key = f"{blink_flag_key}_panel_open"
-    if bool(st.session_state.pop(blink_flag_key, False)):
-        st.session_state[panel_open_key] = True
+    with st.container(key=f"{container_key}_panel"):
+        # 2026-09-10(사용자 지시): 저장내역은 guest_id(기기 식별자)에 묶여 있어서,
+        # 로그인을 안 해도 그 폰에서 예전에 저장한 게 그대로 보였다 — 공용기기면
+        # 남의 내역이 인증 없이 노출됨. 로그인 상태에서만 실제 내역을 보여준다.
+        # 로그인 안내는 무조건 통합 login_gate로만(사용자 지시).
+        from wallet_ui import login_gate
 
-    # 2026-09-10(사용자 지시): 자동구매와 동일하게 — 유저가 직접 접기 전까진
-    # 로그인 상태면 매 렌더에서 저장내역 패널을 펼친 상태로 유지한다(조합시작
-    # 없이도 바로 보이게). 미로그인일 땐 접어둔다 — 안 그러면 화면 진입만 해도
-    # 패널 안 login_gate가 로그인 배너를 띄운다.
-    from auth_kakao import current_member_id as _cmid_hist
+        if not login_gate():
+            render_login_required_notice()
+            return
 
-    _hist_toggled_key = f"{panel_open_key}_user_toggled"
-    _hist_logged_in = bool(_cmid_hist())
-    if not st.session_state.get(_hist_toggled_key):
-        st.session_state[panel_open_key] = _hist_logged_in
+        if content_renderer is not None:
+            content_renderer()
+            return
 
-    with st.container(key=container_key):
-        if st.button(title, type="primary", use_container_width=True, key=f"{container_key}_open_btn"):
-            st.session_state[_hist_toggled_key] = True
-            st.session_state[panel_open_key] = not st.session_state.get(panel_open_key, False)
+        from marketing_db import list_guest_generated_combos
 
-    if st.session_state.get(panel_open_key, False):
-        with st.container(key=f"{container_key}_panel"):
-            # 2026-09-10(사용자 지시): 저장내역은 guest_id(기기 식별자)에 묶여
-            # 있어서, 로그인을 안 해도 그 폰에서 예전에 저장한 조합이 그대로
-            # 보였다 — 폰을 빌려주거나 공용기기면 남의 조합이 인증 없이 노출됨.
-            # 로그인 상태에서만 실제 내역을 보여준다.
-            from wallet_ui import login_gate
+        _gids = [guest_id] if isinstance(guest_id, str) else list(guest_id or [])
+        batches = []
+        _seen_batch = set()
+        for _gid in _gids:
+            for source in sources or []:
+                for batch in list_guest_generated_combos(_gid, source=source, limit=limit_per_source):
+                    _bkey = (batch.get("batch_id"), batch.get("created_at"), source)
+                    if _bkey in _seen_batch:
+                        continue
+                    _seen_batch.add(_bkey)
+                    batch["_source"] = source
+                    batches.append(batch)
+        batches.sort(key=lambda b: b.get("created_at") or "", reverse=True)
+        batches = _limit_to_recent_rounds(batches)
 
-            if not login_gate():
-                # login_gate가 안내창을 처음 1회 띄웠으면 이 아래는 이번 렌더에서
-                # 실행 안 됨(rerun). 이미 봤으면 그 자리에 한 줄만 남긴다.
-                render_login_required_notice()
-                return
-            _gids = [guest_id] if isinstance(guest_id, str) else list(guest_id or [])
-            batches = []
-            _seen_batch = set()
-            for _gid in _gids:
-                for source in sources:
-                    for batch in list_guest_generated_combos(_gid, source=source, limit=limit_per_source):
-                        _bkey = (batch.get("batch_id"), batch.get("created_at"), source)
-                        if _bkey in _seen_batch:
-                            continue
-                        _seen_batch.add(_bkey)
-                        batch["_source"] = source
-                        batches.append(batch)
-            batches.sort(key=lambda b: b.get("created_at") or "", reverse=True)
-            batches = _limit_to_recent_rounds(batches)
+        if not batches:
+            st.caption(empty_caption)
+        else:
+            _render_batches(batches, label_for_source)
 
-            if not batches:
-                st.caption(empty_caption)
-            else:
-                _render_batches(batches, label_for_source)
+
+def render_history_section(
+    *,
+    container_key: str,
+    blink_flag_key: str,
+    guest_id=None,
+    sources: list[str] | None = None,
+    title: str = "저장내역",
+    empty_caption: str = "아직 저장한 조합이 없습니다.",
+    limit_per_source: int = 30,
+    label_for_source: dict[str, str] | None = None,
+    content_renderer=None,
+) -> None:
+    """"저장내역" 버튼 + 펼침 패널을 연속으로 렌더(버튼 바로 밑에 전체 폭 패널).
+    번개조합·안티액땜처럼 버튼과 패널이 같은 위치에 붙어도 되는 화면용.
+    자동구매는 버튼만 열에 넣어야 해서 render_history_button/panel을 따로 부른다."""
+    render_history_button(container_key=container_key, blink_flag_key=blink_flag_key, title=title)
+    render_history_panel(
+        container_key=container_key,
+        blink_flag_key=blink_flag_key,
+        guest_id=guest_id,
+        sources=sources,
+        empty_caption=empty_caption,
+        limit_per_source=limit_per_source,
+        label_for_source=label_for_source,
+        content_renderer=content_renderer,
+    )
 
 
 def _render_single_batch(

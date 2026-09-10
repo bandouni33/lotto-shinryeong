@@ -589,22 +589,29 @@ def _purchase_history_entry(
 MAX_HISTORY_ROUNDS = 2  # 구매내역에는 최근 이 회차 수만큼만 남긴다
 
 
-def _limit_to_recent_rounds(items: list[dict], max_rounds: int = MAX_HISTORY_ROUNDS) -> list[dict]:
-    """최근 N개 회차분만 남기고 그보다 오래된 회차는 잘라낸다.
+def _top_rounds(items, max_rounds: int = MAX_HISTORY_ROUNDS) -> list:
+    """items에 등장하는 draw_round 중 회차 번호가 가장 큰(=최신) max_rounds개.
 
-    items는 이미 최신순으로 정렬돼 있다고 가정한다. 무한정 쌓이는 걸 막아서
-    사용자가 오래된 내역까지 뒤적이며 헷갈리는 일도 없애고, 저장 공간도 아낀다.
+    2026-09-11(버그 수정): 예전엔 "리스트에 먼저 등장한 순서"로 회차를 골랐다.
+    그런데 회원 기준 주문(현재 회차)보다 오래된 guest 주문이 리스트 앞쪽에
+    있으면, 정작 최신 회차가 창(최근 2회차) 밖으로 밀려나 "방금 샀는데 구매내역이
+    안 보인다"로 이어졌다. 회차 번호 자체로 정렬해 큰 것부터 고른다.
     """
-    seen_rounds: list = []
-    result = []
-    for item in items:
-        dr = item.get("draw_round")
-        if dr not in seen_rounds:
-            if len(seen_rounds) >= max_rounds:
-                continue
-            seen_rounds.append(dr)
-        result.append(item)
-    return result
+    rounds = {it.get("draw_round") for it in items if it.get("draw_round") is not None}
+    return sorted(rounds, key=lambda r: (isinstance(r, (int, float)), r), reverse=True)[:max_rounds]
+
+
+def _limit_to_recent_rounds(items: list[dict], max_rounds: int = MAX_HISTORY_ROUNDS) -> list[dict]:
+    """가장 최신 max_rounds개 회차의 항목만 남기고, 회차 내림차순으로 정렬해 반환."""
+    keep = set(_top_rounds(items, max_rounds))
+    kept = [it for it in items if it.get("draw_round") in keep]
+    kept.sort(
+        key=lambda it: (
+            it.get("draw_round") if isinstance(it.get("draw_round"), (int, float)) else -1
+        ),
+        reverse=True,
+    )
+    return kept
 
 
 def _append_purchase_history(entry: dict) -> None:
@@ -692,13 +699,23 @@ def _build_quick_purchase_entry(
     }
 
 
-def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
-    """세션 + DB 구매 내역 (order_id 기준 중복 제거, 최신순, 최근 2개 회차만)."""
+def _collect_purchase_history_items(member_id: int | None) -> tuple[list[dict], bool]:
+    """세션 + DB 구매 내역 (order_id 기준 중복 제거, 최신순, 최근 2개 회차만).
+
+    반환: (items, load_error). load_error=True면 DB 조회가 일시적으로 실패한
+    것이므로, 호출부는 "내역 없음"이 아니라 "잠시 후 다시" 안내를 보여줘야 한다.
+
+    2026-09-11(성능·안정성): 예전엔 guest_id마다 list_guest_auto_orders,
+    주문마다 get_combinations_by_auto_order_id를 따로 불러 Turso HTTP 왕복이
+    30~40회씩 났다(로딩 10~20초 + 간헐적 KeyError로 통째 실패 → 구매내역이
+    빈 채로 보임 = 분쟁 위험). 배치 쿼리 몇 개로 줄이고 전체를 try/except로 감싼다.
+    """
     from user_scope import session_key
 
     items: list[dict] = []
     seen_order_ids: set[int] = set()
 
+    # 1) 세션 항목(방금 구매) — DB 없이 즉시. 여기서 예외 나면 곤란하므로 그대로 둔다.
     for entry in st.session_state.get(session_key("auto_purchase_history")) or []:
         order_id = entry.get("order_id")
         if order_id is not None:
@@ -707,101 +724,88 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
             seen_order_ids.add(int(order_id))
         items.append(entry)
 
-    # 세션에 이미 있는 항목의 실제 조합 배정 id(combo_order_id) — DB에서 다시
-    # 읽어온 항목과 같은 주문이 중복으로 나타나지 않도록 걸러내는 기준.
     seen_combo_order_ids: set[int] = {
         int(item["combo_order_id"])
         for item in items
         if item.get("combo_order_id") is not None
     }
 
-    # 지금은 실제 구매(구매확정)가 로그인 여부와 무관하게 전부 create_guest_auto_order로만
-    # 기록된다(guest_auto_orders 테이블, guest_id 기준) — member_id 기준 auto_orders
-    # 테이블에 실제로 쓰는 경로는 아직 없다(실결제 연동 전이라 보류된 기능). 그런데 최근
-    # 테스트 기간엔 인증 배너를 건너뛰고 조용히 로그인시키다 보니 member_id가 거의 항상
-    # 채워져 있어서, 예전 "if member_id: (member 기준) else: (guest 기준)" 분기가 대부분
-    # 실제로 채워진 적 없는 member 기준 조회만 타면서 "구매내역이 안 보인다"는 문제로
-    # 이어졌다 — guest 기준 조회는 로그인 여부와 무관하게 항상 실행하고, member 기준은
-    # (실결제 연동 후를 대비해) 로그인 시 추가로 합쳐서 보여준다.
-    from marketing_db import (
-        get_combinations_by_auto_order_id,
-        init_marketing_tables,
-        list_guest_auto_orders,
-    )
-
-    init_marketing_tables()
-    # 2026-09-10: guest_id가 세션마다 churn되면서 "방금 샀는데 구매내역이 안
-    # 보인다"는 신고 — 로그인 상태면 이 회원에 묶인 모든 guest_id의 주문을
-    # 합쳐 보여준다(user_scope.history_guest_ids). 비로그인이면 현재 id 하나뿐.
-    from user_scope import history_guest_ids
-
-    _seen_auto_order = set()
-    guest_orders = []
-    for _gid in history_guest_ids():
-        for order in list_guest_auto_orders(_gid, limit=20):
-            _oid = int(order["auto_order_id"])
-            if _oid in seen_combo_order_ids or _oid in _seen_auto_order:
-                continue
-            _seen_auto_order.add(_oid)
-            guest_orders.append(order)
-    candidate_rounds = [item.get("draw_round") for item in items]
-    candidate_rounds += [order.get("draw_round") for order in guest_orders]
-    kept_rounds: list = []
-    for dr in candidate_rounds:
-        if dr not in kept_rounds:
-            if len(kept_rounds) >= MAX_HISTORY_ROUNDS:
-                continue
-            kept_rounds.append(dr)
-
-    for order in guest_orders:
-        if order.get("draw_round") not in kept_rounds:
-            continue
-        auto_order_id = int(order["auto_order_id"])
-        seen_combo_order_ids.add(auto_order_id)
-        combos = get_combinations_by_auto_order_id(auto_order_id)
-        items.append(
-            {
-                "order_id": -auto_order_id,
-                "draw_round": order.get("draw_round"),
-                "combo_count": order.get("combo_count") or len(combos),
-                "cost": order.get("cost"),
-                "allocated": combos,
-                "purchase_method": order.get("purchase_method"),
-                "purchase_type": order.get("purchase_type"),
-                "sms_days": order.get("sms_days") or "",
-                "combo_order_id": auto_order_id,
-            }
+    load_error = False
+    try:
+        from marketing_db import (
+            get_combinations_by_auto_order_ids,
+            init_marketing_tables,
+            list_guest_auto_orders_multi,
         )
+        from user_scope import history_guest_ids
 
-    if member_id:
-        from marketing_db import get_combinations_by_auto_order_id, init_marketing_tables
-        from wallet_db import calc_auto_cost, init_wallet_tables, list_completed_auto_orders
-
-        init_wallet_tables()
         init_marketing_tables()
-        db_orders = [
-            order
-            for order in list_completed_auto_orders(member_id, limit=20)
-            if int(order["id"]) not in seen_order_ids
-        ]
-        # 어차피 최근 2개 회차분만 남길 거라, 그 안에 들지 못할 주문의 조합까지
-        # DB에서 미리 조회할 필요는 없다 — 대상 회차를 먼저 정하고, 그 안에 드는
-        # 주문에 대해서만 get_combinations_by_auto_order_id를 호출한다.
-        candidate_rounds = [item.get("draw_round") for item in items]
-        candidate_rounds += [order.get("draw_round") for order in db_orders]
-        kept_rounds: list = []
-        for dr in candidate_rounds:
-            if dr not in kept_rounds:
-                if len(kept_rounds) >= MAX_HISTORY_ROUNDS:
-                    continue
-                kept_rounds.append(dr)
 
-        for order in db_orders:
-            if order.get("draw_round") not in kept_rounds:
+        # 2) guest 경로 주문 — 링크된 모든 guest_id를 IN (...) 한 방으로
+        guest_orders = [
+            o
+            for o in list_guest_auto_orders_multi(history_guest_ids(), limit=60)
+            if int(o["auto_order_id"]) not in seen_combo_order_ids
+        ]
+
+        # 3) member 경로 주문(실결제 연동 후 주 경로) — 로그인 시
+        member_orders: list[dict] = []
+        if member_id:
+            from wallet_db import calc_auto_cost, init_wallet_tables, list_completed_auto_orders
+
+            init_wallet_tables()
+            member_orders = [
+                o
+                for o in list_completed_auto_orders(member_id, limit=20)
+                if int(o["id"]) not in seen_order_ids
+            ]
+
+        # 대상 회차 = 세 소스 통틀어 회차 번호가 가장 큰(최신) MAX_HISTORY_ROUNDS개.
+        # (리스트 등장 순서가 아니라 회차 번호로 골라야 함 — _top_rounds 주석 참고)
+        _round_probe = (
+            items
+            + [{"draw_round": o.get("draw_round")} for o in guest_orders]
+            + [{"draw_round": o.get("draw_round")} for o in member_orders]
+        )
+        kept_rounds = set(_top_rounds(_round_probe))
+
+        guest_orders = [o for o in guest_orders if o.get("draw_round") in kept_rounds]
+        member_orders = [o for o in member_orders if o.get("draw_round") in kept_rounds]
+
+        # 4) 대상 주문들의 조합을 IN (...) 한 방으로
+        want_ids = [int(o["auto_order_id"]) for o in guest_orders] + [
+            int(o["id"]) for o in member_orders
+        ]
+        combos_by_order = get_combinations_by_auto_order_ids(want_ids) if want_ids else {}
+
+        for order in guest_orders:
+            auto_order_id = int(order["auto_order_id"])
+            seen_combo_order_ids.add(auto_order_id)
+            combos = combos_by_order.get(auto_order_id, [])
+            if not combos:
+                # 조합이 회전(rotation)으로 회수됐거나 오래돼 정리된 주문 —
+                # 번호 없는 빈 카드는 "샀는데 번호가 없다"로 오해되니 숨긴다.
                 continue
+            items.append(
+                {
+                    "order_id": -auto_order_id,
+                    "draw_round": order.get("draw_round"),
+                    "combo_count": order.get("combo_count") or len(combos),
+                    "cost": order.get("cost"),
+                    "allocated": combos,
+                    "purchase_method": order.get("purchase_method"),
+                    "purchase_type": order.get("purchase_type"),
+                    "sms_days": order.get("sms_days") or "",
+                    "combo_order_id": auto_order_id,
+                }
+            )
+
+        for order in member_orders:
             order_id = int(order["id"])
             seen_order_ids.add(order_id)
-            combos = get_combinations_by_auto_order_id(order_id)
+            combos = combos_by_order.get(order_id, [])
+            if not combos:
+                continue
             purchase_method = (
                 "월간구독" if order.get("purchase_type") == "정기구독" else "즉시"
             )
@@ -817,31 +821,33 @@ def _collect_purchase_history_items(member_id: int | None) -> list[dict]:
                     "sms_days": order.get("sms_days") or "",
                 }
             )
-    return _limit_to_recent_rounds(items)
+    except Exception:
+        # Turso 일시 오류 등 — 세션 항목(있으면)만이라도 보여주고, 호출부가
+        # "잠시 후 다시" 안내를 띄우도록 플래그를 세운다.
+        load_error = True
+
+    return _limit_to_recent_rounds(items), load_error
 
 
 def _render_auto_history_content():
+    # 이 함수는 combo_history_ui.render_history_panel의 content_renderer로 호출된다
+    # (번개조합·안티액땜 저장내역과 동일한 패널·로그인 게이트·열림 로직 공용).
+    # 그 공용 코드가 이미 login_gate()를 통과시킨 뒤 부르므로 여기선 로그인
+    # 상태가 보장된다 — mid가 없으면(경합 등) 조용히 반환.
     from auth_providers import current_member_id
 
     mid = current_member_id()
-    # 2026-09-10(사용자 지시): 구매내역은 guest_id(기기 식별자)에 묶여 있어서
-    # 로그인을 안 해도 그 폰에서 예전에 산 조합이 그대로 보였다 — 폰을 빌려주거나
-    # 공용기기면 남의 구매내역이 인증 없이 노출됨. 로그인 상태에서만 보여준다.
     if not mid:
-        # 로그인 안내는 무조건 통합 게이트(login_gate)로만 — 별도 안내창을 따로
-        # 만들지 않는다(사용자 지시). 이 패널은 로그인 상태에서만 기본으로
-        # 펼쳐지므로(아래 render() 참고), 여기서 login_gate가 배너를 띄우는 건
-        # 유저가 "저장내역" 버튼을 직접 눌러 연 경우뿐이다.
-        from wallet_ui import login_gate
-        from combo_history_ui import render_login_required_notice
-
-        if not login_gate():
-            render_login_required_notice()
         return
-    history_items = _collect_purchase_history_items(mid)
+    history_items, load_error = _collect_purchase_history_items(mid)
     if not history_items:
-        st.caption("아직 저장한 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다.")
+        if load_error:
+            st.caption("구매내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.")
+        else:
+            st.caption("아직 저장한 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다.")
         return
+    if load_error:
+        st.caption("일부 내역을 불러오지 못했어요. 잠시 후 새로고침하면 전체가 보입니다.")
     # 여러 회차 구매가 섞여 쌓일 수 있는데, 예전엔 조합 숫자만 보여주고 몇
     # 회차 것인지 표시가 없어서 어떤 조합이 어느 회차인지, 왜 동그라미가
     # 없는지(미추첨인지 낙첨인지) 헷갈릴 수 있었다 — 회차별로 묶어서 머리글을
@@ -2655,36 +2661,16 @@ def render():
                                         st.session_state["auto_show_points"] = True
 
                         with col_history:
-                            history_blink = bool(st.session_state.pop("auto_history_blink", False))
-                            # 2026-09-10(사용자 지시): 로그인하면 저장내역이 조합시작
-                            # 없이도 바로 보여야 한다. 유저가 직접 접기 전까진, 로그인
-                            # 상태면 매 렌더에서 패널을 펼친 상태로 유지한다(예전
-                            # "로그인 전환 첫 렌더에서만 연다" 방식은 그 렌더가 다른
-                            # rerun에 묻혀 놓치면 안 열리는 문제가 있었음). 미로그인일
-                            # 땐 접어둔다 — 안 그러면 화면 진입만 해도 패널 안
-                            # login_gate가 로그인 배너를 띄운다.
-                            from auth_providers import current_member_id as _cmid_auto
-                            _auto_logged_in = bool(_cmid_auto())
-                            _auto_hist_toggled = st.session_state.get("_auto_hist_user_toggled", False)
-                            if not _auto_hist_toggled:
-                                st.session_state["auto_history_panel_open_6n36s5"] = _auto_logged_in
-                            if history_blink:
-                                st.session_state["auto_history_panel_open_6n36s5"] = True
-                            with st.container(key="auto_purchase_history_zone_6n36s5"):
-                                if st.button(
-                                    # 2026-09-10(사용자 지시): 번개조합·안티액땜의
-                                    # "저장내역"과 같은 기능이므로 명칭을 통일.
-                                    "저장내역",
-                                    type="primary",
-                                    use_container_width=True,
-                                    key="auto_history_open_btn_6n36s5",
-                                ):
-                                    st.session_state["_auto_hist_user_toggled"] = True
-                                    st.session_state["auto_history_panel_open_6n36s5"] = (
-                                        not st.session_state.get(
-                                            "auto_history_panel_open_6n36s5", False
-                                        )
-                                    )
+                            # 2026-09-11: 저장내역을 번개조합·안티액땜과 완전히 같은
+                            # 공용 코드로 통일한다(combo_history_ui). 버튼은 이 좁은 열에,
+                            # 펼침 패널은 아래 전체 폭에 따로 그린다(버튼/패널 분리 호출).
+                            # 열림 규칙·login_gate·blink 처리가 전부 공용이 됨.
+                            from combo_history_ui import render_history_button
+
+                            render_history_button(
+                                container_key="auto_purchase_history_zone_6n36s5",
+                                blink_flag_key="auto_history_blink",
+                            )
 
                     # 2026-08-29: "다음회차 준비 안됨" 배너는 구매내역(지난 회차 조회)과
                     # 무관하므로, 버튼 2열 전체 밑·저장내역 패널보다 위에 전체 폭으로
@@ -2699,14 +2685,13 @@ def render():
                     # 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면 번호 6개가
                     # 잘려 보이고, 화면 중앙 팝업으로 띄우면 "구매 확정" 버튼을
                     # 가려버리는 문제가 있었다(2026-08-23).
-                    if st.session_state.get("auto_history_panel_open_6n36s5", False):
-                        with st.container(key="auto_purchase_history_panel_6n36s5"):
-                            if history_blink:
-                                st.markdown(
-                                    '<div class="auto-history-just-saved-marker" aria-hidden="true"></div>',
-                                    unsafe_allow_html=True,
-                                )
-                            _render_auto_history_content()
+                    from combo_history_ui import render_history_panel
+
+                    render_history_panel(
+                        container_key="auto_purchase_history_zone_6n36s5",
+                        blink_flag_key="auto_history_blink",
+                        content_renderer=_render_auto_history_content,
+                    )
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
