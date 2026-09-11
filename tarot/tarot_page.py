@@ -409,6 +409,19 @@ def render():
     _inject_base_css()
     st.session_state.setdefault("tarot_stage", "category")
 
+    # 2026-09-12(사용자 지시): 타로도 시작(카테고리 선택 단계)부터 로그인을
+    # 요구한다 — 예전엔 무료 1일 1회 뽑기는 비로그인으로도 가능했는데, 그동안
+    # 다른 화면(저장내역·행운수 등)에서 반복 확인된 것과 같은 문제(비로그인
+    # 상태는 guest_id/공유 스코프에 묶여 기기 공유·churn에 취약)가 여기도
+    # 그대로 있어 통일한다. 로그인 안내는 무조건 통합 login_gate로만.
+    from wallet_ui import login_gate
+
+    if not login_gate():
+        from combo_history_ui import render_login_required_notice
+
+        render_login_required_notice()
+        return
+
     # guest_id가 URL 쿼리 파라미터(?gid=...) 없이(=브라우저 직접 접속) 처음
     # 발급된 경우에만, 다음 방문에서도 이어지도록 쿠키에 남겨둔다. 네이티브
     # 앱 경로에서는 gid가 항상 쿼리로 들어오므로 이 동기화가 필요 없다.
