@@ -189,7 +189,7 @@ def render():
                     <span class="slot-label">슬롯 {slot}</span>
                     <span class="life-path-badge">생명수 {lp}</span>
                 </div>
-                <div class="slot-info">{existing["label"]} ({existing["mmdd"]})</div>
+                <div class="slot-info">{existing["mmdd"]}</div>
                 <div class="slot-lucky">{balls_html}</div>
             </div>
             """, unsafe_allow_html=True)
@@ -199,7 +199,7 @@ def render():
                 <div class="slot-header">
                     <span class="slot-label">슬롯 {slot}</span>
                 </div>
-                <div class="slot-info">{existing["label"]} ({existing["mmdd"]})</div>
+                <div class="slot-info">{existing["mmdd"]}</div>
             </div>
             """, unsafe_allow_html=True)
                 st.warning(f"월일 형식 오류: {mmdd_err} (예: 0315)")
@@ -215,25 +215,26 @@ def render():
                     delete_birthday(user_id, slot)
                     st.rerun()
 
-            # 수정 모드
+            # 수정 모드 — 2026-09-11(사용자 지시): "나/엄마" 같은 별칭 입력을 없앤다.
+            # 개인정보 노출 우려("이 생일은 누구 것"이라는 라벨을 서버에 남기지
+            # 않음) + 애초에 행운수 계산(get_life_path_number 등)엔 월일만 쓰이고
+            # 별칭은 화면 표시용일 뿐이라 없어도 기능에 지장 없다.
             if st.session_state.get(f"editing_{slot}"):
-                col1, col2, col3 = st.columns([3, 2, 1.5])
+                col1, col2 = st.columns([3, 1.5])
                 with col1:
-                    new_label = st.text_input("별칭", value=existing["label"], key=f"elabel_{slot}", label_visibility="collapsed")
-                with col2:
                     new_mmdd = st.text_input("월일", value=existing["mmdd"], key=f"emmdd_{slot}", label_visibility="collapsed")
-                with col3:
+                with col2:
                     if st.button("저장", key=f"save_{slot}", type="primary"):
-                        if new_label and new_mmdd:
+                        if new_mmdd:
                             ok, err = validate_mmdd(new_mmdd)
                             if ok:
-                                upsert_birthday(user_id, slot, new_label, new_mmdd)
+                                upsert_birthday(user_id, slot, "", new_mmdd)
                                 st.session_state[f"editing_{slot}"] = False
                                 st.rerun()
                             else:
                                 st.toast(err or "월일 형식이 올바르지 않습니다.")
                         else:
-                            st.toast("별칭과 월일 4자리를 정확히 입력하세요.")
+                            st.toast("월일 4자리를 정확히 입력하세요.")
 
         else:
             # 미등록 슬롯: 한 줄 입력
@@ -243,22 +244,24 @@ def render():
             </div>
             """, unsafe_allow_html=True)
 
-            col1, col2, col3 = st.columns([3, 2, 1.5])
+            # 2026-09-11(사용자 지시): "나/엄마" 같은 별칭 입력칸을 없앤다 — 개인정보
+            # 노출 우려. 월일만 등록하면 바로 행운수가 산출되게 한다(별칭은 애초에
+            # 화면 표시용일 뿐, get_life_path_number 등 계산엔 안 쓰임). DB
+            # 컬럼(label)은 NOT NULL이라 빈 문자열로 채운다.
+            col1, col2 = st.columns([3, 1.5])
             with col1:
-                label = st.text_input("별칭", placeholder="예: 나, 엄마", key=f"label_{slot}", label_visibility="collapsed")
-            with col2:
                 mmdd = st.text_input("월일", placeholder="0315", key=f"mmdd_{slot}", label_visibility="collapsed")
-            with col3:
+            with col2:
                 if st.button("등록", key=f"reg_{slot}", type="primary"):
-                    if label and mmdd:
+                    if mmdd:
                         ok, err = validate_mmdd(mmdd)
                         if ok:
-                            upsert_birthday(user_id, slot, label, mmdd)
+                            upsert_birthday(user_id, slot, "", mmdd)
                             st.rerun()
                         else:
                             st.toast(err or "월일 형식이 올바르지 않습니다.")
                     else:
-                        st.toast("별칭과 월일 4자리를 정확히 입력하세요.")
+                        st.toast("월일 4자리를 정확히 입력하세요.")
 
     # [문제5] 하단에도 네비 유지 (수정·삭제 폼 아래)
     st.markdown(_render_birthday_nav_html(), unsafe_allow_html=True)
