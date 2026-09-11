@@ -78,6 +78,12 @@ def open_auth_banner(*, reason: str = "", resume: str | None = None, resume_data
         st.session_state[AUTH_RESUME_FLAG] = resume
     if resume_data:
         st.session_state[AUTH_RESUME_DATA] = resume_data
+    # 2026-09-11(사용자 지시): 배너는 항상 화면 최상단(render_wallet_bar 위치)에서
+    # 그려지는데, 정작 이 배너를 여는 트리거(번개조합 "저장내역" 등)는 화면 아래쪽에
+    # 있는 경우가 많다 — 유저가 방금 누른 위치에 그대로 머물러 있어서 배너가 뜬 걸
+    # 못 보고 "안 눌힌다"고 오해하는 혼란으로 이어졌다. 배너를 여는 바로 이 순간
+    # 1회, 다음 렌더에서 화면을 최상단으로 스크롤해 배너가 바로 보이게 한다.
+    st.session_state["_auth_banner_scroll_pending"] = True
 
 
 def close_auth_banner() -> None:
@@ -367,6 +373,31 @@ def _render_auth_banner_form() -> None:
     st.caption("PASS·금융인증서는 사업자 연동 계약 후 순차 제공 예정입니다.")
 
 
+def _scroll_to_top_once() -> None:
+    """화면을 최상단으로 1회 스크롤한다 — 화면 아래쪽에서 누른 버튼이 최상단
+    배너를 열 때, 유저가 스크롤하지 않아도 바로 보이게 한다(사용자 지시
+    2026-09-11). components.html iframe sandbox엔 allow-top-navigation이 없어
+    location 이동은 막히지만 scrollTo는 막히지 않는다 — 그래도 기존에 검증된
+    "최상위 문서에 스크립트 심기" 방식을 그대로 재사용해 일관되게 둔다."""
+    components.html(
+        """
+        <script>
+        (function() {
+            try {
+                var s = window.top.document.createElement('script');
+                s.textContent = "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}";
+                window.top.document.head.appendChild(s);
+                s.parentNode.removeChild(s);
+            } catch (e) {
+                try { window.parent.scrollTo(0, 0); } catch (e2) {}
+            }
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def render_auth_banner() -> None:
     if current_member_id() and st.session_state.get(AUTH_RESUME_FLAG):
         _finish_auth_success()
@@ -376,6 +407,8 @@ def render_auth_banner() -> None:
     if current_member_id():
         _finish_auth_success()
         return
+    if st.session_state.pop("_auth_banner_scroll_pending", False):
+        _scroll_to_top_once()
     _inject_auth_banner_css()
     _render_auth_banner_form()
 
@@ -661,6 +694,18 @@ def advanced_subscription_dialog(*, on_close) -> None:
             on_close()
             st.rerun()
     return None
+
+
+def render_generation_complete_notice(kind: str) -> None:
+    """조합생성/구매/뽑기 완료 안내 — 자동구매·번개조합·안티액땜·타로 4화면
+    공용(2026-09-11 사용자 지시: "버튼 밑에 완료 안내멘트, 4군데 통일화").
+    각 화면은 조합생성(또는 뽑기)이 실제로 끝난 시점에 이 함수를 그 화면의
+    조합시작 버튼 바로 밑에서 호출하면 된다. 문구는 legal_notices.py의
+    GENERATION_COMPLETE_NOTICES 한 곳에서만 관리 — 바꿀 때마다 4화면 전부
+    찾아다니며 고치지 않게 한다."""
+    from legal_notices import GENERATION_COMPLETE_NOTICES
+
+    st.success(GENERATION_COMPLETE_NOTICES.get(kind, "✅ 완료되었습니다."))
 
 
 def inject_app_haptic() -> None:

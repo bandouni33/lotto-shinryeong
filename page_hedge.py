@@ -922,8 +922,16 @@ def render():
                 for n in range(1, 46):
                     st.session_state.pop(f"hedge_anti_num_{line_idx}_{n}", None)
             st.session_state["hedge_history_blink"] = True
+            st.session_state["hedge_generation_complete"] = True
 
         points_notice_dialog("hedge", quantity=pending_count * 2, on_close=_hedge_dialog_close)
+
+    # 2026-09-11(사용자 지시): "조합생성 완료" 안내 — 버튼 바로 밑, 자동구매·
+    # 번개조합·타로와 같은 문구·위치로 통일.
+    if st.session_state.pop("hedge_generation_complete", False):
+        from wallet_ui import render_generation_complete_notice
+
+        render_generation_complete_notice("hedge")
 
     hedge_purchase_error = st.session_state.pop("hedge_purchase_error", None)
     if hedge_purchase_error:

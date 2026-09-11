@@ -412,8 +412,9 @@ def render():
 
     st.markdown('<div class="main-title">⚡ 번\u200b\u200b개조합</div>', unsafe_allow_html=True)
 
-    if st.session_state.pop("thunder_save_toast", False):
-        st.success("✅ 결과가 저장됐어요! 아래로 스크롤하면 저장내역에서 확인할 수 있어요.")
+    # 2026-09-11(사용자 지시): "조합생성 완료" 안내는 버튼 바로 밑에 표시 —
+    # 조합시작 버튼 줄 다음(번호판 iframe 앞)으로 옮겼다(자동구매·안티액땜·타로와
+    # 통일된 위치·문구). thunder_save_toast 값은 거기서 판다.
 
     _refund_toast = st.session_state.pop("thunder_refund_toast", None)
     if _refund_toast:
@@ -510,6 +511,13 @@ def render():
     })();
     </script>
     """, height=0)
+
+    # 2026-09-11(사용자 지시): "조합생성 완료" 안내는 버튼 바로 밑에 — 자동구매·
+    # 안티액땜·타로와 같은 문구·위치로 통일(wallet_ui.render_generation_complete_notice).
+    if st.session_state.pop("thunder_save_toast", False):
+        from wallet_ui import render_generation_complete_notice
+
+        render_generation_complete_notice("thunder")
 
     # ─── 메인 UI HTML (Grid & Logic) ───
     thunder_ui_html = f"""

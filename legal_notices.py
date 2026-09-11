@@ -34,6 +34,17 @@ PRICING = {
 
 ADVANCED_FILTER_FIRST_SUB_FREE = True  # 첫 구독 1회 무료 (마케팅)
 
+# ── 조합생성/구매 완료 안내 (2026-09-11 사용자 지시) ──
+# 자동구매·번개조합·안티액땜·타로 4화면에서 조합생성(또는 뽑기)이 끝나면
+# 항상 "버튼 바로 밑"에 이 안내를 보여준다(wallet_ui.render_generation_complete_notice).
+# 문구를 바꿀 땐 여기 한 곳만 고치면 4화면에 한 번에 반영된다.
+GENERATION_COMPLETE_NOTICES = {
+    "thunder": "✅ 조합생성이 완료되었습니다. 아래 저장내역에서 확인하실 수 있습니다.",
+    "hedge": "✅ 조합생성이 완료되었습니다. 아래 저장내역에서 확인하실 수 있습니다.",
+    "auto": "✅ 구매하신 조합생성이 완료되었습니다. 아래 저장내역에서 확인하실 수 있습니다.",
+    "tarot": "✅ 카드 뽑기가 완료되었습니다.",
+}
+
 # ── 유료 버튼 클릭 시 안내 멘트 템플릿 ──
 def format_thunder_points_notice(game_count: int, balance: int | None = None) -> str:
     per = PRICING["thunder_per_game"]

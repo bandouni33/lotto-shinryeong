@@ -509,6 +509,7 @@ def _render_draw_stage():
         if st.button("⟲", key="shuffle_btn"):
             key, _card = _draw_card()
             st.session_state["tarot_card_key"] = key
+            st.session_state["tarot_draw_complete"] = True
             if st.session_state.pop("tarot_paid_extra_unlocked", False):
                 # 유료로 연 추가 1회 — 오늘 무료 한도 카운터는 그대로 두고(이미 소진),
                 # 이번 건은 결제로 이미 처리됐으니 별도 등록 없이 언락 플래그만 소모한다.
@@ -520,6 +521,13 @@ def _render_draw_stage():
 
     # 카드는 이미 서버에서 확정된 상태 — 뒤집기는 컴포넌트 안에서 순수 JS로 처리
     _render_flip_component(card_key)
+
+    # 2026-09-11(사용자 지시): "뽑기 완료" 안내 — 버튼(⟲) 바로 밑, 자동구매·
+    # 번개조합·안티액땜과 같은 문구 스타일로 통일.
+    if st.session_state.pop("tarot_draw_complete", False):
+        from wallet_ui import render_generation_complete_notice
+
+        render_generation_complete_notice("tarot")
 
     if st.button("해석 보기 →", key="reveal_result_btn", use_container_width=True):
         st.session_state["tarot_stage"] = "result"

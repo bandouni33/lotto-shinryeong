@@ -2650,6 +2650,7 @@ def render():
                                         _append_purchase_history(entry)
                                         st.session_state["auto_history_blink"] = True
                                         st.session_state["auto_scroll_top"] = True
+                                        st.session_state["auto_generation_complete"] = True
                                         st.rerun()
                                 else:
                                     from wallet_ui import ensure_member_or_banner
@@ -2736,6 +2737,7 @@ def render():
                                 # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
                                 # 다음 렌더에서 최상단으로 한 번 스크롤한다.
                                 st.session_state["auto_scroll_top"] = True
+                                st.session_state["auto_generation_complete"] = True
                             elif outcome.get("error") == "insufficient_balance":
                                 # 2026-09-08(사용자 지시): 번개조합·안티·액땜조합과
                                 # 동일 — "부족합니다" 문구만 띄우지 않고 그 자리에서
@@ -2757,6 +2759,13 @@ def render():
                                 st.session_state["auto_purchase_error"] = "구매 처리에 실패했습니다."
 
                         points_notice_dialog("auto", quantity=selected_quantity, on_close=_auto_dialog_close)
+
+                    # 2026-09-11(사용자 지시): "조합생성 완료" 안내 — 버튼 바로 밑,
+                    # 번개조합·안티액땜·타로와 같은 문구·위치로 통일.
+                    if st.session_state.pop("auto_generation_complete", False):
+                        from wallet_ui import render_generation_complete_notice
+
+                        render_generation_complete_notice("auto")
 
                     _auto_purchase_notice = st.session_state.pop("auto_purchase_notice", None)
                     if _auto_purchase_notice:
