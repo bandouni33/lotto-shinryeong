@@ -16,7 +16,6 @@ import re
 import streamlit as st
 import streamlit.components.v1 as components
 
-from combo_history_ui import render_history_section
 from user_scope import get_or_create_guest_id, init_guest_scope
 
 MAX_LINES = 5
@@ -926,13 +925,6 @@ def render():
 
         points_notice_dialog("hedge", quantity=pending_count * 2, on_close=_hedge_dialog_close)
 
-    # 2026-09-11(사용자 지시): "조합생성 완료" 안내 — 버튼 바로 밑, 자동구매·
-    # 번개조합·타로와 같은 문구·위치로 통일.
-    if st.session_state.pop("hedge_generation_complete", False):
-        from wallet_ui import render_generation_complete_notice
-
-        render_generation_complete_notice("hedge")
-
     hedge_purchase_error = st.session_state.pop("hedge_purchase_error", None)
     if hedge_purchase_error:
         st.error(f"❌ {hedge_purchase_error}")
@@ -962,7 +954,20 @@ def render():
 
     from user_scope import history_guest_ids
 
-    render_history_section(
+    # 2026-09-11(사용자 지시): "조합생성이 완료되었습니다" 안내가 "저장내역"
+    # 버튼 바로 밑(목록 내용보다 위)에서 보이도록 버튼/패널을 분리 호출한다 —
+    # 자동구매·번개조합과 동일한 자리로 통일.
+    from combo_history_ui import render_history_button, render_history_panel
+
+    render_history_button(
+        container_key="hedge_history_zone_6n36s5",
+        blink_flag_key="hedge_history_blink",
+    )
+    if st.session_state.pop("hedge_generation_complete", False):
+        from wallet_ui import render_generation_complete_notice
+
+        render_generation_complete_notice("hedge")
+    render_history_panel(
         container_key="hedge_history_zone_6n36s5",
         guest_id=history_guest_ids(),
         sources=["anti", "aekddaem"],

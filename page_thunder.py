@@ -517,12 +517,8 @@ def render():
     </script>
     """, height=0)
 
-    # 2026-09-11(사용자 지시): "조합생성 완료" 안내는 버튼 바로 밑에 — 자동구매·
-    # 안티액땜·타로와 같은 문구·위치로 통일(wallet_ui.render_generation_complete_notice).
-    if st.session_state.pop("thunder_save_toast", False):
-        from wallet_ui import render_generation_complete_notice
-
-        render_generation_complete_notice("thunder")
+    # 2026-09-11(사용자 지시): "조합생성 완료" 안내는 "저장내역" 버튼 바로 밑에서
+    # 보여야 한다(번호판 밑에서 이동) — 아래 저장내역 렌더 지점에서 처리한다.
 
     # ─── 메인 UI HTML (Grid & Logic) ───
     thunder_ui_html = f"""
@@ -1558,11 +1554,11 @@ def render():
     with st.container(key="th_main_iframe_wrap_6n36s5"):
         components.html(thunder_ui_html, height=thunder_iframe_height, scrolling=True)
 
-    st.markdown(
-        '<div class="th-save-warn">✅ 조합이 결정되면 잠시 후 자동으로 저장됩니다.'
-        ' 혹시 자동저장이 안 되면 아래 링크를 눌러 직접 저장해주세요.</div>',
-        unsafe_allow_html=True,
-    )
+    # 2026-09-11(사용자 지시): 번호판 밑 상시 노출 안내 문구("조합이 결정되면
+    # 잠시 후 자동으로 저장됩니다...")는 이제 "조합생성이 완료되었습니다" 안내
+    # (저장내역 버튼 밑, 실제 저장된 뒤에만 표시)와 내용이 겹치는 상시 클러터라
+    # 제거한다. 아래 링크(th_save_real_link)는 자동저장 폴백으로 계속 기능해야
+    # 하므로 DOM은 그대로 두고 눈에 덜 띄게만 유지한다.
     st.markdown(
         f'<a id="th_save_real_link" class="th-save-real-btn" style="opacity:0.55;font-size:13px;height:36px;'
         f'background:linear-gradient(180deg,#475569 0%,#334155 55%,#1e293b 100%);'
@@ -1660,11 +1656,21 @@ def render():
     # 여기 있던 건 삭제.
 
     # ─── 저장내역 (구매내역과 동일한 카드 디자인 — combo_history_ui 공용 모듈) ───
-    from combo_history_ui import render_history_section
-
+    # 2026-09-11(사용자 지시): "조합생성이 완료되었습니다" 안내가 "저장내역"
+    # 버튼 바로 밑(목록 내용보다 위)에서 보이도록 버튼/패널을 분리 호출한다 —
+    # 자동구매·안티액땜과 동일한 자리로 통일.
+    from combo_history_ui import render_history_button, render_history_panel
     from user_scope import history_guest_ids
 
-    render_history_section(
+    render_history_button(
+        container_key="th_history_zone_6n36s5",
+        blink_flag_key="thunder_history_blink",
+    )
+    if st.session_state.pop("thunder_save_toast", False):
+        from wallet_ui import render_generation_complete_notice
+
+        render_generation_complete_notice("thunder")
+    render_history_panel(
         container_key="th_history_zone_6n36s5",
         guest_id=history_guest_ids(),
         sources=["thunder"],

@@ -2673,6 +2673,14 @@ def render():
                                 blink_flag_key="auto_history_blink",
                             )
 
+                    # 2026-09-11(사용자 지시): "조합생성 완료" 안내는 "저장내역" 버튼
+                    # 바로 밑에서 보여야 한다(번개조합·안티액땜과 같은 자리로 통일).
+                    # 구매내역 목록보다 위, 버튼 바로 아래.
+                    if st.session_state.pop("auto_generation_complete", False):
+                        from wallet_ui import render_generation_complete_notice
+
+                        render_generation_complete_notice("auto")
+
                     # 2026-08-29: "다음회차 준비 안됨" 배너는 구매내역(지난 회차 조회)과
                     # 무관하므로, 버튼 2열 전체 밑·저장내역 패널보다 위에 전체 폭으로
                     # 둔다 — 구매 관련 안내라는 게 분명하게 보이도록.
@@ -2759,13 +2767,6 @@ def render():
                                 st.session_state["auto_purchase_error"] = "구매 처리에 실패했습니다."
 
                         points_notice_dialog("auto", quantity=selected_quantity, on_close=_auto_dialog_close)
-
-                    # 2026-09-11(사용자 지시): "조합생성 완료" 안내 — 버튼 바로 밑,
-                    # 번개조합·안티액땜·타로와 같은 문구·위치로 통일.
-                    if st.session_state.pop("auto_generation_complete", False):
-                        from wallet_ui import render_generation_complete_notice
-
-                        render_generation_complete_notice("auto")
 
                     _auto_purchase_notice = st.session_state.pop("auto_purchase_notice", None)
                     if _auto_purchase_notice:
