@@ -58,8 +58,13 @@ def render():
         if _refunded:
             st.session_state["thunder_refund_toast"] = _refunded
 
-    user_id = current_birthday_scope()
-    birthdays = get_user_birthdays(user_id)
+    # 2026-09-11(사용자 지시): birthday_scope_for()는 미로그인 시 회원·기기 구분
+    # 없이 전부 같은 값("guest_local")으로 스코프된다 — 로그인 안 한 상태로 여기
+    # 읽으면 다른 익명 방문자가 등록한(또는 예전에 로그인 없이 등록됐던) 가족
+    # 행운수가 그대로 섞여 나올 수 있었다(page_birthday.py를 로그인 게이트로
+    # 막은 것과 같은 이유). 로그인 상태에서만 조회한다 — 미로그인이면 "미등록"
+    # 취급(luckyWarn 안내를 그대로 보여줘 등록을 유도).
+    birthdays = get_user_birthdays(current_birthday_scope()) if current_member_id() else []
 
     if birthdays:
         mmdd_list = [b["mmdd"] for b in birthdays]

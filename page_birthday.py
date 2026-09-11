@@ -36,11 +36,6 @@ def render():
     init_birthday_table()
     init_guest_scope()
 
-    user_id = current_birthday_scope()
-
-    birthdays = get_user_birthdays(user_id)
-    birthday_dict = {b["slot"]: b for b in birthdays}
-
 
     # ─── 커스텀 CSS ───
     st.markdown("""
@@ -151,6 +146,27 @@ def render():
     """, unsafe_allow_html=True)
 
     st.markdown(_render_birthday_nav_html(), unsafe_allow_html=True)
+
+    # 2026-09-11(사용자 지시): 로그인 없이도 행운수 생일을 등록·수정·삭제할 수
+    # 있었다. 더 심각한 건 birthday_scope_for()가 미로그인 시 회원별/기기별
+    # 구분 없이 전부 같은 값("guest_local") 하나로 스코프된다는 점 — 로그인 안 한
+    # 모든 방문자가 사실상 하나의 공유 등록 목록을 같이 보고 수정·삭제할 수 있는
+    # 상태였다(guest_id별도 아니고 완전 전역 공유, 저장내역보다 더 심각한 경우).
+    # 로그인하면 스코프가 회원별("m_{member_id}")로 바뀌는데, 로그인 전에 등록한
+    # 건 이 공유 버킷에만 남아 있어서 "번개조합에서 행운수를 못 불러온다"는 신고로
+    # 이어졌다. 페이지 전체를 로그인 게이트로 막아 앞으로는 항상 회원 스코프로만
+    # 저장·조회되게 한다(로그인 안내는 통합 login_gate로만 — 사용자 지시).
+    from wallet_ui import login_gate
+
+    if not login_gate():
+        from combo_history_ui import render_login_required_notice
+
+        render_login_required_notice()
+        return
+
+    user_id = current_birthday_scope()
+    birthdays = get_user_birthdays(user_id)
+    birthday_dict = {b["slot"]: b for b in birthdays}
 
     # ─── 타이틀 ───
     st.markdown('<div class="birthday-title">🎯 행운수 생일 등록</div>', unsafe_allow_html=True)
