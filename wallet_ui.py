@@ -74,10 +74,25 @@ AUTH_RESUME_DATA = "auth_resume_data"
 def open_auth_banner(*, reason: str = "", resume: str | None = None, resume_data: dict | None = None) -> None:
     st.session_state[AUTH_BANNER_OPEN] = True
     st.session_state[AUTH_BANNER_REASON] = reason or "이 기능을 이용하려면 간편인증이 필요합니다."
+    # 2026-09-12(중대 버그 수정 — 사용자 지시로 원인 확인): resume을 "있을 때만
+    # 덮어쓰기"로 해뒀더니, 예전에 다른 기능(예: 번개조합 "조합시작")에서 배너를
+    # 열었다가 로그인 없이 [닫기]로 닫은 resume이 세션에 그대로 남아있었다. 그
+    # 뒤 전혀 다른 기능(예: "저장내역", resume 없음)으로 배너를 다시 열어도 그
+    # 묵은 resume이 안 지워졌고, 그 상태로 아무 경로로든(지금 하려는 일과
+    # 무관하게) 로그인만 완료되면 render_auth_banner의 "로그인됨+resume 있음"
+    # 체크가 그 묵은 resume을 실행해버렸다 — 조합 생성이 이미 진행 중인 화면
+    # 위에 "적립금 이용 안내" 다이얼로그가 뜬금없이 다시 뜨고(사용자 신고),
+    # 그 재실행이 만든 rerun이 번호판 iframe을 새로 만들어 생성이 1게임만
+    # 나온 채 멈추는 것까지 같은 원인으로 보인다. 매번 이번 호출의 resume
+    # 값으로 완전히 덮어써서(없으면 지움) 이전 호출의 잔재가 안 남게 한다.
     if resume:
         st.session_state[AUTH_RESUME_FLAG] = resume
+    else:
+        st.session_state.pop(AUTH_RESUME_FLAG, None)
     if resume_data:
         st.session_state[AUTH_RESUME_DATA] = resume_data
+    else:
+        st.session_state.pop(AUTH_RESUME_DATA, None)
     # 2026-09-11(사용자 지시): 배너는 항상 화면 최상단(render_wallet_bar 위치)에서
     # 그려지는데, 정작 이 배너를 여는 트리거(번개조합 "저장내역" 등)는 화면 아래쪽에
     # 있는 경우가 많다 — 유저가 방금 누른 위치에 그대로 머물러 있어서 배너가 뜬 걸
@@ -87,7 +102,12 @@ def open_auth_banner(*, reason: str = "", resume: str | None = None, resume_data
 
 
 def close_auth_banner() -> None:
-    for key in (AUTH_BANNER_OPEN, AUTH_BANNER_REASON):
+    # 2026-09-12: "닫기"(로그인 안 하고 취소)로 배너를 닫을 때도 resume 의도를
+    # 함께 버린다 — 안 그러면 나중에 완전히 무관한 경로로 로그인했을 때 이
+    # 묵은 resume이 갑자기 실행되는 사고로 이어진다(위 open_auth_banner 주석
+    # 참고). 정상 로그인 성공 경로(_finish_auth_success)는 이미
+    # _resume_after_auth()에서 먼저 pop해 소비하므로 여기서 또 지워도 안전하다.
+    for key in (AUTH_BANNER_OPEN, AUTH_BANNER_REASON, AUTH_RESUME_FLAG, AUTH_RESUME_DATA):
         st.session_state.pop(key, None)
 
 
