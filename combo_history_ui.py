@@ -312,21 +312,15 @@ def _history_panel_open_key(blink_flag_key: str) -> str:
 def _resolve_history_panel_state(blink_flag_key: str) -> str:
     """저장내역 패널 열림 상태를 공통 규칙으로 갱신하고 panel_open_key를 반환한다.
 
-    세 화면(번개조합·안티액땜·자동구매) 공통:
-    - 방금 저장/구매(blink)면 무조건 펼치고, 이전의 "직접 접음" 표시도 해제한다.
-    - 그 외에는, 유저가 "저장내역" 버튼으로 직접 접은 적이 없으면 로그인 상태면
-      펼침 / 미로그인이면 접힘. (미로그인 때 펼치면 패널 안 login_gate가 화면
-      진입만으로 배너를 띄우므로 접어둔다.)
+    2026-09-11(사용자 지시 — 이전의 "로그인하면 자동으로 펼침"을 되돌림):
+    로그인 여부와 무관하게 **항상 기본은 접힘** — 유저가 "저장내역" 버튼을
+    직접 눌러야만 펼쳐진다. 화면 진입만으로 저장내역이 펼쳐져 원치 않는
+    화면(번호판·구매 폼 등)을 가리는 문제가 있었다. 유일한 예외는 방금 저장/
+    구매(blink)한 직후 — 그때는 결과를 바로 보여주려고 강제로 펼친다.
     """
-    from auth_kakao import current_member_id as _cmid
-
     panel_open_key = _history_panel_open_key(blink_flag_key)
-    toggled_key = f"{panel_open_key}_user_toggled"
     if bool(st.session_state.pop(blink_flag_key, False)):
         st.session_state[panel_open_key] = True
-        st.session_state[toggled_key] = False
-    elif not st.session_state.get(toggled_key):
-        st.session_state[panel_open_key] = bool(_cmid())
     return panel_open_key
 
 
@@ -338,12 +332,10 @@ def render_history_button(*, container_key: str, blink_flag_key: str, title: str
 
     st.markdown(history_css(), unsafe_allow_html=True)
     panel_open_key = _resolve_history_panel_state(blink_flag_key)
-    toggled_key = f"{panel_open_key}_user_toggled"
     # 컨테이너 키는 기존과 동일하게 유지 — page_auto.py에 이 키(.st-key-...)를
     # 겨냥한 버튼 스타일 CSS가 대량으로 있어서 바꾸면 버튼 모양이 깨진다.
     with st.container(key=container_key):
         if st.button(title, type="primary", use_container_width=True, key=f"{container_key}_open_btn"):
-            st.session_state[toggled_key] = True
             opening = not st.session_state.get(panel_open_key, False)
             st.session_state[panel_open_key] = opening
             # 미로그인인데 "저장내역"을 눌러 펼치는 경우에만 여기서 로그인 배너를
