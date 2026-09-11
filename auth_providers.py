@@ -39,7 +39,12 @@ def _redirect_uri() -> str:
 
 def _encode_oauth_state(provider: str, return_page: str = "main") -> str:
     page = (return_page or "main").strip() or "main"
-    allowed = ("main", "thunder", "auto", "stats", "birthday", "advanced")
+    # 2026-09-11(사용자 지시): "hedge"(안티·액땜/전체·개별리셋)와 "tarot"가
+    # 허용 목록에서 빠져 있었다 — user_page.py가 실제로 라우팅하는 8개 페이지
+    # (main/thunder/auto/stats/birthday/advanced/tarot/hedge) 중 이 둘만
+    # 빠져서, 안티·액땜·타로 화면에서 로그인하면 조용히 "main"으로 되돌려져
+    # "저장내역 누르고 로그인했더니 메인으로 가버린다"는 신고로 이어졌다.
+    allowed = ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot", "hedge")
     if page not in allowed:
         page = "main"
     # 2026-09-09 수정: 카카오 로그인 버튼을 누른 시점의 guest_id를 state에 실어서
