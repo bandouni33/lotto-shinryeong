@@ -161,6 +161,10 @@ def _resume_after_auth() -> None:
         st.session_state["hedge_pending_count"] = int(data.get("count", 5))
     elif resume == "open_tarot_dialog":
         st.session_state["open_tarot_dialog"] = True
+    elif resume == "af_show_step1_points":
+        st.session_state["af_show_step1_points"] = True
+    elif resume == "af_show_step2_points":
+        st.session_state["af_show_step2_points"] = True
     elif resume == "wallet_show_charge":
         st.session_state["wallet_show_charge"] = True
     elif resume == "my_info_dialog":
@@ -241,54 +245,26 @@ def _inject_auth_banner_css() -> None:
         """
 <style>
 /* 2026-09-13(사용자 실기기 신고 — 로그인창이 페이지 콘텐츠와 겹쳐 보이고,
-   심한 경우 번개조합 화면에서 카카오 버튼이 아예 눌리지 않음): 실 배포
-   사이트를 직접 열어 DOM을 실측해 원인 확정. 예전엔 이 sticky 규칙을
+   번개조합 화면에서 카카오 버튼이 아예 눌리지 않음): 실 배포 사이트를
+   직접 열어 DOM을 실측해 원인 확정. 예전엔 sticky를 마커 div +
    `:has(.lotto-auth-banner-marker)`로 걸었는데, CSS :has()는 "가장 가까운
-   조상 1개"가 아니라 마커를 포함하는 **모든** 조상에 매칭된다 — 마커가
+   조상 1개"가 아니라 조건을 만족하는 **모든** 조상에 매칭된다 — 마커가
    페이지 최상단에 거의 독립적으로 떠 있는 요소라, 이 선택자가 실제로는
-   메인 화면 전체 콘텐츠(잔액바부터 번호판·버튼 그리드까지 전부)를 감싸는
-   최상위 블록까지 잡아버렸다(실측: 그 블록 높이가 1144px — 사실상 페이지
-   전체). 그 블록 전체가 position:sticky + z-index:100이 되면서, 타로처럼
-   배너 하나만 있는 화면(다른 콘텐츠가 없어 문제가 안 보임 — 이게 "타로는
-   멀쩡하다"는 인상의 이유)과 달리 자동구매·번개조합·메인처럼 배너 아래
-   실제 콘텐츠가 있는 화면에서는 카드가 콘텐츠와 겹쳐 보이거나, 스크롤/rerun
-   시점에 따라 페이지의 다른 클릭 가능 영역을 이 sticky 블록이 가려 버튼이
-   안 눌리는 것까지 재현 가능한 원인이었다.
-   2026-09-13(재수정 — 즉시 되돌림): 처음엔 이걸 고치면서 배너 전체를 새
-   st.container(key="auth_banner_root")로 한 겹 더 감쌌었는데, 그 안에서
-   실행되는 st.rerun() 호출부(× 닫기, 모의 로그인 성공)가 다시 "with 블록
-   안에서 rerun"이 돼버려, 예전에 실기기 빌드로 어렵게 잡았던 고아 DOM
-   중복 렌더 버그("화면이 두 개 열리는" 반전 현상)가 그대로 재현됐다
-   (사용자 재신고). 새 컨테이너로 감싸는 대신, 이미 있던
-   .st-key-auth_banner_wrap(배너의 실제 첫 번째 요소) 자신에게 sticky를
-   직접 건다 — 새로운 Python 레벨 with 블록을 하나도 추가하지 않으므로
-   rerun 관련 위험이 전혀 없고, 그러면서도 sticky 대상은 이 카드 자신
-   하나로만 좁혀진다(카카오 버튼은 sticky가 아니지만, 이 카드는 항상
-   페이지 맨 위에서 처음 그려지므로 실사용에서 체감 차이는 없다). */
-/* 2026-09-12(사용자 신고 — 3번째 줄이 카카오 버튼에 가려짐, 타로에서 특히
-   심함): 닫기(×)를 이 박스 "안"의 첫 자식으로 넣었더니, position:absolute라
-   화면엔 안 보여도 여전히 flex 자식 1개로 카운트돼 Streamlit 기본
-   gap(16px)이 다음 형제(첫 줄) 앞에 그대로 붙었다 — 실측: 텍스트 시작점이
-   padding-top보다 20px 더 아래였고, 그만큼 박스 바닥을 넘어 3번째 줄이
-   버튼과 겹쳤다(직접 그 자식 노드를 DOM에서 제거해 실측 확인, gap만 0으로
-   죽이면 이번엔 Streamlit 기본 음수 마진과 충돌해 줄끼리 겹침). 근본적으로
-   닫기(×)를 카드 자신의 flex 자식으로 두지 않도록 바깥 래퍼로 뺀다 —
-   래퍼가 position:relative만 담당하고, 카드는 원래처럼 텍스트 3줄만 자식으로
-   가진다. */
+   메인 화면 전체 콘텐츠(잔액바부터 번호판·버튼 그리드까지)를 감싸는
+   최상위 블록까지 잡아버렸다(실측: 그 블록 높이 1144px = 사실상 페이지
+   전체). 마커/:has() 방식을 버리고, 배너의 실제 첫 요소인 이
+   .st-key-auth_banner_wrap 자신에게 sticky를 직접 건다 — 이제 배너 자기
+   자신 말고는 어떤 페이지 콘텐츠도 sticky/z-index 영향을 안 받는다. 새
+   st.container로 한 겹 더 감싸는 방식도 시도했었지만, 그 안에서 실행되는
+   st.rerun() 호출부(× 닫기, 모의 로그인 성공)가 "with 블록 안에서 rerun"이
+   되면서 고아 DOM 중복 렌더 버그("화면이 두 개 열리는" 반전 현상)를
+   재현시켜 되돌렸다 — 새 Python with 블록을 추가하지 않는 이 방식만 안전한
+   것으로 확인됨. */
 div[data-testid="stVerticalBlock"].st-key-auth_banner_wrap {
-    /* 2026-09-13(배포본 실측 — 클래스 단일 선택자로는 gap:0이 안 먹힘 확인):
-       flex-direction 때와 같은 원인. Streamlit이 stVerticalBlock의 기본
-       gap을 [direction] 속성 선택자를 포함한 더 구체적인 !important 규칙으로
-       걸어두고 있어서, .st-key-auth_banner_wrap 클래스 하나만으로는 져서
-       실제 배포 사이트에서 gap이 0이 아니라 5.6px로 남아있는 게 getComputedStyle로
-       확인됐다(로컬 desktop 브라우저에서는 우연히 이 차이가 안 드러났음).
-       data-testid 속성까지 선택자에 포함해 specificity를 맞춘다. */
-    /* 2026-09-13: sticky 위치 지정을 이 카드 자신에게 직접 건다 — 새
-       컨테이너로 감싸지 않고, position:relative였던 걸 sticky로 바꾸는
-       것만으로 충분하다(위 긴 주석 참고: 새 with 블록을 추가하면 rerun이
-       그 블록 안에서 호출되며 고아 DOM 중복 렌더 버그가 재현됨). sticky는
-       relative와 마찬가지로 "자기 자신이 포지셔닝 컨텍스트가 되는" 성질을
-       그대로 가지므로, 닫기 배지 등 내부 요소의 위치 계산에는 영향 없다. */
+    /* 배포 사이트 실측: 클래스 단일 선택자로는 Streamlit 자체의 stVerticalBlock
+       기본 gap(속성 선택자를 포함한 더 구체적인 !important 규칙)에 져서
+       gap:0이 안 먹혔다 — data-testid 속성까지 선택자에 포함해 specificity를
+       맞춘다. */
     position: sticky !important;
     top: 0 !important;
     z-index: 100 !important;
@@ -296,16 +272,9 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_wrap {
        보이도록 실측(가장 긴 줄 실제 필요폭 약 294px + 좌우 패딩 20px + 여유)
        기준으로 확보 */
     margin: 10px auto 12px auto !important;
-    /* 2026-09-13(사용자 신고 — X가 화면마다 카드와 떨어진 정도가 다르게
-       보임): 이 래퍼는 Streamlit 기본 stVerticalBlock이라 자식(닫기 배지,
-       카드) 사이에 기본 gap(보통 1rem)이 그대로 걸려 있었다. 이 gap은
-       rem 기준이라 화면(웹뷰/브라우저)마다 실제 루트 폰트 크기가 다르면
-       계산되는 px 값도 달라져, 바로 아래 닫기 배지의 margin-bottom
-       음수값으로 "대략 상쇄"하던 예전 방식이 화면마다 다른 정도로
-       어긋나 보였다(카드와 붙어 보이거나 멀리 떨어져 보이거나). gap을
-       0으로 명시해 그 불확정 요소 자체를 없앤다 — 이제 배지와 카드
-       사이 간격은 아래 margin-bottom 값 하나로만, 모든 화면에서
-       똑같이 결정된다. */
+    /* 닫기 배지와 카드 사이 간격을 이 gap:0 하나로 확정한다 — rem 기준
+       기본 gap이 기기마다 실제 px로 다르게 계산돼, margin-bottom 음수값
+       으로 "대략 상쇄"하던 예전 방식은 화면마다 다르게 어긋나 보였다. */
     gap: 0 !important;
 }
 .st-key-auth_banner_box {
@@ -326,40 +295,25 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_wrap {
     line-height: 1.45 !important;
     margin: 3px 0 !important;
 }
-/* 닫기(×)는 st.columns가 아니라 카드 테두리 바깥쪽 모서리에 살짝 걸치는
-   작은 원형 배지로 뺀다(다른 사이트의 통상적인 모달 닫기 배지 위치 참고).
-   2026-09-12(사용자 지시 — 재수정): 카드 안쪽에 자리를 차지하고 앉아있지
-   않도록 이렇게 뺐었다.
-   2026-09-13(사용자 신고 — 실기기에서 X가 카드와 따로 노는 것처럼 분리돼
-   보임): position:absolute는 가장 가까운 position 지정 조상(.st-key-
-   auth_banner_wrap)을 기준으로 앵커되는데, 그 조상의 위치 계산이 실기기
-   웹뷰에서 어긋나면 카드와 무관한 자리에 떨어져 보일 수 있다. transform은
-   조상의 position과 무관하게 "자기 자신의 원래(정상 흐름) 위치"를 기준으로
-   옮기므로, 카드의 바로 앞 형제 요소인 이상 항상 카드와 같이 붙어 움직인다
-   — 걸치는 모양(살짝 밖으로 튀어나옴)은 그대로 유지하면서 앵커만 더
-   견고한 방식으로 바꾼다.
-   2026-09-13(재수정 — 화면마다 여전히 다르게 보임): 위 transform 방식도
-   근본적으로는 "형제 요소 사이 gap(rem 기준, 기기마다 실제 px가 다름)을
-   margin-bottom 음수값으로 대략 상쇄"하는 방식이라, 상쇄가 기기마다
-   맞거나 안 맞았다. 바로 위 .st-key-auth_banner_wrap에 gap:0을 명시해
-   형제 간 간격 자체를 0으로 고정했으므로, 이제 margin-bottom은 "카드
+/* 닫기(×)는 카드 테두리 바깥쪽 모서리에 살짝 걸치는 작은 원형 배지다
+   (다른 사이트의 통상적인 모달 닫기 배지 위치 참고).
+   2026-09-13(로컬·배포 사이트 양쪽에서 실제 재현·확정): 이 div는 Streamlit
+   stVerticalBlock 기본 클래스라 flex-direction이 원래 column이다 —
+   column 방향에서는 justify-content가 세로 정렬을 의미해 flex-end를 줘도
+   배지가 오른쪽이 아니라 카드 왼쪽 끝에 붙어 있었다(getComputedStyle로
+   확정). 게다가 이 column을 강제하는 Streamlit 자체 규칙이 클래스 단일
+   선택자보다 specificity가 높아 flex-direction:row를 줘도 안 먹혀서,
+   data-testid 속성까지 선택자에 포함해 specificity를 맞췄다. 위
+   .st-key-auth_banner_wrap의 gap:0 덕분에 margin-bottom은 이제 "카드
    테두리 위로 배지를 절반쯤 겹치게 끌어올리는" 목적 하나만 담당한다
    (배지 높이 22px의 절반만큼만 겹치게 -11px). */
 div[data-testid="stVerticalBlock"].st-key-auth_banner_close_x {
-    /* 2026-09-13(로컬에서 실제 재현·확정): flex-direction:row를 .st-key-
-       auth_banner_close_x 단일 클래스 선택자로만 주면, Streamlit 자체가
-       [direction="column"] 속성 선택자까지 포함한 더 구체적인(specificity
-       높은) !important 규칙으로 이미 column을 강제하고 있어서(로컬에서
-       getComputedStyle로 flexDirection이 여전히 column으로 확인됨) 우리
-       규칙이 졌다. 이 div 자체의 data-testid 속성까지 선택자에 포함해
-       specificity를 그만큼 끌어올려야 이긴다. */
     display: flex !important;
     flex-direction: row !important;
     justify-content: flex-end !important;
     margin-bottom: -11px !important;
     width: 100% !important; /* 카드(.st-key-auth_banner_box)와 같은 폭이어야
-       flex-end가 밀어줄 여백이 생긴다 — 부모 .st-key-auth_banner_wrap의
-       전체 폭을 그대로 물려받는다. */
+       flex-end가 밀어줄 여백이 생긴다. */
     z-index: 5 !important;
 }
 .st-key-auth_banner_close_x button {
@@ -388,48 +342,6 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_close_x {
     border-radius: 10px !important;
     min-height: 42px !important;
     font-weight: 700 !important;
-}
-</style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _inject_global_dialog_close_css() -> None:
-    """st.dialog()로 띄우는 모든 팝업(적립금 이용 안내·적립금 부족·적립금
-    충전·고급필터 구독·내정보 등)의 닫기(×) — 지금까지 Streamlit 기본
-    모양 그대로(카드 안쪽에 작게 박힌 흰 사각 버튼) 방치돼 있어서, 카드
-    모서리에 살짝 걸치는 원형 배지로 통일해둔 로그인 안내창(위
-    .st-key-auth_banner_close_x)과 화면마다 닫기 버튼이 서로 다르게
-    보이는 원인이었다(사용자 지적: "각 창마다 일관되지 않음").
-
-    st.dialog 팝업은 종류마다(내용도 함수도 다 다름) 각각 따로 고칠 게
-    아니라, 이 앱의 모든 st.dialog가 예외 없이 공유하는 단 하나의 구조
-    — data-testid="stDialog" 래퍼 안의 aria-label="Close" 버튼 — 에만
-    스타일을 걸면 된다. 둘 다 Streamlit이 보장하는 안정적인 속성(해시
-    클래스명이 아님)이라 버전이 바뀌어도 잘 안 깨진다. 이 함수 하나만
-    고치면 위에 나열한 팝업 전부에 동시 반영된다(로컬에서 "내정보"
-    다이얼로그로 실측 확인: 닫기 버튼의 바로 부모 DIV가 이미 카드
-    자신이자 position:relative라, 버튼에 position:absolute만 줘도 다른
-    조상 앵커링 문제 없이 카드 자신 기준으로 정확히 앵커된다)."""
-    st.markdown(
-        """
-<style>
-div[data-testid="stDialog"] button[aria-label="Close"] {
-    position: absolute !important;
-    top: -11px !important;
-    right: -11px !important;
-    background: #2a3a60 !important;
-    color: #c7d3e0 !important;
-    border: 1px solid #45597e !important;
-    border-radius: 50% !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
-    width: 22px !important;
-    height: 22px !important;
-    min-width: 22px !important;
-    min-height: 22px !important;
-    padding: 0 !important;
-    z-index: 10 !important;
 }
 </style>
         """,
@@ -707,13 +619,6 @@ def render_auth_banner() -> None:
     if st.session_state.pop("_auth_banner_scroll_pending", False):
         _scroll_to_top_once()
     _inject_auth_banner_css()
-    # 2026-09-13(즉시 되돌림): 여기서 새 st.container로 감쌌던 버전은
-    # _render_auth_banner_form() 내부의 st.rerun() 호출부(× 닫기, 모의 로그인
-    # 성공)를 다시 "with 블록 안에서 rerun"으로 만들어 고아 DOM 중복 렌더
-    # 버그를 재현시켰다(사용자 재신고 — "화면 두 개 열리는" 반전 현상). 새
-    # with 블록을 추가하지 않고, sticky는 .st-key-auth_banner_wrap 자신에게
-    # 직접 건다(위 _inject_auth_banner_css() 주석 참고) — 예전과 동일하게
-    # 아무것도 감싸지 않은 채로 바로 호출한다.
     _render_auth_banner_form()
 
 
@@ -1069,13 +974,6 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     # 안 바뀌어야, 방금 dismissed 이벤트와 무관한 진짜 새 클릭까지 실수로
     # 삼켜버리지 않는다).
     st.session_state[AUTH_BANNER_JUST_DISMISSED] = st.session_state.pop(AUTH_BANNER_DISMISSED, False)
-
-    # render_wallet_bar()는 페이지 종류와 무관하게 매 rerun마다 항상 불리므로,
-    # 어떤 st.dialog 팝업이 나중에 화면 아래쪽 어디서 열리든(로그인 여부와도
-    # 무관 — 적립금 안내·내정보 등은 로그인 후에만 열림) 이 CSS가 이미
-    # 적용돼 있도록 여기서 무조건 주입한다(로그인 안내창처럼 "열렸을 때만"
-    # 조건부로 넣으면 그 조건과 무관한 팝업에는 안 걸린다).
-    _inject_global_dialog_close_css()
 
     inject_app_haptic()
     init_zero_phone_tables()
