@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { router, useLocalSearchParams } from 'expo-router';
+import { HEARTBEAT_MS, touchLastActive } from '@/utils/session-timeout';
 
 /**
  * 로또 용지 QR 촬영 화면 — "안티조합·액땜조합" 진입 시 streamlit-webview.tsx의
@@ -18,16 +19,28 @@ export default function QrScanScreen() {
   const [showIntro, setShowIntro] = useState(true);
   const [torchOn, setTorchOn] = useState(false);
   const scannedRef = useRef(false);
-  // 2026-09-12(사용자 신고 — 카메라는 열리지만 QR 인식이 안 됨): 그동안의
-  // 수정 이력은 전부 "버튼→카메라 화면 진입" 트리거 경로였고, 정작 인식
-  // 자체를 돕는 설정은 하나도 없었다. 로또 용지 QR은 5줄 배당 정보까지
-  // 들어가면 최대 60여 자를 인코딩해 모듈이 촘촘한 편이라 기본 줌(0, 즉
-  // 미확대)·손전등 꺼짐 상태로는 실제 사용 거리에서 모듈을 못 읽거나,
-  // 코팅된 복권 용지 특유의 표면 반사·저조도에서 인식이 실패하기 쉽다.
-  // expo-camera 공식 문서(v54) 기준 zoom(0~1)·enableTorch를 명시적으로
-  // 켜서 두 요인을 모두 완화한다 — autofocus는 iOS 전용 prop이라 안드로이드엔
-  // 효과가 없어 여기서 다루지 않는다.
-  const QR_SCAN_ZOOM = 0.3;
+  // 2026-09-12(사용자 실측 — "거리조절 시간이 오래 걸림", "예전엔 살짝 스치기만
+  // 해도 스캔됐다"): 카메라 인식이 안 된다는 신고에 대응해 넣었던 기본 줌(0.3)이
+  // 오히려 화각을 좁혀 원래는 관대했던 거리 허용 범위를 좁힌 것으로 실측
+  // 확인됐다 — 줌은 되돌린다(손전등만 남김). expo-camera의 zoom은 광학이
+  // 아니라 디지털(크롭+업스케일)이라, 확대해도 실제 해상도가 늘지 않고
+  // 화각만 줄어 "정확한 거리"를 더 좁은 범위로 강제하는 역효과만 냈다.
+  //
+  // 2026-09-12(사용자 신고 — QR스캔 눌렀는데 로그인 상태인데도 로그인이
+  // 안 됐다고 나옴): 진짜 원인은 로그인 체크 로직이 아니라 세션 타임아웃이었다.
+  // streamlit-webview.tsx는 마운트돼 있는 동안만 20초마다 touchLastActive()로
+  // "마지막 활동 시각"을 갱신하는데, QR 촬영 화면(이 파일)으로 넘어오면 그
+  // WebView 컴포넌트 자체가 언마운트되면서 하트비트가 멈춘다. 위 거리조절
+  // 문제 때문에 이 화면에서 3분(BACKGROUND_LOGOUT_MS) 넘게 머물면, 웹뷰로
+  // 돌아가는 순간 "3분 넘게 활동 없었음"으로 잘못 판정돼 진짜로 자동 로그아웃
+  // 처리됐다 — 유저는 계속 앱을 쓰고 있었는데도. 이 화면도 열려있는 동안
+  // 똑같이 하트비트를 찍어서, 카메라로 시간을 보내는 동안은 비활동으로
+  // 안 잡히게 한다.
+  useEffect(() => {
+    touchLastActive();
+    const heartbeat = setInterval(touchLastActive, HEARTBEAT_MS);
+    return () => clearInterval(heartbeat);
+  }, []);
   // 화면에 그린 금색 사각형 가이드는 안내용일 뿐, expo-camera의 바코드 인식은 카메라
   // 시야 전체를 스캔한다 — 가이드 밖의 QR(예: 테이블에 여러 장 놓인 다른 티켓)도
   // 그대로 인식돼버리는 한계가 있다. bounds 좌표로 가이드 사각형 안쪽만 채택하도록
@@ -86,7 +99,6 @@ export default function QrScanScreen() {
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
-        zoom={QR_SCAN_ZOOM}
         enableTorch={torchOn}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={handleBarcodeScanned}
