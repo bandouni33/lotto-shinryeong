@@ -25,32 +25,6 @@ def _reload_if_stale(module):
         module._loaded_mtime = mtime
     return module
 
-# 2026-09-13(사용자 신고 — 안티/액땜조합의 QR스캔·저장내역 로그인창만 다른
-# 화면과 다른 "구형버전"으로 보임): 위 _reload_if_stale는 지금까지 화면
-# 모듈(page_thunder 등) 자신에게만 걸려 있었다. 그런데 로그인 배너·저장내역
-# 패널의 실제 코드는 page_hedge.py가 아니라 wallet_ui.py/combo_history_ui.py/
-# login_gate.py에 있고, 이 파일들은 각 화면 안에서 `from wallet_ui import
-# login_gate`처럼 함수 몸통 안에서 매번 새로 import되지만, 그 import문은
-# sys.modules에 이미 캐시된 모듈을 그대로 참조할 뿐 파일이 바뀌었다고 그
-# 모듈 자체를 다시 읽어들이진 않는다 — importlib.reload()를 직접 부르지
-# 않는 한, 프로세스가 한 번 뜬 이후로는 이 공용 파일들을 고쳐 배포해도
-# "화면 모듈은 최신인데 그 화면이 쓰는 공용 로그인/저장내역 코드는 예전
-# 그대로"인 상태로 계속 남을 수 있다(신고 증상과 정확히 일치). 화면 모듈과
-# 동일하게 이 공용 UI 모듈들도 매 렌더 시작 시 최신 여부를 확인해둔다.
-def _refresh_shared_ui_modules() -> None:
-    import wallet_ui as _wallet_ui
-    import combo_history_ui as _combo_history_ui
-    import login_gate as _login_gate
-    import legal_notices as _legal_notices
-
-    _reload_if_stale(_wallet_ui)
-    _reload_if_stale(_combo_history_ui)
-    _reload_if_stale(_login_gate)
-    _reload_if_stale(_legal_notices)
-
-
-_refresh_shared_ui_modules()
-
 if st.session_state.get("is_admin", False):
     with st.sidebar:
         st.markdown("## ⚙️ 관리자 제어 센터")
