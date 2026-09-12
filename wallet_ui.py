@@ -18,7 +18,6 @@ from auth_providers import (
 )
 from legal_notices import (
     AUTH_CONSENT_ITEMS,
-    AUTH_PROMPT_SUBTITLE,
     NOTICE_VERSION,
     PRICING,
     format_advanced_points_notice,
@@ -431,12 +430,6 @@ def render_auth_banner() -> None:
         _scroll_to_top_once()
     _inject_auth_banner_css()
     _render_auth_banner_form()
-
-
-def auth_dialog() -> bool:
-    """하위 호환 — 배너로 대체됨."""
-    open_auth_banner(reason=AUTH_PROMPT_SUBTITLE)
-    return False
 
 
 def _render_charge_actions(member_id: int) -> None:
@@ -882,14 +875,6 @@ def _my_info_dialog(*, zp_uid: str | None, member_id: int | None) -> None:
     if st.button("닫기", key="my_info_dialog_close_btn", use_container_width=True):
         st.session_state["my_info_dialog_open"] = False
         st.rerun()
-
-
-def require_auth_or_prompt() -> int | None:
-    mid = current_member_id()
-    if mid:
-        return mid
-    open_auth_banner(reason="이 기능을 이용하려면 간편인증이 필요합니다.")
-    return None
 
 
 def deduct_after_result(

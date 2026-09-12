@@ -4,7 +4,6 @@ NOTICE_VERSION = "v1.1-draft"
 
 # ── 간편인증 유도 ──
 AUTH_PROMPT_TITLE = "간편인증"
-AUTH_PROMPT_SUBTITLE = "안전한 간편인증으로 로또신령을 시작하세요"
 AUTH_PROMPT_BODY = """
 최초 간편인증 완료 시 적립금 500P를 지급해 드립니다.
 적립금은 현금 환불·전환이 불가함을 확인해 주세요.
