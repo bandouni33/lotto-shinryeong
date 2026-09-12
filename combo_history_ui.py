@@ -20,7 +20,18 @@ RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
 def render_login_required_notice() -> None:
     """로그인 안내창(login_gate)을 이미 한 번 본 뒤, 로그인 안 한 채로 막힌 기능을
     또 눌렀을 때 그 자리에 남기는 한 줄. 저장내역·QR스캔 등 전 화면이 똑같이 쓴다
-    (문구는 login_gate.GATE_INLINE_HINT — 거기만 고치면 일괄 반영)."""
+    (문구는 login_gate.GATE_INLINE_HINT — 거기만 고치면 일괄 반영).
+
+    2026-09-12(사용자 지시 — "군더더기 일체 안나오게"): 로그인 배너가 지금
+    막 열려 있는 상태라면 이 문구를 또 띄우지 않는다 — 배너 카드 자체가 이미
+    같은 메시지를 담고 있어서, 같이 뜨면 화면에 "로그인 필요"가 두 번
+    중복돼 보이는 군더더기였다(실제 배포본 확인). 배너를 닫은 뒤(×) 남는
+    빈 자리에만 이 한 줄이 의미가 있다."""
+    from wallet_ui import AUTH_BANNER_OPEN
+
+    if st.session_state.get(AUTH_BANNER_OPEN):
+        return
+
     from login_gate import GATE_INLINE_HINT
 
     st.markdown(

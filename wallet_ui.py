@@ -212,36 +212,42 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
     background: rgba(13, 21, 40, 0.6) !important;
     border: 1px solid #2a3a60 !important;
     border-radius: 10px !important;
-    padding: 18px 10px 6px 10px !important;
-    margin: 0 auto 6px auto !important;
+    padding: 10px 10px 6px 10px !important;
+    margin: 10px auto 6px auto !important;
     max-width: 250px !important;
 }
 .auth-banner-consent-item {
     color: #e8eef2 !important;
-    font-size: 11.5px !important;
-    line-height: 1.35 !important;
-    margin: 2px 0 !important;
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+    margin: 3px 0 !important;
 }
 /* 닫기(×)는 st.columns가 아니라 절대위치로 앵커한다 — 모바일 폭(대략
    640px 미만)에서는 Streamlit 컬럼이 세로로 쌓이는 기본 반응형 동작 때문에,
    이 배너의 실제 사용 환경(좁은 웹뷰)에서 columns([11,1])로 만들면 ×가
-   우측 상단이 아니라 자기 줄 가운데에 나타나는 문제가 실측 확인됨. */
+   우측 상단이 아니라 자기 줄 가운데에 나타나는 문제가 실측 확인됨.
+   2026-09-12(사용자 지시 — 재수정): 카드 안쪽에 자리를 차지하고 앉아있지
+   않도록, 카드 테두리 바깥쪽 모서리에 살짝 걸치는 작은 원형 배지로 뺀다
+   (다른 사이트의 통상적인 모달 닫기 배지 위치 참고) — 카드 자체의 위쪽
+   패딩도 그만큼 다시 줄였다(margin-top으로 배지가 들어갈 여유만 확보). */
 .st-key-auth_banner_close_x {
     position: absolute !important;
-    top: 2px !important;
-    right: 2px !important;
+    top: -10px !important;
+    right: -8px !important;
     width: auto !important;
     z-index: 5 !important;
 }
 .st-key-auth_banner_close_x button {
-    background: transparent !important;
-    color: #78909c !important;
-    border: none !important;
+    background: #2a3a60 !important;
+    color: #c7d3e0 !important;
+    border: 1px solid #45597e !important;
+    border-radius: 50% !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
     padding: 0 !important;
-    min-height: 18px !important;
-    height: 18px !important;
-    width: 18px !important;
-    font-size: 10px !important;
+    min-height: 22px !important;
+    height: 22px !important;
+    width: 22px !important;
+    font-size: 11px !important;
     line-height: 1 !important;
 }
 .st-key-auth_banner_kakao {
@@ -260,6 +266,47 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
 </style>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def _force_kakao_link_same_tab() -> None:
+    """st.link_button은 Streamlit 자체 사양상 항상 새 탭(target="_blank")으로
+    열리고, 이 옵션을 끌 파라미터가 없다(공식 문서: "a new tab will be opened
+    ... This will create a new session for the user"). 문제는 카카오 로그인이
+    그 새 탭 안에서 끝나버리면, 원래 있던 탭의 세션은 로그인 사실을 전혀
+    모른 채 그대로 남아있다는 것 — 유저가 로그인 후 원래 탭으로 돌아오면
+    배너가 그대로 떠 있어 "카카오로 시작하기를 눌러도 기존 로그인창이 또
+    보인다"는 신고로 이어졌다(2026-09-12, 실제 배포본에서 재현 확인).
+    렌더된 <a> 태그의 target 속성만 제거해 같은 탭에서 이동하게 만든다 —
+    페이지 복귀(return_page)를 위해 state에 인코딩해두는 다른 로직은 전혀
+    건드리지 않는다.
+
+    2026-09-12: 처음엔 querySelectorAll을 한 번만 실행했는데, 이 iframe
+    스크립트가 실제 <a> 태그보다 먼저 실행돼(components.html이 st.link_button
+    보다 빨리 마운트되는 타이밍 경쟁) target이 그대로 남는 경우가 실측
+    확인됐다 — MutationObserver로 해당 링크가 나타날 때까지 기다렸다가
+    지운다."""
+    components.html(
+        """<script>
+        (function() {
+            try {
+                var doc = window.top.document;
+                function strip() {
+                    var links = doc.querySelectorAll('.st-key-auth_banner_kakao a[target]');
+                    if (links.length) {
+                        links.forEach(function(a) { a.removeAttribute('target'); });
+                        return true;
+                    }
+                    return false;
+                }
+                if (strip()) return;
+                var obs = new MutationObserver(function() { if (strip()) obs.disconnect(); });
+                obs.observe(doc.body, {childList: true, subtree: true});
+                setTimeout(function() { obs.disconnect(); }, 5000);
+            } catch (e) {}
+        })();
+        </script>""",
+        height=0,
     )
 
 
@@ -358,6 +405,7 @@ def _render_auth_banner_form() -> None:
                     use_container_width=True,
                     type="primary",
                 )
+                _force_kakao_link_same_tab()
     elif _dev_mock_enabled():
         with st.container(key="auth_banner_kakao"):
             if st.button(
