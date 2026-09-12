@@ -369,6 +369,48 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_close_x {
     )
 
 
+def _inject_global_dialog_close_css() -> None:
+    """st.dialog()로 띄우는 모든 팝업(적립금 이용 안내·적립금 부족·적립금
+    충전·고급필터 구독·내정보 등)의 닫기(×) — 지금까지 Streamlit 기본
+    모양 그대로(카드 안쪽에 작게 박힌 흰 사각 버튼) 방치돼 있어서, 카드
+    모서리에 살짝 걸치는 원형 배지로 통일해둔 로그인 안내창(위
+    .st-key-auth_banner_close_x)과 화면마다 닫기 버튼이 서로 다르게
+    보이는 원인이었다(사용자 지적: "각 창마다 일관되지 않음").
+
+    st.dialog 팝업은 종류마다(내용도 함수도 다 다름) 각각 따로 고칠 게
+    아니라, 이 앱의 모든 st.dialog가 예외 없이 공유하는 단 하나의 구조
+    — data-testid="stDialog" 래퍼 안의 aria-label="Close" 버튼 — 에만
+    스타일을 걸면 된다. 둘 다 Streamlit이 보장하는 안정적인 속성(해시
+    클래스명이 아님)이라 버전이 바뀌어도 잘 안 깨진다. 이 함수 하나만
+    고치면 위에 나열한 팝업 전부에 동시 반영된다(로컬에서 "내정보"
+    다이얼로그로 실측 확인: 닫기 버튼의 바로 부모 DIV가 이미 카드
+    자신이자 position:relative라, 버튼에 position:absolute만 줘도 다른
+    조상 앵커링 문제 없이 카드 자신 기준으로 정확히 앵커된다)."""
+    st.markdown(
+        """
+<style>
+div[data-testid="stDialog"] button[aria-label="Close"] {
+    position: absolute !important;
+    top: -11px !important;
+    right: -11px !important;
+    background: #2a3a60 !important;
+    color: #c7d3e0 !important;
+    border: 1px solid #45597e !important;
+    border-radius: 50% !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    padding: 0 !important;
+    z-index: 10 !important;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _force_kakao_link_same_tab() -> None:
     """st.link_button은 Streamlit 자체 사양상 항상 새 탭(target="_blank")으로
     열리고, 이 옵션을 끌 파라미터가 없다(공식 문서: "a new tab will be opened
@@ -994,6 +1036,13 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     # 안 바뀌어야, 방금 dismissed 이벤트와 무관한 진짜 새 클릭까지 실수로
     # 삼켜버리지 않는다).
     st.session_state[AUTH_BANNER_JUST_DISMISSED] = st.session_state.pop(AUTH_BANNER_DISMISSED, False)
+
+    # render_wallet_bar()는 페이지 종류와 무관하게 매 rerun마다 항상 불리므로,
+    # 어떤 st.dialog 팝업이 나중에 화면 아래쪽 어디서 열리든(로그인 여부와도
+    # 무관 — 적립금 안내·내정보 등은 로그인 후에만 열림) 이 CSS가 이미
+    # 적용돼 있도록 여기서 무조건 주입한다(로그인 안내창처럼 "열렸을 때만"
+    # 조건부로 넣으면 그 조건과 무관한 팝업에는 안 걸린다).
+    _inject_global_dialog_close_css()
 
     inject_app_haptic()
     init_zero_phone_tables()
