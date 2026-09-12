@@ -722,15 +722,13 @@ def render():
                 st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
         if qr_clicked:
             # 2026-09-10: 로그인 안 한 상태로 QR스캔을 누르면 통합 로그인 안내창
-            # (login_gate)을 띄우고 스캔은 진행하지 않는다.
+            # (login_gate)을 띄우고 스캔은 진행하지 않는다. login_gate가 안내창을
+            # 새로 열 때는 내부에서 바로 st.rerun()이 걸리므로(다른 화면의
+            # 조합시작 버튼들과 동일한 패턴), False 분기는 따로 처리하지 않는다.
             from wallet_ui import login_gate
 
             if login_gate():
                 _fire_qr_scan_trigger()
-            else:
-                from combo_history_ui import render_login_required_notice
-
-                render_login_required_notice()
     st.markdown(
         '<div class="hedge-mode-desc">'
         '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'

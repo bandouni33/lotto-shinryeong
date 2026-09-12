@@ -161,10 +161,6 @@ def _resume_after_auth() -> None:
         st.session_state["hedge_pending_count"] = int(data.get("count", 5))
     elif resume == "open_tarot_dialog":
         st.session_state["open_tarot_dialog"] = True
-    elif resume == "af_show_step1_points":
-        st.session_state["af_show_step1_points"] = True
-    elif resume == "af_show_step2_points":
-        st.session_state["af_show_step2_points"] = True
     elif resume == "wallet_show_charge":
         st.session_state["wallet_show_charge"] = True
     elif resume == "my_info_dialog":

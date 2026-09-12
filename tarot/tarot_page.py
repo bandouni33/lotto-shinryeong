@@ -347,14 +347,11 @@ def _render_extra_draw_gate():
     st.info("오늘 무료 뽑기를 이미 사용했어요. 적립금으로 한 번 더 뽑을 수 있어요.")
 
     if st.button("✨ 50P로 한 번 더 뽑기", type="primary", use_container_width=True, key="tarot_extra_draw_btn"):
-        from wallet_ui import ensure_member_or_banner
-
-        if ensure_member_or_banner(
-            resume="open_tarot_dialog",
-            reason="타로 추가 뽑기를 위해 간편인증이 필요합니다.",
-        ):
-            st.session_state["open_tarot_dialog"] = True
-            st.rerun()
+        # render()의 페이지 전체 login_gate(dismiss_redirect="main")를 이미
+        # 통과한 뒤에만 이 화면에 도달하므로, 여기서 또 로그인 여부를 확인할
+        # 필요가 없다(2026-09-12 전체 게이트 도입 이후 여긴 항상 로그인 상태).
+        st.session_state["open_tarot_dialog"] = True
+        st.rerun()
 
     if st.session_state.get("open_tarot_dialog"):
         from wallet_ui import points_notice_dialog
