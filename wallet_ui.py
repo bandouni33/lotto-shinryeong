@@ -70,11 +70,27 @@ AUTH_RESUME_FLAG = "auth_resume_flag"
 AUTH_RESUME_DATA = "auth_resume_data"
 AUTH_BANNER_DISMISSED = "auth_banner_dismissed"
 AUTH_BANNER_JUST_DISMISSED = "auth_banner_just_dismissed"
+AUTH_BANNER_DISMISS_REDIRECT = "auth_banner_dismiss_redirect"
 
 
-def open_auth_banner(*, reason: str = "", resume: str | None = None, resume_data: dict | None = None) -> None:
+def open_auth_banner(
+    *,
+    reason: str = "",
+    resume: str | None = None,
+    resume_data: dict | None = None,
+    dismiss_redirect: str | None = None,
+) -> None:
     st.session_state[AUTH_BANNER_OPEN] = True
     st.session_state[AUTH_BANNER_REASON] = reason or "이 기능을 이용하려면 간편인증이 필요합니다."
+    # 2026-09-12(사용자 지시): 타로·행운수처럼 페이지 전체가 로그인 없인 아무
+    # 의미가 없는 화면에서는, ×로 닫아도 그 자리에 "로그인이 필요합니다"라는
+    # 빈 화면만 남아 자동구매 등 다른(부분만 막힌) 화면과 경험이 달라 보였다
+    # ("통일시켰다더니 왜 다르냐"는 지적). dismiss_redirect가 있으면 ×를
+    # 눌렀을 때 배너만 닫는 게 아니라 그 페이지로 이동시킨다(보통 "main").
+    if dismiss_redirect:
+        st.session_state[AUTH_BANNER_DISMISS_REDIRECT] = dismiss_redirect
+    else:
+        st.session_state.pop(AUTH_BANNER_DISMISS_REDIRECT, None)
     # 2026-09-12(중대 버그 수정 — 사용자 지시로 원인 확인): resume을 "있을 때만
     # 덮어쓰기"로 해뒀더니, 예전에 다른 기능(예: 번개조합 "조합시작")에서 배너를
     # 열었다가 로그인 없이 [닫기]로 닫은 resume이 세션에 그대로 남아있었다. 그
@@ -108,7 +124,13 @@ def close_auth_banner() -> None:
     # 묵은 resume이 갑자기 실행되는 사고로 이어진다(위 open_auth_banner 주석
     # 참고). 정상 로그인 성공 경로(_finish_auth_success)는 이미
     # _resume_after_auth()에서 먼저 pop해 소비하므로 여기서 또 지워도 안전하다.
-    for key in (AUTH_BANNER_OPEN, AUTH_BANNER_REASON, AUTH_RESUME_FLAG, AUTH_RESUME_DATA):
+    for key in (
+        AUTH_BANNER_OPEN,
+        AUTH_BANNER_REASON,
+        AUTH_RESUME_FLAG,
+        AUTH_RESUME_DATA,
+        AUTH_BANNER_DISMISS_REDIRECT,
+    ):
         st.session_state.pop(key, None)
     # 2026-09-12(사용자 신고 — × 눌러도 배너가 안 사라짐): 타로·행운수처럼
     # 페이지 전체를 매 렌더마다 무조건 login_gate()로 막는 화면에서는, ×로
@@ -170,7 +192,12 @@ def _testing_period_active() -> bool:
     return _dev_mock_enabled() and not kakao_configured()
 
 
-def login_gate(*, resume: str | None = None, resume_data: dict | None = None) -> bool:
+def login_gate(
+    *,
+    resume: str | None = None,
+    resume_data: dict | None = None,
+    dismiss_redirect: str | None = None,
+) -> bool:
     """로그인이 필요한 기능의 **단일 게이트**. 로그인됐으면 True(기능 진행).
     아니면 통합 안내창(login_gate.py 문구)을 띄우고 False.
 
@@ -202,7 +229,7 @@ def login_gate(*, resume: str | None = None, resume_data: dict | None = None) ->
         return False
     if st.session_state.get(AUTH_BANNER_JUST_DISMISSED):
         return False
-    open_auth_banner(resume=resume, resume_data=resume_data)
+    open_auth_banner(resume=resume, resume_data=resume_data, dismiss_redirect=dismiss_redirect)
     st.rerun()
     return False
 
@@ -231,16 +258,33 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
    겹이 겹쳐 보이는("구구절절"스러운) 문제가 실측 확인됨. 조상 전체가 아니라
    이 카드 자신에게만 스타일이 걸리도록 st.container(key=...) 고유 클래스로
    정확히 한 겹만 지정한다. */
-.st-key-auth_banner_box {
+/* 2026-09-12(사용자 신고 — 3번째 줄이 카카오 버튼에 가려짐, 타로에서 특히
+   심함): 닫기(×)를 이 박스 "안"의 첫 자식으로 넣었더니, position:absolute라
+   화면엔 안 보여도 여전히 flex 자식 1개로 카운트돼 Streamlit 기본
+   gap(16px)이 다음 형제(첫 줄) 앞에 그대로 붙었다 — 실측: 텍스트 시작점이
+   padding-top보다 20px 더 아래였고, 그만큼 박스 바닥을 넘어 3번째 줄이
+   버튼과 겹쳤다(직접 그 자식 노드를 DOM에서 제거해 실측 확인, gap만 0으로
+   죽이면 이번엔 Streamlit 기본 음수 마진과 충돌해 줄끼리 겹침). 근본적으로
+   닫기(×)를 카드 자신의 flex 자식으로 두지 않도록 바깥 래퍼로 뺀다 —
+   래퍼가 position:relative만 담당하고, 카드는 원래처럼 텍스트 3줄만 자식으로
+   가진다. */
+.st-key-auth_banner_wrap {
     position: relative !important;
-    background: rgba(13, 21, 40, 0.6) !important;
-    border: 1px solid #2a3a60 !important;
-    border-radius: 10px !important;
-    padding: 10px 10px 6px 10px !important;
-    margin: 10px auto 6px auto !important;
     max-width: 325px !important; /* 2026-09-12(사용자 지시): 3줄이 각각 한 줄로
        보이도록 실측(가장 긴 줄 실제 필요폭 약 294px + 좌우 패딩 20px + 여유)
        기준으로 확보 */
+    margin: 10px auto 0 auto !important;
+}
+.st-key-auth_banner_box {
+    background: rgba(13, 21, 40, 0.6) !important;
+    border: 1px solid #2a3a60 !important;
+    border-radius: 10px !important;
+    padding: 10px 10px 22px 10px !important; /* 2026-09-12: 이 컨테이너의
+       auto-height 계산이 실제 텍스트 줄 높이보다 10px가량 작게 잡히는
+       Streamlit 내부 레이아웃 특성이 실측 확인됨(원인 불문, 여러 겹의
+       Streamlit 내부 wrapper 중 하나가 줄임) — 근본 셀렉터를 계속 뒤지는
+       대신, 바닥 패딩을 넉넉히 키워 그 어긋남을 확실히 흡수한다. */
+    margin: 0 0 6px 0 !important;
 }
 .auth-banner-consent-item {
     white-space: nowrap !important;
@@ -255,12 +299,12 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
    우측 상단이 아니라 자기 줄 가운데에 나타나는 문제가 실측 확인됨.
    2026-09-12(사용자 지시 — 재수정): 카드 안쪽에 자리를 차지하고 앉아있지
    않도록, 카드 테두리 바깥쪽 모서리에 살짝 걸치는 작은 원형 배지로 뺀다
-   (다른 사이트의 통상적인 모달 닫기 배지 위치 참고) — 카드 자체의 위쪽
-   패딩도 그만큼 다시 줄였다(margin-top으로 배지가 들어갈 여유만 확보). */
+   (다른 사이트의 통상적인 모달 닫기 배지 위치 참고). 위치 기준은 이제
+   .st-key-auth_banner_wrap(카드 바깥 래퍼)이다. */
 .st-key-auth_banner_close_x {
     position: absolute !important;
-    top: -10px !important;
-    right: -8px !important;
+    top: -14px !important;
+    right: -12px !important;
     width: auto !important;
     z-index: 5 !important;
 }
@@ -399,12 +443,13 @@ def _render_auth_banner_form() -> None:
     from login_gate import GATE_BUTTON, GATE_LINES
 
     dismissed_clicked = False
-    with st.container(key="auth_banner_box"):
+    with st.container(key="auth_banner_wrap"):
         with st.container(key="auth_banner_close_x"):
             if st.button("✕", key="auth_banner_close_x_btn"):
                 dismissed_clicked = True
-        for item in GATE_LINES:
-            st.markdown(f'<p class="auth-banner-consent-item">· {html.escape(item)}</p>', unsafe_allow_html=True)
+        with st.container(key="auth_banner_box"):
+            for item in GATE_LINES:
+                st.markdown(f'<p class="auth-banner-consent-item">· {html.escape(item)}</p>', unsafe_allow_html=True)
 
     if dismissed_clicked:
         # 2026-09-12(사용자 신고 — × 잔재): st.rerun()을 중첩된 st.container(...)
@@ -415,9 +460,19 @@ def _render_auth_banner_form() -> None:
         # 웹뷰만의 문제가 아니라 일반 데스크톱 브라우저에서도 동일 재현).
         # 클릭 여부만 안에서 기록해두고, rerun은 모든 with 블록을 정상적으로
         # 빠져나온 뒤 여기서 호출한다.
+        #
+        # 2026-09-12(사용자 지시 — 타로 등 전체 게이트 화면 대응): close_auth_
+        # banner()가 지우기 전에 dismiss_redirect를 먼저 읽어둔다 — 타로·
+        # 행운수처럼 페이지 전체가 로그인 없인 빈 화면뿐인 곳은, ×를 눌렀을 때
+        # 그 자리에 "로그인이 필요합니다"만 남기지 않고 메인으로 돌려보낸다
+        # (자동구매처럼 부분만 막힌 화면은 dismiss_redirect가 없어 그 자리에
+        # 그대로 남는다 — 동작 차이 없음).
+        redirect_page = st.session_state.get(AUTH_BANNER_DISMISS_REDIRECT)
         close_auth_banner()
         st.session_state.pop(AUTH_RESUME_FLAG, None)
         st.session_state.pop(AUTH_RESUME_DATA, None)
+        if redirect_page:
+            st.query_params["page"] = redirect_page
         st.rerun()
 
     return_page = st.query_params.get("page", "main")

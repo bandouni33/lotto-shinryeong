@@ -416,7 +416,11 @@ def render():
     # 그대로 있어 통일한다. 로그인 안내는 무조건 통합 login_gate로만.
     from wallet_ui import login_gate
 
-    if not login_gate():
+    # 2026-09-12(사용자 지시): 타로는 페이지 전체가 로그인 없인 빈 화면뿐이라,
+    # ×로 닫아도 그 자리에 "로그인이 필요합니다"만 덩그러니 남으면 자동구매
+    # 등 부분 게이트 화면과 경험이 달라 보인다("통일시켰다더니 왜 다르냐"는
+    # 지적) — ×를 누르면 메인 화면으로 돌려보낸다.
+    if not login_gate(dismiss_redirect="main"):
         from combo_history_ui import render_login_required_notice
 
         render_login_required_notice()

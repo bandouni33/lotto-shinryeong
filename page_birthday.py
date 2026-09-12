@@ -158,7 +158,11 @@ def render():
     # 저장·조회되게 한다(로그인 안내는 통합 login_gate로만 — 사용자 지시).
     from wallet_ui import login_gate
 
-    if not login_gate():
+    # 2026-09-12(사용자 지시 — 타로와 동일하게 적용): 이 화면도 전체가 로그인
+    # 없인 빈 화면뿐이라, ×로 닫아도 그 자리에 "로그인이 필요합니다"만 남으면
+    # 자동구매 등 부분 게이트 화면과 경험이 달라 보인다 — ×를 누르면 메인
+    # 화면으로 돌려보낸다.
+    if not login_gate(dismiss_redirect="main"):
         from combo_history_ui import render_login_required_notice
 
         render_login_required_notice()
