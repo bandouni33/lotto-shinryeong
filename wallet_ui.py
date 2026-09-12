@@ -239,21 +239,30 @@ def ensure_member_or_banner(*, resume: str | None = None, reason: str = "", resu
 def _inject_auth_banner_css() -> None:
     st.markdown(
         """
-<div class="lotto-auth-banner-marker" aria-hidden="true"></div>
 <style>
-div[data-testid="stVerticalBlock"]:has(> div > .lotto-auth-banner-marker),
-div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
+/* 2026-09-13(사용자 실기기 신고 — 로그인창이 페이지 콘텐츠와 겹쳐 보이고,
+   심한 경우 번개조합 화면에서 카카오 버튼이 아예 눌리지 않음): 실 배포
+   사이트를 직접 열어 DOM을 실측해 원인 확정. 예전엔 이 sticky 규칙을
+   `:has(.lotto-auth-banner-marker)`로 걸었는데, CSS :has()는 "가장 가까운
+   조상 1개"가 아니라 마커를 포함하는 **모든** 조상에 매칭된다 — 마커가
+   페이지 최상단에 거의 독립적으로 떠 있는 요소라, 이 선택자가 실제로는
+   메인 화면 전체 콘텐츠(잔액바부터 번호판·버튼 그리드까지 전부)를 감싸는
+   최상위 블록까지 잡아버렸다(실측: 그 블록 높이가 1144px — 사실상 페이지
+   전체). 그 블록 전체가 position:sticky + z-index:100이 되면서, 타로처럼
+   배너 하나만 있는 화면(다른 콘텐츠가 없어 문제가 안 보임 — 이게 "타로는
+   멀쩡하다"는 인상의 이유)과 달리 자동구매·번개조합·메인처럼 배너 아래
+   실제 콘텐츠가 있는 화면에서는 카드가 콘텐츠와 겹쳐 보이거나, 스크롤/rerun
+   시점에 따라 페이지의 다른 클릭 가능 영역을 이 sticky 블록이 가려 버튼이
+   안 눌리는 것까지 재현 가능한 원인이었다. 이제 배너 전용 컨테이너
+   (.st-key-auth_banner_root, 아래 render_auth_banner에서 그 하나만 감쌈)에
+   직접 걸어서, 배너 자기 자신 말고는 절대 sticky/z-index 영향을 안 받게
+   한다. */
+.st-key-auth_banner_root {
     position: sticky !important;
     top: 0 !important;
     z-index: 100 !important;
     margin-bottom: 12px !important;
 }
-/* 2026-09-12(사용자 지시 — 재수정): :has(.auth-banner-consent-marker)로
-   잡으면 이 마커를 포함하는 조상 stVerticalBlock 전부(맨 위 sticky 전체폭
-   래퍼까지)에 카드 배경·테두리·max-width가 다 걸려서, 폭이 다른 배경 두
-   겹이 겹쳐 보이는("구구절절"스러운) 문제가 실측 확인됨. 조상 전체가 아니라
-   이 카드 자신에게만 스타일이 걸리도록 st.container(key=...) 고유 클래스로
-   정확히 한 겹만 지정한다. */
 /* 2026-09-12(사용자 신고 — 3번째 줄이 카카오 버튼에 가려짐, 타로에서 특히
    심함): 닫기(×)를 이 박스 "안"의 첫 자식으로 넣었더니, position:absolute라
    화면엔 안 보여도 여전히 flex 자식 1개로 카운트돼 Streamlit 기본
@@ -264,7 +273,14 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
    닫기(×)를 카드 자신의 flex 자식으로 두지 않도록 바깥 래퍼로 뺀다 —
    래퍼가 position:relative만 담당하고, 카드는 원래처럼 텍스트 3줄만 자식으로
    가진다. */
-.st-key-auth_banner_wrap {
+div[data-testid="stVerticalBlock"].st-key-auth_banner_wrap {
+    /* 2026-09-13(배포본 실측 — 클래스 단일 선택자로는 gap:0이 안 먹힘 확인):
+       flex-direction 때와 같은 원인. Streamlit이 stVerticalBlock의 기본
+       gap을 [direction] 속성 선택자를 포함한 더 구체적인 !important 규칙으로
+       걸어두고 있어서, .st-key-auth_banner_wrap 클래스 하나만으로는 져서
+       실제 배포 사이트에서 gap이 0이 아니라 5.6px로 남아있는 게 getComputedStyle로
+       확인됐다(로컬 desktop 브라우저에서는 우연히 이 차이가 안 드러났음).
+       data-testid 속성까지 선택자에 포함해 specificity를 맞춘다. */
     position: relative !important;
     max-width: 325px !important; /* 2026-09-12(사용자 지시): 3줄이 각각 한 줄로
        보이도록 실측(가장 긴 줄 실제 필요폭 약 294px + 좌우 패딩 20px + 여유)
@@ -656,7 +672,7 @@ def _cleanup_stale_auth_banner_dom() -> None:
         (function() {
             try {
                 var doc = window.top.document;
-                doc.querySelectorAll('.st-key-auth_banner_wrap').forEach(function(el) {
+                doc.querySelectorAll('.st-key-auth_banner_wrap, .st-key-auth_banner_root').forEach(function(el) {
                     el.remove();
                 });
             } catch (e) {}
@@ -681,7 +697,16 @@ def render_auth_banner() -> None:
     if st.session_state.pop("_auth_banner_scroll_pending", False):
         _scroll_to_top_once()
     _inject_auth_banner_css()
-    _render_auth_banner_form()
+    # 2026-09-13: sticky/z-index를 이 컨테이너(.st-key-auth_banner_root) 하나에만
+    # 걸어서, 배너 아래 실제 페이지 콘텐츠가 있는 화면(자동구매·번개조합·메인
+    # 등)에서 그 콘텐츠까지 함께 sticky가 돼버리는 문제를 없앤다 — 위
+    # _inject_auth_banner_css() 안 CSS 주석 참고. _render_auth_banner_form()이
+    # 내부에서 st.rerun()을 부를 때는 이미 자기 자신의 안쪽 with 블록(auth_
+    # banner_wrap)은 다 빠져나온 뒤라, 이 바깥쪽 한 겹만 걸려 있는 상태 —
+    # 여러 겹이 동시에 풀리며 고아 DOM이 남던 예전 버그(주석 참고)와는 다른
+    # 상황이라 안전하다.
+    with st.container(key="auth_banner_root"):
+        _render_auth_banner_form()
 
 
 def _render_charge_actions(member_id: int) -> None:
