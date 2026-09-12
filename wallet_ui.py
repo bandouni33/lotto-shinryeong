@@ -527,18 +527,37 @@ def _render_auth_banner_form() -> None:
 
 
 def _scroll_to_top_once() -> None:
-    """화면을 최상단으로 1회 스크롤한다 — 화면 아래쪽에서 누른 버튼이 최상단
-    배너를 열 때, 유저가 스크롤하지 않아도 바로 보이게 한다(사용자 지시
-    2026-09-11). components.html iframe sandbox엔 allow-top-navigation이 없어
-    location 이동은 막히지만 scrollTo는 막히지 않는다 — 그래도 기존에 검증된
-    "최상위 문서에 스크립트 심기" 방식을 그대로 재사용해 일관되게 둔다."""
+    """화면을 최상단으로 스크롤한다 — 화면 아래쪽(예: 번개조합 "저장내역")에서
+    누른 버튼이 최상단 배너를 열 때, 유저가 저장내역 창 자리에 그대로 머물러
+    있어 상단에 로그인창이 뜬 걸 못 보고 어리둥절해하는 문제를 막는다(사용자
+    지시 2026-09-11, 2026-09-12 보강). components.html iframe sandbox엔
+    allow-top-navigation이 없어 location 이동은 막히지만 scrollTo는 막히지
+    않는다 — 기존에 검증된 "최상위 문서에 스크립트 심기" 방식을 재사용한다.
+
+    2026-09-12 보강: window.scrollTo 한 번만으로는, 실기기(WebView)에서
+    실제 스크롤 요소가 window가 아니라 Streamlit 내부 컨테이너인 경우
+    안 먹힐 수 있다 — window뿐 아니라 Streamlit이 흔히 쓰는 스크롤 컨테이너
+    후보도 함께 스크롤한다. 배너 DOM이 이 스크립트보다 늦게 붙는 타이밍
+    문제에도 대비해 짧게 몇 번 재시도한다(update-toast에서 이미 쓰던 재시도
+    패턴과 동일)."""
     components.html(
         """
         <script>
         (function() {
             try {
                 var s = window.top.document.createElement('script');
-                s.textContent = "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}";
+                s.textContent = (
+                    "function __ttScroll(){" +
+                    "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){try{window.scrollTo(0,0);}catch(e2){}}" +
+                    "try{['[data-testid=\\"stAppViewContainer\\"]','section.main','[data-testid=\\"stMain\\"]'].forEach(function(sel){" +
+                    "var el=document.querySelector(sel);" +
+                    "if(el){ if(el.scrollTo){el.scrollTo({top:0,behavior:'smooth'});} else {el.scrollTop=0;} }" +
+                    "});}catch(e){}" +
+                    "}" +
+                    "__ttScroll();" +
+                    "var __ttTries=0;" +
+                    "var __ttTimer=window.setInterval(function(){__ttScroll();__ttTries+=1;if(__ttTries>=5)window.clearInterval(__ttTimer);},150);"
+                );
                 window.top.document.head.appendChild(s);
                 s.parentNode.removeChild(s);
             } catch (e) {
