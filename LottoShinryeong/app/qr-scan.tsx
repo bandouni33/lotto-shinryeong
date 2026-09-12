@@ -99,7 +99,17 @@ export default function QrScanScreen() {
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
-        enableTorch={torchOn}
+        // 2026-09-13(사용자 실측 — 손전등 추가 이후 "각도를 바꿔도 전혀 인식 안 됨",
+        // 원래 되던 버전보다 더 나빠짐): 원래 잘 되던 코드와 지금 코드의 실제
+        // 차이는 이 enableTorch prop 하나뿐이었다(줌은 이미 되돌림). 꺼진 상태
+        // (false)여도 이 prop을 "명시적으로" 넘기면 Android 쪽 카메라 세션이
+        // 매번 재구성되면서 QR 인식에 필요한 안정된 캡처 상태가 깨지는 게
+        // expo-camera의 알려진 Android 카메라/토치 관련 이슈들(예: expo/expo
+        // #16520 "flash 켜면 바코드 스캐너 크래시")과 같은 계열로 보인다.
+        // 꺼져 있을 땐 이 prop 자체를 아예 안 넘겨서(원래 코드와 동일한 상태로)
+        // 카메라가 손전등 관련 재구성을 전혀 겪지 않게 하고, 유저가 실제로
+        // 켤 때만 prop을 넣는다.
+        {...(torchOn ? { enableTorch: true } : {})}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={handleBarcodeScanned}
       />
