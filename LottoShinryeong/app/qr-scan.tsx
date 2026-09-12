@@ -16,7 +16,18 @@ export default function QrScanScreen() {
   const targetPage = typeof target === 'string' && target ? target : 'hedge';
   const [permission, requestPermission] = useCameraPermissions();
   const [showIntro, setShowIntro] = useState(true);
+  const [torchOn, setTorchOn] = useState(false);
   const scannedRef = useRef(false);
+  // 2026-09-12(사용자 신고 — 카메라는 열리지만 QR 인식이 안 됨): 그동안의
+  // 수정 이력은 전부 "버튼→카메라 화면 진입" 트리거 경로였고, 정작 인식
+  // 자체를 돕는 설정은 하나도 없었다. 로또 용지 QR은 5줄 배당 정보까지
+  // 들어가면 최대 60여 자를 인코딩해 모듈이 촘촘한 편이라 기본 줌(0, 즉
+  // 미확대)·손전등 꺼짐 상태로는 실제 사용 거리에서 모듈을 못 읽거나,
+  // 코팅된 복권 용지 특유의 표면 반사·저조도에서 인식이 실패하기 쉽다.
+  // expo-camera 공식 문서(v54) 기준 zoom(0~1)·enableTorch를 명시적으로
+  // 켜서 두 요인을 모두 완화한다 — autofocus는 iOS 전용 prop이라 안드로이드엔
+  // 효과가 없어 여기서 다루지 않는다.
+  const QR_SCAN_ZOOM = 0.3;
   // 화면에 그린 금색 사각형 가이드는 안내용일 뿐, expo-camera의 바코드 인식은 카메라
   // 시야 전체를 스캔한다 — 가이드 밖의 QR(예: 테이블에 여러 장 놓인 다른 티켓)도
   // 그대로 인식돼버리는 한계가 있다. bounds 좌표로 가이드 사각형 안쪽만 채택하도록
@@ -75,11 +86,20 @@ export default function QrScanScreen() {
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
+        zoom={QR_SCAN_ZOOM}
+        enableTorch={torchOn}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={handleBarcodeScanned}
       />
       <View style={[styles.overlay, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.topRow}>
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={() => setTorchOn((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeBtnText}>{torchOn ? '🔦' : '💡'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.closeBtn} onPress={() => goToTarget()} activeOpacity={0.7}>
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
@@ -98,7 +118,7 @@ export default function QrScanScreen() {
           <View style={styles.frame} />
         </View>
         <View style={styles.bottomRow}>
-          <Text style={styles.hint}>로또 용지의 QR코드를 사각형 안에 맞춰주세요</Text>
+          <Text style={styles.hint}>QR코드가 사각형을 가득 채우도록 가까이 대주세요{'\n'}(잘 안 되면 💡을 눌러 손전등을 켜보세요)</Text>
           <TouchableOpacity style={styles.linkBtnOnCamera} onPress={() => goToTarget()} activeOpacity={0.7}>
             <Text style={styles.linkBtnOnCameraText}>직접 입력할게요</Text>
           </TouchableOpacity>
@@ -137,7 +157,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
   },
-  topRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  topRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
   closeBtn: {
     width: 40,
     height: 40,
