@@ -201,44 +201,52 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
     z-index: 100 !important;
     margin-bottom: 12px !important;
 }
-.lotto-auth-banner {
-    background: linear-gradient(135deg, #1a2744 0%, #12182b 100%);
-    border: 1px solid #3d5a80;
-    border-radius: 14px;
-    padding: 14px 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-}
-.lotto-auth-banner .auth-banner-title {
-    font-size: 15px;
-    font-weight: 800;
-    color: #e3f2fd;
-    margin: 0 0 4px 0;
-}
-.lotto-auth-banner .auth-banner-sub {
-    font-size: 12px;
-    color: #90caf9;
-    margin: 0 0 10px 0;
-    line-height: 1.45;
-}
-.lotto-auth-banner .auth-banner-bonus {
-    font-size: 12px;
-    color: #ffb300;
-    font-weight: 700;
-    margin: 0 0 10px 0;
-}
-div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) {
-    background: rgba(13, 21, 40, 0.5) !important;
+/* 2026-09-12(사용자 지시 — 재수정): :has(.auth-banner-consent-marker)로
+   잡으면 이 마커를 포함하는 조상 stVerticalBlock 전부(맨 위 sticky 전체폭
+   래퍼까지)에 카드 배경·테두리·max-width가 다 걸려서, 폭이 다른 배경 두
+   겹이 겹쳐 보이는("구구절절"스러운) 문제가 실측 확인됨. 조상 전체가 아니라
+   이 카드 자신에게만 스타일이 걸리도록 st.container(key=...) 고유 클래스로
+   정확히 한 겹만 지정한다. */
+.st-key-auth_banner_box {
+    position: relative !important;
+    background: rgba(13, 21, 40, 0.6) !important;
     border: 1px solid #2a3a60 !important;
     border-radius: 10px !important;
-    padding: 8px 10px 4px 10px !important;
-    margin-bottom: 10px !important;
+    padding: 18px 10px 6px 10px !important;
+    margin: 0 auto 6px auto !important;
+    max-width: 250px !important;
 }
-div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) label p,
 .auth-banner-consent-item {
     color: #e8eef2 !important;
-    font-size: 13.5px !important;
-    line-height: 1.7 !important;
-    margin: 6px 0 !important;
+    font-size: 11.5px !important;
+    line-height: 1.35 !important;
+    margin: 2px 0 !important;
+}
+/* 닫기(×)는 st.columns가 아니라 절대위치로 앵커한다 — 모바일 폭(대략
+   640px 미만)에서는 Streamlit 컬럼이 세로로 쌓이는 기본 반응형 동작 때문에,
+   이 배너의 실제 사용 환경(좁은 웹뷰)에서 columns([11,1])로 만들면 ×가
+   우측 상단이 아니라 자기 줄 가운데에 나타나는 문제가 실측 확인됨. */
+.st-key-auth_banner_close_x {
+    position: absolute !important;
+    top: 2px !important;
+    right: 2px !important;
+    width: auto !important;
+    z-index: 5 !important;
+}
+.st-key-auth_banner_close_x button {
+    background: transparent !important;
+    color: #78909c !important;
+    border: none !important;
+    padding: 0 !important;
+    min-height: 18px !important;
+    height: 18px !important;
+    width: 18px !important;
+    font-size: 10px !important;
+    line-height: 1 !important;
+}
+.st-key-auth_banner_kakao {
+    max-width: 250px !important;
+    margin: 0 auto !important;
 }
 .st-key-auth_banner_kakao a,
 .st-key-auth_banner_kakao button[kind="primary"] {
@@ -248,14 +256,6 @@ div[data-testid="stVerticalBlock"]:has(.auth-banner-consent-marker) label p,
     border-radius: 10px !important;
     min-height: 42px !important;
     font-weight: 700 !important;
-}
-.st-key-auth_banner_close button {
-    background: transparent !important;
-    color: #78909c !important;
-    border: 1px solid #37474f !important;
-    border-radius: 10px !important;
-    min-height: 36px !important;
-    font-size: 13px !important;
 }
 </style>
         """,
@@ -317,18 +317,20 @@ def _fire_kakao_native_login_trigger() -> None:
 
 
 def _render_auth_banner_form() -> None:
-    # 2026-09-10: 문구는 전부 login_gate.py 상수에서 온다(전 화면 일괄 반영).
-    from login_gate import GATE_BUTTON, GATE_LINES, GATE_RETURN_HINT, GATE_TITLE
+    # 2026-09-12(사용자 지시 — "초간단하게 가로·세로 대폭 줄이기"): 제목 문구,
+    # "카카오 로그인 후 이 화면으로 돌아옵니다" 안내, PASS·금융인증서 안내를
+    # 전부 없애고 약관 3줄 + 카카오 버튼만 남긴다. 닫을 방법이 아예 없으면
+    # 로그인 안 한 유저에게 이 배너가 모든 화면 상단에 계속 고정 노출되므로,
+    # 우측 상단에 아주 작은 닫기(×) 하나만 남겨둔다.
+    from login_gate import GATE_BUTTON, GATE_LINES
 
-    st.markdown(
-        f'<div class="lotto-auth-banner">'
-        f'<p class="auth-banner-title">{html.escape(GATE_TITLE)}</p>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-    with st.container():
-        st.markdown('<div class="auth-banner-consent-marker"></div>', unsafe_allow_html=True)
+    with st.container(key="auth_banner_box"):
+        with st.container(key="auth_banner_close_x"):
+            if st.button("✕", key="auth_banner_close_x_btn"):
+                close_auth_banner()
+                st.session_state.pop(AUTH_RESUME_FLAG, None)
+                st.session_state.pop(AUTH_RESUME_DATA, None)
+                st.rerun()
         for item in GATE_LINES:
             st.markdown(f'<p class="auth-banner-consent-item">· {html.escape(item)}</p>', unsafe_allow_html=True)
 
@@ -356,7 +358,6 @@ def _render_auth_banner_form() -> None:
                     use_container_width=True,
                     type="primary",
                 )
-        st.caption(GATE_RETURN_HINT)
     elif _dev_mock_enabled():
         with st.container(key="auth_banner_kakao"):
             if st.button(
@@ -381,15 +382,6 @@ def _render_auth_banner_form() -> None:
             "`.env`에 `KAKAO_REST_API_KEY`를 넣거나, "
             "개발 중이면 `LOTTO_DEV_MOCK_AUTH=1`로 설정 후 서버를 재시작하세요."
         )
-
-    with st.container(key="auth_banner_close"):
-        if st.button("닫기", use_container_width=True, key="auth_banner_dismiss", type="secondary"):
-            close_auth_banner()
-            st.session_state.pop(AUTH_RESUME_FLAG, None)
-            st.session_state.pop(AUTH_RESUME_DATA, None)
-            st.rerun()
-
-    st.caption("PASS·금융인증서는 사업자 연동 계약 후 순차 제공 예정입니다.")
 
 
 def _scroll_to_top_once() -> None:
