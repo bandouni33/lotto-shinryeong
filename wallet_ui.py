@@ -253,16 +253,18 @@ def _inject_auth_banner_css() -> None:
    멀쩡하다"는 인상의 이유)과 달리 자동구매·번개조합·메인처럼 배너 아래
    실제 콘텐츠가 있는 화면에서는 카드가 콘텐츠와 겹쳐 보이거나, 스크롤/rerun
    시점에 따라 페이지의 다른 클릭 가능 영역을 이 sticky 블록이 가려 버튼이
-   안 눌리는 것까지 재현 가능한 원인이었다. 이제 배너 전용 컨테이너
-   (.st-key-auth_banner_root, 아래 render_auth_banner에서 그 하나만 감쌈)에
-   직접 걸어서, 배너 자기 자신 말고는 절대 sticky/z-index 영향을 안 받게
-   한다. */
-.st-key-auth_banner_root {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 100 !important;
-    margin-bottom: 12px !important;
-}
+   안 눌리는 것까지 재현 가능한 원인이었다.
+   2026-09-13(재수정 — 즉시 되돌림): 처음엔 이걸 고치면서 배너 전체를 새
+   st.container(key="auth_banner_root")로 한 겹 더 감쌌었는데, 그 안에서
+   실행되는 st.rerun() 호출부(× 닫기, 모의 로그인 성공)가 다시 "with 블록
+   안에서 rerun"이 돼버려, 예전에 실기기 빌드로 어렵게 잡았던 고아 DOM
+   중복 렌더 버그("화면이 두 개 열리는" 반전 현상)가 그대로 재현됐다
+   (사용자 재신고). 새 컨테이너로 감싸는 대신, 이미 있던
+   .st-key-auth_banner_wrap(배너의 실제 첫 번째 요소) 자신에게 sticky를
+   직접 건다 — 새로운 Python 레벨 with 블록을 하나도 추가하지 않으므로
+   rerun 관련 위험이 전혀 없고, 그러면서도 sticky 대상은 이 카드 자신
+   하나로만 좁혀진다(카카오 버튼은 sticky가 아니지만, 이 카드는 항상
+   페이지 맨 위에서 처음 그려지므로 실사용에서 체감 차이는 없다). */
 /* 2026-09-12(사용자 신고 — 3번째 줄이 카카오 버튼에 가려짐, 타로에서 특히
    심함): 닫기(×)를 이 박스 "안"의 첫 자식으로 넣었더니, position:absolute라
    화면엔 안 보여도 여전히 flex 자식 1개로 카운트돼 Streamlit 기본
@@ -281,11 +283,19 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_wrap {
        실제 배포 사이트에서 gap이 0이 아니라 5.6px로 남아있는 게 getComputedStyle로
        확인됐다(로컬 desktop 브라우저에서는 우연히 이 차이가 안 드러났음).
        data-testid 속성까지 선택자에 포함해 specificity를 맞춘다. */
-    position: relative !important;
+    /* 2026-09-13: sticky 위치 지정을 이 카드 자신에게 직접 건다 — 새
+       컨테이너로 감싸지 않고, position:relative였던 걸 sticky로 바꾸는
+       것만으로 충분하다(위 긴 주석 참고: 새 with 블록을 추가하면 rerun이
+       그 블록 안에서 호출되며 고아 DOM 중복 렌더 버그가 재현됨). sticky는
+       relative와 마찬가지로 "자기 자신이 포지셔닝 컨텍스트가 되는" 성질을
+       그대로 가지므로, 닫기 배지 등 내부 요소의 위치 계산에는 영향 없다. */
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 100 !important;
     max-width: 325px !important; /* 2026-09-12(사용자 지시): 3줄이 각각 한 줄로
        보이도록 실측(가장 긴 줄 실제 필요폭 약 294px + 좌우 패딩 20px + 여유)
        기준으로 확보 */
-    margin: 10px auto 0 auto !important;
+    margin: 10px auto 12px auto !important;
     /* 2026-09-13(사용자 신고 — X가 화면마다 카드와 떨어진 정도가 다르게
        보임): 이 래퍼는 Streamlit 기본 stVerticalBlock이라 자식(닫기 배지,
        카드) 사이에 기본 gap(보통 1rem)이 그대로 걸려 있었다. 이 gap은
@@ -672,7 +682,7 @@ def _cleanup_stale_auth_banner_dom() -> None:
         (function() {
             try {
                 var doc = window.top.document;
-                doc.querySelectorAll('.st-key-auth_banner_wrap, .st-key-auth_banner_root').forEach(function(el) {
+                doc.querySelectorAll('.st-key-auth_banner_wrap').forEach(function(el) {
                     el.remove();
                 });
             } catch (e) {}
@@ -697,16 +707,14 @@ def render_auth_banner() -> None:
     if st.session_state.pop("_auth_banner_scroll_pending", False):
         _scroll_to_top_once()
     _inject_auth_banner_css()
-    # 2026-09-13: sticky/z-index를 이 컨테이너(.st-key-auth_banner_root) 하나에만
-    # 걸어서, 배너 아래 실제 페이지 콘텐츠가 있는 화면(자동구매·번개조합·메인
-    # 등)에서 그 콘텐츠까지 함께 sticky가 돼버리는 문제를 없앤다 — 위
-    # _inject_auth_banner_css() 안 CSS 주석 참고. _render_auth_banner_form()이
-    # 내부에서 st.rerun()을 부를 때는 이미 자기 자신의 안쪽 with 블록(auth_
-    # banner_wrap)은 다 빠져나온 뒤라, 이 바깥쪽 한 겹만 걸려 있는 상태 —
-    # 여러 겹이 동시에 풀리며 고아 DOM이 남던 예전 버그(주석 참고)와는 다른
-    # 상황이라 안전하다.
-    with st.container(key="auth_banner_root"):
-        _render_auth_banner_form()
+    # 2026-09-13(즉시 되돌림): 여기서 새 st.container로 감쌌던 버전은
+    # _render_auth_banner_form() 내부의 st.rerun() 호출부(× 닫기, 모의 로그인
+    # 성공)를 다시 "with 블록 안에서 rerun"으로 만들어 고아 DOM 중복 렌더
+    # 버그를 재현시켰다(사용자 재신고 — "화면 두 개 열리는" 반전 현상). 새
+    # with 블록을 추가하지 않고, sticky는 .st-key-auth_banner_wrap 자신에게
+    # 직접 건다(위 _inject_auth_banner_css() 주석 참고) — 예전과 동일하게
+    # 아무것도 감싸지 않은 채로 바로 호출한다.
+    _render_auth_banner_form()
 
 
 def _render_charge_actions(member_id: int) -> None:
