@@ -925,6 +925,43 @@ def render():
                     selectedFixed.forEach(n => luckyNumbers.delete(n));
                 }} catch (e) {{}}
             }})();
+
+            // 2026-09-12(사용자 신고 — "조합시작" 누르면 1게임만 나오고 멈춤): 생성
+            // 도중(2초 간격 setTimeout 체인이 다 끝나기 전) 뭔가가 이 iframe을
+            // 재생성시키면(로그인 배너·적립금 안내가 뜻밖에 다시 뜨는 등 세션
+            // 간섭, 또는 화면의 다른 버튼을 실수로 눌러 st.rerun이 도는 경우) — 이
+            // iframe은 매번 완전히 새로 만들어지는 문서라 남아있던 setTimeout들이
+            // 전부 사라지고, autoRunCount도 이미 소비돼(session_state에서 pop됨)
+            // null이라 다음 게임을 다시 트리거할 방법이 없어 딱 그 순간까지 나온
+            // 게임 수에서 영원히 멈춘 채로 남았다. 진행 상황을 localStorage에
+            // 남겨뒀다가, 재생성된 iframe이 "새로 시작하는 게 아니라 중간에
+            // 끊긴 것"임을 감지하면 남은 게임을 바로 이어서 채운다 — 원인(무엇이
+            // 끼어들었는지)과 무관하게 항상 완주하도록 만드는 안전망이다.
+            const THUNDER_GEN_STORE = 'thunder_gen_progress_v1';
+            function persistGenProgress(results, expected) {{
+                try {{
+                    localStorage.setItem(THUNDER_GEN_STORE, JSON.stringify({{
+                        results: results, expected: expected, ts: Date.now(),
+                    }}));
+                }} catch (e) {{}}
+            }}
+            function clearGenProgress() {{
+                try {{ localStorage.removeItem(THUNDER_GEN_STORE); }} catch (e) {{}}
+            }}
+            function readStaleGenProgress() {{
+                try {{
+                    const raw = localStorage.getItem(THUNDER_GEN_STORE);
+                    if (!raw) return null;
+                    const p = JSON.parse(raw);
+                    if (!Array.isArray(p.results) || !p.expected) return null;
+                    if (p.results.length === 0 || p.results.length >= p.expected) return null;
+                    // 너무 오래된(예: 다른 날 중간에 끄고 다시는 안 돌아온) 기록까지
+                    // 이어서 채우면 유저가 예상 못 한 조합이 뜬금없이 튀어나오는
+                    // 셈이라, 방금 끊긴 것으로 볼 수 있는 짧은 시간 안으로 제한한다.
+                    if (Date.now() - (p.ts || 0) > 30000) return null;
+                    return p;
+                }} catch (e) {{ return null; }}
+            }}
             // 최상위 문서(iframe 밖)의 결과저장 동기화 스크립트가 same-origin으로 읽어가야
             // 하므로, let이 아니라 window의 프로퍼티로 선언한다(let은 이 iframe의 window에도
             // 안 붙어서 외부에서 읽을 수 없다).
@@ -1326,6 +1363,8 @@ def render():
                 resultArea.innerHTML = '';
                 scrollResultsIntoView(resultArea);
 
+                persistGenProgress([], count);
+
                 for (let g = 0; g < count; g++) {{
                     const tid = setTimeout(() => {{
                         if (thisRun !== genRunId) return;
@@ -1333,6 +1372,7 @@ def render():
                         const game = poolMatch || buildOneGame(available).game;
                         currentResults.push(game);
                         renderGame(game);
+                        persistGenProgress(currentResults, count);
                     }}, g * 2000);
                     activeGenTimers.push(tid);
                 }}
@@ -1340,6 +1380,7 @@ def render():
                     if (thisRun !== genRunId) return;
                     isGenerating = false;
                     setStartButtonEnabled(true);
+                    clearGenProgress();
                     window.parent.postMessage({{ type: 'thunder_complete', count: count }}, '*');
                 }}, count * 2000 + 600);
                 activeGenTimers.push(completeId);
@@ -1528,14 +1569,69 @@ def render():
                 }}
             }});
 
+            // 끊긴 생성을 이어서 완주한다 — generateCombination()과 달리 이미 나온
+            // 게임은 그대로 두고(다시 지우지 않음) 부족분만 짧은 간격(400ms)으로
+            // 빠르게 채운 뒤 정상 완료 경로(postMessage·clearGenProgress)로 합류한다.
+            function resumeGenProgress(p) {{
+                if (isGenerating) return;
+                isGenerating = true;
+                setStartButtonEnabled(false);
+                genRunId += 1;
+                const thisRun = genRunId;
+
+                selectedGameCount = p.expected;
+                thunderApproved = true;
+                currentResults = p.results.slice();
+                window.expectedGameCount = p.expected;
+                const resultArea = document.getElementById('resultArea');
+                resultArea.innerHTML = '';
+                currentResults.forEach((g) => renderGame(g));
+                scrollResultsIntoView(resultArea);
+
+                const available = [];
+                for (let i = 1; i <= 45; i++) {{
+                    if (!selectedDelete.has(i)) available.push(i);
+                }}
+                const remaining = p.expected - currentResults.length;
+                for (let g = 0; g < remaining; g++) {{
+                    const tid = setTimeout(() => {{
+                        if (thisRun !== genRunId) return;
+                        const poolMatch = tryPoolMatch();
+                        const game = poolMatch || buildOneGame(available).game;
+                        currentResults.push(game);
+                        renderGame(game);
+                        persistGenProgress(currentResults, p.expected);
+                    }}, g * 400);
+                    activeGenTimers.push(tid);
+                }}
+                const completeId = setTimeout(() => {{
+                    if (thisRun !== genRunId) return;
+                    isGenerating = false;
+                    setStartButtonEnabled(true);
+                    clearGenProgress();
+                    window.parent.postMessage({{ type: 'thunder_complete', count: p.expected }}, '*');
+                }}, remaining * 400 + 300);
+                activeGenTimers.push(completeId);
+            }}
+
             // ── 4) 최초 렌더: setMode 호출 없이 빈 격자만 그림 ──
             initGrid();
             if (autoRunCount) {{
+                // 새로 확정된 생성 요청이므로, 예전에 끊긴 채 남아있던(관련 없는)
+                // 진행기록이 있다면 이 새 시작과 섞이지 않도록 먼저 지운다.
+                clearGenProgress();
                 selectedGameCount = autoRunCount;
                 thunderApproved = true;
                 setTimeout(() => {{
                     if (!isGenerating) generateCombination();
                 }}, 400);
+            }} else {{
+                const stale = readStaleGenProgress();
+                if (stale) {{
+                    setTimeout(() => {{
+                        if (!isGenerating) resumeGenProgress(stale);
+                    }}, 300);
+                }}
             }}
         </script>
     </body>
