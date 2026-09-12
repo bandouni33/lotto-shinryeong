@@ -173,24 +173,8 @@ def internal_nav_href(page: str, **extra_params: str) -> str:
     사라짐"의 공통 원인이었다(전부 guest_id가 안 이어지는 데서 비롯됨). 네이티브 앱과
     동일하게 모든 내부이동 링크에 현재 guest_id를 쿼리파라미터로 실어보내면, 브라우저
     접속자도 get_or_create_guest_id()의 최우선 분기(query)를 그대로 타게 돼 안정된다.
-
-    2026-09-13(사용자 신고 — 안티/액땜조합에서 QR스캔 후 뜬 로그인 배너의
-    "카카오로 시작하기"를 눌러도 먹통): gid와 똑같이 중요한 native=1(네이티브
-    앱 표시자)도 여기서 안 실어보내고 있었다. wallet_ui._render_auth_banner_form
-    이 native=1 유무로 "네이티브 SDK 직접 호출" vs "일반 브라우저용 link_button"
-    을 완전히 다르게 분기하는데, 메인 화면 밖의 다른 화면(자동구매·번개조합·
-    안티액땜 등)은 전부 이 함수로 이동하므로 native=1이 계속 누락되고 있었다 —
-    네이티브 앱 안에 있으면서도 "일반 브라우저" 경로(새 탭으로 여는 link_button)를
-    타게 돼, 그 경로가 WebView 안에서는 새 탭을 열 수 없어 버튼을 눌러도
-    아무 반응이 없었던 것으로 보인다. gid와 동일하게 원래 URL에 있으면 그대로
-    이어서 실어보낸다.
     """
-    params = {"page": page, GUEST_ID_QUERY_KEY: get_or_create_guest_id()}
-    native_flag = st.query_params.get("native")
-    if native_flag:
-        params["native"] = native_flag
-    params.update(extra_params)
-    query = urllib.parse.urlencode(params)
+    query = urllib.parse.urlencode({"page": page, GUEST_ID_QUERY_KEY: get_or_create_guest_id(), **extra_params})
     return f"?{query}"
 
 

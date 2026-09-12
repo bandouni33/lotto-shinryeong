@@ -326,8 +326,7 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
     margin: 0 auto !important;
 }
 .st-key-auth_banner_kakao a,
-.st-key-auth_banner_kakao button[kind="primary"],
-.st-key-auth_banner_kakao div[data-testid="stButton"] > button[kind="primary"] {
+.st-key-auth_banner_kakao button[kind="primary"] {
     background: linear-gradient(145deg, #fee500, #f5d900) !important;
     color: #191919 !important;
     border-color: #e6c200 !important;

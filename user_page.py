@@ -168,39 +168,19 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
                 const m = doc.location.search.match(/[?&]gid=([^&]*)/);
                 return m ? m[1] : null;
             }
-            // 2026-09-13(사용자 신고 — 안티/액땜조합 QR스캔 후 로그인 배너의
-            // "카카오로 시작하기"를 눌러도 먹통): gid와 똑같이 native=1도 이
-            // 순수 <a href> 링크들(브랜드 좌상단 "메인으로" 아이콘 등 —
-            // internal_nav_href를 거치지 않는 정적 HTML)을 누르는 순간
-            // 사라지고 있었다. wallet_ui의 로그인 배너는 native=1이 있어야
-            // 네이티브 카카오 SDK 버튼을 보여주는데, 없으면 웹브라우저용
-            // link_button(새 탭 방식)으로 빠져 웹뷰 안에서는 눌러도 반응이
-            // 없었다. gid와 동일한 방식으로 클릭 시점에 붙여준다.
-            function currentNative() {
-                const m = doc.location.search.match(/[?&]native=([^&]*)/);
-                return m ? m[1] : null;
-            }
             // 이 컴포넌트는 st.rerun()마다 다시 렌더링되는데, 매번 새 리스너를 doc에
             // 계속 쌓지 않도록 한 세션(같은 top-level document)에는 한 번만 붙인다.
             if (!doc.__gidLinkPatchBound) {
                 doc.__gidLinkPatchBound = true;
                 doc.addEventListener('click', function(e) {
                     const gid = currentGid();
-                    const native = currentNative();
-                    if (!gid && !native) return;
+                    if (!gid) return;
                     const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
                     if (!a) return;
-                    let href = a.getAttribute('href') || '';
-                    if (!href || /^https?:\\/\\//i.test(href)) return;
-                    if (gid && href.indexOf('gid=') === -1) {
-                        const sep = href.endsWith('?') ? '' : (href.indexOf('?') === -1 ? '?' : '&');
-                        href = href + sep + 'gid=' + encodeURIComponent(gid);
-                    }
-                    if (native && href.indexOf('native=') === -1) {
-                        const sep = href.indexOf('?') === -1 ? '?' : '&';
-                        href = href + sep + 'native=' + encodeURIComponent(native);
-                    }
-                    a.setAttribute('href', href);
+                    const href = a.getAttribute('href') || '';
+                    if (!href || /^https?:\\/\\//i.test(href) || href.indexOf('gid=') !== -1) return;
+                    const sep = href.endsWith('?') ? '' : (href.indexOf('?') === -1 ? '?' : '&');
+                    a.setAttribute('href', href + sep + 'gid=' + encodeURIComponent(gid));
                 }, true);
             }
         })();

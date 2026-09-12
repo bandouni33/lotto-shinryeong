@@ -197,12 +197,7 @@ def wallet_bar_button_css() -> str:
     position: fixed !important;
     right: 12px !important;
     top: 8px !important;
-    /* 2026-09-13(출시 전 QA로 발견): 업데이트 안내 배너(.update-toast,
-       user_page.py — z-index 9999, 화면 폭의 92%까지 차지)가 뜨는 동안
-       이 "내정보" 배지를 완전히 덮어 글자가 잘려 보이는 실제 겹침 버그가
-       확인됨. 배너보다 항상 위에 오도록 z-index를 더 높여 최소한 가려지지
-       않게 한다. */
-    z-index: 10000 !important;
+    z-index: 999 !important;
     width: auto !important;
 }}
 .st-key-my_info_trigger_wrap div[data-testid="stButton"] > button {{
