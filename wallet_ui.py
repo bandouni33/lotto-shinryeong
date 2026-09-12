@@ -551,11 +551,39 @@ def _scroll_to_top_once() -> None:
     )
 
 
+def _cleanup_stale_auth_banner_dom() -> None:
+    """×로 닫은 직후의 다음 렌더 딱 1번만 호출 — st.container(key=...) 중첩
+    구조 특성상 프런트엔드가 이전 렌더의 배너 DOM(× 아이콘만 남거나, 약관
+    3줄 박스만 남는 두 형태 모두 실측 재현됨 — dc73a91에서 X 아이콘 잔재는
+    한 번 고쳤지만, 그 뒤 "닫기(×)를 카드 바깥 래퍼로 뺀" 재구성이 같은
+    클래스의 문제를 다른 모양으로 재현시켰다)를 못 지우고 고아로 남기는
+    경우가 있어, 남아있으면 JS로 강제 제거한다. AUTH_BANNER_JUST_DISMISSED로
+    "닫은 직후 1번"에만 실행되게 가드해서, 이후 모든 렌더마다 불필요한
+    iframe이 반복 주입되지 않게 한다."""
+    components.html(
+        """
+        <script>
+        (function() {
+            try {
+                var doc = window.top.document;
+                doc.querySelectorAll('.st-key-auth_banner_wrap').forEach(function(el) {
+                    el.remove();
+                });
+            } catch (e) {}
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def render_auth_banner() -> None:
     if current_member_id() and st.session_state.get(AUTH_RESUME_FLAG):
         _finish_auth_success()
         return
     if not st.session_state.get(AUTH_BANNER_OPEN):
+        if st.session_state.get(AUTH_BANNER_JUST_DISMISSED):
+            _cleanup_stale_auth_banner_dom()
         return
     if current_member_id():
         _finish_auth_success()
