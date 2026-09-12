@@ -85,13 +85,13 @@ _BRAND_HOME_LINK_CSS = """
     left: 6px;
     z-index: 9999;
     display: block;
-    width: 26px;
-    height: 26px;
+    width: 29px;
+    height: 29px;
     border-radius: 50%;
     overflow: hidden;
-    border: 1px solid rgba(255, 179, 0, 0.55);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-    opacity: 0.82;
+    border: 1px solid rgba(255, 179, 0, 0.8);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    opacity: 0.98;
     text-decoration: none !important;
 }
 .brand-home-link:hover {
