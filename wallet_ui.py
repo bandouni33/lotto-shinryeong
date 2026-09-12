@@ -270,6 +270,17 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
        보이도록 실측(가장 긴 줄 실제 필요폭 약 294px + 좌우 패딩 20px + 여유)
        기준으로 확보 */
     margin: 10px auto 0 auto !important;
+    /* 2026-09-13(사용자 신고 — X가 화면마다 카드와 떨어진 정도가 다르게
+       보임): 이 래퍼는 Streamlit 기본 stVerticalBlock이라 자식(닫기 배지,
+       카드) 사이에 기본 gap(보통 1rem)이 그대로 걸려 있었다. 이 gap은
+       rem 기준이라 화면(웹뷰/브라우저)마다 실제 루트 폰트 크기가 다르면
+       계산되는 px 값도 달라져, 바로 아래 닫기 배지의 margin-bottom
+       음수값으로 "대략 상쇄"하던 예전 방식이 화면마다 다른 정도로
+       어긋나 보였다(카드와 붙어 보이거나 멀리 떨어져 보이거나). gap을
+       0으로 명시해 그 불확정 요소 자체를 없앤다 — 이제 배지와 카드
+       사이 간격은 아래 margin-bottom 값 하나로만, 모든 화면에서
+       똑같이 결정된다. */
+    gap: 0 !important;
 }
 .st-key-auth_banner_box {
     background: rgba(13, 21, 40, 0.6) !important;
@@ -300,12 +311,29 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
    조상의 position과 무관하게 "자기 자신의 원래(정상 흐름) 위치"를 기준으로
    옮기므로, 카드의 바로 앞 형제 요소인 이상 항상 카드와 같이 붙어 움직인다
    — 걸치는 모양(살짝 밖으로 튀어나옴)은 그대로 유지하면서 앵커만 더
-   견고한 방식으로 바꾼다. */
-.st-key-auth_banner_close_x {
+   견고한 방식으로 바꾼다.
+   2026-09-13(재수정 — 화면마다 여전히 다르게 보임): 위 transform 방식도
+   근본적으로는 "형제 요소 사이 gap(rem 기준, 기기마다 실제 px가 다름)을
+   margin-bottom 음수값으로 대략 상쇄"하는 방식이라, 상쇄가 기기마다
+   맞거나 안 맞았다. 바로 위 .st-key-auth_banner_wrap에 gap:0을 명시해
+   형제 간 간격 자체를 0으로 고정했으므로, 이제 margin-bottom은 "카드
+   테두리 위로 배지를 절반쯤 겹치게 끌어올리는" 목적 하나만 담당한다
+   (배지 높이 22px의 절반만큼만 겹치게 -11px). */
+div[data-testid="stVerticalBlock"].st-key-auth_banner_close_x {
+    /* 2026-09-13(로컬에서 실제 재현·확정): flex-direction:row를 .st-key-
+       auth_banner_close_x 단일 클래스 선택자로만 주면, Streamlit 자체가
+       [direction="column"] 속성 선택자까지 포함한 더 구체적인(specificity
+       높은) !important 규칙으로 이미 column을 강제하고 있어서(로컬에서
+       getComputedStyle로 flexDirection이 여전히 column으로 확인됨) 우리
+       규칙이 졌다. 이 div 자체의 data-testid 속성까지 선택자에 포함해
+       specificity를 그만큼 끌어올려야 이긴다. */
     display: flex !important;
+    flex-direction: row !important;
     justify-content: flex-end !important;
-    margin-bottom: -14px !important;
-    width: auto !important;
+    margin-bottom: -11px !important;
+    width: 100% !important; /* 카드(.st-key-auth_banner_box)와 같은 폭이어야
+       flex-end가 밀어줄 여백이 생긴다 — 부모 .st-key-auth_banner_wrap의
+       전체 폭을 그대로 물려받는다. */
     z-index: 5 !important;
 }
 .st-key-auth_banner_close_x button {
