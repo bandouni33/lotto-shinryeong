@@ -800,12 +800,13 @@ def render():
         st.markdown(_line_row_html(pool), unsafe_allow_html=True)
 
     if committed:
+        # 2026-09-12(사용자 지시 — "저장내역 확인 시 불필요한 공간 없앨 것"): 아직
+        # 입력 안 된 나머지 줄만큼 빈 자리("- - - - - -")를 미리 깔아두던 부분을
+        # 제거한다. 그 위 번호 그리드가 이미 "X/6개 선택됨"으로 다음 줄 입력
+        # 진행 상황을 보여주고 있어서, 이 빈 줄들은 같은 정보를 중복으로
+        # 차지하는 불필요한 공간이었다 — 실제로 입력된 줄만 보여준다.
         st.markdown('<div class="hedge-section-label">입력한 줄</div>', unsafe_allow_html=True)
         rows = "".join(_line_row_html(sorted(line)) for line in committed)
-        rows += "".join(
-            '<div class="hedge-line-row hedge-line-row-empty">- - - - - -</div>'
-            for _ in range(MAX_LINES - len(committed))
-        )
         st.markdown(rows, unsafe_allow_html=True)
 
     with st.container(key="hedge_count_start_row"):
