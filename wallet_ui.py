@@ -68,6 +68,8 @@ AUTH_BANNER_OPEN = "auth_banner_open"
 AUTH_BANNER_REASON = "auth_banner_reason"
 AUTH_RESUME_FLAG = "auth_resume_flag"
 AUTH_RESUME_DATA = "auth_resume_data"
+AUTH_BANNER_DISMISSED = "auth_banner_dismissed"
+AUTH_BANNER_JUST_DISMISSED = "auth_banner_just_dismissed"
 
 
 def open_auth_banner(*, reason: str = "", resume: str | None = None, resume_data: dict | None = None) -> None:
@@ -108,6 +110,17 @@ def close_auth_banner() -> None:
     # _resume_after_auth()에서 먼저 pop해 소비하므로 여기서 또 지워도 안전하다.
     for key in (AUTH_BANNER_OPEN, AUTH_BANNER_REASON, AUTH_RESUME_FLAG, AUTH_RESUME_DATA):
         st.session_state.pop(key, None)
+    # 2026-09-12(사용자 신고 — × 눌러도 배너가 안 사라짐): 타로·행운수처럼
+    # 페이지 전체를 매 렌더마다 무조건 login_gate()로 막는 화면에서는, ×로
+    # 방금 닫아도 같은 rerun 흐름에서 그 페이지의 무조건 게이트가 바로 다시
+    # login_gate()를 호출해 즉시 재오픈했다 — 유저 눈엔 "×가 안 먹힌다"로
+    # 보였다. 이 1회성 플래그는 "방금 ×로 닫은 직후의 바로 다음 login_gate
+    # 판정 1번"만 재오픈을 건너뛴다 — 그 이후 유저가 실제로 다른(혹은 같은)
+    # 막힌 기능을 새로 클릭하면(2026-09-10 확정 규칙: "닫기 후 다른 막힌
+    # 기능을 누르면 다시 뜬다") 정상적으로 다시 뜬다. 버튼 클릭으로만 도는
+    # 8곳(조합시작·저장내역·내정보 등)은 이 rerun에서 애초에 login_gate가
+    # 다시 불릴 일이 없으므로 영향받지 않는다.
+    st.session_state[AUTH_BANNER_DISMISSED] = True
 
 
 def _resume_after_auth() -> None:
@@ -157,9 +170,6 @@ def _testing_period_active() -> bool:
     return _dev_mock_enabled() and not kakao_configured()
 
 
-AUTH_BANNER_SEEN_ONCE = "auth_banner_seen_once"
-
-
 def login_gate(*, resume: str | None = None, resume_data: dict | None = None) -> bool:
     """로그인이 필요한 기능의 **단일 게이트**. 로그인됐으면 True(기능 진행).
     아니면 통합 안내창(login_gate.py 문구)을 띄우고 False.
@@ -170,6 +180,18 @@ def login_gate(*, resume: str | None = None, resume_data: dict | None = None) ->
     패널 렌더 중에도 불리므로, 이 가드가 없으면 st.rerun() 무한 루프가 된다.
     사용자가 "닫기"로 안내창을 닫은 뒤 다른 막힌 기능을 누르면 다시 뜬다.
 
+    2026-09-12 추가: 타로·행운수처럼 페이지 전체를 매 렌더마다 무조건
+    login_gate()로 막는 화면에서는, AUTH_BANNER_OPEN 가드만으로는 ×로 닫은
+    바로 다음 rerun에서 그 페이지가 다시 login_gate()를 호출해 즉시
+    재오픈해버리는 문제가 있었다(사용자 신고: "×눌러도 안 사라짐"). 방금
+    ×로 닫은 직후의 판정만 AUTH_BANNER_JUST_DISMISSED로 건너뛴다 — 이
+    플래그는 render_wallet_bar()가 매 rerun 시작 시 AUTH_BANNER_DISMISSED
+    (닫기 버튼이 세팅하는 1회성 이벤트)로부터 매번 새로 계산해 정확히
+    "닫은 직후의 그 다음 rerun 1번" 동안만 True다 — 그 이후의 진짜 새
+    클릭(버튼을 다시 누르는 것)은 전혀 다른 rerun이라 자동으로 False로
+    돌아와 있으므로, 위 2026-09-10 규칙("다른 막힌 기능을 누르면 다시
+    뜬다")이 그대로 유지된다.
+
     테스트 기간엔(_testing_period_active) 안내창 대신 조용히 로그인시키고 진행."""
     if current_member_id():
         return True
@@ -177,6 +199,8 @@ def login_gate(*, resume: str | None = None, resume_data: dict | None = None) ->
         mock_kakao_login()
         return True
     if st.session_state.get(AUTH_BANNER_OPEN):
+        return False
+    if st.session_state.get(AUTH_BANNER_JUST_DISMISSED):
         return False
     open_auth_banner(resume=resume, resume_data=resume_data)
     st.rerun()
@@ -214,9 +238,12 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
     border-radius: 10px !important;
     padding: 10px 10px 6px 10px !important;
     margin: 10px auto 6px auto !important;
-    max-width: 250px !important;
+    max-width: 325px !important; /* 2026-09-12(사용자 지시): 3줄이 각각 한 줄로
+       보이도록 실측(가장 긴 줄 실제 필요폭 약 294px + 좌우 패딩 20px + 여유)
+       기준으로 확보 */
 }
 .auth-banner-consent-item {
+    white-space: nowrap !important;
     color: #e8eef2 !important;
     font-size: 13px !important;
     line-height: 1.45 !important;
@@ -251,7 +278,7 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
     line-height: 1 !important;
 }
 .st-key-auth_banner_kakao {
-    max-width: 250px !important;
+    max-width: 325px !important;
     margin: 0 auto !important;
 }
 .st-key-auth_banner_kakao a,
@@ -799,6 +826,16 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     메인 화면에만 필요하고 다른 상세페이지에서는 불필요하다는 요청."""
     from shared_ui_styles import wallet_bar_button_css
     from zero_phone_db import TEST_USER_ID, get_user, init_zero_phone_tables, login_test_user
+
+    # 2026-09-12: AUTH_BANNER_DISMISSED(× 클릭이 세팅하는 1회성 이벤트)를 매
+    # rerun 시작 시 여기서 한 번만 소비해 AUTH_BANNER_JUST_DISMISSED로 옮겨
+    # 둔다 — render_wallet_bar()는 페이지 종류와 무관하게 매 rerun마다 정확히
+    # 한 번, 가장 먼저 실행되므로, 이렇게 하면 "닫은 직후의 그 다음 rerun
+    # 1번" 동안만 True였다가 그 다음 rerun에서 자동으로 False로 재계산된다
+    # (login_gate 독스트링 참고 — 이 화면 안쪽 여러 곳에서 몇 번을 읽든 값이
+    # 안 바뀌어야, 방금 dismissed 이벤트와 무관한 진짜 새 클릭까지 실수로
+    # 삼켜버리지 않는다).
+    st.session_state[AUTH_BANNER_JUST_DISMISSED] = st.session_state.pop(AUTH_BANNER_DISMISSED, False)
 
     inject_app_haptic()
     init_zero_phone_tables()
