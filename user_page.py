@@ -4,6 +4,27 @@ import streamlit.components.v1 as components
 import base64
 import os
 
+
+def _reload_if_stale(module):
+    """이 화면 모듈을 import한 직후 호출 — 디스크의 파일이 이 프로세스가 마지막
+    으로 읽은 시점보다 최신이면 importlib.reload()로 다시 읽어들인 모듈을
+    반환한다(안 바뀌었으면 그대로 반환, reload 비용 없음).
+
+    2026-09-12: Streamlit Cloud가 git push 배포 때마다 파이썬 프로세스를 매번
+    완전히 재시작하는 게 아니라서, 각 화면 모듈(page_thunder 등)이
+    sys.modules에 예전 코드로 캐시된 채 남아있을 수 있다는 게 실측 확인됐다
+    (타로에 로그인 게이트를 추가했는데 배포 후 몇 분이 지나도 실제 화면엔
+    반영 안 됨 — marketing_db.py의 _marketing_db() 워크어라운드와 동일한
+    원인). 화면 모듈을 import하는 곳마다 이 함수를 거치게 하면, 앞으로 어느
+    파일을 고치든 매번 별도 마커를 챙기지 않아도 항상 최신 코드가 반영된다."""
+    import importlib as _importlib
+
+    mtime = os.path.getmtime(module.__file__)
+    if getattr(module, "_loaded_mtime", None) != mtime:
+        module = _importlib.reload(module)
+        module._loaded_mtime = mtime
+    return module
+
 if st.session_state.get("is_admin", False):
     with st.sidebar:
         st.markdown("## ⚙️ 관리자 제어 센터")
@@ -1443,6 +1464,7 @@ div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-t
 elif current_page == "thunder":
     import page_thunder
 
+    page_thunder = _reload_if_stale(page_thunder)
     # lucky_display("관리자 행운수")는 메인화면 캐릭터 이미지 주변 장식용 숫자
     # 볼(위에서 orbit-ball로 렌더링)에만 쓰여야 하고, 조합 생성에 절대 섞이면
     # 안 된다는 요청 — page_thunder.render()에 더 이상 안 넘김(과거 데이터
@@ -1451,10 +1473,14 @@ elif current_page == "thunder":
 
 elif current_page == "birthday":
     import page_birthday
+
+    page_birthday = _reload_if_stale(page_birthday)
     page_birthday.render()
 
 elif current_page == "hedge":
     import page_hedge
+
+    page_hedge = _reload_if_stale(page_hedge)
     page_hedge.render()
 
 # ==========================================
@@ -1462,6 +1488,8 @@ elif current_page == "hedge":
 # ==========================================
 elif current_page == "auto":
     import page_auto
+
+    page_auto = _reload_if_stale(page_auto)
     page_auto.render()
 
 # ==========================================
@@ -1504,20 +1532,7 @@ elif current_page == "tarot":
 
     import tarot_page
 
-    # 2026-09-12: Streamlit Cloud가 git push 배포 때마다 파이썬 프로세스를 매번
-    # 완전히 재시작하는 게 아니라서, 이 sys.path 트릭으로 import한 모듈이
-    # sys.modules에 예전 코드로 캐시된 채 남아있을 수 있다(실측: 타로에 로그인
-    # 게이트를 추가했는데 배포 후 몇 분이 지나도 반영이 안 됨 — marketing_db.py의
-    # _marketing_db() 워크어라운드와 동일한 원인). 파일의 실제 mtime을 비교해서
-    # 디스크의 코드가 더 최신이면 무조건 다시 읽는다 — 앞으로 이 파일을 고칠
-    # 때마다 매번 별도 마커를 챙길 필요 없이 항상 최신 코드가 반영되게 한다.
-    _tarot_mtime = os.path.getmtime(tarot_page.__file__)
-    if getattr(tarot_page, "_loaded_mtime", None) != _tarot_mtime:
-        import importlib as _importlib
-
-        tarot_page = _importlib.reload(tarot_page)
-        tarot_page._loaded_mtime = _tarot_mtime
-
+    tarot_page = _reload_if_stale(tarot_page)
     tarot_page.render()
 
 # ==========================================
