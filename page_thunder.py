@@ -747,6 +747,14 @@ def render():
                 will-change: transform, opacity;
                 animation: resultRowReveal 1s cubic-bezier(0.34, 1.45, 0.64, 1) forwards;
             }}
+            /* 2026-09-12: 아직 안 나온 게임의 빈 자리 — 실제 결과 줄(.result-row)과
+               같은 박스 크기라 생성 시작부터 목표 게임 수(count)만큼 미리 깔아두면
+               최종 레이아웃 높이가 즉시 확정된다(위 generateCombination 주석 참고). */
+            .ball-placeholder {{
+                background: rgba(255, 255, 255, 0.05) !important;
+                box-shadow: none !important;
+                border: 1px dashed rgba(255, 255, 255, 0.12);
+            }}
             /* 버전1: 슬라이드 업 + 볼 글로우 */
             /* 메인화면(user_page) 로또볼 3D 스타일 재사용 */
             .ball {{
@@ -1367,6 +1375,32 @@ def render():
                 if (el) el.style.display = 'none';
             }}
 
+            // 2026-09-12(사용자 지시): "5줄 생성 화면 공간 전체를 처음부터 보여주면
+            // 유저가 그 화면에서 다른 곳을 터치할 이유가 없어진다" — 예전엔(지금
+            // 버전 이전) 다 보여줬었다는 피드백. 게임이 하나씩 나올 때마다
+            // resultArea가 점점 커지는 지금 방식은, 유저가 "밑에 더 있나" 궁금해서
+            // 스크롤·터치하게 만드는 유인이었다. 생성 시작 시점에 목표 게임 수만큼
+            // 빈 자리(placeholder)를 먼저 채워 최종 레이아웃 높이를 즉시 확보하고,
+            // 게임이 하나 나올 때마다 빈 자리 하나를 실제 결과로 "교체"한다 —
+            // 전체 자식 개수가 항상 count로 고정돼 있어 화면 크기가 도중에
+            // 변하지 않는다(v1/v2/v3 리빌 애니메이션 함수는 그대로 두고, 그 함수가
+            // 새로 append하기 직전에 빈 자리를 하나 제거하는 방식이라 애니메이션
+            // 코드 자체는 안 건드림).
+            function createPlaceholderRow() {{
+                const row = document.createElement('div');
+                row.className = 'result-row result-row-placeholder';
+                for (let i = 0; i < 6; i++) {{
+                    const dot = document.createElement('div');
+                    dot.className = 'ball ball-placeholder';
+                    row.appendChild(dot);
+                }}
+                return row;
+            }}
+            function fillOnePlaceholder(resultArea) {{
+                const ph = resultArea.querySelector('.result-row-placeholder');
+                if (ph) ph.remove();
+            }}
+
             function generateCombination() {{
                 if (isGenerating) return;
 
@@ -1395,6 +1429,9 @@ def render():
                 currentResults = [];
                 const resultArea = document.getElementById('resultArea');
                 resultArea.innerHTML = '';
+                for (let i = 0; i < count; i++) {{
+                    resultArea.appendChild(createPlaceholderRow());
+                }}
                 scrollResultsIntoView(resultArea);
                 updateGenProgressBanner(0, count);
 
@@ -1406,6 +1443,7 @@ def render():
                         const poolMatch = tryPoolMatch();
                         const game = poolMatch || buildOneGame(available).game;
                         currentResults.push(game);
+                        fillOnePlaceholder(resultArea);
                         renderGame(game);
                         persistGenProgress(currentResults, count);
                         updateGenProgressBanner(currentResults.length, count);
@@ -1623,6 +1661,10 @@ def render():
                 const resultArea = document.getElementById('resultArea');
                 resultArea.innerHTML = '';
                 currentResults.forEach((g) => renderGame(g));
+                const remaining = p.expected - currentResults.length;
+                for (let i = 0; i < remaining; i++) {{
+                    resultArea.appendChild(createPlaceholderRow());
+                }}
                 scrollResultsIntoView(resultArea);
                 updateGenProgressBanner(currentResults.length, p.expected);
 
@@ -1630,13 +1672,13 @@ def render():
                 for (let i = 1; i <= 45; i++) {{
                     if (!selectedDelete.has(i)) available.push(i);
                 }}
-                const remaining = p.expected - currentResults.length;
                 for (let g = 0; g < remaining; g++) {{
                     const tid = setTimeout(() => {{
                         if (thisRun !== genRunId) return;
                         const poolMatch = tryPoolMatch();
                         const game = poolMatch || buildOneGame(available).game;
                         currentResults.push(game);
+                        fillOnePlaceholder(resultArea);
                         renderGame(game);
                         persistGenProgress(currentResults, p.expected);
                         updateGenProgressBanner(currentResults.length, p.expected);
