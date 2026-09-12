@@ -398,15 +398,27 @@ def _render_auth_banner_form() -> None:
     # 우측 상단에 아주 작은 닫기(×) 하나만 남겨둔다.
     from login_gate import GATE_BUTTON, GATE_LINES
 
+    dismissed_clicked = False
     with st.container(key="auth_banner_box"):
         with st.container(key="auth_banner_close_x"):
             if st.button("✕", key="auth_banner_close_x_btn"):
-                close_auth_banner()
-                st.session_state.pop(AUTH_RESUME_FLAG, None)
-                st.session_state.pop(AUTH_RESUME_DATA, None)
-                st.rerun()
+                dismissed_clicked = True
         for item in GATE_LINES:
             st.markdown(f'<p class="auth-banner-consent-item">· {html.escape(item)}</p>', unsafe_allow_html=True)
+
+    if dismissed_clicked:
+        # 2026-09-12(사용자 신고 — × 잔재): st.rerun()을 중첩된 st.container(...)
+        # with 블록 "안"에서 호출하면(이전 코드), 그 예외가 여러 겹의 with
+        # 블록을 한꺼번에 빠져나가면서 프런트엔드가 이 특정 중첩 컨테이너의
+        # "닫힘"을 제대로 못 받아, 다음 렌더에서 배경 없는 흰 박스 안에 ×만
+        # 남는 고아 DOM으로 남았다(실제 배포본에서 재현 확인 — 안드로이드
+        # 웹뷰만의 문제가 아니라 일반 데스크톱 브라우저에서도 동일 재현).
+        # 클릭 여부만 안에서 기록해두고, rerun은 모든 with 블록을 정상적으로
+        # 빠져나온 뒤 여기서 호출한다.
+        close_auth_banner()
+        st.session_state.pop(AUTH_RESUME_FLAG, None)
+        st.session_state.pop(AUTH_RESUME_DATA, None)
+        st.rerun()
 
     return_page = st.query_params.get("page", "main")
 
