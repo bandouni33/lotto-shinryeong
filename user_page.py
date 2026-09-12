@@ -1503,6 +1503,21 @@ elif current_page == "tarot":
     )
 
     import tarot_page
+
+    # 2026-09-12: Streamlit Cloud가 git push 배포 때마다 파이썬 프로세스를 매번
+    # 완전히 재시작하는 게 아니라서, 이 sys.path 트릭으로 import한 모듈이
+    # sys.modules에 예전 코드로 캐시된 채 남아있을 수 있다(실측: 타로에 로그인
+    # 게이트를 추가했는데 배포 후 몇 분이 지나도 반영이 안 됨 — marketing_db.py의
+    # _marketing_db() 워크어라운드와 동일한 원인). 파일의 실제 mtime을 비교해서
+    # 디스크의 코드가 더 최신이면 무조건 다시 읽는다 — 앞으로 이 파일을 고칠
+    # 때마다 매번 별도 마커를 챙길 필요 없이 항상 최신 코드가 반영되게 한다.
+    _tarot_mtime = os.path.getmtime(tarot_page.__file__)
+    if getattr(tarot_page, "_loaded_mtime", None) != _tarot_mtime:
+        import importlib as _importlib
+
+        tarot_page = _importlib.reload(tarot_page)
+        tarot_page._loaded_mtime = _tarot_mtime
+
     tarot_page.render()
 
 # ==========================================
