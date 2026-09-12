@@ -712,6 +712,25 @@ def render():
                     inset 0 1px 0 rgba(255, 255, 255, 0.35);
             }}
             
+            /* 2026-09-12(사용자 지시): 생성 중 사용자가 결과를 보려고 화면을
+               위아래로 스크롤하면, setTimeout 체인 자체는 계속 돌고 있는데도
+               (모바일 브라우저가 손가락 스크롤 중엔 저우선순위 타이머 실행을
+               미루는 게 흔한 동작이라, 실제로는 잠깐 지연될 뿐 끊기는 게
+               아님) 화면상 진행이 멈춘 것처럼 보여 "오류난 줄" 오해하기 쉽다.
+               번호판 영역 맨 위(스크롤 위치와 무관하게 다시 위로 올리면
+               항상 보이는 자리)에 진행 상황을 항상 텍스트로 보여줘서,
+               스크롤 중에도 "계속 진행 중"임을 확인할 수 있게 한다. */
+            .gen-progress-banner {{
+                text-align: center;
+                font-size: 13px;
+                font-weight: 800;
+                color: #ffd54f;
+                background: rgba(255, 213, 79, 0.1);
+                border: 1px solid rgba(255, 213, 79, 0.35);
+                border-radius: 10px;
+                padding: 8px 10px;
+                margin-bottom: 10px;
+            }}
             .result-area {{ margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }}
             .result-row {{
                 background: linear-gradient(145deg, #0A0A0F 0%, #050508 55%, #0D0D1A 100%);
@@ -852,6 +871,7 @@ def render():
         </style>
     </head>
     <body>
+        <div class="gen-progress-banner" id="genProgressBanner" style="display:none;"></div>
         <div class="tab-container">
             <div id="tab-delete" class="tab active" onclick="setMode('delete')">삭\u200b제수</div>
             <div id="tab-fixed" class="tab" onclick="setMode('fixed')">고\u200b정수</div>
@@ -1333,6 +1353,20 @@ def render():
                 }});
             }}
 
+            // 진행 상황을 스크롤 위치와 무관하게 항상 보이는 상단 배너에 표시한다 —
+            // 위 CSS 주석 참고. 실제 생성(setTimeout 체인)과는 완전히 별개라, 이
+            // 배너 업데이트가 지연되거나 실패해도 생성 자체엔 영향이 없다.
+            function updateGenProgressBanner(current, total) {{
+                const el = document.getElementById('genProgressBanner');
+                if (!el) return;
+                el.style.display = 'block';
+                el.textContent = '⚡ 조합 생성 중입니다... (' + current + ' / ' + total + ')  화면을 움직여도 계속 진행됩니다';
+            }}
+            function hideGenProgressBanner() {{
+                const el = document.getElementById('genProgressBanner');
+                if (el) el.style.display = 'none';
+            }}
+
             function generateCombination() {{
                 if (isGenerating) return;
 
@@ -1362,6 +1396,7 @@ def render():
                 const resultArea = document.getElementById('resultArea');
                 resultArea.innerHTML = '';
                 scrollResultsIntoView(resultArea);
+                updateGenProgressBanner(0, count);
 
                 persistGenProgress([], count);
 
@@ -1373,6 +1408,7 @@ def render():
                         currentResults.push(game);
                         renderGame(game);
                         persistGenProgress(currentResults, count);
+                        updateGenProgressBanner(currentResults.length, count);
                     }}, g * 2000);
                     activeGenTimers.push(tid);
                 }}
@@ -1381,6 +1417,7 @@ def render():
                     isGenerating = false;
                     setStartButtonEnabled(true);
                     clearGenProgress();
+                    hideGenProgressBanner();
                     window.parent.postMessage({{ type: 'thunder_complete', count: count }}, '*');
                 }}, count * 2000 + 600);
                 activeGenTimers.push(completeId);
@@ -1587,6 +1624,7 @@ def render():
                 resultArea.innerHTML = '';
                 currentResults.forEach((g) => renderGame(g));
                 scrollResultsIntoView(resultArea);
+                updateGenProgressBanner(currentResults.length, p.expected);
 
                 const available = [];
                 for (let i = 1; i <= 45; i++) {{
@@ -1601,6 +1639,7 @@ def render():
                         currentResults.push(game);
                         renderGame(game);
                         persistGenProgress(currentResults, p.expected);
+                        updateGenProgressBanner(currentResults.length, p.expected);
                     }}, g * 400);
                     activeGenTimers.push(tid);
                 }}
@@ -1609,6 +1648,7 @@ def render():
                     isGenerating = false;
                     setStartButtonEnabled(true);
                     clearGenProgress();
+                    hideGenProgressBanner();
                     window.parent.postMessage({{ type: 'thunder_complete', count: p.expected }}, '*');
                 }}, remaining * 400 + 300);
                 activeGenTimers.push(completeId);
