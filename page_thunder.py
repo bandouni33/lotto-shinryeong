@@ -179,7 +179,9 @@ def render():
                 return
             mid = current_member_id()
             if not mid:
-                st.session_state["thunder_purchase_error"] = "로그인이 필요합니다."
+                from login_gate import GATE_INLINE_HINT
+
+                st.session_state["thunder_purchase_error"] = GATE_INLINE_HINT
                 return
             ref = f"thunder:{mid}:{uuid.uuid4().hex[:10]}"
             if not deduct_after_result(mid, "thunder", ref, game_count=g):

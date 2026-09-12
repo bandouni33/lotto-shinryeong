@@ -193,10 +193,17 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 
     render_wallet_bar(show_my_info_trigger=(current_page == "main"))
 
-    from app_settings import get_update_notice
     import html as _html
 
-    _update_notice = get_update_notice()
+    # 2026-09-12 수정: get_update_notice()(원격 DB 3회 왕복 — 지금은 1회로
+    # 줄임)를 예전엔 여기 공통 영역에서 무조건 호출해서, 결과를 실제로 쓰는
+    # main 화면이 아닌 다른 화면(자동구매·번개조합 등)으로 옮길 때마다도
+    # 매번 안 쓰이는 조회가 따라붙었다. main 화면일 때만 부르도록 옮긴다.
+    _update_notice = None
+    if current_page == "main":
+        from app_settings import get_update_notice
+
+        _update_notice = get_update_notice()
     # 메인화면에서만 노출한다 — 예전엔 이 블록이 모든 페이지 공통 영역에 있어서
     # 화면을 옮길 때마다(자동구매→메인→자동구매 등) 계속 다시 떴다.
     if current_page == "main" and _update_notice["version"]:

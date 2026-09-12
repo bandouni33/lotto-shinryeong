@@ -886,13 +886,28 @@ def inject_app_haptic() -> None:
     )
 
 
+@st.cache_data(ttl=3, show_spinner=False)
+def _cached_zp_user(zp_uid: str) -> dict | None:
+    """render_wallet_bar()의 zp_uid(카카오 미연동 테스트 기간 임시 로그인) 잔액
+    조회 전용 캐시. render_wallet_bar는 페이지 종류·상호작용과 무관하게 매
+    rerun마다 정확히 한 번 불리는데, 예전엔 여기서 zero_phone_db.get_user()를
+    캐시 없이 매번 원격 DB에 왕복해 화면을 옮기거나 버튼 하나 누를 때마다도
+    쓸데없이 조회가 반복됐다. 실제 적립금 차감/환불은 이 zp_uid 경로가 아니라
+    member_id 기반 wallet_db 쪽에서만 일어나므로(current_member_id() 필요),
+    여기 잔액은 분쟁 위험이 있는 구매 확정 값이 아니라 화면 표시용 — 3초
+    TTL로 짧게 캐싱해도 안전하다."""
+    from zero_phone_db import get_user
+
+    return get_user(zp_uid)
+
+
 def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     """로그인 시에만 상단 잔액 바. 미로그인 시 배너는 인증 필요 클릭 때만.
 
     show_my_info_trigger=False면 "내정보" 버튼/다이얼로그 자체를 아예 안 그린다 —
     메인 화면에만 필요하고 다른 상세페이지에서는 불필요하다는 요청."""
     from shared_ui_styles import wallet_bar_button_css
-    from zero_phone_db import TEST_USER_ID, get_user, init_zero_phone_tables, login_test_user
+    from zero_phone_db import TEST_USER_ID, init_zero_phone_tables, login_test_user
 
     # 2026-09-12: AUTH_BANNER_DISMISSED(× 클릭이 세팅하는 1회성 이벤트)를 매
     # rerun 시작 시 여기서 한 번만 소비해 AUTH_BANNER_JUST_DISMISSED로 옮겨
@@ -918,7 +933,7 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
 
     zp_uid = st.session_state.get("zp_user_id")
     if zp_uid:
-        zp_row = get_user(zp_uid)
+        zp_row = _cached_zp_user(zp_uid)
         if zp_row:
             st.session_state.zp_point_balance = zp_row["point_balance"]
             st.session_state.zp_is_premium = zp_row["is_premium"]

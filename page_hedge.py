@@ -872,7 +872,9 @@ def render():
             # 동일한 결함). 차감이 실제로 성공했을 때만 진행시킨다.
             mid = current_member_id()
             if not mid:
-                st.session_state["hedge_purchase_error"] = "로그인이 필요합니다."
+                from login_gate import GATE_INLINE_HINT
+
+                st.session_state["hedge_purchase_error"] = GATE_INLINE_HINT
                 return
             import uuid
             from wallet_db import calc_hedge_cost, get_balance
@@ -899,7 +901,6 @@ def render():
             if not deduct_after_result(mid, "hedge", ref, quantity=total_count):
                 open_insufficient_balance_dialog(calc_hedge_cost(total_count))
                 return
-            st.session_state["hedge_results"] = {"anti": anti_results, "aekddaem": aek_results}
 
             # 2026-08-27: "번호 확정되면 즉시 자동저장" 요청 — 예전엔 결과가 화면에
             # 뜬 뒤 "💾 결과저장"을 한 번 더 눌러야 실제로 DB에 저장됐다. 번호가
@@ -907,15 +908,33 @@ def render():
             # 바로 저장해서 그 별도 클릭을 없앤다.
             from auto_purchase_service import _next_draw_round
             from marketing_db import init_marketing_tables, save_guest_generated_combos
+            from wallet_db import refund_points
 
             init_marketing_tables()
             next_round = _next_draw_round()
-            # anti를 먼저 저장해 created_at을 더 이르게 만든다 — 저장내역은
-            # created_at 최신순으로 정렬되므로, aekddaem(전체리셋)을 나중에
-            # 저장해야 화면 요청 순서("전체숫자 위 → 개별 5줄 아래")와 같이
-            # 전체리셋 묶음이 저장내역에서도 위에 온다.
-            save_guest_generated_combos(guest_id, "anti", next_round, anti_results)
-            save_guest_generated_combos(guest_id, "aekddaem", next_round, aek_results)
+            try:
+                # anti를 먼저 저장해 created_at을 더 이르게 만든다 — 저장내역은
+                # created_at 최신순으로 정렬되므로, aekddaem(전체리셋)을 나중에
+                # 저장해야 화면 요청 순서("전체숫자 위 → 개별 5줄 아래")와 같이
+                # 전체리셋 묶음이 저장내역에서도 위에 온다.
+                save_guest_generated_combos(guest_id, "anti", next_round, anti_results)
+                save_guest_generated_combos(guest_id, "aekddaem", next_round, aek_results)
+            except Exception:
+                # 2026-09-12(사용자 지시): 자동구매(complete_auto_order 실패 시
+                # 즉시 환불)·번개조합(sweep_stale_thunder_pending 자동환불)과
+                # 달리 이 화면만 "차감 후 저장 실패" 안전장치가 없어서, 저장이
+                # 실패하면(네트워크 오류 등) 적립금만 빠지고 조합은 저장 안 되는
+                # 사고 구조였다 — 세 화면 공통 원칙(apply_fixes_to_all_three
+                # _purchase_screens)에 맞춰 즉시 환불한다.
+                refund_points(
+                    mid, calc_hedge_cost(total_count), "hedge:refund:save_failed", f"{ref}:refund"
+                )
+                st.session_state["hedge_purchase_error"] = (
+                    "저장 중 오류가 발생했습니다. 적립금은 자동 환불되었습니다. 잠시 후 다시 시도해 주세요."
+                )
+                return
+
+            st.session_state["hedge_results"] = {"anti": anti_results, "aekddaem": aek_results}
             st.session_state.pop("hedge_committed_lines", None)
             for line_idx in range(MAX_LINES):
                 for n in range(1, 46):

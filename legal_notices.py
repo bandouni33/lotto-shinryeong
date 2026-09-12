@@ -22,13 +22,28 @@ AUTH_CONSENT_ITEMS = [
 ]
 
 # ── 적립금 요금 (차감: 조합시작/확인 시점) ──
+# 2026-09-12 수정: 예전엔 이 값들을 wallet_db.py의 실제 차감 상수와 별개로
+# 리터럴로 복붙해뒀다 — 화면 안내 문구(여기)와 실제 차감액(wallet_db.py)이
+# 서로 다른 파일에 따로 적혀 있어, 가격을 바꿀 때 한쪽만 고치면 "안내는
+# A원인데 실제로는 B원 차감"되는 사고로 이어질 수 있는 구조였다(wallet_db.py의
+# 관련 상수 옆 경고 주석 참고). wallet_db.py 값을 그대로 가져와 써서 두 곳이
+# 항상 같은 값을 보게 만든다 — 가격을 바꿀 땐 wallet_db.py만 고치면 된다.
+from wallet_db import (
+    ADVANCED_3MONTH_COST,
+    ADVANCED_MONTHLY_COST,
+    AUTO_COST_PER_UNIT,
+    HEDGE_COST_PER_COMBO,
+    TAROT_EXTRA_DRAW_COST,
+    THUNDER_COST_PER_GAME,
+)
+
 PRICING = {
-    "thunder_per_game": 10,
-    "hedge_per_combo": 10,
-    "auto_per_unit": 10,  # 2026-09-08 정정 — wallet_db.AUTO_COST_PER_UNIT과 항상 같은 값 유지
-    "tarot_extra_draw": 50,
-    "advanced_monthly": 1200,
-    "advanced_3month": 3000,
+    "thunder_per_game": THUNDER_COST_PER_GAME,
+    "hedge_per_combo": HEDGE_COST_PER_COMBO,
+    "auto_per_unit": AUTO_COST_PER_UNIT,
+    "tarot_extra_draw": TAROT_EXTRA_DRAW_COST,
+    "advanced_monthly": ADVANCED_MONTHLY_COST,
+    "advanced_3month": ADVANCED_3MONTH_COST,
 }
 
 ADVANCED_FILTER_FIRST_SUB_FREE = True  # 첫 구독 1회 무료 (마케팅)

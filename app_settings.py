@@ -65,12 +65,26 @@ def set_setting(key: str, value: str) -> None:
 
 
 def get_update_notice() -> dict:
-    """{'version': str, 'url': str, 'message': str} — version이 비어있으면 배너 비활성."""
+    """{'version': str, 'url': str, 'message': str} — version이 비어있으면 배너 비활성.
+
+    2026-09-12 수정: 예전엔 get_setting()을 3번 따로 불러 원격 DB를 순차로
+    3번 왕복했다. 호출부(user_page.py)도 결과를 메인 화면에서만 쓰면서
+    정작 이 함수는 모든 화면 렌더마다 불려서, 화면을 옮길 때마다 안 쓰이는
+    조회가 3번씩 쌓이고 있었다(호출부는 main 화면에서만 부르도록 별도로
+    옮김). 여기서는 한 번의 IN 쿼리로 합쳐 왕복을 1회로 줄인다."""
     init_settings_table()
+    keys = (UPDATE_VERSION_KEY, UPDATE_URL_KEY, UPDATE_MESSAGE_KEY)
+    conn = _connect()
+    placeholders = ",".join("?" for _ in keys)
+    rows = conn.execute(
+        f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", keys
+    ).fetchall()
+    conn.close()
+    values = {row["key"]: row["value"] for row in rows}
     return {
-        "version": get_setting(UPDATE_VERSION_KEY, ""),
-        "url": get_setting(UPDATE_URL_KEY, ""),
-        "message": get_setting(UPDATE_MESSAGE_KEY, "새 버전이 있습니다."),
+        "version": values.get(UPDATE_VERSION_KEY, ""),
+        "url": values.get(UPDATE_URL_KEY, ""),
+        "message": values.get(UPDATE_MESSAGE_KEY, "새 버전이 있습니다."),
     }
 
 
