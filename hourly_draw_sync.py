@@ -15,7 +15,7 @@ sync_latest_from_dhlottery()는 이미 "DB 최신 회차보다 사이트 최신 
 
 from __future__ import annotations
 
-import sys
+import os
 
 
 def main() -> int:
@@ -31,4 +31,17 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # 2026-09-13(GitHub Actions 실행이 몇 시간째 "진행 중"에서 안 끝나는 문제
+    # 조사): db_turso.py의 _EXECUTOR(ThreadPoolExecutor)가 만드는 워커 스레드는
+    # non-daemon이라, Turso 서버가 응답을 안 주는 상황(db_turso.py 2026-09-03
+    # 주석 참고 — libsql_client 자체에 타임아웃이 없어 그 요청을 기다리는
+    # 스레드가 예외조차 없이 영원히 멈춤)에서 foreground 쪽은 10초 만에
+    # TimeoutError로 안전하게 빠져나와도, 그 멈춘 백그라운드 스레드 자체는
+    # 계속 살아있어서 sys.exit()가 프로세스를 실제로 못 끝낸다(non-daemon
+    # 스레드가 하나라도 살아있으면 인터프리터가 종료를 기다림) — Streamlit
+    # 앱처럼 오래 떠있는 프로세스에서는 무해하지만, 한 번 돌고 끝나야 하는
+    # 이 스크립트에서는 GitHub Actions job이 몇 시간이고 "진행 중"인 채로
+    # 안 끝나는 원인이 된다. os._exit()로 다른 스레드를 기다리지 않고 즉시
+    # 프로세스를 종료시킨다.
+    exit_code = main()
+    os._exit(exit_code)
