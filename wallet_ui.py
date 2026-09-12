@@ -293,18 +293,22 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
     line-height: 1.45 !important;
     margin: 3px 0 !important;
 }
-/* 닫기(×)는 st.columns가 아니라 절대위치로 앵커한다 — 모바일 폭(대략
-   640px 미만)에서는 Streamlit 컬럼이 세로로 쌓이는 기본 반응형 동작 때문에,
-   이 배너의 실제 사용 환경(좁은 웹뷰)에서 columns([11,1])로 만들면 ×가
-   우측 상단이 아니라 자기 줄 가운데에 나타나는 문제가 실측 확인됨.
+/* 닫기(×)는 st.columns가 아니라 카드 테두리 바깥쪽 모서리에 살짝 걸치는
+   작은 원형 배지로 뺀다(다른 사이트의 통상적인 모달 닫기 배지 위치 참고).
    2026-09-12(사용자 지시 — 재수정): 카드 안쪽에 자리를 차지하고 앉아있지
-   않도록, 카드 테두리 바깥쪽 모서리에 살짝 걸치는 작은 원형 배지로 뺀다
-   (다른 사이트의 통상적인 모달 닫기 배지 위치 참고). 위치 기준은 이제
-   .st-key-auth_banner_wrap(카드 바깥 래퍼)이다. */
+   않도록 이렇게 뺐었다.
+   2026-09-13(사용자 신고 — 실기기에서 X가 카드와 따로 노는 것처럼 분리돼
+   보임): position:absolute는 가장 가까운 position 지정 조상(.st-key-
+   auth_banner_wrap)을 기준으로 앵커되는데, 그 조상의 위치 계산이 실기기
+   웹뷰에서 어긋나면 카드와 무관한 자리에 떨어져 보일 수 있다. transform은
+   조상의 position과 무관하게 "자기 자신의 원래(정상 흐름) 위치"를 기준으로
+   옮기므로, 카드의 바로 앞 형제 요소인 이상 항상 카드와 같이 붙어 움직인다
+   — 걸치는 모양(살짝 밖으로 튀어나옴)은 그대로 유지하면서 앵커만 더
+   견고한 방식으로 바꾼다. */
 .st-key-auth_banner_close_x {
-    position: absolute !important;
-    top: -14px !important;
-    right: -12px !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    margin-bottom: -14px !important;
     width: auto !important;
     z-index: 5 !important;
 }
@@ -320,6 +324,7 @@ div[data-testid="stVerticalBlock"]:has(.lotto-auth-banner-marker) {
     width: 22px !important;
     font-size: 11px !important;
     line-height: 1 !important;
+    transform: translateX(12px) !important;
 }
 .st-key-auth_banner_kakao {
     max-width: 325px !important;
