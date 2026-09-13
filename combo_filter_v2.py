@@ -1,12 +1,14 @@
-"""1차(7기본필터)+2차(5이격수)+4차(상중하/상위3위 절대수) 조합 생성 — 2026-09-05
+"""1차(7기본필터)+2차(5이격수)+4차(상중하/상위5위 절대수) 조합 생성 — 2026-09-05
 검증 완료된 규칙 세트를 그대로 이식한 것. 회차 무관 고정 규칙(1차 378개+2차 48개)은
 매주 다시 계산해도 150초 안팎이라 캐시 파일을 안 쓴다 — Streamlit Cloud는 재배포
 시 로컬 파일이 사라지는 환경이라(이미 겪은 문제), 캐시에 의존하면 같은 함정에
 다시 빠진다.
 
 전출현번호/이웃수/후보패턴이웃수(AUTO) 3개 규칙만 매 회차 직전회차 데이터로
-다시 계산한다. 4차 조건(상중하 0~4개, 상위1~3위 중 최소1개 포함)도 같은 격차
-순위(gap_order)를 그대로 재사용한다.
+다시 계산한다. 4차 조건(상중하 각 1~4개, 상위1~5위 중 최소1개 포함 — 2026-09-13
+사용자 지시로 기존 "상중하 0~4개, 상위1~3위 중 최소1개"에서 변경, 같은 날 중
+top6로 한 번 검토 후 배포단위(5개묶음)와 맞춰 top5로 최종 확정, 1242회차부터
+적용)도 같은 격차순위(gap_order)를 그대로 재사용한다.
 """
 
 from __future__ import annotations
@@ -192,10 +194,23 @@ def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
     c_sang = combo_oh @ sang
     c_jung = combo_oh @ jung
     c_ha = combo_oh @ ha
-    cond1 = _band(c_sang, 0, 4) & _band(c_jung, 0, 4) & _band(c_ha, 0, 4)
+    # 2026-09-13 확정(사용자 지시): 상중하 각 0~4개 → 1~4개(각 그룹에서 최소
+    # 1개는 반드시 포함)로 강화. 1242회차부터 적용.
+    cond1 = _band(c_sang, 1, 4) & _band(c_jung, 1, 4) & _band(c_ha, 1, 4)
 
-    top3_vec = _targets_to_vec(gap_order[:3])
-    cond2 = (combo_oh @ top3_vec) >= 1
+    # 2026-09-13 확정(사용자 지시, 같은 날 top6→top5로 재조정): 상위1~3위 중
+    # 최소1개 → 상위1~5위 중 최소1개로 완화. 1242회차부터 적용. 애초 top6로
+    # 검토했으나 배포단위(5개묶음)와 숫자가 안 맞아 "5·6위 중 1개 랜덤교차"
+    # 같은 별도 분기가 필요했음 — top5로 바꾸면 5개묶음에 1위~5위 각 1개씩
+    # 딱 떨어져 배포 로직이 훨씬 단순해짐(사용자 판단, 최종 채택).
+    # top3→top5 전환 시 "4차 통과 조합은 반드시 top1~3위 중 하나를
+    # 포함한다"는 예전 불변식이 깨지므로(이제 top4·5위만 포함하고 top1~3위는
+    # 전혀 없는 조합도 통과 가능), 이 불변식에 의존하던 combo_gen_worker.py의
+    # _rank_tier()/marketing_db.py의 _compute_top3_mask()도 반드시 5단계
+    # 버전으로 같이 갱신해야 한다 — 하나만 바꾸면 배포 시 특정 조합이 어느
+    # 그룹에도 안 속하는 오류가 난다.
+    top5_vec = _targets_to_vec(gap_order[:5])
+    cond2 = (combo_oh @ top5_vec) >= 1
 
     stage4_mask = stage2_mask & cond1 & cond2
 
@@ -219,10 +234,14 @@ def generate_next_round_combos(history_desc: list[dict]) -> tuple[int, list[tupl
         "static_gap_count": static_gap_count,
         "stage2_count": stage2_count,
         "final_count": int(stage4_mask.sum()),
-        # 2026-09-05: 구매조합 배포 시 "1~3위 절대수 겹침 조합" 5종 묶음 배분에
-        # 쓰는 격차순위 1~3위 숫자(gap_order[:3]과 동일) — combo_gen_worker.py가
-        # bulk_insert_lotto_combinations에 그대로 넘겨 조합마다 top3_mask를 매긴다.
+        # 2026-09-05: 구매조합 배포 시 "1~3위 절대수 겹침 조합" 묶음 배분에
+        # 쓰는 격차순위 1~3위 숫자(gap_order[:3]과 동일) — 구버전 호환용으로
+        # 계속 남겨둔다(top5_numbers의 앞 3개와 항상 동일한 값).
         "top3_numbers": tuple(int(x) for x in gap_order[:3]),
+        # 2026-09-13 신규(사용자 지시, top6→top5 최종): top3→top5 확장 필터에
+        # 맞춰 격차순위 1~5위 숫자를 추가로 넘긴다. combo_gen_worker.py/
+        # marketing_db.py의 5단계 배분 로직이 이 값을 써야 한다.
+        "top5_numbers": tuple(int(x) for x in gap_order[:5]),
     }
     return target_round, [tuple(int(x) for x in row) for row in passing], stats
 

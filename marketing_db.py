@@ -124,6 +124,8 @@ def init_marketing_tables():
             rank1_num INTEGER NOT NULL,
             rank2_num INTEGER NOT NULL,
             rank3_num INTEGER NOT NULL,
+            rank4_num INTEGER NULL,
+            rank5_num INTEGER NULL,
             recorded_at TEXT NOT NULL
         )
     """)
@@ -217,6 +219,7 @@ def init_marketing_tables():
         )
     """)
     _migrate_lotto_combinations(conn)
+    _migrate_draw_generation_stats(conn)
     conn.commit()
     conn.close()
     _MARKETING_TABLES_READY = True
@@ -282,6 +285,10 @@ def _migrate_lotto_combinations(conn: sqlite3.Connection) -> None:
     # 남아 묶음 배분에선 제외되고 부족분 채우기(leftover)에만 쓰인다.
     if "top3_mask" not in cols:
         conn.execute("ALTER TABLE lotto_combinations ADD COLUMN top3_mask INTEGER NULL")
+    # 2026-09-13: 컬럼명은 top3_mask 그대로 유지하지만(테이블 재생성 없이),
+    # 이제 비트 5개(1위=1,2위=2,3위=4,4위=8,5위=16)까지 쓴다 — INTEGER
+    # 컬럼이라 값 범위만 넓어질 뿐 스키마 변경은 필요 없다. 이 컬럼을 읽는
+    # 쪽은 반드시 _rank_tier_from_mask()(5단계 버전)를 거칠 것.
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_lotto_combinations_allocate
         ON lotto_combinations(draw_round, allocated_at)
@@ -298,6 +305,18 @@ def _migrate_lotto_combinations(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_lotto_combinations_auto_order
         ON lotto_combinations(auto_order_id)
     """)
+
+
+def _migrate_draw_generation_stats(conn: sqlite3.Connection) -> None:
+    """2026-09-13 신규(사용자 지시, top3→top5 확장): 격차순위 1~3위만 기록하던
+    draw_generation_stats에 4·5위 컬럼을 추가한다. 기존 행(1241회차 이전)은
+    애초에 4·5위 개념이 없었으므로 NULL로 남는다 — 그 회차들을 top5_numbers로
+    되돌려 재구성하려 하지 말 것(get_draw_generation_stats에서 NULL 그대로 반환)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(draw_generation_stats)")}
+    if "rank4_num" not in cols:
+        conn.execute("ALTER TABLE draw_generation_stats ADD COLUMN rank4_num INTEGER NULL")
+    if "rank5_num" not in cols:
+        conn.execute("ALTER TABLE draw_generation_stats ADD COLUMN rank5_num INTEGER NULL")
 
 
 def _combo_nums_from_row(row) -> tuple[int, int, int, int, int, int]:
@@ -606,37 +625,39 @@ def _pick_spread_indices(pool_size: int, count: int) -> list[int]:
     return sorted(random.sample(range(pool_size), count))
 
 
-# 2026-09-08 최종 확정(여러 차례 재확인): 구매 5개 = "1묶음". 격차순위
-# (gap_order) 1~3위 숫자 포함 여부로 조합을 3개 그룹으로 나눈다(서로 안
-# 겹치고 합치면 전체와 같음) — 1위그룹(1위 숫자 포함, 2·3위 무관) / 2위그룹
-# (2위 포함, 1위는 제외) / 3위그룹(3위 포함, 1·2위 둘 다 제외). 1묶음(5개)은
-# 이 3개 그룹에서 자연 비율이 아니라 **2:2:1**로 강제 배분한다 — 반드시
-# combo_gen_worker.py의 RANK_TIER_RATIO(추출 단계)와 똑같은 값을 유지할 것
-# (추출 비율과 배포 소진 비율이 어긋나면 특정 그룹만 먼저 바닥난다).
-# (2026-09-08 이전엔 "5개 마스크 각 1개씩"이었으나 사용자 본인 텍스트
-# 착오로 확인돼 이 3그룹·2:2:1 규칙으로 정정했다.)
-RANK_TIER_RATIO = (2, 2, 1)  # (1위그룹, 2위그룹, 3위그룹)
+# 2026-09-08 최초 확정(여러 차례 재확인), 2026-09-13 재확정(사용자 지시 —
+# top3→top5로 4차 조건이 완화되며 3그룹 불변식이 깨짐. 같은 날 top6도
+# 검토했으나 "5개묶음에 딱 안 떨어져 5·6위 중 1개 교차선택"이라는 별도
+# 분기가 필요해서, 배포단위(5개묶음)와 정확히 맞아떨어지는 top5로 최종
+# 확정 — 5개묶음 = 5개 그룹 각 1개씩, 별도 분기 로직 자체가 필요 없어짐):
+# 구매 5개 = "1묶음". 격차순위(gap_order) 1~5위 숫자 포함 여부로 조합을
+# 5개 그룹으로 나눈다(서로 안 겹치고 합치면 전체와 같음, 우선순위
+# 1위>2위>...>5위) — 1위그룹(1위 포함, 나머지 무관) / 2위그룹(2위 포함,
+# 1위 제외) / 3위그룹(3위 포함, 1·2위 제외) / 4위그룹(4위 포함, 1~3위 제외)
+# / 5위그룹(5위 포함, 1~4위 제외). 1묶음(5개)은 이 5개 그룹에 **각 1개씩**
+# 정확히 대응된다(RANK_TIER_RATIO=1:1:1:1:1) — 반드시 combo_gen_worker.py의
+# RANK_TIER_RATIO(추출 단계)와 똑같은 값을 유지할 것(추출 비율과 배포 소진
+# 비율이 어긋나면 특정 그룹만 먼저 바닥난다).
+RANK_TIER_RATIO = (1, 1, 1, 1, 1)  # (1위,2위,3위,4위,5위그룹) 각 1개
 _BUNDLE_SIZE = sum(RANK_TIER_RATIO)
 
 
 def _rank_tier_from_mask(mask: int) -> int | None:
-    """top3_mask(비트: 1위=1, 2위=2, 3위=4)로부터 1위그룹(0)/2위그룹(1)/
-    3위그룹(2)을 판정. mask=0(NULL, 관리자 수기 업로드 등 top3 정보 없는
-    행)은 정식 그룹이 없어 None — 배분 시 leftover로만 채워진다."""
-    if mask & 1:
-        return 0
-    if mask & 2:
-        return 1
-    if mask & 4:
-        return 2
+    """top3_mask 컬럼(이제 비트 5개: 1위=1, 2위=2, 3위=4, 4위=8, 5위=16)으로부터
+    1위그룹(0)~5위그룹(4)을 판정. mask=0(NULL, 관리자 수기 업로드나 2026-09-13
+    이전 구버전 top3 전용 데이터 등 top5 정보 없는 행)은 정식 그룹이 없어
+    None — 배분 시 leftover로만 채워진다."""
+    for bit_pos in range(5):
+        if mask & (1 << bit_pos):
+            return bit_pos
     return None
 
 
 def _rank_tier_quota(count: int) -> list[int]:
-    """count(5의 배수 기준)를 1위/2위/3위그룹에 2:2:1로 배분한 목표 수량
-    [1위그룹, 2위그룹, 3위그룹]. 5의 배수가 아니면 나머지를 비율이 큰
-    그룹부터 1개씩 얹는다(방어적 처리 — 현재 구매 수량 선택지는 5/10개뿐이라
-    실제로는 항상 딱 떨어진다)."""
+    """count(5의 배수 기준)를 1~5위그룹에 1:1:1:1:1로 배분한 목표 수량
+    [1위그룹, 2위그룹, 3위그룹, 4위그룹, 5위그룹]. 5의 배수가 아니면
+    나머지를 비율이 큰 그룹부터 1개씩 얹는다(방어적 처리 — 현재 구매 수량
+    선택지는 5/10개뿐이라 실제로는 항상 딱 떨어진다)."""
     unit, leftover = divmod(count, _BUNDLE_SIZE)
     targets = [unit * r for r in RANK_TIER_RATIO]
     order = sorted(range(len(RANK_TIER_RATIO)), key=lambda i: -RANK_TIER_RATIO[i])
@@ -646,12 +667,12 @@ def _rank_tier_quota(count: int) -> list[int]:
 
 
 def _pick_bundle_candidates(pending: list, quota_remaining: list[int]) -> list:
-    """1위/2위/3위그룹별 부족분을 그 그룹 버킷 안에서 분산선택
+    """1~5위그룹별 부족분을 그 그룹 버킷 안에서 분산선택
     (_pick_spread_indices)으로 채운다. quota_remaining은
-    [1위그룹필요수, 2위그룹필요수, 3위그룹필요수]. 특정 그룹 재고가 모자라면
-    남은 총량만큼 나머지 pending(그룹 무관, NULL 포함)에서 채워 최소한
-    need는 맞춘다."""
-    by_tier: dict[int, list] = {0: [], 1: [], 2: []}
+    [1위그룹필요수, 2위그룹필요수, 3위그룹필요수, 4위그룹필요수, 5위그룹필요수].
+    특정 그룹 재고가 모자라면 남은 총량만큼 나머지 pending(그룹 무관, NULL
+    포함)에서 채워 최소한 need는 맞춘다."""
+    by_tier: dict[int, list] = {0: [], 1: [], 2: [], 3: [], 4: []}
     for row in pending:
         mask = int(row["top3_mask"]) if row["top3_mask"] is not None else 0
         tier = _rank_tier_from_mask(mask)
@@ -710,9 +731,11 @@ def allocate_lotto_combinations_random_sequential(
     rotated = False
     claimed_rows: list = []
     claimed_ids: set[int] = set()
-    # count가 5의 배수(현재 구매 수량 선택지는 5/10개뿐)면 "1~3위그룹
-    # 2:2:1 묶음" 배분을 적용 — 그 외(예: 관리자 도구의 임의 수량 호출)는
-    # 기존 순수 분산선택 그대로.
+    # count가 5의 배수(현재 구매 수량 선택지는 5/10개뿐)면 "1~5위그룹
+    # 1:1:1:1:1 묶음(그룹당 1개)" 배분을 적용 — 그 외(예: 관리자 도구의
+    # 임의 수량 호출)는 기존 순수 분산선택 그대로. 2026-09-13(사용자 지시,
+    # top3→top5 확장): _BUNDLE_SIZE가 3→5로 바뀌면서 이 나머지 조건 자체는
+    # 코드 수정 없이 자동으로 새 그룹 수에 맞춰진다.
     use_bundle_quota = count % _BUNDLE_SIZE == 0
     full_quota = _rank_tier_quota(count) if use_bundle_quota else None
     try:
@@ -759,7 +782,7 @@ def allocate_lotto_combinations_random_sequential(
                 )
                 quota_remaining = [
                     full_quota[tier] - claimed_tier_counts.get(tier, 0)
-                    for tier in range(3)
+                    for tier in range(len(RANK_TIER_RATIO))
                 ]
                 candidates = _pick_bundle_candidates(pending, quota_remaining)[:need]
             else:
@@ -1364,12 +1387,16 @@ def parse_combination_rows_from_dataframe(df) -> list[tuple[int, int, int, int, 
 
 
 def _compute_top3_mask(
-    combo: tuple[int, ...], top3_numbers: tuple[int, int, int]
+    combo: tuple[int, ...], top5_numbers: tuple[int, int, int, int, int]
 ) -> int:
-    """격차순위 1~3위 숫자 포함 여부 비트마스크(1위=1, 2위=2, 3위=4)."""
+    """격차순위 1~5위 숫자 포함 여부 비트마스크(1위=1, 2위=2, 3위=4, 4위=8,
+    5위=16). 2026-09-13(사용자 지시, top3→top5 확장): 컬럼명은 top3_mask
+    그대로 유지(DB 스키마상 제약 없는 일반 INTEGER라 이름만 예전 그대로고
+    실제로는 5비트를 씀 — 컬럼 rename은 별도 마이그레이션 없이도 되지만
+    굳이 필요 없어 생략)."""
     combo_set = set(combo)
     mask = 0
-    for bit, num in zip((1, 2, 4), top3_numbers):
+    for bit, num in zip((1, 2, 4, 8, 16), top5_numbers):
         if num in combo_set:
             mask |= bit
     return mask
@@ -1378,12 +1405,12 @@ def _compute_top3_mask(
 def bulk_insert_lotto_combinations(
     draw_round: int,
     combinations: list,
-    top3_numbers: tuple[int, int, int] | None = None,
+    top5_numbers: tuple[int, int, int, int, int] | None = None,
 ) -> int:
     """익명 로또 조합 대량 등록 (win_rank는 NULL).
 
-    top3_numbers(격차순위 1~3위 숫자)를 주면 조합마다 top3_mask를 같이
-    계산해 저장한다 — combo_gen_worker.py가 매주 생성분에 대해 넘긴다.
+    top5_numbers(격차순위 1~5위 숫자)를 주면 조합마다 top3_mask(5비트)를
+    같이 계산해 저장한다 — combo_gen_worker.py가 매주 생성분에 대해 넘긴다.
     관리자 CSV 업로드 등 안 넘기는 경로는 그대로 top3_mask=NULL.
     """
     draw_round = int(draw_round)
@@ -1395,7 +1422,7 @@ def bulk_insert_lotto_combinations(
         combo = row if isinstance(row, tuple) else _normalize_combo(row)
         if combo is None:
             continue
-        mask = _compute_top3_mask(combo, top3_numbers) if top3_numbers else None
+        mask = _compute_top3_mask(combo, top5_numbers) if top5_numbers else None
         payload.append((draw_round, *combo, mask))
 
     if not payload:
@@ -1456,33 +1483,38 @@ def record_draw_generation_stats(
     draw_round: int,
     stage2_count: int,
     stage4_count: int,
-    top3_numbers: tuple[int, int, int],
+    top5_numbers: tuple[int, int, int, int, int],
 ) -> None:
-    """이 회차 조합 생성 시점의 2차/4차 필터 통과 총개수와 격차순위 1~3위
+    """이 회차 조합 생성 시점의 2차/4차 필터 통과 총개수와 격차순위 1~5위
     숫자를 영구 기록한다(combo_gen_worker.py가 매 회차 생성 직후 호출).
+    2026-09-13(사용자 지시, top3→top5 확장): rank4_num/rank5_num 컬럼 추가.
     record_draw_pattern_count와 같은 패턴 — 같은 회차를 나중에 다시 생성하면
     그 시점 값으로 덮어쓴다."""
     conn = _connect()
     conn.execute(
         """
         INSERT INTO draw_generation_stats
-            (draw_round, stage2_count, stage4_count, rank1_num, rank2_num, rank3_num, recorded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (draw_round, stage2_count, stage4_count, rank1_num, rank2_num, rank3_num, rank4_num, rank5_num, recorded_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(draw_round) DO UPDATE SET
             stage2_count = excluded.stage2_count,
             stage4_count = excluded.stage4_count,
             rank1_num = excluded.rank1_num,
             rank2_num = excluded.rank2_num,
             rank3_num = excluded.rank3_num,
+            rank4_num = excluded.rank4_num,
+            rank5_num = excluded.rank5_num,
             recorded_at = excluded.recorded_at
         """,
         (
             int(draw_round),
             int(stage2_count),
             int(stage4_count),
-            int(top3_numbers[0]),
-            int(top3_numbers[1]),
-            int(top3_numbers[2]),
+            int(top5_numbers[0]),
+            int(top5_numbers[1]),
+            int(top5_numbers[2]),
+            int(top5_numbers[3]),
+            int(top5_numbers[4]),
             datetime.now().isoformat(),
         ),
     )
@@ -1500,11 +1532,28 @@ def get_draw_generation_stats(draw_round: int) -> dict | None:
     conn.close()
     if not row:
         return None
+    row_keys = row.keys()
+    # 2026-09-13(사용자 지시, top3→top5 확장): rank4_num/rank5_num은 이번
+    # 마이그레이션으로 새로 추가된 컬럼이라, 그 이전에 기록된 회차(레거시
+    # 행)는 NULL이다 — 그런 행은 top5_numbers를 만들 수 없으므로 None으로
+    # 남겨 호출부가 "이 회차는 top3까지만 기록돼 있다"는 걸 구분할 수 있게 한다.
+    rank4 = row["rank4_num"] if "rank4_num" in row_keys else None
+    rank5 = row["rank5_num"] if "rank5_num" in row_keys else None
+    top5_numbers = None
+    if rank4 is not None and rank5 is not None:
+        top5_numbers = (
+            int(row["rank1_num"]),
+            int(row["rank2_num"]),
+            int(row["rank3_num"]),
+            int(rank4),
+            int(rank5),
+        )
     return {
         "draw_round": int(row["draw_round"]),
         "stage2_count": int(row["stage2_count"]),
         "stage4_count": int(row["stage4_count"]),
         "top3_numbers": (int(row["rank1_num"]), int(row["rank2_num"]), int(row["rank3_num"])),
+        "top5_numbers": top5_numbers,
     }
 
 
