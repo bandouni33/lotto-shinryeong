@@ -192,23 +192,19 @@ def get_or_create_guest_id() -> str:
     if query_gid:
         st.session_state["_guest_id"] = query_gid
         st.session_state["_guest_id_confirmed"] = True
-        _log_guest_id_branch("query", query_gid)
         return query_gid
     if st.session_state.get("_guest_id"):
-        _log_guest_id_branch("session_state", st.session_state["_guest_id"])
         return st.session_state["_guest_id"]
     cookie_val = st.context.cookies.get(GUEST_ID_COOKIE_KEY)
     if cookie_val:
         st.session_state["_guest_id"] = cookie_val
         st.session_state["_guest_id_confirmed"] = True
-        _log_guest_id_branch("cookie", cookie_val)
         return cookie_val
     import uuid
 
     new_id = uuid.uuid4().hex
     st.session_state["_guest_id"] = new_id
     st.session_state["_guest_id_confirmed"] = False
-    _log_guest_id_branch("NEW_MINTED", new_id)
     return new_id
 
 
@@ -236,47 +232,14 @@ def history_guest_ids() -> list[str]:
     return ids
 
 
-def _log_guest_id_branch(branch: str, guest_id: str) -> None:
-    """2026-09-08 임시 진단 코드 — guest_id가 화면 이동마다 계속 새로 발급되는
-    문제의 원인을 찾기 위해, 매 호출마다 어느 분기를 탔는지(query/session_state
-    /cookie/NEW_MINTED)와 그때 받은 native 파라미터·page 값을 안 보이게(화면
-    노출 없이 DB로만) 기록한다. 원인 확인되면 바로 제거할 것 — 화면에는
-    아무것도 안 보인다."""
-    try:
-        from wallet_db import _connect, _now_iso
-
-        conn = _connect()
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS _diag_guest_id_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                branch TEXT NOT NULL,
-                guest_id TEXT NOT NULL,
-                page TEXT,
-                native TEXT,
-                query_gid_raw TEXT,
-                created_at TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO _diag_guest_id_log (branch, guest_id, page, native, query_gid_raw, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                branch,
-                guest_id,
-                st.query_params.get("page"),
-                st.query_params.get("native"),
-                st.query_params.get(GUEST_ID_QUERY_KEY),
-                _now_iso(),
-            ),
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
+# 2026-09-08에 붙였던 임시 진단 코드(_log_guest_id_branch — guest_id 분기별
+# DB 로깅)는 2026-09-15 원인 규명 완료 후 제거했다. get_or_create_guest_id()가
+# 호출될 때마다(메인화면 메뉴 링크 6개 렌더 등 렌더 1회에 여러 번) 원격 Turso에
+# CREATE TABLE + INSERT 왕복이 걸려, 메인 페이지 로드 시 19~22회의 불필요한
+# 원격 DB 왕복이 쌓이는 게 느려짐의 주 원인 중 하나로 확인됐다. wallet_db.py의
+# init_wallet_tables()가 이미 겪은 것과 같은 종류의 문제(멱등 CREATE TABLE도
+# 매 렌더 반복 호출되면 원격 왕복이 쌓인다)인데, 이 진단 코드만 그 가드
+# 패턴(_WALLET_TABLES_READY류)을 안 따르고 있었다.
 
 
 def guest_id_cookie_sync_html(guest_id: str) -> str:
