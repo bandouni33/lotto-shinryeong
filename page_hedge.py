@@ -936,6 +936,10 @@ def render():
                     st.session_state.pop(f"hedge_anti_num_{line_idx}_{n}", None)
             st.session_state["hedge_history_blink"] = True
             st.session_state["hedge_generation_complete"] = True
+            # 2026-09-16(사용자 지시 — 번개조합과 동일하게): 저장 완료 후 화면이
+            # 조합시작 버튼 근처(위쪽)에 그대로 머물러 저장내역까지 스크롤해봐야
+            # 완료 여부를 알 수 있던 문제 — 저장내역 지점으로 자동 스크롤한다.
+            st.session_state["hedge_scroll_to_history"] = True
 
         points_notice_dialog("hedge", quantity=pending_count * 2, on_close=_hedge_dialog_close)
 
@@ -981,6 +985,30 @@ def render():
         from wallet_ui import render_generation_complete_notice
 
         render_generation_complete_notice("hedge")
+    if st.session_state.pop("hedge_scroll_to_history", False):
+        # page_thunder.py와 동일한 방식(최상위 문서에 <script>를 심어 window.top에서
+        # 실행) — 저장내역 지점(.st-key-hedge_history_zone_6n36s5)으로 스크롤.
+        components.html(
+            """
+            <script>
+            (function() {
+                try {
+                    var s = window.top.document.createElement('script');
+                    s.textContent = "try{var el=document.querySelector('.st-key-hedge_history_zone_6n36s5');"
+                        + "if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}}catch(e){}";
+                    window.top.document.head.appendChild(s);
+                    s.parentNode.removeChild(s);
+                } catch (e) {
+                    try {
+                        var el2 = window.parent.document.querySelector('.st-key-hedge_history_zone_6n36s5');
+                        if (el2) el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    } catch (e2) {}
+                }
+            })();
+            </script>
+            """,
+            height=0,
+        )
     render_history_panel(
         container_key="hedge_history_zone_6n36s5",
         guest_id=history_guest_ids(),
