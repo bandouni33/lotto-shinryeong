@@ -1140,6 +1140,67 @@ def list_guest_generated_combos(guest_id: str, source: str | None = None, limit:
     return [batches[k] for k in order[:limit]]
 
 
+def list_guest_generated_combos_multi(
+    guest_ids, sources: list[str] | None = None, limit_per_source: int = 30
+) -> list[dict]:
+    """여러 guest_id x 여러 source 조합을 한 번의 쿼리로 배치 단위로 반환.
+
+    2026-09-16: 번개조합/안티·액땜의 저장내역 패널이 guest_id(최대 15개,
+    history_guest_ids() 참고) x source(안티·액땜은 2개)마다 list_guest_generated_combos를
+    따로 호출해(패널을 열 때마다 최대 30회 왕복) list_guest_auto_orders_multi
+    (2026-09-11, 자동구매 구매내역에 적용된 동일 패턴)와 같은 이유로 느려짐의
+    원인이 됐다. IN (...) 한 방으로 줄인다. 호출부(render_history_panel)의
+    기존 병합/중복제거/최근회차 컷 로직은 그대로 두고 이 함수만 데이터
+    소스를 바꿔치기한다 — 결과 형태(batch dict 리스트)는 기존 함수와 동일."""
+    gids = [str(g) for g in dict.fromkeys(guest_ids) if g]
+    srcs = [str(s) for s in dict.fromkeys(sources or []) if s]
+    if not gids or not srcs:
+        return []
+
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    gid_placeholders = ",".join("?" * len(gids))
+    src_placeholders = ",".join("?" * len(srcs))
+    # 기존 방식(호출당 limit_per_source)이 최악의 경우 가져올 수 있었던 총
+    # 행 수(guest_id 수 x source 수 x limit_per_source)를 그대로 상한으로
+    # 둔다 — 그래야 뒤에서 하는 _limit_to_recent_rounds 컷 전까지는 기존과
+    # 최소한 동등한 범위의 데이터를 확보한다.
+    total_limit = len(gids) * len(srcs) * max(1, limit_per_source)
+    rows = conn.execute(
+        f"""
+        SELECT id, guest_id, source, draw_round, num1, num2, num3, num4, num5, num6,
+               win_rank, created_at
+        FROM guest_generated_combos
+        WHERE guest_id IN ({gid_placeholders}) AND source IN ({src_placeholders})
+        ORDER BY created_at DESC, id ASC
+        LIMIT ?
+        """,
+        (*gids, *srcs, total_limit),
+    ).fetchall()
+    conn.close()
+
+    batches: dict[tuple, dict] = {}
+    order: list[tuple] = []
+    for row in rows:
+        key = (row["created_at"], row["draw_round"], row["source"])
+        if key not in batches:
+            batches[key] = {
+                "batch_id": row["created_at"],
+                "source": row["source"],
+                "draw_round": int(row["draw_round"]),
+                "created_at": row["created_at"],
+                "combos": [],
+            }
+            order.append(key)
+        batches[key]["combos"].append(
+            {
+                "combo": list(_combo_nums_from_row(row)),
+                "win_rank": int(row["win_rank"]) if row["win_rank"] is not None else None,
+            }
+        )
+    return [batches[k] for k in order]
+
+
 def cleanup_old_guest_generated_combos(keep_rounds: int = 2) -> int:
     """guest_generated_combos(번개조합/안티조합/액땜조합 저장분) — 최근
     N개 회차만 남기고 그 이전은 삭제. 이 테이블은 여지껏 정리 로직이 없어

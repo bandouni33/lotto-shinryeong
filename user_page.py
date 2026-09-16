@@ -3,6 +3,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import base64
 import os
+import time
 
 
 def _reload_if_stale(module):
@@ -405,7 +406,22 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 _LUCKY_DISPLAY_DEFAULT = [5, 17, 26, 41, 30, 44]
 
 
+# 2026-09-16: 이 함수가 매 렌더(=메인화면의 모든 상호작용)마다 원격 DB를
+# 왕복하는 게 확인돼(관리자 대시보드에서 즉시 반영되게 하려던 설계 자체는
+# 유지해야 함 — 위 2026-08-31 주석 참고), 세션 안에서 60초 TTL로만 캐싱한다.
+# 세션당 1회만 캐싱(무기한)하면 관리자가 값을 바꿔도 그 세션이 끝날 때까지
+# 반영 안 되는 옛 문제(며칠씩 정체)를 형태만 바꿔 재현하게 되므로, 반드시
+# 짧은 TTL을 둬서 "즉시 반영"이라는 원래 취지를 크게 해치지 않는 선에서만
+# 호출 횟수를 줄인다.
+_LUCKY_DISPLAY_TTL_SECONDS = 60
+
+
 def _load_lucky_display() -> list[int]:
+    cached = st.session_state.get("_lucky_display_cache")
+    cached_at = st.session_state.get("_lucky_display_cache_at", 0)
+    if cached is not None and (time.time() - cached_at) < _LUCKY_DISPLAY_TTL_SECONDS:
+        return cached
+
     try:
         from app_settings import get_setting, init_settings_table
 
@@ -413,10 +429,15 @@ def _load_lucky_display() -> list[int]:
         raw = get_setting("main_lucky_numbers", "")
         nums = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
         if len(nums) == 6 and all(1 <= n <= 45 for n in nums):
-            return nums
+            result = nums
+        else:
+            result = _LUCKY_DISPLAY_DEFAULT
     except Exception:
-        pass
-    return _LUCKY_DISPLAY_DEFAULT
+        result = _LUCKY_DISPLAY_DEFAULT
+
+    st.session_state["_lucky_display_cache"] = result
+    st.session_state["_lucky_display_cache_at"] = time.time()
+    return result
 
 
 lucky_display = _load_lucky_display()

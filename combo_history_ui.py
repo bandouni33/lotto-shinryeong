@@ -403,20 +403,25 @@ def render_history_panel(
             content_renderer()
             return
 
-        from marketing_db import list_guest_generated_combos
+        from marketing_db import list_guest_generated_combos_multi
 
         _gids = [guest_id] if isinstance(guest_id, str) else list(guest_id or [])
+        # 2026-09-16: guest_id x source마다 따로 조회하던 걸(패널 열 때마다
+        # 최대 15x2=30회 DB 왕복) 한 번의 IN(...) 쿼리로 줄인다 — 병합/중복제거/
+        # 최근회차 컷 로직은 기존과 동일하게 유지(list_guest_generated_combos_multi
+        # 주석 참고).
         batches = []
         _seen_batch = set()
-        for _gid in _gids:
-            for source in sources or []:
-                for batch in list_guest_generated_combos(_gid, source=source, limit=limit_per_source):
-                    _bkey = (batch.get("batch_id"), batch.get("created_at"), source)
-                    if _bkey in _seen_batch:
-                        continue
-                    _seen_batch.add(_bkey)
-                    batch["_source"] = source
-                    batches.append(batch)
+        for batch in list_guest_generated_combos_multi(
+            _gids, sources=sources or [], limit_per_source=limit_per_source
+        ):
+            source = batch.get("source")
+            _bkey = (batch.get("batch_id"), batch.get("created_at"), source)
+            if _bkey in _seen_batch:
+                continue
+            _seen_batch.add(_bkey)
+            batch["_source"] = source
+            batches.append(batch)
         batches.sort(key=lambda b: b.get("created_at") or "", reverse=True)
         batches = _limit_to_recent_rounds(batches)
 
