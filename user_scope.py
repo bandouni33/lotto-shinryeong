@@ -42,6 +42,11 @@ _LOGOUT_EXACT_KEYS = frozenset(
         "auth_resume_flag",
         "auth_resume_data",
         "wallet_show_charge",
+        "thunder_purchase_error",
+        "thunder_pending_ref",
+        "auto_purchase_error",
+        "auto_purchase_notice",
+        "my_info_dialog_open",
     }
 )
 
@@ -53,6 +58,8 @@ _LOGOUT_PREFIXES = (
     "mmdd_",
     "auto_purchase_history_",
     "auto_purchase_seq_",
+    "hedge_",
+    "tarot_",
 )
 
 
