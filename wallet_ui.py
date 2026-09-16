@@ -486,6 +486,16 @@ def _render_auth_banner_form() -> None:
 
     return_page = st.query_params.get("page", "main")
 
+    # 2026-09-16(리스크 점검, 아스트라 진단): 아래 if/elif/else 세 분기가
+    # 전부 동일한 key="auth_banner_kakao" 컨테이너를 쓴다 — 카카오 배너
+    # CSS(wallet_ui.py 위쪽 <style> 블록의 .st-key-auth_banner_kakao)가
+    # 어느 분기가 렌더되든 동일하게 적용되게 하려는 의도적 설계다. 지금은
+    # if/elif/else라 한 렌더에 반드시 하나만 실행되지만, 나중에 이 구조를
+    # if들로 분리하거나 조건을 바꿔 두 분기가 동시에 실행되게 만들면
+    # Streamlit이 "같은 key를 가진 요소가 중복됐다"는 에러로 화면이 그
+    # 자리에서 죽는다. 이 세 분기를 수정할 때는 반드시 서로 배타적인
+    # 구조(if/elif/else 또는 그 앞의 return)를 유지할 것 — key 자체를
+    # 바꾸는 건 위 CSS 선택자가 전부 깨지므로 하지 말 것.
     if kakao_configured():
         # 2026-09-06: 네이티브 앱(?native=1)에서는 REST API+웹뷰 리다이렉트
         # 방식(카카오 공식 미지원 — devtalk.kakao.com 답변)을 버리고, 카카오
@@ -1022,6 +1032,16 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
         # 요구하고, 한 번 인증하면 그 방문 동안은 다시 안 묻는다"는 요구사항.
         # 카카오 연동 전엔(_testing_period_active) 위에서 이미 조용히 로그인
         # 처리하니 여기 도달하지 않는다 — 아래는 실제 인증이 켜진 뒤에만 탄다.
+        #
+        # 2026-09-16(리스크 점검, 아스트라 진단): 이 아래의 key="my_info_trigger_wrap"/
+        # "my_info_trigger_btn"은 이 함수 뒤쪽에 나오는, show_my_info_trigger만
+        # 보고 그리는 두 번째 블록(미로그인 여부와 무관하게 실행되는 쪽)과 동일한
+        # key를 공유한다 — 버튼 스타일(wallet_bar_button_css)을 두 경우 모두
+        # 동일하게 적용하려는 의도적 설계. 이 블록은 바로 아래의 `return None`
+        # 덕분에 실행되면 두 번째 블록에 절대 도달하지 않아 지금은 안전하지만,
+        # 이 `return None`을 지우거나 조건을 바꾸면 한 렌더에 두 블록이 같이
+        # 실행돼 Streamlit이 "같은 key 중복" 에러로 화면이 그 자리에서 죽는다.
+        # key를 바꾸는 대신 이 배타성(return 구조)을 유지할 것.
         if show_my_info_trigger:
             st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
             with st.container(key="my_info_trigger_wrap"):
@@ -1041,6 +1061,10 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     # 공간을 남기던 원인이기도 했다). 로그아웃도 요즘 앱들처럼 앱을 완전히 닫으면
     # 세션이 알아서 끊기니 상시 노출할 필요가 없다는 게 사용자 판단(자동 로그아웃
     # 로직 자체를 새로 만든 건 아니고, 기존 세션 유지 방식은 그대로 둠).
+    #
+    # 2026-09-16: 위 블록(미로그인 시)과 key="my_info_trigger_wrap"/
+    # "my_info_trigger_btn"을 공유한다 — 위 블록 주석 참고, key를 바꾸지
+    # 말고 위 블록의 `return None`으로 인한 배타성을 유지할 것.
     if show_my_info_trigger:
         st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
         with st.container(key="my_info_trigger_wrap"):
