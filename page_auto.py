@@ -913,6 +913,11 @@ def render():
     st.markdown(
         """
     <style>
+        /* 안드로이드 웹뷰 강제 다크모드 대응 — page_thunder.py/page_hedge.py와 동일 이유
+           (이 페이지도 어두운 배경을 스스로 지정하는데, color-scheme을 안 걸어두면 웹뷰가
+           "색이 안 정의된 페이지"로 오판해 흰색 요소 등을 임의로 반전시킬 수 있다).
+           2026-09-16: 이 페이지엔 이 줄이 빠져 있던 걸 뒤늦게 발견해 추가. */
+        :root { color-scheme: light !important; }
         .stApp { background-color: #12182b; color: white; }
         html, body, #root, .stApp, [data-testid="stAppViewContainer"],
         [data-testid="stAppViewContainer"] > section.main {

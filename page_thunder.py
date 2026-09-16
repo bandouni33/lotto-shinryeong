@@ -1343,7 +1343,7 @@ def render():
                 const target = anchorEl || document.getElementById('resultArea');
                 if (!target) return;
 
-                requestAnimationFrame(() => {{
+                function doScroll() {{
                     target.scrollIntoView({{ behavior: 'smooth', block: 'start', inline: 'nearest' }});
                     try {{
                         const frame = window.frameElement;
@@ -1358,7 +1358,44 @@ def render():
                             }});
                         }}
                     }} catch (e) {{}}
-                }});
+                }}
+
+                // 2026-09-16(사용자 신고 — "생성화면이 밑에서부터 채워지고, 완료 후에도
+                // 화면이 상단에 머문다"): 플레이스홀더 행을 한꺼번에 넣은 직후 딱
+                // 한 프레임(requestAnimationFrame)만 기다렸다가 스크롤 위치를 계산했는데,
+                // Streamlit이 iframe 자체 높이를 새 콘텐츠 크기에 맞게 늘려주는 처리는
+                // 그보다 느리게(비동기로) 따라온다 — 그 결과 frame.getBoundingClientRect()가
+                // "아직 안 늘어난" 크기를 돌려줘서 스크롤이 실제 결과 영역에 못 미치게
+                // 계산되는 경우가 있었다. iframe 세로 크기가 연속 몇 프레임 동안 더 이상
+                // 안 바뀔 때(=자동확장이 끝났다고 판단)까지 기다렸다가 스크롤한다 — 계속
+                // 바뀌는 중이면 최대 대기 프레임 수에서 포기하고 그 시점 기준으로 스크롤
+                // (무한 대기 방지, 이 경우도 예전보다는 훨씬 나은 근사치).
+                const frame = window.frameElement;
+                if (!frame) {{
+                    requestAnimationFrame(doScroll);
+                    return;
+                }}
+                let lastHeight = -1;
+                let stableFrames = 0;
+                let attempts = 0;
+                const NEEDED_STABLE_FRAMES = 3;
+                const MAX_ATTEMPTS = 30; // 60fps 기준 약 0.5초 상한
+                function poll() {{
+                    attempts += 1;
+                    const h = frame.getBoundingClientRect().height;
+                    if (h === lastHeight) {{
+                        stableFrames += 1;
+                    }} else {{
+                        stableFrames = 0;
+                        lastHeight = h;
+                    }}
+                    if (stableFrames >= NEEDED_STABLE_FRAMES || attempts >= MAX_ATTEMPTS) {{
+                        doScroll();
+                    }} else {{
+                        requestAnimationFrame(poll);
+                    }}
+                }}
+                requestAnimationFrame(poll);
             }}
 
             // 진행 상황을 스크롤 위치와 무관하게 항상 보이는 상단 배너에 표시한다 —

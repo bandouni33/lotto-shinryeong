@@ -44,6 +44,10 @@ def render():
        Streamlit 기본 밝은 배경(연보라)이 그대로 보였다 — 어두운 네이티브 앱
        틀 안에서 위쪽이 텅 빈 밝은 사각형처럼 보이는 원인이었다(실측: DOM 여백
        자체는 정상이라 "빈 공간"이 아니라 배경색 불일치 문제였음). */
+    /* 안드로이드 웹뷰 강제 다크모드 대응 — page_thunder.py/page_hedge.py와 동일 이유
+       (color-scheme을 안 걸어두면 웹뷰가 "색이 안 정의된 페이지"로 오판해 흰색 요소 등을
+       임의로 반전시킬 수 있다). 2026-09-16: 이 페이지엔 이 줄이 빠져 있던 걸 뒤늦게 발견해 추가. */
+    :root { color-scheme: light !important; }
     .stApp { background-color: #12182b; }
     html, body, #root, .stApp, [data-testid="stAppViewContainer"],
     [data-testid="stAppViewContainer"] > section.main {
