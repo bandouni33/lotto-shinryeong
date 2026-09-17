@@ -9,6 +9,7 @@ import concurrent.futures
 import os
 import re
 import sqlite3
+import threading
 import time
 
 import libsql_client
@@ -28,6 +29,57 @@ _EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=16, thread_name_prefix="turso-guard"
 )
 _QUERY_TIMEOUT_SEC = 10
+
+# P1(2026-09-17, 비동기 스레드 누적 대응): 위 _EXECUTOR는 "이 요청 하나
+# 포기시키기"만 해줄 뿐이다 — 실제 네트워크 요청은 _shared_client()(프로세스
+# 전체가 공유하는 ClientSync 인스턴스 1개, 아래 st.cache_resource 참고)의
+# 내부 전용 스레드 1개(libsql_client/sync.py의 _AsyncExecutor)가 처리한다.
+# 그 내부 스레드가 한 번 멈추면 _EXECUTOR로 새 워커를 몇 개를 쓰든 전부 같은
+# "막힌 내부 줄"에 다시 서게 되므로 사실상 무의미하다 — 이게 9/3 사고(위
+# 주석)의 정확한 재발 패턴. 연속 타임아웃이 _TIMEOUT_RECYCLE_THRESHOLD번
+# 쌓이면 _shared_client()의 캐시를 지워 다음 호출이 완전히 새 클라이언트(새
+# 내부 스레드)를 만들게 하고, 동시에 _EXECUTOR도 새로 교체한다. 막힌 옛
+# 클라이언트/스레드는 강제로 죽일 방법이 없어 그냥 버려두지만, 블록된 채
+# CPU를 쓰지 않으므로 무해하다 — 기존 정상 동작 경로(성공하는 호출)는 전혀
+# 건드리지 않는다.
+_RECOVERY_LOCK = threading.Lock()
+_TIMEOUT_RECYCLE_THRESHOLD = 5
+_consecutive_timeouts = 0
+
+
+def _note_turso_timeout():
+    global _consecutive_timeouts
+    with _RECOVERY_LOCK:
+        _consecutive_timeouts += 1
+        should_recycle = _consecutive_timeouts >= _TIMEOUT_RECYCLE_THRESHOLD
+        if should_recycle:
+            _consecutive_timeouts = 0
+    if should_recycle:
+        _recycle_after_timeouts()
+
+
+def _note_turso_success():
+    global _consecutive_timeouts
+    if _consecutive_timeouts:
+        with _RECOVERY_LOCK:
+            _consecutive_timeouts = 0
+
+
+def _recycle_after_timeouts():
+    global _EXECUTOR
+    old_executor = _EXECUTOR
+    _EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+        max_workers=16, thread_name_prefix="turso-guard"
+    )
+    old_executor.shutdown(wait=False)
+    try:
+        _shared_client.clear()
+    except Exception:
+        pass
+    print(
+        f"[db_turso] 연속 타임아웃 {_TIMEOUT_RECYCLE_THRESHOLD}회 누적 — "
+        "Turso 클라이언트/워커풀 재생성"
+    )
 
 
 class Row(dict):
@@ -81,12 +133,15 @@ class _ConnectionWrapper:
         "이 요청을 기다리던 세션"은 살아나서 폴백 로직으로 넘어갈 수 있다."""
         future = _EXECUTOR.submit(func, *args)
         try:
-            return future.result(timeout=_QUERY_TIMEOUT_SEC)
+            result = future.result(timeout=_QUERY_TIMEOUT_SEC)
         except concurrent.futures.TimeoutError as e:
+            _note_turso_timeout()
             raise TimeoutError(
                 f"Turso 쿼리가 {_QUERY_TIMEOUT_SEC}초 안에 응답하지 않았습니다"
                 "(네트워크 문제로 추정, 자동 폴백됨)"
             ) from e
+        _note_turso_success()
+        return result
 
     def execute(self, sql, params=()):
         # 2026-09-11: libsql_client/http.py가 에러/부분 응답을 받으면
