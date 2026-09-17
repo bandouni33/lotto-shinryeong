@@ -115,3 +115,9 @@ builds/
 *.xlsx.beforedefnameremoval.bak
 *.xlsx.beforelinkremoval.bak
 ~$*.xlsx
+
+node_modules/
+.astra/
+.claude/
+LottoShinryeong/build_status_wait.json
+combo_gen_job.status
