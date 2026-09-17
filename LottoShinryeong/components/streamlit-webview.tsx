@@ -62,9 +62,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 만든 guest-member 연결을 곧바로 다시 끊어버리고 있었다 — 이게 "서버는
   // 로그인 성공(member_id 할당)까지 다 되는데 내정보에는 반영이 안 되는"
   // 증상의 진짜 원인이었다. 최초 1회 uri 계산에만 실리게 하고 그 이후로는
-  // 다시 안 실리도록 소비 처리한다(nativeKakaoToken과 달리 "로드 완료" 시점을
-  // 기다릴 필요가 없다 — 이 신호는 서버가 실제로 받았는지 확인할 필요 없이
-  // "한 번만 시도하면 충분"하기 때문에 즉시 소비해도 안전하다).
+  // 다시 안 실리도록 소비 처리한다(이 신호는 서버가 실제로 받았는지 확인할
+  // 필요 없이 "한 번만 시도하면 충분"하기 때문에 즉시 소비해도 안전하다).
+  // 2026-09-17: 아래 webViewUri가 더는 렌더마다 다시 계산되는 파생값이
+  // 아니게 되면서(간편인증 A안), 이 문제(카카오 로그인 재로드마다 fresh_start
+  // 중복 전송) 자체가 구조적으로 재발 불가능해졌다 — 그래도 이 ref는
+  // "isFreshStart를 실제로 한 번 썼는지" 표시로 여전히 정확히 필요하므로
+  // 그대로 둔다.
   const freshStartConsumedRef = useRef(false);
   useEffect(() => {
     freshStartConsumedRef.current = true;
@@ -130,26 +134,61 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const shouldSendFreshStart =
     (isFreshStart && !freshStartConsumedRef.current) ||
     timeoutLogoutTrigger > sentTimeoutTriggerRef.current;
-  // 2026-09-06: 카카오 네이티브 SDK 로그인(handleKakaoNativeLogin)이 성공하면
-  // 받은 access_token을 여기 담아 다음 웹뷰 로드 한 번에만 실어 보낸다 —
-  // 서버가 그 토큰을 카카오에 직접 검증해 로그인을 끝낸다(auth_providers.py
-  // finalize_login_with_native_token 참고). 1회용이라 로드 완료 후 지운다.
-  const [nativeKakaoToken, setNativeKakaoToken] = useState<string | null>(null);
-  const mergedParams = {
-    ...(extraParams || {}),
-    // 2026-09-06: 안드로이드 웹뷰가 "기본 URL만 같으면 쿼리스트링이 달라져도
-    // 캐시된 예전 페이지를 그대로 보여주는" 문제가 react-native-webview에서
-    // 다수 보고됨(cacheEnabled=false를 꺼도 해결 안 되는 경우 다수) — 지난
-    // 두 번의 자동 로그아웃 수정이 전부 실패한 진짜 원인이 여기 있었을 가능성이
-    // 높다(JS 쪽 판단 로직 자체는 처음부터 맞았는데, fresh_start=1을 실은
-    // 새 URL이 서버까지 실제로 도달을 못 하고 있었을 수 있음). 캐시 설정에
-    // 기대지 않고, 이 신호를 보낼 때만 URL에 매번 다른 값(현재 시각)을 끼워
-    // 넣어 웹뷰가 "완전히 새로운 주소"로 인식하고 무조건 새로 요청하게
-    // 만든다(RFC 7234 — 캐시 키는 항상 쿼리스트링 포함 전체 URL).
-    ...(shouldSendFreshStart ? { fresh_start: '1', _cb: String(Date.now()) } : {}),
-    ...(nativeKakaoToken ? { native_kakao_token: nativeKakaoToken } : {}),
-  };
-  const uri = getStreamlitPageUrl(page, guestId, mergedParams);
+
+  // 2026-09-17(간편인증 A안 — 아스트라 진단 P2 대응): 예전엔 uri를 렌더마다
+  // 다시 계산해 key={uri}로 웹뷰를 매번 재생성했다 — 카카오 로그인 성공 시
+  // (1)토큰을 실어 재생성 → onLoadEnd 3초 뒤 (2)토큰을 지우며 또 재생성,
+  // 이렇게 한 번의 로그인에 웹뷰가 두 번 새로 만들어졌다. 두 번째 재생성은
+  // 완전한 낭비였다 — 토큰은 이미 서버(user_page.py)가 1회용으로 소비·삭제한
+  // 뒤라 다시 지울 게 없고, 오히려 막 세운 로그인 세션(웹소켓)을 다시
+  // 끊어버려 "로그인은 성공했는데 내정보에 반영 안 됨" 류 증상의 원인으로
+  // 추정됐다.
+  //
+  // 이제 웹뷰 주소는 "렌더마다 다시 계산되는 값"이 아니라 "명시적으로
+  // setWebViewUri를 부를 때만 바뀌는 상태"로 관리한다 — 로그인 성공 시
+  // 딱 한 번만 새 주소로 이동시키고, 그 이후로는 아무것도 건드리지 않는다.
+  const [webViewUri, setWebViewUri] = useState<string | null>(null);
+  const initialUriSetRef = useRef(false);
+  const lastSentTimeoutTriggerRef = useRef(0);
+
+  const buildUri = useCallback(
+    (overrides?: Record<string, string>) =>
+      getStreamlitPageUrl(page, guestId, { ...(extraParams || {}), ...(overrides || {}) }),
+    [page, guestId, extraParams]
+  );
+
+  // 최초 1회: guestId가 준비되는 순간 첫 주소를 확정한다. 콜드스타트로
+  // isFreshStart가 켜져 있었거나 마운트 직후 바로 idle 타임아웃이 감지된
+  // 경우엔 fresh_start도 이 최초 주소에 함께 싣는다 — 캐시버스터(_cb)는
+  // 안드로이드 웹뷰가 "기본 URL만 같으면 쿼리스트링이 달라져도 캐시된
+  // 예전 페이지를 그대로 보여주는" 문제(react-native-webview 다수 보고,
+  // cacheEnabled=false로도 해결 안 되는 경우 있음) 때문에 매번 다른 값을
+  // 끼워 넣어 웹뷰가 "완전히 새로운 주소"로 인식하게 만든다.
+  useEffect(() => {
+    if (guestId === null || initialUriSetRef.current) {
+      return;
+    }
+    initialUriSetRef.current = true;
+    lastSentTimeoutTriggerRef.current = timeoutLogoutTrigger;
+    setWebViewUri(
+      buildUri(shouldSendFreshStart ? { fresh_start: '1', _cb: String(Date.now()) } : {})
+    );
+    // guestId가 처음 채워지는 순간에만 실행 — 이후 buildUri/shouldSendFreshStart가
+    // 바뀌어도(예: extraParams 참조가 매 렌더 새로 생성돼도) 재실행하지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestId]);
+
+  // 최초 로드 이후에 idle 타임아웃이 새로 감지되면(예: 웹뷰가 오래 떠있다가
+  // 백그라운드에서 복귀) 그때만 fresh_start를 실어 딱 한 번 다시 이동시킨다.
+  useEffect(() => {
+    if (!initialUriSetRef.current) {
+      return;
+    }
+    if (timeoutLogoutTrigger > lastSentTimeoutTriggerRef.current) {
+      lastSentTimeoutTriggerRef.current = timeoutLogoutTrigger;
+      setWebViewUri(buildUri({ fresh_start: '1', _cb: String(Date.now()) }));
+    }
+  }, [timeoutLogoutTrigger, buildUri]);
 
   // QR 스캔 후 넘어오는 것처럼 ?qr=... 붙은 페이지에서, Streamlit이 그 1회성
   // 파라미터를 읽자마자 지우면서 내부적으로 history API를 건드리는 것으로 보이는데,
@@ -165,7 +204,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     }
     const timer = setTimeout(() => setLoading(false), 6000);
     return () => clearTimeout(timer);
-  }, [loading, uri]);
+  }, [loading, webViewUri]);
 
   // "안티조합·액땜조합" 진입 링크(?page=hedge&qrscan=1)를 QR 촬영 화면으로 보내는
   // 경로를 세 겹으로 둔다 — 실기기마다 어느 게 실제로 걸리는지가 달라서
@@ -195,12 +234,18 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     // 진단 결과)을 가려서 제거한다. 이제 서버 쪽 결과만 화면에서 직접 확인한다.
     try {
       const token = await kakaoNativeLogin();
-      setNativeKakaoToken(token.accessToken);
+      // 2026-09-17: 로그인 성공 시 딱 한 번만 새 주소로 이동시킨다 — 위
+      // webViewUri 설명 참고. 이 로드가 끝난 뒤 uri를 다시 바꿀 일이 없으므로
+      // (주소창의 토큰은 서버가 1회용 소비 후 알아서 지운다) 두 번째 재생성
+      // 자체가 더는 없다.
+      setWebViewUri(
+        buildUri({ native_kakao_token: token.accessToken, _cb: String(Date.now()) })
+      );
     } catch {
       // 사용자가 취소했거나 카카오 로그인 자체가 실패 — 로그인 배너에서
       // 다시 시도할 수 있으니 조용히 무시한다.
     }
-  }, []);
+  }, [buildUri]);
 
   // 2026-09-06: QR스캔에서 이미 겪은 문제(위 qrScanRedirected 부근 주석 —
   // 특정 실기기에서 window.ReactNativeWebView 자체가 안 만들어져 postMessage
@@ -339,7 +384,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           <Text style={styles.errorTitle}>페이지를 불러오지 못했습니다</Text>
           <Text style={styles.errorMsg}>{error}</Text>
           <Text style={styles.errorHint}>
-            서버 주소: {uri}
+            서버 주소: {webViewUri}
             {'\n'}
             (Cloud: lotto-shinryeong.streamlit.app · 로컬: run_server.ps1)
           </Text>
@@ -347,7 +392,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             <Text style={styles.retryText}>다시 시도</Text>
           </TouchableOpacity>
         </View>
-      ) : guestId === null ? (
+      ) : guestId === null || webViewUri === null ? (
         // 2026-09-06: 기기 식별자(guestId)를 AsyncStorage에서 비동기로 불러오는
         // 동안 예전엔 아무것도 안 그려서(null), 네이티브 스플래시가 내려간
         // 직후부터 실제 웹뷰가 뜨기 전까지 빈 화면이 잠깐 보이는 "멈춘 듯한"
@@ -368,28 +413,21 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         // 이 프로젝트(LottoShinryeong) 재빌드가 필요한 변경이라 별도로 진행.
         <WebView
           ref={webViewRef}
-          key={uri}
-          source={{ uri }}
+          key={webViewUri}
+          source={{ uri: webViewUri }}
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onMessage={onMessage}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => {
+            // 2026-09-17: 예전엔 여기서 카카오 access_token을 3초 뒤 지우며
+            // 웹뷰를 다시 로드했다 — 토큰이 uri 파생값의 일부였기 때문.
+            // 이제 로그인은 handleKakaoNativeLogin이 딱 한 번만 명시적으로
+            // 이동시키는 주소에 실려 나가고, 이 로드가 끝난 뒤 다시 지울
+            // 것도 다시 로드할 것도 없다(주소창의 토큰은 서버가 1회용
+            // 소비 직후 이미 지운다).
             setLoading(false);
-            // 2026-09-06: 카카오 access_token은 1회용이라 여기서 지워야
-            // 하는 건 맞지만, onLoadEnd는 Streamlit의 SPA 껍데기(정적
-            // HTML/JS 번들)가 화면에 뜨는 순간 곧바로 발생한다 — 실제
-            // 로그인 처리(카카오 서버 검증 + DB 기록)는 그 뒤에 웹소켓으로
-            // 별도 실행되는데, onLoadEnd에서 즉시 토큰을 지우면 uri가
-            // 바뀌면서 웹뷰가 통째로 새로고침된다 — 이게 아직 끝나지 않은
-            // 로그인 처리를 중간에 끊어버릴 수 있는 여지가 있어(실제로는
-            // fresh_start 중복 전송이 진짜 원인이었지만, 이 경쟁상태 자체도
-            // 이론적으로 가능하므로 안전장치로 남겨둔다) 약간의 지연 후에
-            // 지운다.
-            if (nativeKakaoToken) {
-              setTimeout(() => setNativeKakaoToken(null), 3000);
-            }
           }}
           onError={(e) => {
             setLoading(false);
@@ -460,7 +498,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
                 // 이 로드(자동 로그아웃 신호를 보내는 바로 그 순간)만큼은 이중
                 // 안전장치로 캐시 자체도 꺼둔다 — 평소 탐색에는 안 걸어서(성능
                 // 저하 방지) 정상적인 캐싱 이득은 그대로 유지한다.
-                ...(shouldSendFreshStart
+                // 2026-09-17: shouldSendFreshStart(렌더 시점 판정) 대신, 지금
+                // 실제로 로드 중인 webViewUri 자체에 fresh_start=1이 실려있는지로
+                // 판단한다 — uri가 더는 매 렌더 파생값이 아니라 명시적으로만
+                // 바뀌므로, "이번에 실제로 보낸 주소"를 직접 보는 게 더 정확하다.
+                ...(webViewUri?.includes('fresh_start=1')
                   ? { cacheEnabled: false, cacheMode: 'LOAD_NO_CACHE' as const }
                   : {}),
               }

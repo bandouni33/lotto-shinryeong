@@ -1,0 +1,445 @@
+<title>로또신령 법적고지</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #f6f1e4;
+  --surface: #ffffff;
+  --surface-2: #fbf7ec;
+  --border: #e4d9bb;
+  --text: #241f14;
+  --text-muted: #6b6248;
+  --accent: #a8760d;
+  --accent-strong: #7d5807;
+  --accent-soft: rgba(168, 118, 13, 0.1);
+  --pill-bg: #efe6cd;
+  --shadow: 0 1px 2px rgba(40, 30, 5, 0.04), 0 10px 28px rgba(40, 30, 5, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12182b;
+    --surface: #181f37;
+    --surface-2: #1c2440;
+    --border: #2c3556;
+    --text: #eef1f8;
+    --text-muted: #9aa3c4;
+    --accent: #e0b84a;
+    --accent-strong: #f2cc6b;
+    --accent-soft: rgba(224, 184, 74, 0.14);
+    --pill-bg: #262f52;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12182b;
+  --surface: #181f37;
+  --surface-2: #1c2440;
+  --border: #2c3556;
+  --text: #eef1f8;
+  --text-muted: #9aa3c4;
+  --accent: #e0b84a;
+  --accent-strong: #f2cc6b;
+  --accent-soft: rgba(224, 184, 74, 0.14);
+  --pill-bg: #262f52;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans KR', -apple-system, sans-serif;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 24px 96px;
+}
+
+header.hero {
+  margin-bottom: 40px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  margin-bottom: 18px;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-strong);
+}
+
+h1 {
+  font-family: 'Noto Serif KR', serif;
+  font-weight: 700;
+  font-size: clamp(28px, 5vw, 38px);
+  margin: 0 0 12px;
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  color: var(--text-muted);
+  font-size: 15.5px;
+  max-width: 58ch;
+  margin: 0;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.meta-row span {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+
+nav.toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  margin-bottom: 48px;
+}
+
+nav.toc a {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+nav.toc a:hover,
+nav.toc a:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  outline: none;
+}
+
+section.notice {
+  scroll-margin-top: 24px;
+  padding: 32px 0;
+  border-top: 1px solid var(--border);
+}
+
+section.notice:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.notice-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.notice-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+
+h2 {
+  font-family: 'Noto Serif KR', serif;
+  font-weight: 600;
+  font-size: 22px;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.notice-body {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.notice-body p {
+  margin: 0 0 14px;
+}
+
+.notice-body ul,
+.notice-body ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.notice-body li {
+  margin-bottom: 8px;
+}
+
+.notice-body li::marker {
+  color: var(--accent-strong);
+}
+
+.notice-body strong {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.notice-body code,
+.placeholder {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  background: var(--pill-bg);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.placeholder {
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+.callout {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.pillars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 4px 0 16px;
+}
+
+.pillar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+.pillar .k {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--accent-strong);
+  margin-bottom: 4px;
+}
+
+.pillar .v {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  font-size: 14px;
+}
+
+.contact dt {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.contact dd {
+  margin: 2px 0 0;
+}
+
+footer {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+a { color: var(--accent-strong); }
+
+@media (max-width: 480px) {
+  .page { padding: 40px 18px 72px; }
+  nav.toc { gap: 6px; }
+}
+</style>
+
+<div class="page">
+
+  <header class="hero">
+    <div class="eyebrow">Legal &amp; Privacy</div>
+    <h1>로또신령 법적고지</h1>
+    <p class="lede">이용약관·개인정보 처리방침·적립금 정책을 한 곳에 정리했습니다. 서비스 내에서 언제든 같은 내용을 다시 확인하실 수 있습니다.</p>
+    <div class="meta-row">
+      <span>문서 버전 v1.1-draft</span>
+      <span>최종 수정 2026-08-31</span>
+      <span>lotto-shinryeong.streamlit.app</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="목차">
+    <a href="#business">사업자 정보</a>
+    <a href="#terms">이용약관</a>
+    <a href="#privacy">개인정보 처리방침</a>
+    <a href="#points">적립금·환불정책</a>
+    <a href="#disclaimer">당첨·통계 면책</a>
+    <a href="#auth">간편인증·가입 혜택</a>
+  </nav>
+
+  <section class="notice" id="business">
+    <div class="notice-head">
+      <span class="notice-num">01</span>
+      <h2>사업자 정보</h2>
+    </div>
+    <div class="notice-body">
+      <ul>
+        <li>상호(회사명): <span class="placeholder">사업자등록 완료 후 기재</span></li>
+        <li>대표자: <span class="placeholder">사업자등록 완료 후 기재</span></li>
+        <li>사업자등록번호: <span class="placeholder">사업자등록 완료 후 기재</span></li>
+        <li>통신판매업 신고번호: <span class="placeholder">통신판매업 신고 완료 후 기재</span></li>
+        <li>사업장 주소: <span class="placeholder">사업자등록 완료 후 기재</span></li>
+        <li>고객센터 연락처 / 이메일: <span class="placeholder">기재 예정</span></li>
+      </ul>
+      <div class="callout">전자상거래 등에서의 소비자보호에 관한 법률에 따라, 위 정보는 사업자등록·통신판매업 신고가 완료되는 즉시 실제 값으로 채워 정식 게시합니다. 이 항목이 비어 있는 동안에는 정식 결제(PG) 연동을 시작하지 않습니다.</div>
+    </div>
+  </section>
+
+  <section class="notice" id="terms">
+    <div class="notice-head">
+      <span class="notice-num">02</span>
+      <h2>이용약관 (요약)</h2>
+    </div>
+    <div class="notice-body">
+      <ol>
+        <li>로또신령은 번호 조합·필터·통계 <strong>참고 서비스</strong>이며 당첨을 보장하지 않습니다.</li>
+        <li>결제는 <strong>적립금</strong>으로만 이루어지며, <strong>현금 환불·전환이 불가</strong>합니다.</li>
+        <li>조합·추출 <strong>결과 생성 성공 후</strong> 요금표에 따라 적립금이 차감됩니다.</li>
+        <li>고급필터는 <strong>첫 구독 1회 무료</strong> 후 월 1,200P(3개월 3,000P) 등 정책이 적용됩니다.</li>
+        <li><strong>만 19세 미만은 이용할 수 없습니다.</strong> (본인인증 단계에서 확인)</li>
+        <li>적립금은 충전 후 실제 서비스(추출·SMS 등) 이용 전까지는 전자상거래법에 따라 청약철회를 요청할 수 있습니다. 단, 결과 생성 등 디지털 콘텐츠 제공이 <strong>이미 시작된 부분</strong>은 법령이 정한 예외(사전 고지 및 이용자 동의)에 따라 철회가 제한됩니다.</li>
+        <li>동일인이 여러 계정으로 가입해 가입 적립금을 중복 수령한 사실이 확인되면, 회사는 사전 통지 후 해당 적립금을 회수하거나 계정 이용을 제한할 수 있습니다.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="notice" id="privacy">
+    <div class="notice-head">
+      <span class="notice-num">03</span>
+      <h2>개인정보 처리방침 (요약)</h2>
+    </div>
+    <div class="notice-body">
+      <p><strong>보관하지 않는 정보</strong> — 실명, 주소, 연락처, 카드·계좌 등 결제정보, OAuth 프로필(닉네임·이메일 등)은 저장하지 않습니다.</p>
+
+      <p><strong>최소 보관 항목</strong> — 아래 항목만, 명시된 목적으로만 보관합니다. 목적 외 사용이나 안내 없는 수집은 하지 않습니다.</p>
+      <div class="pillars">
+        <div class="pillar">
+          <div class="k">OAuth 식별자</div>
+          <div class="v">해시 처리 · 로그인 및 중복가입 방지</div>
+        </div>
+        <div class="pillar">
+          <div class="k">적립금 ledger</div>
+          <div class="v">충전·차감·보너스 증빙</div>
+        </div>
+        <div class="pillar">
+          <div class="k">SMS 발송 로그</div>
+          <div class="v">발송 증빙</div>
+        </div>
+        <div class="pillar">
+          <div class="k">약관·동의 기록</div>
+          <div class="v">법적 증빙</div>
+        </div>
+      </div>
+
+      <p>위탁 처리: 카카오, PASS, 금융인증, PG, SMS 대행사. 상세 위탁 목록은 정식 약관에 기재합니다.</p>
+
+      <p><strong>문의 및 탈퇴·삭제 요청</strong></p>
+      <dl class="contact">
+        <div><dt>이메일</dt><dd>bandouni@naver.com</dd></div>
+      </dl>
+      <div class="callout">회원 탈퇴, 보관 중인 개인정보(위 최소 보관 항목)의 열람·삭제를 원하시면 위 이메일로 요청해 주세요. 접수 후 영업일 기준 7일 이내 처리하며, 처리 결과는 요청하신 이메일로 안내드립니다.</div>
+    </div>
+  </section>
+
+  <section class="notice" id="points">
+    <div class="notice-head">
+      <span class="notice-num">04</span>
+      <h2>적립금·환불정책</h2>
+    </div>
+    <div class="notice-body">
+      <ul>
+        <li>최초 간편인증: <strong>500P 1회</strong> 지급</li>
+        <li><strong>현금 환불 불가</strong></li>
+        <li>번개조합: <strong>1게임당 10P</strong> · 안티/액땜조합: <strong>1개당 10P</strong> · 자동구매: <strong>1개당 100P</strong> · 타로점: 1일 1회 무료 후 <strong>추가 1회당 50P</strong></li>
+        <li>고급필터: <strong>첫 구독 1회 무료</strong>, 이후 월 <strong>1,200P</strong>(3개월권 <strong>3,000P</strong>)</li>
+        <li>차감 시점: <strong>결과 생성 성공 후</strong> (실패·0건 시 미차감)</li>
+        <li><strong>유효기간</strong>: 지급일로부터 <strong>1년</strong>. 만료 7일 전 앱 내 알림으로 별도 안내합니다.</li>
+        <li><strong>부정 취득 회수</strong>: 중복가입·어뷰징 등으로 부정하게 지급받은 적립금은 사전 통지 후 회수될 수 있습니다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="notice" id="disclaimer">
+    <div class="notice-head">
+      <span class="notice-num">05</span>
+      <h2>당첨·통계 면책</h2>
+    </div>
+    <div class="notice-body">
+      <p>본 통계·조합은 과거 데이터 집계·규칙 필터 결과이며, 로또는 <strong>완전 무작위 추첨</strong>으로 <strong>다음 회차 당첨을 보장하지 않습니다.</strong></p>
+    </div>
+  </section>
+
+  <section class="notice" id="auth">
+    <div class="notice-head">
+      <span class="notice-num">06</span>
+      <h2>간편인증·가입 혜택</h2>
+    </div>
+    <div class="notice-body">
+      <p>최초 간편인증 완료 시 적립금 500P를 지급해 드립니다. 적립금은 현금 환불·전환이 불가함을 확인해 주세요.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>© 로또신령</span>
+    <span>본 문서는 서비스 내 고지와 동일한 내용을 담고 있습니다.</span>
+  </footer>
+
+</div>

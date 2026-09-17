@@ -1,0 +1,139 @@
+<title>업데이트 배너 미리보기</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #12182b;
+    font-family: -apple-system, "Noto Sans KR", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .caption {
+    color: #7a879e;
+    font-size: 12.5px;
+    text-align: center;
+    padding: 14px 20px 0;
+    max-width: 420px;
+    line-height: 1.6;
+  }
+  .stage {
+    position: relative;
+    width: min(92vw, 430px);
+    height: 230px;
+    margin-top: 8px;
+    flex-shrink: 0;
+  }
+
+  .update-toast {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      z-index: 10;
+      width: max-content;
+      max-width: min(90vw, 400px);
+      padding: 18px 20px 16px;
+      border-radius: 18px;
+      background:
+          linear-gradient(180deg, rgba(38, 28, 12, 0.97) 0%, rgba(15, 11, 6, 0.98) 100%);
+      border: 1px solid rgba(255, 209, 102, 0.28);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow:
+          0 20px 45px rgba(0, 0, 0, 0.5),
+          0 2px 0 rgba(255, 209, 102, 0.15) inset,
+          0 0 0 1px rgba(0, 0, 0, 0.3);
+      transform: translate(-50%, 0) scale(1);
+  }
+  .update-toast-glow {
+      position: absolute;
+      top: -30%; left: 50%;
+      width: 70%; height: 60%;
+      transform: translateX(-50%);
+      background: radial-gradient(ellipse at center, rgba(255, 209, 102, 0.35) 0%, transparent 70%);
+      filter: blur(10px);
+      pointer-events: none;
+      z-index: -1;
+  }
+  .update-toast-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: #2a1b04;
+      background: linear-gradient(135deg, #ffe9b3 0%, #ffc94d 100%);
+      padding: 3px 9px;
+      border-radius: 999px;
+      margin-bottom: 9px;
+      box-shadow: 0 2px 8px rgba(255, 201, 77, 0.35);
+  }
+  .update-toast-msg {
+      color: #f3e6cc;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.55;
+      text-align: center;
+      margin-bottom: 14px;
+      letter-spacing: -0.01em;
+  }
+  .update-toast-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+  }
+  .update-toast-btn-now,
+  .update-toast-btn-later {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 18px;
+      border-radius: 11px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      border: none;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+  }
+  .update-toast-btn-now {
+      background: linear-gradient(180deg, #ffe9b3 0%, #ffc23d 55%, #f5a623 100%);
+      color: #2a1b04;
+      box-shadow:
+          0 3px 0 #b3760e,
+          0 6px 14px rgba(245, 166, 35, 0.4),
+          inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .update-toast-btn-now:active {
+      transform: translateY(1px);
+      box-shadow:
+          0 2px 0 #b3760e,
+          0 4px 10px rgba(245, 166, 35, 0.35),
+          inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .update-toast-btn-later {
+      background: rgba(255, 255, 255, 0.06);
+      color: #cbb894;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .update-toast-btn-later:active {
+      background: rgba(255, 255, 255, 0.12);
+  }
+</style>
+
+<p class="caption">지금 코드에 들어있는 업데이트 배너를 그대로 재현한 미리보기입니다 (실제 앱과 동일한 CSS). 메인화면 배경(#12182b) 위에 떠 있는 상태를 보여줍니다.</p>
+
+<div class="stage">
+  <div class="update-toast">
+    <div class="update-toast-glow" aria-hidden="true"></div>
+    <div class="update-toast-badge">✨ NEW</div>
+    <div class="update-toast-msg">최신 업데이트 정보가 있습니다</div>
+    <div class="update-toast-actions">
+      <a class="update-toast-btn-now" href="#" onclick="return false;"><span>지금 업데이트</span></a>
+      <button type="button" class="update-toast-btn-later">나중에</button>
+    </div>
+  </div>
+</div>

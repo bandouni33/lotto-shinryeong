@@ -71,6 +71,19 @@ if _native_kakao_token:
     if finalize_login_with_native_token(_native_kakao_token):
         st.rerun()
 
+# 2026-09-17(간편인증 A안 부작용 정리): wallet_ui.py의 카카오 로그인 트리거가
+# postMessage 브릿지를 못 쓰는 기기에서 URL 폴백으로 이 파라미터를 실어보내는데
+# (streamlit-webview.tsx가 URL에서 이 신호를 보고 네이티브 SDK 로그인을 시작함),
+# 지금까진 이 파라미터를 서버 어디서도 지우지 않았다 — 로그인을 취소하거나
+# 실패하면(streamlit-webview.tsx의 handleKakaoNativeLogin catch) 웹뷰가 새 주소로
+# 이동하지 않아 이 파라미터가 그대로 URL에 남고, 나중에 onRenderProcessGone으로
+# 같은 주소가 reload()되면 사용자가 누르지도 않았는데 카카오 로그인창이 다시
+# 뜨는 부작용으로 이어질 수 있다. 네이티브 쪽은 이미 URL 자체를 보고 즉시
+# 반응했으므로(onNavigationStateChange/onShouldStartLoadWithRequest) 서버는 그냥
+# 흔적만 지우면 된다 — native_kakao_token과 달리 이 값 자체로 할 일은 없다.
+if st.query_params.get("kakao_native_trigger"):
+    del st.query_params["kakao_native_trigger"]
+
 # 네이티브 앱이 콜드 스타트(=완전히 껐다 다시 켬) 직후 최초 로드에만 ?fresh_start=1을
 # 실어보낸다(LottoShinryeong/utils/fresh-start.ts 참고 — 백그라운드 전환/앱 내
 # 화면 이동에서는 안 붙는다). 그 신호가 오면 이 기기의 자동 로그인 연결을 끊어서,
