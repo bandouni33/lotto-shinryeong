@@ -395,3 +395,23 @@ def logout() -> None:
 def current_member_id() -> int | None:
     mid = st.session_state.get("member_id")
     return int(mid) if mid else None
+
+
+def toss_review_login(input_id: str, input_pw: str) -> tuple[int, bool, bool] | None:
+    """토스페이먼츠 카드사 심사용 ID/PW 로그인 (2026-09-19 추가).
+
+    토스 심사 메일에서 "소셜 로그인(카카오/구글 등) 테스트 계정은 사용 불가"라고
+    명시해서, 심사팀이 직접 로그인해볼 수 있는 ID/PW 경로를 별도로 추가했다.
+    고정된 provider_user_id("toss_review_fixed_account_001")를 써서 매번 같은
+    테스트 전용 계정으로 로그인되며, 실제 카카오/PASS/금융인증 로그인 회원과는
+    provider가 달라 완전히 분리된다(oauth_hash가 provider까지 포함해 해시하므로
+    다른 계정으로 섞일 수 없음).
+
+    자격증명은 환경변수(TOSS_REVIEW_TEST_ID / TOSS_REVIEW_TEST_PW)로 바꿀 수
+    있고, 설정 안 돼 있으면 기본값(사용자 지정: ID "toss" / PW "3333")을 쓴다.
+    """
+    expected_id = os.environ.get("TOSS_REVIEW_TEST_ID", "toss").strip()
+    expected_pw = os.environ.get("TOSS_REVIEW_TEST_PW", "3333").strip()
+    if (input_id or "").strip() != expected_id or (input_pw or "").strip() != expected_pw:
+        return None
+    return finalize_login("toss_review", "toss_review_fixed_account_001")

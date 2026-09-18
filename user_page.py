@@ -1916,6 +1916,43 @@ elif current_page == "pricing":
 
 
 # ==========================================================
+# 🔑 토스페이먼츠 카드사 심사용 — ID/PW 테스트 로그인 (2026-09-19 추가)
+# 소셜 로그인(카카오) 테스트 계정은 심사에서 인정되지 않아, 별도 URL로만
+# 접근되는 독립 로그인 페이지를 추가한다. 기존 카카오 로그인 버튼·배너 등
+# 실사용자 화면은 전혀 건드리지 않고, 로그인 성공 시 기존 카카오 로그인과
+# 동일한 finalize_login 경로(auth_providers.toss_review_login)를 타므로
+# 이후 화면은 일반 로그인 사용자와 동일하게 보인다. 심사 종료 후 제거 검토.
+# ==========================================================
+elif current_page == "toss_test_login":
+    st.markdown(
+        """
+        <style>
+        .stApp { background-color: #12182b; color: white; }
+        .block-container { max-width: 420px; padding: 24px 20px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    from auth_providers import current_member_id, toss_review_login
+
+    st.markdown("### 심사용 테스트 로그인")
+    if current_member_id():
+        st.success("이미 로그인되어 있습니다.")
+        if st.button("메인으로 이동"):
+            st.query_params["page"] = "main"
+            st.rerun()
+    else:
+        test_id = st.text_input("ID")
+        test_pw = st.text_input("PW", type="password")
+        if st.button("로그인", type="primary"):
+            if toss_review_login(test_id, test_pw):
+                st.query_params["page"] = "main"
+                st.rerun()
+            else:
+                st.error("ID 또는 PW가 올바르지 않습니다.")
+
+
+# ==========================================================
 # 📋 메인 화면 — 회원 고지·약관 (운영자 미리보기, 관리자 메뉴 바로 위)
 # ==========================================================
 if current_page == "main":
