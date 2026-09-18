@@ -535,7 +535,7 @@ def pg_configured() -> bool:
 
 # 1만원 충전 시 1,000점 지급 — 10원당 1점.
 WON_PER_POINT = 10
-CHARGE_WON_AMOUNTS = (10000, 30000, 50000, 100000)
+CHARGE_WON_AMOUNTS = (10000, 30000, 50000)
 
 
 def won_to_points(won: int) -> int:

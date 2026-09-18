@@ -1892,14 +1892,27 @@ elif current_page == "pricing":
         """,
         unsafe_allow_html=True,
     )
-    from legal_notices import NOTICES, PG_PRODUCT_INFO, PG_REFUND_POLICY
+    # 2026-09-19: 이 페이지가 배포 환경에서만(로컬 재현 불가) 원인불명으로
+    # 깨져 app.py의 공용 예외 화면("점검 중")만 뜨고 실제 에러는 서버 로그에만
+    # 남아 확인이 막혔던 사고 대응 — 이 단독 공개 페이지(PG 계약 심사용)에
+    # 한해서만, 예외 발생 시 화면에 실제 트레이스백을 그대로 노출한다.
+    # (로그인 여부와 무관하게 항상 보이는 페이지이지만, 노출되는 정보는 이미
+    # NOTICES에 있는 공개 문구뿐이라 트레이스백 노출 자체의 위험은 낮음 —
+    # 원인 확인되면 이 try/except는 제거하고 원래 형태로 되돌린다.)
+    try:
+        from legal_notices import NOTICES, PG_PRODUCT_INFO, PG_REFUND_POLICY
 
-    st.markdown("## 상품안내")
-    st.markdown(PG_PRODUCT_INFO)
-    st.markdown("## 환불정책")
-    st.markdown(PG_REFUND_POLICY)
-    st.markdown("## 사업자정보")
-    st.markdown(NOTICES["business"]["body"])
+        st.markdown("## 상품안내")
+        st.markdown(PG_PRODUCT_INFO)
+        st.markdown("## 환불정책")
+        st.markdown(PG_REFUND_POLICY)
+        st.markdown("## 사업자정보")
+        st.markdown(NOTICES["business"]["body"])
+    except Exception:
+        import traceback
+
+        st.error("pricing 페이지 렌더링 중 오류가 발생했습니다 (임시 진단용 표시).")
+        st.code(traceback.format_exc())
 
 
 # ==========================================================
