@@ -1950,6 +1950,9 @@ elif current_page == "toss_test_login":
                 st.rerun()
             else:
                 st.error("ID 또는 PW가 올바르지 않습니다.")
+                # 2026-09-19 임시 진단: 배포 환경에서만 정확한 값을 입력해도
+                # 실패하는 문제 원인 확인용 — 원인 파악되면 제거.
+                st.caption(f"[진단] 입력값 repr: id={test_id!r} pw={test_pw!r}")
 
 
 # ==========================================================
