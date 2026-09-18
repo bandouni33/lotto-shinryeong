@@ -1878,6 +1878,31 @@ elif current_page == "privacy":
 
 
 # ==========================================================
+# 📋 상품안내·환불정책·사업자정보 — PG(토스페이먼츠) 계약 심사 제출용 단독 URL
+# (privacy 페이지와 같은 패턴: 앱을 열거나 로그인하지 않아도 바로 보이는
+#  독립 경로. 2026-09-18 추가.)
+# ==========================================================
+elif current_page == "pricing":
+    st.markdown(
+        """
+        <style>
+        .stApp { background-color: #12182b; color: white; }
+        .block-container { max-width: 680px; padding: 24px 20px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    from legal_notices import NOTICES, PG_PRODUCT_INFO, PG_REFUND_POLICY
+
+    st.markdown("## 상품안내")
+    st.markdown(PG_PRODUCT_INFO)
+    st.markdown("## 환불정책")
+    st.markdown(PG_REFUND_POLICY)
+    st.markdown("## 사업자정보")
+    st.markdown(NOTICES["business"]["body"])
+
+
+# ==========================================================
 # 📋 메인 화면 — 회원 고지·약관 (운영자 미리보기, 관리자 메뉴 바로 위)
 # ==========================================================
 if current_page == "main":
