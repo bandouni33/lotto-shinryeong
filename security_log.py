@@ -22,6 +22,7 @@ EVENT_LABELS = {
     "cookie_reachable": "게스트 쿠키 서버 도달 여부(계측)",
     "guest_autologin_ua_mismatch": "게스트 자동로그인 UA 불일치 차단",
     "mock_charge_rate_limited": "Mock 결제(테스트 충전) 횟수 제한 도달",
+    "toss_amount_mismatch": "토스 결제 콜백 금액 위·변조 의심(승인 거부)",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용

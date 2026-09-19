@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import db_turso
@@ -165,6 +166,26 @@ def init_wallet_tables() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_thunder_pending_member
             ON thunder_pending_charges(member_id, settled);
+
+        -- 2026-09-19(Task #13, 토스페이먼츠 연동): 결제창을 열기 전에 서버가
+        -- 먼저 주문(회원·금액)을 이 표에 심어두고, successUrl 콜백에서 클라
+        -- 이언트가 들고 온 orderId/amount를 이 표의 값과 대조한다 — 클라이언트가
+        -- 보낸 amount를 그대로 믿고 적립금을 주면(금액 위조) 실결제된 금액보다
+        -- 더 많은 포인트를 받아갈 수 있어, 반드시 서버가 미리 기록해둔 값과
+        -- 비교해야 한다(토스 공식 문서 권고사항). status: pending → confirmed
+        -- (적립 완료) / failed(결제 실패·취소) / mismatch(위조 의심, 승인 거부).
+        CREATE TABLE IF NOT EXISTS toss_pending_orders (
+            order_id TEXT PRIMARY KEY,
+            member_id INTEGER NOT NULL,
+            won_amount INTEGER NOT NULL,
+            points INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            confirmed_at TEXT,
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_toss_pending_member
+            ON toss_pending_orders(member_id, created_at);
         """
     )
     # 2026-09-06: 기존 DB 호환 ALTER — marketing_db._migrate_lotto_combinations와
@@ -179,6 +200,12 @@ def init_wallet_tables() -> None:
     # 동작이다(하드 컷오버 — 테스터 16명 규모라 1회 재인증 비용이 낮음).
     if "ua_hash" not in cols:
         conn.execute("ALTER TABLE guest_member_links ADD COLUMN ua_hash TEXT NULL")
+    # 2026-09-19(Task #13): 토스 결제위젯의 customerKey(카드 저장 등에 쓰이는
+    # 고객 식별자) — 회원의 내부 DB id를 그대로 밖으로 노출하지 않기 위해
+    # 별도의 무작위 키를 한 번만 발급해 저장해둔다.
+    wallet_cols = {row[1] for row in conn.execute("PRAGMA table_info(wallets)")}
+    if "toss_customer_key" not in wallet_cols:
+        conn.execute("ALTER TABLE wallets ADD COLUMN toss_customer_key TEXT NULL")
     conn.commit()
     conn.close()
     _WALLET_TABLES_READY = True
@@ -580,10 +607,42 @@ def calc_auto_cost(quantity: int) -> int:
     return AUTO_COST_PER_UNIT * max(1, int(quantity))
 
 
-def pg_configured() -> bool:
+def _toss_secret(name: str) -> str:
+    """TOSS_CLIENT_KEY/TOSS_SECRET_KEY를 env → st.secrets 순으로 읽는다
+    (db_turso._shared_client()의 TURSO_DATABASE_URL/TURSO_AUTH_TOKEN 읽기 방식과
+    동일한 패턴). 2026-09-19(Task #13): 토스 테스트 키는 가맹점(계정)마다
+    개별 발급되고 공용 테스트 키가 없다(공식 문서 확인) — 코드에 값을
+    하드코딩하지 않고 항상 이 경로로만 읽는다. 계약 확정 후 라이브 키로
+    교체할 때도 이 두 값만 바꾸면 된다(코드 변경 불필요)."""
     import os
 
-    return bool(os.environ.get("PG_MERCHANT_ID", "").strip())
+    val = os.environ.get(name, "").strip()
+    if val:
+        return val
+    try:
+        import streamlit as st
+
+        val = str(st.secrets.get(name, "") or "").strip()
+    except Exception:
+        val = ""
+    return val
+
+
+def toss_client_key() -> str:
+    return _toss_secret("TOSS_CLIENT_KEY")
+
+
+def toss_secret_key() -> str:
+    return _toss_secret("TOSS_SECRET_KEY")
+
+
+def pg_configured() -> bool:
+    """PG(토스페이먼츠) 연동 여부 — 클라이언트키·시크릿키가 둘 다 있어야 True.
+    2026-09-19(Task #13) 이전엔 PG_MERCHANT_ID(더미 플레이스홀더) 존재 여부만
+    봤는데, 실제 토스 연동을 붙이면서 진짜 연동 상태를 반영하도록 바꿨다 —
+    이 값이 True가 되는 순간 wallet_ui.py의 Mock 결제 버튼이 자동으로 숨고
+    실제 결제창이 뜬다(별도 스위치 불필요)."""
+    return bool(toss_client_key()) and bool(toss_secret_key())
 
 
 # 1만원 충전 시 1,000점 지급 — 10원당 1점.
@@ -593,6 +652,82 @@ CHARGE_WON_AMOUNTS = (10000, 30000, 50000)
 
 def won_to_points(won: int) -> int:
     return int(won) // WON_PER_POINT
+
+
+# 2026-09-19(Task #13): 토스 결제창을 열기 전 서버가 주문을 선기록 → 콜백에서
+# 대조(금액 위조 방지) → confirm API 승인 → 적립금 지급까지의 흐름.
+def create_toss_pending_order(member_id: int, won_amount: int) -> str:
+    """결제창을 열기 직전에 호출 — orderId는 서버가 생성해 클라이언트(JS)로
+    넘긴다(6~64자, 영숫자+-_ 제약 충족). 이렇게 서버가 먼저 (member_id,
+    금액)을 기록해둬야, 나중에 successUrl 콜백에서 클라이언트가 들고 온
+    amount가 이 값과 다르면(위조 시도) 즉시 걸러낼 수 있다."""
+    order_id = f"lotto{int(member_id)}{uuid.uuid4().hex[:20]}"
+    points = won_to_points(won_amount)
+    now = _now_iso()
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO toss_pending_orders (order_id, member_id, won_amount, points, status, created_at)
+        VALUES (?, ?, ?, ?, 'pending', ?)
+        """,
+        (order_id, int(member_id), int(won_amount), points, now),
+    )
+    conn.commit()
+    conn.close()
+    return order_id
+
+
+def get_toss_pending_order(order_id: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute(
+        """
+        SELECT order_id, member_id, won_amount, points, status
+        FROM toss_pending_orders WHERE order_id = ?
+        """,
+        (str(order_id),),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "order_id": row["order_id"],
+        "member_id": int(row["member_id"]),
+        "won_amount": int(row["won_amount"]),
+        "points": int(row["points"]),
+        "status": row["status"],
+    }
+
+
+def mark_toss_order_status(order_id: str, status: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "UPDATE toss_pending_orders SET status = ?, confirmed_at = ? WHERE order_id = ?",
+        (status, _now_iso(), str(order_id)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_or_create_toss_customer_key(member_id: int) -> str:
+    """토스 결제위젯의 customerKey — 이미 있으면 재사용, 없으면 1회 발급해
+    wallets.toss_customer_key에 저장(회원 내부 DB id를 그대로 밖에 노출하지
+    않기 위한 별도 식별자)."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT toss_customer_key FROM wallets WHERE member_id = ?", (int(member_id),)
+    ).fetchone()
+    existing = row["toss_customer_key"] if row else None
+    if existing:
+        conn.close()
+        return existing
+    new_key = uuid.uuid4().hex
+    conn.execute(
+        "UPDATE wallets SET toss_customer_key = ? WHERE member_id = ?",
+        (new_key, int(member_id)),
+    )
+    conn.commit()
+    conn.close()
+    return new_key
 
 
 # 2026-09-19: Mock 결제(테스트용 무료 충전) 무제한 클릭 악용 대응 — ref_id가

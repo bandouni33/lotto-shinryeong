@@ -641,19 +641,25 @@ def _render_charge_actions(member_id: int) -> None:
     한쪽만 고치고 다른 쪽을 놓치는 사고로 이어지므로, 결제 관련 코드는 항상 여기
     한 곳만 고치면 두 다이얼로그 모두에 반영되게 한다."""
     if pg_configured():
+        # 2026-09-19(Task #13): TOSS_CLIENT_KEY/TOSS_SECRET_KEY가 설정되는
+        # 순간(pg_configured()=True) 이 분기로 자동 전환 — 실제 토스 결제창을
+        # 띄운다(카드정보는 서버에 저장하지 않음, toss_pg.py가 처리).
         won_amount = st.radio(
             "충전 금액",
             CHARGE_WON_AMOUNTS,
             format_func=lambda w: f"{w:,}원 → {won_to_points(w):,}P",
             horizontal=True,
         )
-        st.info("PG 결제창 연동은 계약 후 활성화됩니다. (카드정보는 서버에 저장하지 않습니다.)")
-        st.link_button(
-            "결제창 열기 (준비중)",
-            "#",
-            disabled=True,
+        st.caption("카드정보는 서버에 저장하지 않습니다.")
+        if st.button(
+            f"{won_amount:,}원 결제하기",
+            type="primary",
             use_container_width=True,
-        )
+            key="toss_checkout_btn",
+        ):
+            from toss_pg import render_checkout_trigger
+
+            render_checkout_trigger(member_id, won_amount)
     elif not pg_configured():
         # 2026-09-05: 이 버튼은 원래 "카카오 로그인이 아직 mock인 테스트 기간"
         # (_testing_period_active())에만 보이게 막아뒀었다 — 실제 카카오 로그인이

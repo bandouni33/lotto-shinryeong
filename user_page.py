@@ -60,6 +60,13 @@ init_zero_phone_tables()
 init_birthday_table()
 if handle_oauth_callback():
     st.rerun()
+# 2026-09-19(Task #13): 토스 결제창도 카카오 로그인과 동일한 "외부로 나갔다
+# successUrl/failUrl로 돌아오는" 리다이렉트 구조라, handle_oauth_callback과
+# 같은 자리·같은 방식(True면 즉시 st.rerun())으로 처리한다.
+from toss_pg import handle_toss_payment_return
+
+if handle_toss_payment_return():
+    st.rerun()
 init_guest_scope()
 
 # 2026-09-06: 카카오 네이티브 SDK(streamlit-webview.tsx의 handleKakaoNativeLogin)가
