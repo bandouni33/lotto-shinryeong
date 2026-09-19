@@ -477,7 +477,33 @@ def render():
             disabled=thunder_generating,
         )
     with gcol2:
-        if st.button(
+        def _thunder_start_clicked(games: int) -> None:
+            """조합시작 버튼 콜백 — 이 클릭으로 시작되는 rerun의 "본문 실행 전"에 돈다.
+
+            2026-09-19: 이 지점은 st.columns(gcol2) 안쪽이라, 예전처럼 렌더 도중
+            st.rerun()을 던지면 프런트가 그 컨테이너를 다 정리하지 못해 화면이
+            겹쳐 보이는 문제가 있었다. 그래서 여기서는 배너/확정창 플래그만
+            세우고 rerun을 하지 않는다 — 콜백은 본문보다 먼저 돌기 때문에 배너는
+            이번 렌더에서 render_wallet_bar가 그리고, 확정창은 아래
+            open_thunder_dialog 분기가 같은 렌더에서 그린다."""
+            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
+            from wallet_ui import login_gate
+
+            # 2026-09-09(사용자 지시): 자동구매와 동일한 방식으로 판매시간대 제한
+            # 확정 적용 — 세 화면이 각자 따로 관리하면 시간대가 바뀔 때 하나를
+            # 빠뜨리는 사고로 이어지므로 sales_window.py 공용 모듈을 그대로 쓴다.
+            if not is_sales_window_open():
+                st.session_state["thunder_purchase_error"] = SALES_WINDOW_BANNER
+                return
+            if not login_gate(
+                resume="open_thunder_dialog",
+                resume_data={"games": games},
+            ):
+                return
+            st.session_state["open_thunder_dialog"] = True
+            st.session_state["open_thunder_dialog_games"] = games
+
+        st.button(
             "⚡ 생성 중…" if thunder_generating else "⚡ 조합시작",
             type="primary",
             use_container_width=True,
@@ -485,23 +511,9 @@ def render():
             # 생성 중 재클릭 방지 — 스크롤하다 실수로 눌러 확정창이 다시 뜨고
             # 생성이 멈추는 문제(사용자 신고 2026-09-10)를 막는다.
             disabled=thunder_generating,
-        ):
-            from wallet_ui import ensure_member_or_banner
-            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
-
-            # 2026-09-09(사용자 지시): 자동구매와 동일한 방식으로 판매시간대 제한
-            # 확정 적용 — 세 화면이 각자 따로 관리하면 시간대가 바뀔 때 하나를
-            # 빠뜨리는 사고로 이어지므로 sales_window.py 공용 모듈을 그대로 쓴다.
-            if not is_sales_window_open():
-                st.session_state["thunder_purchase_error"] = SALES_WINDOW_BANNER
-            elif ensure_member_or_banner(
-                resume="open_thunder_dialog",
-                reason="번개조합 생성을 위해 간편인증이 필요합니다.",
-                resume_data={"games": selected_game_count},
-            ):
-                st.session_state["open_thunder_dialog"] = True
-                st.session_state["open_thunder_dialog_games"] = selected_game_count
-                st.rerun()
+            on_click=_thunder_start_clicked,
+            args=(selected_game_count,),
+        )
 
     components.html("""
     <script>

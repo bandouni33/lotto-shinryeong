@@ -170,6 +170,11 @@ def _resume_after_auth() -> None:
         st.session_state["af_show_step2_points"] = True
     elif resume == "wallet_show_charge":
         st.session_state["wallet_show_charge"] = True
+    elif resume == "open_hedge_qr_scan":
+        # 2026-09-19: 안티·액땜조합의 QR스캔 버튼을 로그인 없이 눌렀을 때 —
+        # 로그인이 끝난 그 렌더에서 스캐너 트리거를 다시 살린다(page_hedge.py의
+        # hedge_qr_request 소비부가 한 번만 집어가 실행하고 지운다).
+        st.session_state["hedge_qr_request"] = True
     elif resume == "my_info_dialog":
         st.session_state["my_info_dialog_open"] = True
 
@@ -222,7 +227,14 @@ def login_gate(
     돌아와 있으므로, 위 2026-09-10 규칙("다른 막힌 기능을 누르면 다시
     뜬다")이 그대로 유지된다.
 
-    테스트 기간엔(_testing_period_active) 안내창 대신 조용히 로그인시키고 진행."""
+    테스트 기간엔(_testing_period_active) 안내창 대신 조용히 로그인시키고 진행.
+
+    2026-09-19(계약 변경): 이 함수는 더 이상 스스로 st.rerun()을 부르지 않는다.
+    게이트를 여는 판정은 호출부의 st.button(on_click=...) 콜백으로 옮겼고, 콜백은
+    그 클릭으로 시작되는 rerun의 "본문 실행 전"에 돌기 때문에 배너를 그리는
+    render_wallet_bar가 같은 렌더에서 바로 배너를 그린다(rerun이 필요 없다).
+    렌더 도중(특히 st.columns·st.container 안쪽)에서 rerun을 던지면 프런트가
+    그 컨테이너를 다 정리하지 못해 화면이 두 겹으로 겹쳐 보이는 문제가 있었다."""
     if current_member_id():
         return True
     if _testing_period_active():
@@ -233,14 +245,31 @@ def login_gate(
     if st.session_state.get(AUTH_BANNER_JUST_DISMISSED):
         return False
     open_auth_banner(resume=resume, resume_data=resume_data, dismiss_redirect=dismiss_redirect)
-    st.rerun()
+    if dismiss_redirect:
+        # 여기 남은 유일한 rerun 경로 — "페이지 전체를 막는 게이트" 전용이다.
+        # 이 호출부(page_birthday.py, tarot/tarot_page.py)는 지시 범위 밖이라
+        # 손대지 않았고, 이들은 배너를 그리는 render_wallet_bar보다 뒤에서 불리므로
+        # rerun이 없으면 배너가 다음 상호작용까지 틀지 않는다(기존 동작 유지).
+        # dismiss_redirect를 넘기는 호출은 지금 이 두 곳뿐이고 둘 다 렌더 최상위라
+        # 이 rerun은 컨테이너를 끊지 않는다.
+        st.rerun()
     return False
 
 
 def ensure_member_or_banner(*, resume: str | None = None, reason: str = "", resume_data: dict | None = None) -> bool:
     """하위 호환용 껍데기 — login_gate로 위임. reason은 더 이상 표시하지 않는다
-    (문구가 login_gate.py로 통일됨)."""
-    return login_gate(resume=resume, resume_data=resume_data)
+    (문구가 login_gate.py로 통일됨).
+
+    2026-09-19: login_gate가 더 이상 스스로 rerun하지 않으므로, 아직 이 래퍼를
+    쓰는 호출부(page_hedge.py의 "조합시작" — 지시 범위 밖이라 손대지 않음)의
+    기존 동작을 여기서 유지한다. 그 동작은 "이번 호출이 배너를 새로 열었으면
+    그 렌더에서 바로 보이도록 rerun"이고(예전 login_gate와 동일), 그 호출부는
+    렌더 최상위(컨테이너 밖)라 이 rerun은 안전하다."""
+    already_open = bool(st.session_state.get(AUTH_BANNER_OPEN))
+    ok = login_gate(resume=resume, resume_data=resume_data)
+    if not ok and not already_open and st.session_state.get(AUTH_BANNER_OPEN):
+        st.rerun()
+    return ok
 
 
 def _inject_auth_banner_css() -> None:
@@ -1074,16 +1103,26 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
         # 이 `return None`을 지우거나 조건을 바꾸면 한 렌더에 두 블록이 같이
         # 실행돼 Streamlit이 "같은 key 중복" 에러로 화면이 그 자리에서 죽는다.
         # key를 바꾸는 대신 이 배타성(return 구조)을 유지할 것.
+        def _request_my_info_login() -> None:
+            # 2026-09-10: 다른 막힌 기능과 동일하게 login_gate 경로로 통일 —
+            # 로그인 안 했으면 통합 안내창을 매번 띄운다(AUTH_BANNER_OPEN
+            # 가드로 이미 떠 있으면 중복 안 함).
+            # 2026-09-19: 콜백으로 옮겨 렌더 도중 rerun을 없앴다 — 이 호출은
+            # key="my_info_trigger_wrap" 키드 컨테이너 안쪽이라, 예전처럼 여기서
+            # st.rerun()을 던지면 그 컨테이너가 정리되지 못해 화면이 겹쳐 보였다.
+            # 콜백은 다음 렌더 본문보다 먼저 돌므로 배너는 같은 렌더에서 뜬다.
+            if not st.session_state.get(AUTH_BANNER_OPEN):
+                open_auth_banner(resume="my_info_dialog")
+
         if show_my_info_trigger:
             st.markdown(wallet_bar_button_css(), unsafe_allow_html=True)
             with st.container(key="my_info_trigger_wrap"):
-                if st.button("👤 내정보", key="my_info_trigger_btn", use_container_width=True):
-                    # 2026-09-10: 다른 막힌 기능과 동일하게 login_gate 경로로 통일 —
-                    # 로그인 안 했으면 통합 안내창을 매번 띄운다(AUTH_BANNER_OPEN
-                    # 가드로 이미 떠 있으면 중복 안 함).
-                    if not st.session_state.get(AUTH_BANNER_OPEN):
-                        open_auth_banner(resume="my_info_dialog")
-                    st.rerun()
+                st.button(
+                    "👤 내정보",
+                    key="my_info_trigger_btn",
+                    use_container_width=True,
+                    on_click=_request_my_info_login,
+                )
         return None
 
     # 예전엔 이 정보(적립금/ID/로그아웃)를 화면마다 상단에 항상 띄워뒀는데, 페이지를

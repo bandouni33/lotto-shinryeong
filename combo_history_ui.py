@@ -345,18 +345,32 @@ def render_history_button(*, container_key: str, blink_flag_key: str, title: str
     panel_open_key = _resolve_history_panel_state(blink_flag_key)
     # 컨테이너 키는 기존과 동일하게 유지 — page_auto.py에 이 키(.st-key-...)를
     # 겨냥한 버튼 스타일 CSS가 대량으로 있어서 바꾸면 버튼 모양이 깨진다.
-    with st.container(key=container_key):
-        if st.button(title, type="primary", use_container_width=True, key=f"{container_key}_open_btn"):
-            opening = not st.session_state.get(panel_open_key, False)
-            st.session_state[panel_open_key] = opening
-            # 미로그인인데 "저장내역"을 눌러 펼치는 경우에만 여기서 로그인 배너를
-            # 띄운다. 패널 쪽(render_history_panel)에서는 배너를 열지 않는다 —
-            # 안 그러면 배너를 [닫기]로 닫아도 패널이 아직 펼침 상태라 다음
-            # 렌더에서 login_gate가 배너를 다시 열어 "반복해서 뜨는" 문제가 생긴다.
-            if opening and not _cmid():
-                from wallet_ui import login_gate
 
-                login_gate()  # 배너 오픈 + st.rerun()
+    def _toggle_history_panel() -> None:
+        """저장내역 열기/닫기 + 미로그인 안내 — 2026-09-19에 콜백으로 옮겼다.
+        이 버튼은 키드 컨테이너 안쪽이라, 예전처럼 렌더 도중 st.rerun()을 던지면
+        프런트가 그 컨테이너를 다 정리하지 못해 화면이 겹쳐 보였다. 콜백은 이
+        클릭으로 시작되는 rerun의 "본문 실행 전"에 돌기 때문에 rerun 없이도
+        배너가 같은 렌더에서 뜬다(그리는 건 render_wallet_bar)."""
+        opening = not st.session_state.get(panel_open_key, False)
+        st.session_state[panel_open_key] = opening
+        # 미로그인인데 "저장내역"을 눌러 펼치는 경우에만 여기서 로그인 배너를
+        # 띄운다. 패널 쪽(render_history_panel)에서는 배너를 열지 않는다 —
+        # 안 그러면 배너를 [닫기]로 닫아도 패널이 아직 펼침 상태라 다음
+        # 렌더에서 login_gate가 배너를 다시 열어 "반복해서 뜨는" 문제가 생긴다.
+        if opening and not _cmid():
+            from wallet_ui import login_gate
+
+            login_gate()
+
+    with st.container(key=container_key):
+        st.button(
+            title,
+            type="primary",
+            use_container_width=True,
+            key=f"{container_key}_open_btn",
+            on_click=_toggle_history_panel,
+        )
 
 
 def render_history_panel(

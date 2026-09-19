@@ -1,7 +1,11 @@
-"""AppTest가 앱 안에서의 st.query_params 변경을 밖에서 관찰 가능하게 해 주는지 확인.
+"""AppTest가 빈 쿼리스트링으로 시작한 앱의 st.query_params 변경을 관찰할 수 있는지 확인.
 
-이 관찰 가능 여부가 확정되어야 '생일/행운수 이동 버튼' 테스트를 쓸 수 있다.
+관찰 지점: 테스트에서 파라미터를 하나도 seed하지 않고 클릭했을 때, 클릭 후
+at.query_params에 app이 설정한 'page'가 보이는가?
 """
+
+import os
+import sys
 
 from streamlit.testing.v1 import AppTest
 
@@ -15,16 +19,17 @@ if st.button("go", key="probe_btn"):
 st.write("page=" + str(st.query_params.get("page")))
 """
 
-at = AppTest.from_string(SRC, default_timeout=20)
-at.query_params.update({"page": "thunder", "gid": "abc123", "native": "1"})
-at.run()
 
-print("초기 run 후 at.query_params =", dict(at.query_params))
-print("초기 run 예외 =", at.exception)
-print("버튼 개수 =", len(at.button))
+def probe(label, seed):
+    at = AppTest.from_string(SRC, default_timeout=20)
+    at.query_params.update(seed)
+    at.run()
+    at.button(key="probe_btn").click().run()
+    print(f"{label}: seed={seed} -> after_click={dict(at.query_params)}")
+    sys.stdout.flush()
 
-at.button(key="probe_btn").click().run()
 
-print("클릭 run 후 at.query_params =", dict(at.query_params))
-print("클릭 run 예외 =", at.exception)
-print("화면 write 값 =", [m.value for m in at.markdown])
+probe("empty_seed", {})
+probe("seeded_page", {"page": "thunder"})
+
+os._exit(0)

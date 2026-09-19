@@ -713,22 +713,39 @@ def render():
     # 입력방법(QR스캔/직접입력) 토글. 2026-08-27부터 "조합시작" 한 번으로
     # 개별리셋·전체리셋을 항상 함께 생성하도록 바뀌어(아래 참고) 더 이상 둘 중
     # 하나를 고르는 모드 토글이 필요 없다 — 없애고 설명만 정적으로 보여준다.
+    def _hedge_qr_scan_clicked() -> None:
+        """QR스캔 버튼 콜백 — 버튼을 누른 그 렌더의 "본문 실행 전"에 돈다.
+
+        2026-09-19: 이 지점은 키드 컨테이너 두 겹 안쪽이라, 예전처럼 렌더 도중
+        st.rerun()을 던지면 프런트가 그 컨테이너들을 다 정리하지 못해 화면이
+        겹쳐 보이는 문제가 있었다. 로그인이 안 돼 있으면 통합 안내창만 열고
+        rerun은 하지 않는다(안내창은 이번 렌더에서 render_wallet_bar가 그린다).
+        로그인이 돼 있으면 스캐너 트리거 요청만 세우고, 아래 소비부가 이번
+        렌더에서 한 번만 집어가 실행한다."""
+        from wallet_ui import login_gate
+
+        if login_gate(resume="open_hedge_qr_scan"):
+            st.session_state["hedge_qr_request"] = True
+
     with st.container(key="hedge_toggles_row"):
         with st.container(key="hedge_input_toggle_wrap"):
             qc1, qc2 = st.columns(2)
             with qc1:
-                qr_clicked = st.button("QR스캔", key="hedge_qr_scan_btn", use_container_width=True)
+                st.button(
+                    "QR스캔",
+                    key="hedge_qr_scan_btn",
+                    use_container_width=True,
+                    on_click=_hedge_qr_scan_clicked,
+                )
             with qc2:
                 st.markdown(_render_direct_input_pill_html(), unsafe_allow_html=True)
-        if qr_clicked:
-            # 2026-09-10: 로그인 안 한 상태로 QR스캔을 누르면 통합 로그인 안내창
-            # (login_gate)을 띄우고 스캔은 진행하지 않는다. login_gate가 안내창을
-            # 새로 열 때는 내부에서 바로 st.rerun()이 걸리므로(다른 화면의
-            # 조합시작 버튼들과 동일한 패턴), False 분기는 따로 처리하지 않는다.
-            from wallet_ui import login_gate
-
-            if login_gate():
-                _fire_qr_scan_trigger()
+        if st.session_state.pop("hedge_qr_request", False):
+            # 2026-09-19: 위 콜백(이미 로그인된 상태에서 QR스캔을 눌렀을 때) 또는
+            # 로그인을 마친 직후의 _resume_after_auth("open_hedge_qr_scan")가
+            # 세워둔 요청이다. 로그인 안 한 상태로 눌렀을 때는 콜백이 플래그를
+            # 세우지 않으므로(안내창만 열림) 여기 오지 않는다 — 한 번만 실행하고
+            # 지워서, 이후 렌더에서 스캐너가 다시 열리지 않게 한다.
+            _fire_qr_scan_trigger()
     st.markdown(
         '<div class="hedge-mode-desc">'
         '<div class="hedge-mode-desc-line hedge-mode-desc-aek"><span class="hedge-mode-desc-dot"></span>'
