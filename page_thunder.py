@@ -1,3 +1,5 @@
+import os
+
 import streamlit as st
 import streamlit.components.v1 as components
 from birthday_db import get_user_birthdays
@@ -34,6 +36,39 @@ from wallet_db import (
 THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
 THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
 THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
+
+
+# ──────────────────────────────────────────────────────────────
+# 2026-09-19 임시 A/B 실험 스위치 (반전·겹침 원인 축을 가르기 위함 — 사용자 요청)
+#
+#   LOTTO_EXPERIMENT=no_board    → 번호판 iframe(thunder_ui_html)을 빈 컴포넌트로 교체
+#   LOTTO_EXPERIMENT=no_scripts  → 최상위 문서에 심는 스크립트 3종(진동·자동저장폴러·저장내역 스크롤) 미주입
+#   LOTTO_EXPERIMENT=both        → 둘 다
+#
+# 값은 환경변수 또는 Streamlit secrets로 준다(코드 배포 없이 실험 전환).
+# 실험이 끝나면 이 블록과 아래 사용처 4곳(no_board 1곳, _maybe_html 3곳)을 통째로 삭제하면
+# 원래 상태로 완전히 돌아온다 — 그 외에는 아무 동작도 바꾸지 않는다(기본값 = 꺼짐).
+# ──────────────────────────────────────────────────────────────
+def _experiment_flag(name: str) -> bool:
+    raw = ""
+    try:
+        raw = (os.environ.get("LOTTO_EXPERIMENT") or "").strip().lower()
+    except Exception:
+        raw = ""
+    if not raw:
+        try:
+            raw = str(st.secrets.get("LOTTO_EXPERIMENT", "")).strip().lower()
+        except Exception:
+            raw = ""
+    return raw in (name, "both")
+
+
+def _maybe_html(html: str, **kwargs) -> None:
+    """임시 실험(no_scripts)일 때 최상위 문서 스크립트 주입을 건너뛴다."""
+    if _experiment_flag("no_scripts"):
+        return
+    components.html(html, **kwargs)
+
 
 def render():
     init_guest_scope()
@@ -529,7 +564,7 @@ def render():
             args=(selected_game_count,),
         )
 
-    components.html("""
+    _maybe_html("""
     <script>
     (function() {
         function safeVibrate() {
@@ -1763,7 +1798,12 @@ def render():
     thunder_iframe_height = 500
 
     with st.container(key="th_main_iframe_wrap_6n36s5"):
-        components.html(thunder_ui_html, height=thunder_iframe_height, scrolling=True)
+        # 임시 실험(no_board): 무거운 번호판 iframe을 빈 컴포넌트로 교체해 원인 축을 가른다.
+        components.html(
+            "" if _experiment_flag("no_board") else thunder_ui_html,
+            height=thunder_iframe_height,
+            scrolling=True,
+        )
 
     # 2026-09-11(사용자 지시): 번호판 밑 상시 노출 안내 문구("조합이 결정되면
     # 잠시 후 자동으로 저장됩니다...")는 이제 "조합생성이 완료되었습니다" 안내
@@ -1777,7 +1817,7 @@ def render():
         f' href="{internal_nav_href("thunder")}">저장 안 되면 여기를 눌러주세요</a>',
         unsafe_allow_html=True,
     )
-    components.html(
+    _maybe_html(
         """
         <script>
         (function() {
@@ -1888,7 +1928,7 @@ def render():
         # 내려간다. 자동구매는 "저장내역까지 밀려 내려가 홈 버튼이 안 보였다"는
         # 신고로 반대 방향(맨 위)으로 고정한 것이라 이 둘은 서로 다른 화면에서
         # 의도적으로 반대 방향 — 번개조합만 사용자 지시로 아래쪽 고정.
-        components.html(
+        _maybe_html(
             """
             <script>
             (function() {
