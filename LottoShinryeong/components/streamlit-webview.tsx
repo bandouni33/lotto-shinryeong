@@ -14,10 +14,37 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { login as kakaoNativeLogin } from '@react-native-seoul/kakao-login';
 
-import { getStreamlitPageUrl } from '@/constants/streamlit';
+import { getStreamlitBaseUrl, getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
 import { consumeFreshStartFlag } from '@/utils/fresh-start';
 import { HEARTBEAT_MS, isSessionTimedOut, touchLastActive } from '@/utils/session-timeout';
+
+// ──────────────────────────────────────────────────────────────
+// 2026-09-19 임시 실기기 진단 (번개조합 반전·겹침 — 사용자 요청)
+//
+// 웹(page_thunder.py)쪽 A/B 스위치로 원인 축을 갈랐더니 "번호판 무게"와 "주입
+// 스크립트" 둘 다 아니었다(4조건 모두 재현) — 남은 후보가 이 웹뷰 자체의 레이어
+// 합성과 웹뷰 파기·재생성 시점으로 좁혀져서, 그 둘을 실기기에서 직접 본다.
+//
+// 켜는 법: LottoShinryeong/.env 에 EXPO_PUBLIC_WEBVIEW_DIAG=1 한 줄.
+//   · 개발 클라이언트(npx expo start)는 EXPO_PUBLIC_* 값이 JS 번들에 인라인되므로
+//     리빌드 없이 그 값으로 실행된다.
+//   · 프리뷰 APK로 보려면 그 상태에서 eas build --profile preview --platform android.
+// 값이 없으면(기본) 이 블록은 로그도 오버레이도 만들지 않고 androidLayerType도
+// 기존과 같은 'software'로 고정된다 — 즉 평소 동작은 완전히 동일하다.
+// 진단이 끝나면 이 블록과 아래 사용처(오버레이 JSX 1곳, WebView의 key/onLoad*,
+// 핸들러 안의 diagLog 호출들, styles의 diag*)를 통째로 지우면 원래대로 돌아온다.
+//
+// 이벤트는 두 채널로 동시에 나간다(어느 쪽이든 읽히면 되도록):
+//   · 화면 하단 오버레이 — 릴리스 APK에서도 스크린샷으로 읽힌다
+//   · console.log('[WV] ...') — PC에서 adb logcat -v time | findstr "[WV]"
+// ──────────────────────────────────────────────────────────────
+const DIAG_ENABLED = process.env.EXPO_PUBLIC_WEBVIEW_DIAG === '1';
+/** 진단 오버레이에서 실기기로 비교할 레이어 타입 3종(맨 앞이 현재 코드값) */
+const DIAG_LAYER_TYPES = ['software', 'none', 'hardware'] as const;
+type DiagLayerType = (typeof DIAG_LAYER_TYPES)[number];
+const DIAG_BUFFER = 40;
+const DIAG_VISIBLE = 14;
 
 type Props = {
   page: string;
@@ -157,6 +184,64 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     [page, guestId, extraParams]
   );
 
+  // ── 임시 실기기 진단 (위 DIAG_ENABLED 설명 참고) ──────────────────────────
+  const [diagLines, setDiagLines] = useState<string[]>([]);
+  const [diagLayerType, setDiagLayerType] = useState<DiagLayerType>('software');
+  const diagLoadStartMsRef = useRef<number | null>(null);
+  const diagProgressDoneRef = useRef(false);
+  const diagLastNavRef = useRef('');
+
+  // 주소에서 질의파라미터 "이름"만 남긴다 — native_kakao_token 같은 값은 자격증명이라
+  // 로그·스크린샷에 절대 남으면 안 되므로 이름만 남기고 값은 버린다(캐시버스터도 제외).
+  const diagShortUrl = useCallback((raw?: string) => {
+    if (!raw) {
+      return '(none)';
+    }
+    const [path] = raw.split('?');
+    const keys = (raw.split('?')[1] || '')
+      .split('&')
+      .map((pair) => pair.split('=')[0])
+      .filter((key) => key && key !== '_cb');
+    const tail = path.includes('/~/+/') ? '/~/+/' : path.replace(getStreamlitBaseUrl(), '') || '/';
+    return tail + (keys.length ? '?' + keys.join(',') : '');
+  }, []);
+
+  const diagLog = useCallback(
+    (event: string, detail?: Record<string, unknown>) => {
+      if (!DIAG_ENABLED) {
+        return;
+      }
+      const stamp = new Date().toISOString().slice(11, 23);
+      const extra = detail
+        ? ' ' +
+          Object.entries(detail)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(' ')
+        : '';
+      const line = `${stamp} ${event}${extra}`;
+      console.log(`[WV] ${page} ${line}`);
+      setDiagLines((prev) => {
+        const next =
+          prev.length >= DIAG_BUFFER ? prev.slice(prev.length - DIAG_BUFFER + 1) : prev.slice();
+        next.push(line);
+        return next;
+      });
+    },
+    [page]
+  );
+
+  // 이 웹뷰가 "파기·재생성"을 겪는지 세는 기준점(마운트 1회)
+  const diagMountedRef = useRef(false);
+  useEffect(() => {
+    if (diagMountedRef.current) {
+      return;
+    }
+    diagMountedRef.current = true;
+    diagLog('mount', { layer: diagLayerType, freshStart: isFreshStart });
+    // 마운트 시점 1회만 — diagLayerType/isFreshStart 변화에 다시 돌 필요 없음
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 최초 1회: guestId가 준비되는 순간 첫 주소를 확정한다. 콜드스타트로
   // isFreshStart가 켜져 있었거나 마운트 직후 바로 idle 타임아웃이 감지된
   // 경우엔 fresh_start도 이 최초 주소에 함께 싣는다 — 캐시버스터(_cb)는
@@ -170,6 +255,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     }
     initialUriSetRef.current = true;
     lastSentTimeoutTriggerRef.current = timeoutLogoutTrigger;
+    diagLog('setUri', { reason: 'init', freshStart: shouldSendFreshStart });
     setWebViewUri(
       buildUri(shouldSendFreshStart ? { fresh_start: '1', _cb: String(Date.now()) } : {})
     );
@@ -186,9 +272,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     }
     if (timeoutLogoutTrigger > lastSentTimeoutTriggerRef.current) {
       lastSentTimeoutTriggerRef.current = timeoutLogoutTrigger;
+      diagLog('setUri', { reason: 'idle_timeout' });
       setWebViewUri(buildUri({ fresh_start: '1', _cb: String(Date.now()) }));
     }
-  }, [timeoutLogoutTrigger, buildUri]);
+  }, [timeoutLogoutTrigger, buildUri, diagLog]);
 
   // QR 스캔 후 넘어오는 것처럼 ?qr=... 붙은 페이지에서, Streamlit이 그 1회성
   // 파라미터를 읽자마자 지우면서 내부적으로 history API를 건드리는 것으로 보이는데,
@@ -217,8 +304,9 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       return;
     }
     qrScanRedirected.current = true;
+    diagLog('qrScanRedirect');
     router.replace({ pathname: '/qr-scan', params: { target: 'hedge' } });
-  }, []);
+  }, [diagLog]);
 
   // 2026-09-06: 카카오 로그인을 REST API+웹뷰 방식에서 네이티브 SDK로 전환 —
   // 카카오 공식 지원 사유(devtalk.kakao.com 답변: "웹뷰는 플랫폼마다 동작이
@@ -238,6 +326,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       // webViewUri 설명 참고. 이 로드가 끝난 뒤 uri를 다시 바꿀 일이 없으므로
       // (주소창의 토큰은 서버가 1회용 소비 후 알아서 지운다) 두 번째 재생성
       // 자체가 더는 없다.
+      diagLog('setUri', { reason: 'kakao_login' });
       setWebViewUri(
         buildUri({ native_kakao_token: token.accessToken, _cb: String(Date.now()) })
       );
@@ -245,7 +334,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       // 사용자가 취소했거나 카카오 로그인 자체가 실패 — 로그인 배너에서
       // 다시 시도할 수 있으니 조용히 무시한다.
     }
-  }, [buildUri]);
+  }, [buildUri, diagLog]);
 
   // 2026-09-06: QR스캔에서 이미 겪은 문제(위 qrScanRedirected 부근 주석 —
   // 특정 실기기에서 window.ReactNativeWebView 자체가 안 만들어져 postMessage
@@ -271,14 +360,22 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const onNavigationStateChange = useCallback(
     (navState: { canGoBack: boolean; url?: string }) => {
       setCanGoBack(navState.canGoBack);
+      // 진단: 주소가 실제로 바뀐 순간만 남긴다(제목·로딩 상태 변화로도 이 콜백이
+      // 불리므로 url이 같으면 건너뛴다)
+      const navUrl = navState.url || '';
+      if (navUrl && navUrl !== diagLastNavRef.current) {
+        diagLastNavRef.current = navUrl;
+        diagLog('nav', { url: diagShortUrl(navUrl) });
+      }
       if (navState.url && navState.url.includes('qrscan=1')) {
+        diagLog('qrTrigger', { via: 'nav' });
         goToQrScan();
       }
       if (navState.url && navState.url.includes('kakao_native_trigger=1')) {
         triggerKakaoNativeLoginOnce();
       }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, diagLog, diagShortUrl]
   );
 
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
@@ -291,6 +388,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const onShouldStartLoadWithRequest = useCallback(
     (request: { url: string }) => {
       if (request.url.includes('qrscan=1')) {
+        diagLog('qrTrigger', { via: 'intercept' });
         goToQrScan();
         return false;
       }
@@ -300,7 +398,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       }
       return true;
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, diagLog]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
@@ -317,12 +415,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         return;
       }
       if (payload?.type === 'openQrScan') {
+        diagLog('qrTrigger', { via: 'message' });
         goToQrScan();
       } else if (payload?.type === 'kakaoNativeLogin') {
         triggerKakaoNativeLoginOnce();
       }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, diagLog]
   );
 
   const goToStreamlitHome = useCallback(() => {
@@ -413,14 +512,36 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         // 이 프로젝트(LottoShinryeong) 재빌드가 필요한 변경이라 별도로 진행.
         <WebView
           ref={webViewRef}
-          key={webViewUri}
+          // 2026-09-19(진단): 레이어 타입을 key에 함께 넣어, 진단 오버레이에서 값을 바꾸면
+          // 새 네이티브 웹뷰가 그 값으로 확실히 만들어지게 한다(평소에는 'software' 고정이라
+          // 예전과 동일 — key에 상수 접미사가 붙는 것 외에 달라지는 게 없다).
+          key={`${webViewUri}|${diagLayerType}`}
           source={{ uri: webViewUri }}
           style={styles.webview}
           onNavigationStateChange={onNavigationStateChange}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onMessage={onMessage}
-          onLoadStart={() => setLoading(true)}
+          onLoadStart={(e) => {
+            diagLoadStartMsRef.current = Date.now();
+            diagProgressDoneRef.current = false;
+            diagLog('onLoadStart', { url: diagShortUrl(e.nativeEvent.url) });
+            setLoading(true);
+          }}
+          onLoadProgress={(e) => {
+            if (!DIAG_ENABLED) {
+              return;
+            }
+            // 100%에 처음 도달한 순간만 남긴다(진행률은 초당 여러 번 온다)
+            const pct = Math.round(e.nativeEvent.progress * 100);
+            if (pct >= 100 && !diagProgressDoneRef.current) {
+              diagProgressDoneRef.current = true;
+              diagLog('progress100', { pct });
+            }
+          }}
           onLoadEnd={() => {
+            diagLog('onLoadEnd', {
+              ms: diagLoadStartMsRef.current ? Date.now() - diagLoadStartMsRef.current : -1,
+            });
             // 2026-09-17: 예전엔 여기서 카카오 access_token을 3초 뒤 지우며
             // 웹뷰를 다시 로드했다 — 토큰이 uri 파생값의 일부였기 때문.
             // 이제 로그인은 handleKakaoNativeLogin이 딱 한 번만 명시적으로
@@ -430,6 +551,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             setLoading(false);
           }}
           onError={(e) => {
+            diagLog('onError', { desc: (e.nativeEvent.description || '').slice(0, 80) });
             setLoading(false);
             setError(e.nativeEvent.description || '연결 실패');
           }}
@@ -441,10 +563,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           // 자동으로 reload해서 앱을 안 닫아도 복구되게 한다.
           onRenderProcessGone={(e) => {
             console.warn('WebView render process gone', e.nativeEvent);
+            diagLog('renderProcessGone');
             webViewRef.current?.reload();
           }}
           onHttpError={(e) => {
             if (e.nativeEvent.statusCode >= 400) {
+              diagLog('onHttpError', { status: e.nativeEvent.statusCode });
               setLoading(false);
               setError(`HTTP ${e.nativeEvent.statusCode}`);
             }
@@ -493,7 +617,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
                 // 트레이드오프: 소프트웨어 렌더링이라 무거운 애니메이션/동영상엔
                 // 약간의 성능 비용이 있지만, 이 앱 화면들은 대부분 텍스트·숫자판
                 // 위주라 체감 영향은 적을 것으로 판단됨 — 실기기 재검증 필요.
-                androidLayerType: 'software' as const,
+                //
+                // 2026-09-19(진단 결과 반영): 이 값은 위 커밋 이후 계속 'software'였고,
+                // 웹쪽 A/B 4조건이 모두 재현된 실기기 테스트에서도 증상이 그대로였다 —
+                // 즉 'software'는 해결책이 아니었거나, 새로 만든 웹뷰에 setLayerType이
+                // 일찍 적용되는 부작용(레이어 교체 타이밍 자체가 깜빡임 원인이라는
+                // 안드로이드/웹뷰 다수 보고)이 섞여 있을 수 있다. 그래서 이번엔 값을
+                // 상수로 굳히지 않고 상태로 빼서 none/software/hardware를 실기기에서
+                // 직접 비교한다 — 기본값은 기존과 같은 'software'이고, 진단 플래그가
+                // 꺼져 있으면 이 상태는 바뀌지 않으므로 평소 동작은 동일하다.
+                androidLayerType: diagLayerType,
                 // 2026-09-06: 위 캐시버스팅(_cb) URL 파라미터가 근본 해결책이지만,
                 // 이 로드(자동 로그아웃 신호를 보내는 바로 그 순간)만큼은 이중
                 // 안전장치로 캐시 자체도 꺼둔다 — 평소 탐색에는 안 걸어서(성능
@@ -514,6 +647,41 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#f9a825" />
           <Text style={styles.loadingText}>로또신령 불러오는 중…</Text>
+        </View>
+      ) : null}
+
+      {/* 임시 실기기 진단(위 DIAG_ENABLED 설명 참고) — 값이 없으면 아예 그려지지 않는다. */}
+      {DIAG_ENABLED ? (
+        <View style={styles.diagPanel}>
+          <View style={styles.diagButtons}>
+            {DIAG_LAYER_TYPES.map((layerType) => (
+              <TouchableOpacity
+                key={layerType}
+                style={[styles.diagBtn, layerType === diagLayerType ? styles.diagBtnOn : null]}
+                onPress={() => {
+                  setDiagLayerType(layerType);
+                  diagLog('layerType', { value: layerType });
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.diagBtnText}>{layerType}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.diagBtn}
+              onPress={() => setDiagLines([])}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.diagBtnText}>clear</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.diagLogBox}>
+            {diagLines.slice(-DIAG_VISIBLE).map((line, index) => (
+              <Text key={index} style={styles.diagLine} numberOfLines={1}>
+                {line}
+              </Text>
+            ))}
+          </View>
         </View>
       ) : null}
     </View>
@@ -576,4 +744,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9a825',
   },
   retryText: { color: '#1a1a2e', fontWeight: '800' },
+  // ── 임시 실기기 진단 오버레이(DIAG_ENABLED일 때만 렌더됨) ──
+  // 주변 UI를 가리지 않도록: 패널 자체는 box-none(버튼만 터치를 받고 나머지는 통과),
+  // 로그 상자는 none(터치를 절대 잡지 않음).
+  diagPanel: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    bottom: 6,
+    gap: 4,
+    pointerEvents: 'box-none',
+  },
+  diagButtons: { flexDirection: 'row', gap: 6 },
+  diagBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: 'rgba(28,38,69,0.92)',
+  },
+  diagBtnOn: { backgroundColor: '#f9a825' },
+  diagBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  diagLogBox: {
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    pointerEvents: 'none',
+  },
+  diagLine: { color: '#7ef0c0', fontSize: 9 },
 });
