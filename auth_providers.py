@@ -37,6 +37,53 @@ def _redirect_uri() -> str:
     return os.environ.get("KAKAO_REDIRECT_URI", "http://localhost:8501").strip()
 
 
+def _current_ua_hash() -> str | None:
+    """2026-09-19: guest_id 링크공유 계정탈취 대응 — 요청의 User-Agent를 해시해
+    guest_member_links.ua_hash와 대조하는 데 쓴다. 원문 UA를 그대로 저장하지 않고
+    oauth_hash()와 동일하게 해시만 남긴다."""
+    import hashlib
+
+    try:
+        ua = st.context.headers.get("User-Agent")
+    except Exception:
+        ua = None
+    if not ua:
+        return None
+    return hashlib.sha256(ua.strip().encode("utf-8")).hexdigest()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _ua_check_enabled() -> bool:
+    """30초 TTL 캐시 — admission_control._resolve_cap()과 동일한 패턴(모듈 최상위
+    함수를 직접 캐싱 — 렌더마다 새 함수 객체를 만들어 감싸지 않는다). 이 장치
+    자체가(설정 조회 실패 등으로) 페이지를 죽이면 안 되므로 예외 시 기본 켜짐으로
+    안전하게 대체한다."""
+    try:
+        from app_settings import get_auth_require_ua_match
+
+        return get_auth_require_ua_match(default=True)
+    except Exception:
+        return True
+
+
+def _log_cookie_reachability_once() -> None:
+    """2026-09-19: A안(토큰 분리) 설계를 위한 계측 — 브라우저 쿠키가 실제로
+    서버(st.context.cookies)에 도달하는지 세션당 1회만 기록한다. 렌더마다 DB에
+    쓰면 안 되므로(Turso 처리량 병목, db_turso.py 참고) session_state로 가드."""
+    if st.session_state.get("_cookie_reach_logged"):
+        return
+    st.session_state["_cookie_reach_logged"] = True
+    try:
+        from user_scope import GUEST_ID_COOKIE_KEY
+
+        reachable = bool(st.context.cookies.get(GUEST_ID_COOKIE_KEY))
+        import security_log
+
+        security_log.log_event("cookie_reachable", "1" if reachable else "0")
+    except Exception:
+        pass
+
+
 def _encode_oauth_state(provider: str, return_page: str = "main") -> str:
     page = (return_page or "main").strip() or "main"
     # 2026-09-11(사용자 지시): "hedge"(안티·액땜/전체·개별리셋)와 "tarot"가
@@ -125,7 +172,7 @@ def finalize_login(provider: str, provider_user_id: str) -> tuple[int, bool, boo
     from user_scope import bind_identity_on_login, get_or_create_guest_id
 
     bind_identity_on_login(member_id)
-    _link_guest_to_member_safe(get_or_create_guest_id(), member_id)
+    _link_guest_to_member_safe(get_or_create_guest_id(), member_id, _current_ua_hash())
     if bonus:
         st.session_state.wallet_toast = f"간편인증 완료! 적립금 {SIGNUP_BONUS:,}P가 지급되었습니다."
     else:
@@ -144,20 +191,20 @@ def mock_provider_login(provider: str) -> tuple[int, bool, bool]:
     from user_scope import bind_identity_on_login, get_or_create_guest_id
 
     bind_identity_on_login(member_id)
-    _link_guest_to_member_safe(get_or_create_guest_id(), member_id)
+    _link_guest_to_member_safe(get_or_create_guest_id(), member_id, _current_ua_hash())
     msg = f"{SIGNUP_BONUS:,}P 지급 완료!" if bonus else "로그인 완료"
     st.session_state.wallet_toast = f"{provider.upper()} {msg}"
     return member_id, is_new, bonus
 
 
-def _link_guest_to_member_safe(guest_id: str, member_id: int) -> None:
+def _link_guest_to_member_safe(guest_id: str, member_id: int, ua_hash: str | None = None) -> None:
     """guest_id(기기 식별자)와 회원을 연결 — 세션이 끊겨도 자동 재로그인시키기 위함
     (restore_member_from_guest 참고). 연결 자체가 로그인 성공을 막아선 안 되니
     실패해도 조용히 넘어간다."""
     try:
         from wallet_db import link_guest_to_member
 
-        link_guest_to_member(guest_id, member_id)
+        link_guest_to_member(guest_id, member_id, ua_hash)
     except Exception:
         pass
 
@@ -180,7 +227,7 @@ def restore_member_from_guest() -> int | None:
     3분 넘게 아무 요청도 없었다면 강제 로그아웃시킨다."""
     from user_scope import bind_identity_on_login, get_or_create_guest_id
     from wallet_db import (
-        get_member_for_guest,
+        get_member_and_ua_for_guest,
         guest_idle_seconds,
         init_wallet_tables,
         touch_guest_last_seen,
@@ -188,6 +235,7 @@ def restore_member_from_guest() -> int | None:
 
     init_wallet_tables()
     guest_id = get_or_create_guest_id()
+    _log_cookie_reachability_once()
 
     # 2026-09-07: 서버 idle 로그아웃 정상 동작 확인 완료(2026-09-07 실기기
     # 백그라운드→재접속 테스트로 검증) — 검증 과정에서 원인 추적용으로 넣었던
@@ -221,7 +269,7 @@ def restore_member_from_guest() -> int | None:
         return None
 
     try:
-        member_id = get_member_for_guest(guest_id)
+        member_id, stored_ua_hash = get_member_and_ua_for_guest(guest_id)
     except Exception:
         # 이 조회가 실패하면 이미 연결된 회원인지 알 수 없다 — 로그인
         # 배너가 한 번 더 뜨는 게 최악의 경우이고(로그인 상태를 잃지는
@@ -229,6 +277,33 @@ def restore_member_from_guest() -> int | None:
         return None
     if not member_id:
         return None
+
+    # 2026-09-19: guest_id 링크공유 계정탈취 대응(1단계) — guest_id는
+    # internal_nav_href()를 통해 모든 내부이동 링크에 실려 노출되므로, 그 값
+    # 하나만으로 인증 없이 로그인시키던 기존 동작은 링크 공유·주소창 복사로
+    # 계정이 그대로 넘어가는 구멍이었다(아스트라 자문 확인). UA 해시를 함께
+    # 대조해, 링크만 가진 다른 기기에서는 자동로그인을 막고 재인증 배너로
+    # 유도한다. app_settings.get_auth_require_ua_match()로 코드 배포 없이
+    # 즉시 끌 수 있는 킬스위치를 둔다.
+    if _ua_check_enabled():
+        current_ua_hash = _current_ua_hash()
+        if not stored_ua_hash or not current_ua_hash or stored_ua_hash != current_ua_hash:
+            # stored_ua_hash가 없는 경우(2026-09-19 이전 연결, 마이그레이션
+            # 대상)는 침입이 아니라 "아직 새 방식으로 재인증 안 한 기존 사용자"이므로
+            # 보안 알림으로 기록하지 않는다 — 실제 값이 서로 달라 불일치한 경우만
+            # (링크 공유로 다른 기기가 시도했을 가능성) 침입 의심 기록에 남긴다.
+            if stored_ua_hash and current_ua_hash and stored_ua_hash != current_ua_hash:
+                try:
+                    import security_log
+
+                    security_log.log_event(
+                        "guest_autologin_ua_mismatch",
+                        f"member_id={member_id} guest={str(guest_id)[:8]}…",
+                    )
+                except Exception:
+                    pass
+            return None
+
     bind_identity_on_login(member_id)
     try:
         touch_guest_last_seen(guest_id)

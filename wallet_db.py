@@ -159,26 +159,38 @@ def init_wallet_tables() -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(guest_member_links)")}
     if "last_seen_at" not in cols:
         conn.execute("ALTER TABLE guest_member_links ADD COLUMN last_seen_at TEXT NULL")
+    # 2026-09-19: guest_id 링크공유 계정탈취 취약점 대응(1단계, UA 바인딩) —
+    # 이 값이 채워진 이후 연결된 세션만 restore_member_from_guest()가 UA를
+    # 대조해 자동로그인시킨다. 기존(2026-09-19 이전) 연결 행은 이 컬럼이
+    # NULL이라 자동으로 "대조 불가 → 재인증 필요" 취급되며, 이는 의도된
+    # 동작이다(하드 컷오버 — 테스터 16명 규모라 1회 재인증 비용이 낮음).
+    if "ua_hash" not in cols:
+        conn.execute("ALTER TABLE guest_member_links ADD COLUMN ua_hash TEXT NULL")
     conn.commit()
     conn.close()
     _WALLET_TABLES_READY = True
 
 
-def link_guest_to_member(guest_id: str, member_id: int) -> None:
+def link_guest_to_member(guest_id: str, member_id: int, ua_hash: str | None = None) -> None:
     """로그인 성공 시 기기 식별자(guest_id, 네이티브 앱이면 재실행해도 유지됨)를
     회원과 연결해둔다 — 다음에 세션이 끊겼다가 재연결될 때(백그라운드 전환, 네트워크
-    끊김 등) 이 연결로 자동 재로그인시켜서, 매번 간편인증 화면이 다시 뜨는 걸 막는다."""
+    끊김 등) 이 연결로 자동 재로그인시켜서, 매번 간편인증 화면이 다시 뜨는 걸 막는다.
+
+    2026-09-19: ua_hash(로그인 시점의 User-Agent 해시)를 함께 저장 — guest_id가
+    담긴 링크가 공유돼도, 다른 기기(=다른 UA)에서는 restore_member_from_guest()가
+    이 값을 대조해 자동로그인을 막는다(guest_id 링크공유 계정탈취 대응 1단계)."""
     now = _now_iso()
     conn = _connect()
     conn.execute(
         """
-        INSERT INTO guest_member_links (guest_id, member_id, linked_at, last_seen_at) VALUES (?, ?, ?, ?)
+        INSERT INTO guest_member_links (guest_id, member_id, linked_at, last_seen_at, ua_hash) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(guest_id) DO UPDATE SET
             member_id = excluded.member_id,
             linked_at = excluded.linked_at,
-            last_seen_at = excluded.last_seen_at
+            last_seen_at = excluded.last_seen_at,
+            ua_hash = excluded.ua_hash
         """,
-        (str(guest_id), int(member_id), now, now),
+        (str(guest_id), int(member_id), now, now, ua_hash),
     )
     conn.commit()
     conn.close()
@@ -191,6 +203,19 @@ def get_member_for_guest(guest_id: str) -> int | None:
     ).fetchone()
     conn.close()
     return int(row["member_id"]) if row else None
+
+
+def get_member_and_ua_for_guest(guest_id: str) -> tuple[int | None, str | None]:
+    """(member_id, 로그인 시점에 저장된 ua_hash) — restore_member_from_guest()의
+    UA 대조용. 2026-09-19 이전에 연결된 행은 ua_hash가 NULL이다."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT member_id, ua_hash FROM guest_member_links WHERE guest_id = ?", (str(guest_id),)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None, None
+    return int(row["member_id"]), (row["ua_hash"] if row["ua_hash"] else None)
 
 
 def get_guest_ids_for_member(member_id: int) -> list[str]:

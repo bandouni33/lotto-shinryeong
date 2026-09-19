@@ -19,7 +19,16 @@ EVENT_LABELS = {
     "admin_login_fail": "관리자 비밀번호 실패",
     "admin_lockout": "관리자 로그인 잠금 발동",
     "download_rate_limited": "조합 다운로드 요청 과다",
+    "cookie_reachable": "게스트 쿠키 서버 도달 여부(계측)",
+    "guest_autologin_ua_mismatch": "게스트 자동로그인 UA 불일치 차단",
 }
+
+# 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용
+# 이벤트라, count_recent_events()가 그대로 세면 대시보드의 "🚨 침입 시도 의심"
+# 배지가 정상 트래픽만으로 상시 빨간불이 된다(admin_dashboard.py의
+# `_sec_recent_count > 0` 조건). 침입 의심 배지 집계에서는 제외하고,
+# list_recent_events()의 상세 목록에는 그대로 남겨 계측 목적은 유지한다.
+_NON_ALERTING_EVENT_TYPES = frozenset({"cookie_reachable"})
 
 
 def _connect():
@@ -84,13 +93,15 @@ def log_event(event_type: str, detail: str = "") -> None:
 
 
 def count_recent_events(hours: int = 24) -> int:
-    """최근 N시간 안의 이벤트 수 — 대시보드 알림 배지용."""
+    """최근 N시간 안의 '침입 의심' 이벤트 수 — 대시보드 알림 배지용.
+    순수 계측 이벤트(_NON_ALERTING_EVENT_TYPES)는 제외한다."""
     init_security_tables()
     conn = _connect()
     cutoff = (datetime.now(KST) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    placeholders = ",".join("?" for _ in _NON_ALERTING_EVENT_TYPES) or "''"
     row = conn.execute(
-        "SELECT COUNT(*) AS c FROM security_events WHERE created_at >= ?",
-        (cutoff,),
+        f"SELECT COUNT(*) AS c FROM security_events WHERE created_at >= ? AND event_type NOT IN ({placeholders})",
+        (cutoff, *_NON_ALERTING_EVENT_TYPES),
     ).fetchone()
     conn.close()
     return int(row[0]) if row else 0

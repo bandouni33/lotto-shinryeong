@@ -8,6 +8,7 @@ UPDATE_VERSION_KEY = "latest_app_version"
 UPDATE_URL_KEY = "update_url"
 UPDATE_MESSAGE_KEY = "update_message"
 MAX_CONCURRENT_SESSIONS_KEY = "max_concurrent_sessions"
+AUTH_REQUIRE_UA_MATCH_KEY = "auth_require_ua_match"
 
 
 def _connect():
@@ -110,6 +111,23 @@ def get_max_concurrent_sessions(default: int) -> int:
 def set_max_concurrent_sessions(value: int) -> None:
     init_settings_table()
     set_setting(MAX_CONCURRENT_SESSIONS_KEY, str(int(value)))
+
+
+def get_auth_require_ua_match(default: bool = True) -> bool:
+    """2026-09-19: guest_id 자동로그인 UA 대조 킬스위치 — 값이 저장된 적 없으면
+    기본 켜짐(default=True). 웹 자동로그인이 광범위하게 깨지는 등 문제가 생기면
+    운영자가 코드 배포 없이 즉시 이 값을 꺼서 이전 동작으로 되돌릴 수 있다
+    (admission_control.DEFAULT_MAX_CONCURRENT_SESSIONS와 동일한 목적의 안전판)."""
+    init_settings_table()
+    raw = get_setting(AUTH_REQUIRE_UA_MATCH_KEY, "")
+    if not raw:
+        return default
+    return raw.strip() not in ("0", "false", "False")
+
+
+def set_auth_require_ua_match(value: bool) -> None:
+    init_settings_table()
+    set_setting(AUTH_REQUIRE_UA_MATCH_KEY, "1" if value else "0")
 
 
 def save_blob_setting(key: str, raw_bytes: bytes) -> None:

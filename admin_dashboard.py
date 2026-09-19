@@ -471,6 +471,23 @@ if st.session_state.admin_view == "home":
             st.success(f"상한을 {int(_new_cap)}명으로 저장했습니다. 최대 30초 안에 반영됩니다.")
             st.rerun()
 
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔐 게스트 자동로그인 보안(UA 대조)</h4>", unsafe_allow_html=True)
+    with st.expander("guest_id 링크공유 계정탈취 대응 — 코드 배포 없이 즉시 켜고 끌 수 있는 킬스위치"):
+        from app_settings import get_auth_require_ua_match, set_auth_require_ua_match
+
+        st.caption(
+            "켜짐(기본): 로그인 링크를 남에게 공유해도 다른 기기(다른 User-Agent)에서는 "
+            "자동로그인되지 않고 재인증을 요구합니다. 웹 자동로그인이 광범위하게 "
+            "안 되는 등 문제가 생기면 여기서 즉시 꺼서 이전 동작으로 되돌릴 수 있습니다 "
+            "(최대 30초 안에 반영)."
+        )
+        _ua_check_on = get_auth_require_ua_match(default=True)
+        _new_ua_check_on = st.toggle("UA 대조 자동로그인 보호 사용", value=_ua_check_on, key="admin_auth_ua_toggle")
+        if _new_ua_check_on != _ua_check_on:
+            set_auth_require_ua_match(_new_ua_check_on)
+            st.success("저장했습니다. 최대 30초 안에 반영됩니다.")
+            st.rerun()
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📊 회차별 구매 전환 현황</h4>", unsafe_allow_html=True)
     from marketing_db import get_draw_purchase_conversion_stats
 
