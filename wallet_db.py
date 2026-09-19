@@ -32,6 +32,19 @@ def _connect():
     return db_turso.connect()
 
 
+def _batch_execute(conn, statements):
+    """conn이 db_turso 래퍼면 batch_execute()로 원자적 배치 실행(2026-09-19,
+    deduct_points/charge_points/refund_points의 잔액-원장 원자성 개선 참고).
+    tests/test_wallet_db.py는 격리를 위해 _connect()를 순수 sqlite3.Connection
+    으로 바꿔치기하는데, 거기엔 batch_execute()가 없다 — 그 경우 그냥 순서대로
+    execute()만 호출한다. sqlite3는 같은 커넥션에서 commit() 전까지 이미 하나의
+    트랜잭션이므로 순차 실행만으로도 동일하게 원자적이다(호출부가 뒤이어
+    commit()을 부른다 — db_turso 쪽은 no-op, sqlite3 쪽은 실제로 커밋)."""
+    if hasattr(conn, "batch_execute"):
+        return conn.batch_execute(statements)
+    return [conn.execute(sql, params) for sql, params in statements]
+
+
 _WALLET_TABLES_READY = False
 
 
@@ -374,7 +387,17 @@ def deduct_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool
     컨디션이 있었다 — ledger엔 두 건 다 기록되는데 실제 balance는 한 번만
     차감돼, 사실상 한쪽 구매가 무료가 되는 결함(실측하진 않았지만 코드
     구조상 명백한 버그). UPDATE 자체에 조건을 걸어(balance >= amount) DB가
-    원자적으로 처리하게 바꿔 이 레이스를 근본적으로 없앤다."""
+    원자적으로 처리하게 바꿔 이 레이스를 근본적으로 없앤다.
+
+    2026-09-19 수정: 그 뒤에도 "balance UPDATE는 성공했는데 뒤이은 ledger
+    INSERT가 별도 왕복이라 타임아웃 등으로 빠지면" balance만 바뀌고 ledger엔
+    기록이 안 남는 틈이 있었다(db_turso.py 상단 2026-09-03 사고 주석 참고 —
+    네트워크 타임아웃은 응답만 못 받을 뿐 서버 쪽 처리 자체는 이미 끝났을 수
+    있음). db_turso.batch_execute()로 두 statement를 한 원자적 트랜잭션에
+    묶는다 — ledger INSERT를 SELECT ... WHERE balance >= ?로 먼저 걸어
+    "그 순간 잔액이 충분했는지"를 확정하고(0행이면 잔액부족·둘 다 무효),
+    UPDATE는 그 ledger 행이 실제로 삽입됐을 때만(EXISTS) balance를 깎는다 —
+    같은 트랜잭션 안이라 두 statement 사이에 다른 요청이 끼어들 수 없다."""
     if amount <= 0:
         raise ValueError("amount must be positive")
     conn = _connect()
@@ -387,30 +410,35 @@ def deduct_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool
             return True
 
         now = _now_iso()
-        cur = conn.execute(
-            """
-            UPDATE wallets SET balance = balance - ?
-            WHERE member_id = ? AND balance >= ?
-            RETURNING balance
-            """,
-            (amount, member_id, amount),
+        results = _batch_execute(
+            conn,
+            [
+                (
+                    """
+                    INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
+                    SELECT ?, ?, balance - ?, ?, ?, ?
+                    FROM wallets WHERE member_id = ? AND balance >= ?
+                    """,
+                    (member_id, -amount, amount, reason, ref_id, now, member_id, amount),
+                ),
+                (
+                    """
+                    UPDATE wallets SET balance = balance - ?
+                    WHERE member_id = ? AND EXISTS (
+                        SELECT 1 FROM wallet_ledger WHERE ref_id = ?
+                    )
+                    """,
+                    (amount, member_id, ref_id),
+                ),
+            ],
         )
-        row = cur.fetchone()
-        if not row:
-            # member_id가 없거나(지갑 미생성) 잔액 부족 — 둘 다 실패로 처리.
-            conn.close()
-            return False
-        new_balance = int(row["balance"])
-
-        conn.execute(
-            """
-            INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (member_id, -amount, new_balance, reason, ref_id, now),
-        )
+        ledger_inserted = results[0].rowcount if results else 0
         conn.commit()
         conn.close()
+        if not ledger_inserted:
+            # member_id가 없거나(지갑 미생성) 잔액 부족 — 트랜잭션 전체가
+            # 아무 것도 바꾸지 않고 끝났다(위 batch_execute 설계 참고).
+            return False
         return True
     except sqlite3.IntegrityError:
         conn.close()
@@ -597,7 +625,15 @@ def charge_points(member_id: int, amount: int, pg_ref_id: str) -> bool:
 
     2026-09-08 수정: deduct_points와 같은 이유(동시 충전 시 잔액 조회→가산이
     나뉘어 있으면 레이스로 한쪽 충전이 유실될 수 있음)로 원자적 UPDATE로
-    교체."""
+    교체.
+
+    2026-09-19 수정: UPDATE·pg_charges INSERT·wallet_ledger INSERT 3개가
+    각각 별도 왕복이라, 중간에 타임아웃 등으로 끊기면 잔액만 늘고 두 기록
+    중 일부가 빠지는 틈이 있었다(deduct_points와 동일한 문제). 세 statement를
+    db_turso.batch_execute()로 한 트랜잭션에 묶는다 — ledger INSERT를 가장
+    먼저 두고(ref_id UNIQUE로 중복충전 방지는 그대로 유지), UPDATE와
+    pg_charges INSERT는 둘 다 그 ledger 행이 실제로 생겼을 때만(EXISTS/SELECT)
+    실행되게 해서 셋 다 되거나 셋 다 안 되게 만든다."""
     if amount <= 0:
         raise ValueError("amount must be positive")
     conn = _connect()
@@ -610,36 +646,42 @@ def charge_points(member_id: int, amount: int, pg_ref_id: str) -> bool:
             return True
 
         now = _now_iso()
-        cur = conn.execute(
-            """
-            UPDATE wallets SET balance = balance + ?
-            WHERE member_id = ?
-            RETURNING balance
-            """,
-            (amount, member_id),
+        results = _batch_execute(
+            conn,
+            [
+                (
+                    """
+                    INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
+                    SELECT ?, ?, balance + ?, 'pg_charge', ?, ?
+                    FROM wallets WHERE member_id = ?
+                    """,
+                    (member_id, amount, amount, pg_ref_id, now, member_id),
+                ),
+                (
+                    """
+                    UPDATE wallets SET balance = balance + ?
+                    WHERE member_id = ? AND EXISTS (
+                        SELECT 1 FROM wallet_ledger WHERE ref_id = ?
+                    )
+                    """,
+                    (amount, member_id, pg_ref_id),
+                ),
+                (
+                    """
+                    INSERT INTO pg_charges (member_id, amount, pg_ref_id, status, created_at)
+                    SELECT ?, ?, ?, 'completed', ?
+                    FROM wallet_ledger WHERE ref_id = ?
+                    """,
+                    (member_id, amount, pg_ref_id, now, pg_ref_id),
+                ),
+            ],
         )
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            return False
-        new_balance = int(row["balance"])
-
-        conn.execute(
-            """
-            INSERT INTO pg_charges (member_id, amount, pg_ref_id, status, created_at)
-            VALUES (?, ?, ?, 'completed', ?)
-            """,
-            (member_id, amount, pg_ref_id, now),
-        )
-        conn.execute(
-            """
-            INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
-            VALUES (?, ?, ?, 'pg_charge', ?, ?)
-            """,
-            (member_id, amount, new_balance, pg_ref_id, now),
-        )
+        ledger_inserted = results[0].rowcount if results else 0
         conn.commit()
         conn.close()
+        if not ledger_inserted:
+            # member_id에 해당하는 지갑이 없음 — 셋 다 반영되지 않았다.
+            return False
         return True
     except sqlite3.IntegrityError:
         conn.close()
@@ -654,7 +696,10 @@ def refund_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool
 
     2026-09-10(사용자 지시): "조합 실패했는데 적립금은 소진돼 있으면 분쟁위험
     큼" — deduct 성공 후 후속 처리가 예외로 끊기는 좁은 구간(자동구매의
-    complete_auto_order, 고급필터 구독 활성화)을 환불로 메우기 위해 추가."""
+    complete_auto_order, 고급필터 구독 활성화)을 환불로 메우기 위해 추가.
+
+    2026-09-19 수정: charge_points/deduct_points와 동일한 이유로 UPDATE와
+    ledger INSERT를 db_turso.batch_execute()로 한 트랜잭션에 묶는다."""
     if amount <= 0:
         raise ValueError("amount must be positive")
     conn = _connect()
@@ -667,29 +712,33 @@ def refund_points(member_id: int, amount: int, reason: str, ref_id: str) -> bool
             return True
 
         now = _now_iso()
-        cur = conn.execute(
-            """
-            UPDATE wallets SET balance = balance + ?
-            WHERE member_id = ?
-            RETURNING balance
-            """,
-            (amount, member_id),
+        results = _batch_execute(
+            conn,
+            [
+                (
+                    """
+                    INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
+                    SELECT ?, ?, balance + ?, ?, ?, ?
+                    FROM wallets WHERE member_id = ?
+                    """,
+                    (member_id, amount, amount, reason, ref_id, now, member_id),
+                ),
+                (
+                    """
+                    UPDATE wallets SET balance = balance + ?
+                    WHERE member_id = ? AND EXISTS (
+                        SELECT 1 FROM wallet_ledger WHERE ref_id = ?
+                    )
+                    """,
+                    (amount, member_id, ref_id),
+                ),
+            ],
         )
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            return False
-        new_balance = int(row["balance"])
-
-        conn.execute(
-            """
-            INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (member_id, amount, new_balance, reason, ref_id, now),
-        )
+        ledger_inserted = results[0].rowcount if results else 0
         conn.commit()
         conn.close()
+        if not ledger_inserted:
+            return False
         return True
     except sqlite3.IntegrityError:
         conn.close()

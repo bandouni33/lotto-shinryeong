@@ -178,6 +178,35 @@ class _ConnectionWrapper:
                 raise sqlite3.IntegrityError(msg) from e
             raise
 
+    def batch_execute(self, statements):
+        """2026-09-19: 잔액 차감/충전 UPDATE와 wallet_ledger INSERT처럼 "둘 다
+        성공하거나 둘 다 실패해야" 하는 서로 다른 SQL 여러 개를 한 번의 원격
+        왕복으로 원자적으로 실행한다. executemany()와 달리 statements는
+        [(sql, params), ...] 형태로 서로 다른 SQL을 섞을 수 있다.
+
+        libsql_client의 batch()는 Hrana 배치 API(v1/batch)를 쓰는데, 이 배치는
+        서버에서 하나의 트랜잭션으로 실행된다 — 이미 executemany()/executescript()가
+        같은 _client.batch()에 기대고 있는 것과 동일한 보장이다. RETURNING이 있는
+        SELECT/UPDATE는 각 결과를 순서대로 반환하므로, 호출부는 statements와 같은
+        순서의 _CursorWrapper 리스트를 받는다.
+
+        _guarded()의 10초 타임아웃에 걸리면(TimeoutError) 서버가 이 배치를 실제로
+        커밋했는지 클라이언트는 알 수 없다 — 이건 batch로 묶어도 근본적으로
+        없앨 수 없는, 네트워크 왕복 자체의 한계다(db_turso.py 상단 2026-09-03
+        사고 주석 참고). 다만 최소한 "UPDATE는 반영됐는데 INSERT는 안 됨" 같은
+        절반만 적용되는 상태는 batch 자체가 원자적이라 발생하지 않는다."""
+        stmts = [(sql, list(params) if params else []) for sql, params in statements]
+        if not stmts:
+            return []
+        try:
+            result_sets = self._guarded(self._client.batch, stmts)
+        except libsql_client.LibsqlError as e:
+            msg = str(e)
+            if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
+                raise sqlite3.IntegrityError(msg) from e
+            raise
+        return [_CursorWrapper(rs) for rs in result_sets]
+
     def executescript(self, script):
         stmts = [s.strip() for s in re.split(r";\s*\n|;\s*$", script, flags=re.M) if s.strip()]
         self._guarded(self._client.batch, stmts)
