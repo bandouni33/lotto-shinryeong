@@ -56,14 +56,23 @@ def _current_ua_hash() -> str | None:
 def _ua_check_enabled() -> bool:
     """30초 TTL 캐시 — admission_control._resolve_cap()과 동일한 패턴(모듈 최상위
     함수를 직접 캐싱 — 렌더마다 새 함수 객체를 만들어 감싸지 않는다). 이 장치
-    자체가(설정 조회 실패 등으로) 페이지를 죽이면 안 되므로 예외 시 기본 켜짐으로
-    안전하게 대체한다."""
+    자체가(설정 조회 실패 등으로) 페이지를 죽이면 안 되므로 예외 시 기본 꺼짐으로
+    안전하게 대체한다.
+
+    2026-09-19(긴급 롤백): 배포 직후 모바일(WebView)에서 로그인창 반복 노출 +
+    QR스캔 등 전 기능 먹통 신고 — User-Agent가 로그인 시점과 이후 요청에서
+    서버에 다르게(또는 비어있게) 잡혀 매번 "링크공유 의심"으로 오판, 정상
+    사용자까지 재인증 루프에 걸린 것으로 추정. 운영자 대시보드 토글을 거치지
+    않고 즉시 전체 반영되도록 기본값 자체를 꺼짐(False)으로 되돌렸다 — 관리자가
+    저장한 값이 있으면(get_auth_require_ua_match) 그 값이 여전히 우선한다.
+    UA 대조 로직 자체(guest_id 링크공유 대응)를 더 안정적으로 고친 뒤 다시
+    기본 켜짐으로 되돌릴 것(원인: WebView 요청 간 UA 헤더 불안정 여부 확인 필요)."""
     try:
         from app_settings import get_auth_require_ua_match
 
-        return get_auth_require_ua_match(default=True)
+        return get_auth_require_ua_match(default=False)
     except Exception:
-        return True
+        return False
 
 
 def _log_cookie_reachability_once() -> None:
