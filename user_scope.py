@@ -180,8 +180,24 @@ def internal_nav_href(page: str, **extra_params: str) -> str:
     사라짐"의 공통 원인이었다(전부 guest_id가 안 이어지는 데서 비롯됨). 네이티브 앱과
     동일하게 모든 내부이동 링크에 현재 guest_id를 쿼리파라미터로 실어보내면, 브라우저
     접속자도 get_or_create_guest_id()의 최우선 분기(query)를 그대로 타게 돼 안정된다.
+
+    2026-09-19(아스트라 진단 — "반전/겹침"의 실제 정체): 위와 똑같은 이유로 gid만
+    챙기고 native=1은 안 실어보내고 있었다 — constants/streamlit.ts의 getStreamlitPageUrl()은
+    앱이 웹뷰를 최초로 띄울 때만 native=1을 붙이는데, 이 함수로 만든 내부이동 링크(예:
+    번개조합→행운수관리)는 실제 <a href> 전체 새로고침이라 그 최초 주소값이 안 이어지고
+    사라진다. wallet_ui.py의 로그인 배너는 이 native 파라미터 하나로 "앱 전용 버튼"과
+    "일반 웹 링크(항상 새 탭으로 열림 — Streamlit 자체 사양)"를 가른다 — native가 없으면
+    앱 안에서도 웹 분기로 떨어져, 로그인 안내창이 앱 웹뷰가 아니라 기기 기본 브라우저에서
+    열려버린 것이 "반전/두 개 화면"으로 보인 정체였다(웹뷰에 새 창을 앱 안에 가두는
+    처리가 없어 그대로 외부로 샌다). gid와 동일하게, 지금 요청에 native=1이 있으면
+    그대로 다음 내부이동 링크에도 이어서 실어보낸다.
     """
-    query = urllib.parse.urlencode({"page": page, GUEST_ID_QUERY_KEY: get_or_create_guest_id(), **extra_params})
+    params: dict[str, str] = {"page": page, GUEST_ID_QUERY_KEY: get_or_create_guest_id()}
+    native = st.query_params.get("native")
+    if native:
+        params["native"] = native
+    params.update(extra_params)
+    query = urllib.parse.urlencode(params)
     return f"?{query}"
 
 
