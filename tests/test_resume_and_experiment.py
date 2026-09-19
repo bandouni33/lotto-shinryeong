@@ -1,6 +1,6 @@
-"""두 작업 검증 — (1) 로그인 후 재개(resume) 유실 수정, (2) 반전/겹침 A/B 실험 스위치.
+"""로그인 후 재개(resume) 유실 수정 검증.
 
-(1) 불변식:
+불변식:
   R1. state는 provider·page·guest_id 뿐 아니라 재개 의도(resume 이름 + 데이터)까지
       왕복에서 보존한다 — 모든 resume 종류·데이터 모양에 대해.
   R2. 재개 의도가 없는/예전 형식/외부에서 온 이상한 state도 예외 없이 안전한 기본값으로 풀린다.
@@ -8,12 +8,10 @@
       (콜백 state 경로 + 네이티브 앱용 서버 임시저장 경로 둘 다).
   R4. 재개 의도는 1회만 소비되고, 오래된(TTL 초과) 값은 실행되지 않는다.
 
-(2) 불변식:
-  E1. 기본값(스위치 꺼짐)에서는 아무것도 바뀌지 않는다(번호판 HTML·스크립트 3종 그대로).
-  E2. no_board는 번호판 iframe만 빼고 상단 스크립트는 그대로 둔다.
-  E3. no_scripts는 상단 스크립트만 빼고 번호판 iframe은 그대로 둔다.
-  E4. both는 둘 다 뺀다.
-  E5. 스위치는 환경변수 하나로만 바뀌고, 그 외 렌더 결과(요소·예외)는 동일하다.
+(반전/겹침 A/B 실험 스위치용 E1~E4 테스트는 그 스위치 자체를 page_thunder.py에서
+제거하면서 함께 삭제했다 — 실기기에서 네 조건 모두 재현돼 두 축(번호판 무게·주입
+스크립트)이 원인이 아님을 확인한 뒤의 정리다. 실험 코드가 다시 필요하면 커밋
+ef1a4589를 참고.)
 
 DB는 건드리지 않는다 — app_settings/멤버 생성/게스트 연결을 테스트 안에서 스텁으로 바꾼다.
 pytest 없이도 돌도록 표준 assert + __main__ 러너를 함께 둔다.
@@ -33,7 +31,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-THUNDER_PAGE = str(ROOT / "page_thunder.py")
 ENTRY = str(ROOT / "app.py")
 TIMEOUT_SEC = 60
 
@@ -277,82 +274,6 @@ def test_pending_resume_is_consumed_once_and_expires() -> None:
     assert out2["mid"]["flag"] is None, f"R4: 만료된 의도가 플래그를 세웠다 {out2}"
 
 
-# ── E1~E4: A/B 스위치가 주장하는 것만 바꾼다 ─────────────────────────────────
-BOARD_MARK = "numberGrid"          # 번호판 iframe 안에만 있는 문자열
-# 주의: 'safeVibrate'는 번호판 iframe 안에도 들어있어 마커로 쓸 수 없다(첫 실행에서
-# 거짓 양성이 나왔다) — 최상위 문서용 진동 바인더에만 있는 dataset 플래그를 쓴다.
-SCRIPT_MARKS = {
-    "vibrate": "thVibrateBound",
-    "poller": "thVisibilitySyncBound",
-}
-
-
-def _component_htmls(experiment: str | None):
-    """page_thunder를 실제로 렌더하면서 components.html에 넘어간 HTML을 수집한다."""
-    import streamlit.components.v1 as c1
-
-    seen: list[str] = []
-    original = c1.html
-    c1.html = lambda html, **kw: (seen.append(html or ""), original(html, **kw))[1]
-    before = os.environ.get("LOTTO_EXPERIMENT")
-    if experiment is None:
-        os.environ.pop("LOTTO_EXPERIMENT", None)
-    else:
-        os.environ["LOTTO_EXPERIMENT"] = experiment
-    try:
-        at = AppTest.from_file(THUNDER_PAGE, default_timeout=TIMEOUT_SEC)
-        at.run()
-        return at, seen
-    finally:
-        c1.html = original
-        if before is None:
-            os.environ.pop("LOTTO_EXPERIMENT", None)
-        else:
-            os.environ["LOTTO_EXPERIMENT"] = before
-
-
-def test_experiment_switches_isolate_board_vs_scripts() -> None:
-    # 첫 앱 실행에서는 스파이가 안 잡히는 하네스 특성이 있어(측정으로 확인) 예열 1회
-    AppTest.from_file(THUNDER_PAGE, default_timeout=TIMEOUT_SEC).run()
-
-    def measure(experiment: str | None) -> dict:
-        at, seen = _component_htmls(experiment)
-        assert len(at.exception) == 0, f"[{experiment}] page raised: {at.exception}"
-        assert seen, f"[{experiment}] components.html 호출이 하나도 잡히지 않았다(계측 실패)"
-        return {
-            "has_board": any(BOARD_MARK in h for h in seen),
-            "board_chars": max((len(h) for h in seen), default=0),
-            "marks": {k: any(v in h for h in seen) for k, v in SCRIPT_MARKS.items()},
-            "components": len(seen),
-        }
-
-    default = measure(None)
-    no_board = measure("no_board")
-    no_scripts = measure("no_scripts")
-    both = measure("both")
-
-    # E1: 기본값은 원래 그대로
-    assert default["has_board"], f"E1: 기본값에서 번호판 HTML이 없다 {default}"
-    assert default["board_chars"] > 20000, f"E1: 번호판 HTML이 너무 작다 {default}"
-    assert all(default["marks"].values()), f"E1: 기본값에서 스크립트가 빠졌다 {default}"
-
-    # E2: 번호판만 제거, 스크립트는 유지
-    assert not no_board["has_board"], f"E2: no_board인데 번호판이 남아 있다 {no_board}"
-    assert no_board["board_chars"] < 20000, f"E2: 번호판이 안 빠졌다 {no_board}"
-    assert all(no_board["marks"].values()), f"E2: no_board가 스크립트까지 건드렸다 {no_board}"
-
-    # E3: 스크립트만 제거, 번호판은 유지
-    assert no_scripts["has_board"], f"E3: no_scripts가 번호판까지 없앴다 {no_scripts}"
-    assert no_scripts["board_chars"] > 20000, f"E3: no_scripts에서 번호판이 작아졌다 {no_scripts}"
-    assert not any(no_scripts["marks"].values()), (
-        f"E3: no_scripts인데 스크립트가 남아 있다 {no_scripts}"
-    )
-
-    # E4: 둘 다
-    assert not both["has_board"], f"E4: both인데 번호판이 남아 있다 {both}"
-    assert not any(both["marks"].values()), f"E4: both인데 스크립트가 남아 있다 {both}"
-
-
 # ── R3(조립): 실제 진입점(app.py)에서 완전 리로드를 거친 로그인이 재개되는가 ──
 def test_resume_survives_full_reload_in_real_entry() -> None:
     """가짜 state를 들고 앱을 띄워, 콜백 → 재개 실행까지를 조립된 상태로 한 번 돌린다.
@@ -411,7 +332,6 @@ def _main() -> int:
         test_resume_survives_full_reload_via_callback,
         test_pending_resume_is_consumed_once_and_expires,
         test_resume_survives_full_reload_in_real_entry,
-        test_experiment_switches_isolate_board_vs_scripts,
     ]
     failed = 0
     for t in tests:
