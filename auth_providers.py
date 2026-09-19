@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 import uuid
 import urllib.parse
 
@@ -114,16 +115,172 @@ def _encode_oauth_state(provider: str, return_page: str = "main") -> str:
     from user_scope import get_or_create_guest_id
 
     guest_id = get_or_create_guest_id()
-    return f"{provider}:{urllib.parse.quote(page, safe='')}:{urllib.parse.quote(guest_id, safe='')}"
+    base = f"{provider}:{urllib.parse.quote(page, safe='')}:{urllib.parse.quote(guest_id, safe='')}"
+    # 2026-09-19(사용자 지시): "로그인하고 나면 원래 하려던 동작이 자동 재개되지 않는다"
+    # 문제 — 카카오/패스/금융인증서 로그인은 외부로 나갔다 돌아오는 "완전한 새 페이지
+    # 로드"라 session_state가 통째로 비워지고, 그 안에만 있던 재개 의도(AUTH_RESUME_FLAG/
+    # DATA)가 사라졌다. 이 왕복에서 살아남는 유일한 값이 state 파라미터라 여기에 함께
+    # 실어 보낸다. 앞 3필드 형식은 그대로 두고 뒤에 2필드만 덧붙이므로(선택 필드),
+    # 예전 state가 돌아와도 _decode_oauth_state가 안전하게 해석한다.
+    resume_name, resume_data_raw = _encode_resume_state()
+    if not resume_name:
+        return base
+    return f"{base}:{resume_name}:{resume_data_raw}"
 
 
-def _decode_oauth_state(state: str | None) -> tuple[str, str, str | None]:
+# 재개 의도를 state에 실을 때 데이터가 너무 길어지면(인증사가 state 길이를 제한할 수
+# 있음) 데이터만 생략하고 의도 이름은 살린다 — 기능은 재개되고 세부값만 기본값이 된다.
+_RESUME_STATE_DATA_MAX = 700
+
+# 네이티브 앱(카카오 SDK) 로그인은 state를 거치지 않는다 — 서버에 잠깐 남겨두는 값의
+# 키 접두사와 유효시간(15분). 로그인 완료 시 1회 소비된다.
+_PENDING_RESUME_PREFIX = "pending_resume:"
+_PENDING_RESUME_TTL_SEC = 900
+
+
+def _encode_resume_state() -> tuple[str, str]:
+    """현재 세션의 재개 의도(AUTH_RESUME_FLAG/DATA)를 state에 실을 문자열 2개로 만든다."""
+    import json
+
+    try:
+        from wallet_ui import AUTH_RESUME_DATA, AUTH_RESUME_FLAG
+    except Exception:
+        return "", ""
+    resume = str(st.session_state.get(AUTH_RESUME_FLAG) or "").strip()
+    if not resume:
+        return "", ""
+    data = st.session_state.get(AUTH_RESUME_DATA) or {}
+    packed = ""
+    try:
+        packed = urllib.parse.quote(
+            json.dumps(data, ensure_ascii=False, separators=(",", ":")), safe=""
+        )
+    except Exception:
+        packed = ""
+    if len(packed) > _RESUME_STATE_DATA_MAX:
+        packed = ""
+    return urllib.parse.quote(resume, safe=""), packed
+
+
+def _restore_resume_from_state(resume: str | None, data_raw: str | None) -> None:
+    """콜백으로 돌아온 state의 재개 의도를 session_state로 되살린다(로그인 성공 시에만
+    호출된다 — 실패 경로에서 되살리면 로그인 안 된 채 재개가 돌아버린다)."""
+    import json
+
+    name = str(resume or "").strip()
+    if not name:
+        return
+    from wallet_ui import AUTH_RESUME_DATA, AUTH_RESUME_FLAG
+
+    st.session_state[AUTH_RESUME_FLAG] = name
+    data = {}
+    if data_raw:
+        try:
+            parsed = json.loads(data_raw)
+            if isinstance(parsed, dict):
+                data = parsed
+        except Exception:
+            data = {}
+    if data:
+        st.session_state[AUTH_RESUME_DATA] = data
+
+
+def _remember_pending_resume(resume: str | None, data: dict | None) -> None:
+    """네이티브 앱(카카오 SDK) 로그인 경로용 — state를 거치지 않으므로 이 기기(gid)가
+    로그인 직전에 하려던 동작을 서버에 잠깐 남겨둔다. 실패해도 로그인 자체를 막지 않는다."""
+    import json
+
+    name = str(resume or "").strip()
+    if not name:
+        return
+    from user_scope import get_or_create_guest_id
+
+    try:
+        from app_settings import init_settings_table, set_setting
+
+        init_settings_table()
+        set_setting(
+            _PENDING_RESUME_PREFIX + get_or_create_guest_id(),
+            json.dumps(
+                {"resume": name, "data": data or {}, "ts": int(time.time())},
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:
+        pass
+
+
+def _forget_pending_resume() -> None:
+    """배너를 [닫기]로 취소했을 때 서버에 남긴 재개 의도도 버린다."""
+    from user_scope import get_or_create_guest_id
+
+    try:
+        from app_settings import init_settings_table, set_setting
+
+        init_settings_table()
+        set_setting(_PENDING_RESUME_PREFIX + get_or_create_guest_id(), "")
+    except Exception:
+        pass
+
+
+def _restore_pending_resume() -> bool:
+    """로그인 완료 직전에 서버에 남겨둔 재개 의도를 1회 소비해 session_state로 옮긴다.
+    모든 로그인 경로(카카오 리다이렉트·PASS·금융인증서·네이티브 SDK 토큰)가 이
+    함수가 불리는 finalize_login()을 공통으로 지나가므로, 이 한 곳으로 전 기능에 적용된다."""
+    import json
+
+    from user_scope import get_or_create_guest_id
+
+    key = _PENDING_RESUME_PREFIX + get_or_create_guest_id()
+    try:
+        from app_settings import get_setting, init_settings_table, set_setting
+
+        init_settings_table()
+        raw = get_setting(key, "")
+    except Exception:
+        return False
+    if not raw:
+        return False
+    try:
+        set_setting(key, "")  # 1회 소비 — 재로그인 때 같은 의도가 또 뜨지 않게
+    except Exception:
+        pass
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    ts = int(payload.get("ts") or 0)
+    if ts and (time.time() - ts) > _PENDING_RESUME_TTL_SEC:
+        return False
+    name = str(payload.get("resume") or "").strip()
+    if not name:
+        return False
+    from wallet_ui import AUTH_RESUME_DATA, AUTH_RESUME_FLAG
+
+    st.session_state[AUTH_RESUME_FLAG] = name
+    data = payload.get("data")
+    if isinstance(data, dict) and data:
+        st.session_state[AUTH_RESUME_DATA] = data
+    return True
+
+
+def _decode_oauth_state(
+    state: str | None,
+) -> tuple[str, str, str | None, str | None, str | None]:
+    """state를 (provider, page, guest_id, resume, resume_data_raw)로 푼다.
+
+    2026-09-19: 뒤 2필드(resume/resume_data)는 선택이다 — 이 필드를 안 싣고 나간
+    예전 state(3필드)나 외부에서 임의로 넣은 state가 돌아와도 앞 3개는 그대로 해석된다."""
     raw = (state or "kakao").strip() or "kakao"
-    parts = raw.split(":", 2)
+    parts = raw.split(":", 4)
     provider = (parts[0] or "kakao").strip() or "kakao" if parts else "kakao"
     page = urllib.parse.unquote(parts[1]).strip() if len(parts) > 1 and parts[1] else "main"
     guest_id = urllib.parse.unquote(parts[2]).strip() if len(parts) > 2 and parts[2] else None
-    return provider, (page or "main"), (guest_id or None)
+    resume = urllib.parse.unquote(parts[3]).strip() if len(parts) > 3 and parts[3] else None
+    data_raw = urllib.parse.unquote(parts[4]) if len(parts) > 4 and parts[4] else None
+    return provider, (page or "main"), (guest_id or None), (resume or None), (data_raw or None)
 
 
 def get_kakao_authorize_url(return_page: str = "main") -> str:
@@ -182,6 +339,10 @@ def finalize_login(provider: str, provider_user_id: str) -> tuple[int, bool, boo
 
     bind_identity_on_login(member_id)
     _link_guest_to_member_safe(get_or_create_guest_id(), member_id, _current_ua_hash())
+    # 2026-09-19: 이 기기가 로그인 직전에 하려던 동작(재개 의도)을 되산다. 모든 로그인
+    # 경로가 이 함수를 지나가므로 여기 한 곳으로 전 기능(자동구매·번개조합·QR·내정보 등)에
+    # 적용되고, 세션 리셋을 거치는 네이티브 앱 경로까지 커버된다.
+    _restore_pending_resume()
     if bonus:
         st.session_state.wallet_toast = f"간편인증 완료! 적립금 {SIGNUP_BONUS:,}P가 지급되었습니다."
     else:
@@ -405,7 +566,13 @@ def handle_oauth_callback() -> bool:
     if not code:
         return False
 
-    provider_key, return_page, saved_guest_id = _decode_oauth_state(st.query_params.get("state"))
+    (
+        provider_key,
+        return_page,
+        saved_guest_id,
+        resume_from_state,
+        resume_data_from_state,
+    ) = _decode_oauth_state(st.query_params.get("state"))
     if saved_guest_id:
         # 카카오 redirect_uri가 고정 URL이라 이 콜백 요청 자체엔 원래 쓰던 gid가
         # 안 실려 있다 — state에서 복원해 session_state에 먼저 심어둔다. 이 다음에
@@ -453,6 +620,9 @@ def handle_oauth_callback() -> bool:
         return False
 
     finalize_login(provider, provider_uid)
+    # 2026-09-19: state에 실려 돌아온 재개 의도를 여기서(로그인 성공 시에만) 되산다 —
+    # session_state는 이 콜백 요청에서 세로 비어 있기 때문.
+    _restore_resume_from_state(resume_from_state, resume_data_from_state)
     st.query_params["page"] = return_page
     if saved_guest_id:
         # 세션 안에서만이 아니라 주소창(다음 새로고침/공유 등)에도 원래 gid가

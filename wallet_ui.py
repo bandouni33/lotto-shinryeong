@@ -113,6 +113,12 @@ def open_auth_banner(
         st.session_state[AUTH_RESUME_DATA] = resume_data
     else:
         st.session_state.pop(AUTH_RESUME_DATA, None)
+    # 2026-09-19(사용자 지시 — 로그인 후 재개 유실): 네이티브 앱의 카카오 SDK 로그인은
+    # state 파라미터를 거치지 않고 웹뷰가 새 주소로 완전히 다시 로드되므로, 이 기기(gid)가
+    # 무엇을 하려다 로그인했는지 서버에 잠깐 남겨둔다(로그인 완료 시 finalize_login이 1회 소비).
+    from auth_providers import _remember_pending_resume
+
+    _remember_pending_resume(resume, resume_data)
     # 2026-09-11(사용자 지시): 배너는 항상 화면 최상단(render_wallet_bar 위치)에서
     # 그려지는데, 정작 이 배너를 여는 트리거(번개조합 "저장내역" 등)는 화면 아래쪽에
     # 있는 경우가 많다 — 유저가 방금 누른 위치에 그대로 머물러 있어서 배너가 뜬 걸
@@ -135,6 +141,11 @@ def close_auth_banner() -> None:
         AUTH_BANNER_DISMISS_REDIRECT,
     ):
         st.session_state.pop(key, None)
+    # 2026-09-19: 서버에 남겨둔 재개 의도(네이티브 앱 경로용)도 함께 버린다 —
+    # 취소했는데 나중에 무관한 로그인에서 묵은 의도가 실행되면 안 된다.
+    from auth_providers import _forget_pending_resume
+
+    _forget_pending_resume()
     # 2026-09-12(사용자 신고 — × 눌러도 배너가 안 사라짐): 타로·행운수처럼
     # 페이지 전체를 매 렌더마다 무조건 login_gate()로 막는 화면에서는, ×로
     # 방금 닫아도 같은 rerun 흐름에서 그 페이지의 무조건 게이트가 바로 다시
