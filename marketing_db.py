@@ -19,6 +19,14 @@ MIN_DISPLAY_DRAW_ROUND = min(MARKETING_POOL_SEED_DRAWS)
 PURCHASE_TYPES = frozenset({"정기구독", "일반구매"})
 SEND_STATUSES = frozenset({"WAIT", "SENT", "TEST_SKIP", "BANNER_ONLY"})
 
+# 2026-09-19: 관리자 CSV 업로드처럼 외부 입력이 들어오는 경로가 무제한으로 행을
+# 밀어넣을 수 있던 것을 막는 안전장치(bulk_insert_lotto_combinations 한 곳에서
+# 걸린다 — combo_gen_worker·관리자 저장·시드 적재가 모두 이 함수를 지난다).
+# 정상 경로(주간 생성)는 회차당 6~8만 건이라 이 한도의 절반에도 못 미친다 —
+# 실수로 다른 파일(전체 이력 등)을 올렸을 때 Turso 쓰기 할당량을 통째로 태우는
+# 사고를 막는 게 목적이다.
+MAX_BULK_INSERT_ROWS = 200_000
+
 
 class InsufficientCombinationsError(Exception):
     """미배포 조합 수량 부족."""
@@ -1477,6 +1485,12 @@ def bulk_insert_lotto_combinations(
     draw_round = int(draw_round)
     if draw_round < 1:
         raise ValueError("draw_round는 1 이상이어야 합니다.")
+    if len(combinations) > MAX_BULK_INSERT_ROWS:
+        # 검증·정규화·INSERT 전에 거부한다 — 한도 초과 요청은 한 행도 쓰지 않는다.
+        raise ValueError(
+            f"한 번에 저장할 수 있는 조합은 최대 {MAX_BULK_INSERT_ROWS:,}개입니다 "
+            f"(요청 {len(combinations):,}개). 파일을 나눠 올려주세요."
+        )
 
     payload = []
     for row in combinations:
@@ -1650,7 +1664,19 @@ def update_win_ranks_for_draw(
     winning_numbers: list[int],
     bonus_number: int,
 ) -> int:
-    """운영자 추출 조합 vs 당첨번호 — 1~5등 win_rank 일괄 갱신."""
+    """운영자 추출 조합 vs 당첨번호 — 1~5등 win_rank 일괄 갱신.
+
+    반환값은 "실제로 쓴 행 수"다(예전엔 회차 전체 행 수를 돌려줬다).
+
+    2026-09-19(R1 — Turso 쓰기 절감): 예전엔 이 회차의 조합 전체에 UPDATE를
+    던졌는데, 대부분이 낙첨(rank NULL)이라 "NULL을 NULL로 다시 쓰는" 무의미한
+    쓰기가 회차당 수천 건씩 발생했다(추첨은 주 1회·확정 후 불변인 데이터인데도).
+    이제는 계산된 rank가 None이면 아예 쓰지 않고(낙첨은 NULL 그대로), 이미 같은
+    rank가 들어있는 행도 건너뛴다 — 그래서 같은 입력으로 다시 호출하면 0을
+    돌려준다(멱등). 당첨 회차의 당첨번호는 불변이므로 "1등이던 행이 나중에
+    NULL로 되돌아가야 하는" 경우는 생기지 않는다(회차를 잘못 입력한 예외적
+    상황은 그 회차를 delete_lotto_combinations_by_draw 후 재적재하면 정합해진다).
+    """
     from lotto_stats import calc_lotto_win_rank
 
     draw_round = int(draw_round)
@@ -1658,7 +1684,7 @@ def update_win_ranks_for_draw(
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """
-        SELECT id, num1, num2, num3, num4, num5, num6
+        SELECT id, num1, num2, num3, num4, num5, num6, win_rank
         FROM lotto_combinations
         WHERE draw_round = ?
         """,
@@ -1668,7 +1694,11 @@ def update_win_ranks_for_draw(
     for row in rows:
         combo = _combo_nums_from_row(row)
         rank = calc_lotto_win_rank(combo, winning_numbers, bonus_number)
-        payload.append((rank, int(row["id"])))
+        if rank is None:
+            continue
+        if row["win_rank"] is not None and int(row["win_rank"]) == int(rank):
+            continue
+        payload.append((int(rank), int(row["id"])))
     if payload:
         conn.executemany(
             "UPDATE lotto_combinations SET win_rank = ? WHERE id = ?",
@@ -1719,12 +1749,21 @@ def cleanup_old_lotto_combinations(keep_rounds: int = 2) -> int:
     ("최근 2회차까지는 보관")을 따르는데, combo_gen_worker.py가 지금까지
     이 규칙 없이 anchor_round(방금 추첨된 회차) 이하를 전부 즉시 삭제하고
     있었다(2026-09-06 실측 확인 — 1237~1240회차 데이터가 이 버그로
-    복구 불가능하게 삭제됨). 앞으로는 이 함수로 일관되게 처리한다."""
+    복구 불가능하게 삭제됨). 앞으로는 이 함수로 일관되게 처리한다.
+
+    2026-09-19(R2 — 삭제↔재적재 낭비 제거): 시드 회차(MARKETING_POOL_SEED_DRAWS)는
+    보관 대상에서 뺀다. 이 회차들은 repo의 data/marketing_pools/draw_N.csv.gz에서
+    복원되는 "기준 풀"이라, 여기서 지우면 다음 ensure_marketing_pool_seeds()가
+    같은 CSV를 다시 적재해 회차당 수천 행 쓰기가 매주 반복됐다(지우고 → 다시
+    넣고 → 또 지우는 왕복). 이제 지우지 않으므로 재적재 자체가 일어나지 않는다
+    (import_marketing_pool_seed는 이미 count>0이면 0을 돌려준다)."""
     conn = _connect()
     rows = conn.execute(
         "SELECT DISTINCT draw_round FROM lotto_combinations ORDER BY draw_round DESC"
     ).fetchall()
-    old_rounds = [int(r[0]) for r in rows[keep_rounds:]]
+    keep = {int(r[0]) for r in rows[:keep_rounds]}
+    keep.update(int(r) for r in MARKETING_POOL_SEED_DRAWS)
+    old_rounds = [int(r[0]) for r in rows if int(r[0]) not in keep]
     deleted = 0
     for old_round in old_rounds:
         cur = conn.execute(

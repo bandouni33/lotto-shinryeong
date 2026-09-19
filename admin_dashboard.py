@@ -1016,6 +1016,7 @@ elif st.session_state.admin_view == "filter_manage":
             # 5. [마케팅 DB] 추출 조합 익명 저장 (백엔드)
             # ==========================================
             from marketing_db import (
+                MAX_BULK_INSERT_ROWS,
                 bulk_insert_lotto_combinations,
                 delete_lotto_combinations_by_draw,
                 get_combination_count_by_draw,
@@ -1073,6 +1074,16 @@ elif st.session_state.admin_view == "filter_manage":
                 replace_existing: bool,
             ) -> None:
                 draw_round = int(draw_round)
+                # 2026-09-19: 용량 한도 검사는 "기존 데이터 삭제"보다 먼저 한다 —
+                # 순서가 반대면 한도 초과로 저장이 거부될 때 그 회차 데이터가
+                # 이미 지워진 뒤라(delete 후 insert 실패) 복구할 수 없다.
+                if len(rows) > MAX_BULK_INSERT_ROWS:
+                    st.error(
+                        f"❌ 저장 중단: 한 번에 저장할 수 있는 조합은 최대 "
+                        f"{MAX_BULK_INSERT_ROWS:,}개입니다(요청 {len(rows):,}개). "
+                        "파일을 나눠 올려주세요 — 기존 데이터는 지우지 않았습니다."
+                    )
+                    return
                 if replace_existing:
                     delete_lotto_combinations_by_draw(draw_round)
                 saved_count = bulk_insert_lotto_combinations(draw_round, rows)

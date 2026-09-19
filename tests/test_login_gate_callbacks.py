@@ -30,12 +30,16 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
-ROOT = Path(__file__).resolve().parent.parent
+TESTS_DIR = Path(__file__).resolve().parent
+ROOT = TESTS_DIR.parent
 # from_string 앱은 임시 디렉터리에서 실행되어 저장소 루트가 sys.path에 없다 —
 # 그러면 앱 안의 `from wallet_ui import ...`가 ModuleNotFoundError로 죽는다.
 # (첫 실행에서 실제로 이 이유로 테스트가 실패했다.)
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+import _db_isolation  # noqa: E402
 
 TIMEOUT_SEC = 60
 THUNDER_PAGE = str(ROOT / "page_thunder.py")
@@ -58,12 +62,25 @@ def _ss(at: AppTest, key: str, default=None):
 @contextmanager
 def _mock_auth_off():
     """테스트 기간 자동로그인(_testing_period_active)을 끈다 — 배너 경로를 태우기 위해.
-    이 값은 호출 시점에 os.environ에서 읽히므로 앱 실행 전에 바꾸면 된다."""
+    이 값은 호출 시점에 os.environ에서 읽히므로 앱 실행 전에 바꾸면 된다.
+
+    2026-09-19(시계 의존 실패 제거): 번개조합 "조합시작" 콜백은 로그인 게이트보다
+    먼저 판매시간대(sales_window.is_sales_window_open — 화 09:00~토 19:55)를 보고,
+    닫혀 있으면 배너를 요청하지 않고 조기 return한다. 그래서
+    test_thunder_gate_click_does_not_open_dialog_when_logged_out는 실행 시각에 따라
+    (토요일 19:55 이후·일·월요일) 항상 실패했다. 이 테스트가 검증하는 대상은
+    로그인 게이트이지 판매시간대가 아니므로 창을 열린 상태로 고정한다(page_thunder는
+    콜백 안에서 `from sales_window import ...`로 부르므로 이 패치가 먹는다)."""
+    import sales_window
+
     before = os.environ.get("LOTTO_DEV_MOCK_AUTH")
     os.environ["LOTTO_DEV_MOCK_AUTH"] = "0"
+    original_window = sales_window.is_sales_window_open
+    sales_window.is_sales_window_open = lambda *args, **kwargs: True
     try:
         yield
     finally:
+        sales_window.is_sales_window_open = original_window
         if before is None:
             os.environ.pop("LOTTO_DEV_MOCK_AUTH", None)
         else:
@@ -315,7 +332,11 @@ def _main() -> int:
     failed = 0
     for t in tests:
         try:
-            t()
+            # 운영 DB 격리 — 이 테스트들은 실제 페이지(page_thunder/page_hedge)와
+            # wallet_ui를 AppTest로 렌더한다. 격리 없이 돌리면 앱 렌더가 진짜
+            # Turso에 붙어 운영 DB에 흔적을 남긴다.
+            with _db_isolation.isolated_db():
+                t()
         except AssertionError as exc:
             failed += 1
             print(f"FAIL {t.__name__}: {exc}")
