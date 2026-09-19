@@ -453,6 +453,37 @@ if st.session_state.admin_view == "home":
             st.success("저장했습니다. 사용자 화면에 즉시 반영됩니다.")
             st.rerun()
 
+    # 2026-08-31: 메인화면 아이콘 주변에 도는 숫자 6개(user_page.py의
+    # lucky_display)가 예전엔 코드에 직접 박혀있어서, 매주 값을 바꿀 때마다
+    # git 커밋·푸시를 잊으면 화면이 옛날 숫자로 며칠씩 멈춰있는 사고가
+    # 반복됐다 — 여기서 입력하면 배포 없이 바로 반영되도록 DB 설정값으로
+    # 옮겼다.
+    # 2026-09-19(사용자 지시): 원래 "3종필터 업로드" 화면 안에 묻혀있어서
+    # 운영자가 못 찾겠다고 지적 — 홈 화면의, 역시 사용자 메인화면에 즉시
+    # 반영되는 다른 설정(업데이트 배너)과 나란히 보이도록 옮겼다. 기능은
+    # 그대로다.
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔧 메인화면 유력수 보정</h4>", unsafe_allow_html=True)
+    with st.expander("아이콘 주변에 도는 숫자 6개 (사용자 화면에 즉시 반영)"):
+        from app_settings import get_setting as _gs, init_settings_table as _ist, set_setting as _ss
+
+        _ist()
+        _current_lucky = _gs("main_lucky_numbers", "5, 17, 26, 41, 30, 44")
+        st.caption("앞 번호일수록 유력한 순서로, 쉼표로 구분해 6개 입력하세요 (1~45).")
+        lucky_input = st.text_input(
+            "유력수 6개", value=_current_lucky, key="admin_lucky_numbers_input"
+        )
+        if st.button("유력수 저장", key="admin_lucky_numbers_submit"):
+            nums = [x.strip() for x in lucky_input.split(",") if x.strip()]
+            valid = (
+                len(nums) == 6
+                and all(n.isdigit() and 1 <= int(n) <= 45 for n in nums)
+            )
+            if not valid:
+                st.error("숫자 6개를 쉼표로 구분해서, 1~45 범위로 입력해 주세요.")
+            else:
+                _ss("main_lucky_numbers", ", ".join(nums))
+                st.success(f"메인화면 유력수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🚦 동시접속 상한 (입장 제한)</h4>", unsafe_allow_html=True)
     with st.expander("이용자 폭증 시 신규 유입을 막는 상한값 설정"):
         import admission_control
@@ -1078,31 +1109,10 @@ elif st.session_state.admin_view == "filter_manage":
                     record_draw_pattern_count(int(pc_round), int(pc_value))
                     st.success(f"{int(pc_round)}회차 적용패턴수를 {int(pc_value):,}(으)로 기록했습니다.")
 
-            # 2026-08-31: 메인화면 아이콘 주변에 도는 숫자 6개(user_page.py의
-            # lucky_display)가 예전엔 코드에 직접 박혀있어서, 매주 값을 바꿀 때마다
-            # git 커밋·푸시를 잊으면 화면이 옛날 숫자로 며칠씩 멈춰있는 사고가
-            # 반복됐다 — 여기서 입력하면 배포 없이 바로 반영되도록 DB 설정값으로
-            # 옮겼다.
-            with st.expander("🔧 메인화면 유력수 보정"):
-                from app_settings import get_setting as _gs, init_settings_table as _ist, set_setting as _ss
-
-                _ist()
-                _current_lucky = _gs("main_lucky_numbers", "5, 17, 26, 41, 30, 44")
-                st.caption("앞 번호일수록 유력한 순서로, 쉼표로 구분해 6개 입력하세요 (1~45).")
-                lucky_input = st.text_input(
-                    "유력수 6개", value=_current_lucky, key="admin_lucky_numbers_input"
-                )
-                if st.button("유력수 저장", key="admin_lucky_numbers_submit"):
-                    nums = [x.strip() for x in lucky_input.split(",") if x.strip()]
-                    valid = (
-                        len(nums) == 6
-                        and all(n.isdigit() and 1 <= int(n) <= 45 for n in nums)
-                    )
-                    if not valid:
-                        st.error("숫자 6개를 쉼표로 구분해서, 1~45 범위로 입력해 주세요.")
-                    else:
-                        _ss("main_lucky_numbers", ", ".join(nums))
-                        st.success(f"메인화면 유력수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
+            # 2026-09-19(사용자 지시): "메인화면 유력수 보정"은 여기(3종필터 업로드
+            # 화면) 안에 있어서 운영자가 못 찾는다는 지적으로 홈 화면(작업 프로세스
+            # 메뉴 위쪽, 📣 업데이트 안내 배너 section 바로 옆)으로 옮겼다 — 코드는
+            # admin_view == "home" 블록 안에 그대로 있으니 그쪽 참고.
 
             # 2026-09-01: 당첨번호를 "로또최근당첨내역.xlsb 로컬 수정 → git 커밋·푸시"
             # 하던 걸 DB(draw_results)로 옮겼다 — pyxlsb가 읽기 전용이라 그 xlsb
