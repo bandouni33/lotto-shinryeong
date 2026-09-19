@@ -17,14 +17,20 @@ export default function QrScanScreen() {
   const targetPage = typeof target === 'string' && target ? target : 'hedge';
   const [permission, requestPermission] = useCameraPermissions();
   const [showIntro, setShowIntro] = useState(true);
-  const [torchOn, setTorchOn] = useState(false);
   const scannedRef = useRef(false);
   // 2026-09-12(사용자 실측 — "거리조절 시간이 오래 걸림", "예전엔 살짝 스치기만
   // 해도 스캔됐다"): 카메라 인식이 안 된다는 신고에 대응해 넣었던 기본 줌(0.3)이
   // 오히려 화각을 좁혀 원래는 관대했던 거리 허용 범위를 좁힌 것으로 실측
-  // 확인됐다 — 줌은 되돌린다(손전등만 남김). expo-camera의 zoom은 광학이
+  // 확인됐다 — 줌은 되돌린다. expo-camera의 zoom은 광학이
   // 아니라 디지털(크롭+업스케일)이라, 확대해도 실제 해상도가 늘지 않고
   // 화각만 줄어 "정확한 거리"를 더 좁은 범위로 강제하는 역효과만 냈다.
+  //
+  // 2026-09-19(사용자 지시 — "QR손전등 당장 없에야"): 손전등(enableTorch) 기능
+  // 자체를 제거한다. 9/12에 "꺼져있을 땐 prop 자체를 안 넘긴다"로 1차 완화했지만,
+  // 그건 꺼진 상태에만 해당하고 실제로 유저가 손전등을 켜는 순간에는 여전히
+  // enableTorch:true가 넘어가 그 재구성 문제가 그대로 재현될 수 있다 — 켰다 껐다
+  // 토글할 때마다 매번 카메라 세션이 재구성되는 구조 자체는 안 바뀌었기 때문.
+  // 기능 자체를 없애 이 경로를 완전히 차단한다.
   //
   // 2026-09-12(사용자 신고 — QR스캔 눌렀는데 로그인 상태인데도 로그인이
   // 안 됐다고 나옴): 진짜 원인은 로그인 체크 로직이 아니라 세션 타임아웃이었다.
@@ -99,29 +105,11 @@ export default function QrScanScreen() {
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
-        // 2026-09-13(사용자 실측 — 손전등 추가 이후 "각도를 바꿔도 전혀 인식 안 됨",
-        // 원래 되던 버전보다 더 나빠짐): 원래 잘 되던 코드와 지금 코드의 실제
-        // 차이는 이 enableTorch prop 하나뿐이었다(줌은 이미 되돌림). 꺼진 상태
-        // (false)여도 이 prop을 "명시적으로" 넘기면 Android 쪽 카메라 세션이
-        // 매번 재구성되면서 QR 인식에 필요한 안정된 캡처 상태가 깨지는 게
-        // expo-camera의 알려진 Android 카메라/토치 관련 이슈들(예: expo/expo
-        // #16520 "flash 켜면 바코드 스캐너 크래시")과 같은 계열로 보인다.
-        // 꺼져 있을 땐 이 prop 자체를 아예 안 넘겨서(원래 코드와 동일한 상태로)
-        // 카메라가 손전등 관련 재구성을 전혀 겪지 않게 하고, 유저가 실제로
-        // 켤 때만 prop을 넣는다.
-        {...(torchOn ? { enableTorch: true } : {})}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={handleBarcodeScanned}
       />
       <View style={[styles.overlay, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.topRow}>
-          <TouchableOpacity
-            style={styles.closeBtn}
-            onPress={() => setTorchOn((v) => !v)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.closeBtnText}>{torchOn ? '🔦' : '💡'}</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.closeBtn} onPress={() => goToTarget()} activeOpacity={0.7}>
             <Text style={styles.closeBtnText}>✕</Text>
           </TouchableOpacity>
@@ -140,7 +128,7 @@ export default function QrScanScreen() {
           <View style={styles.frame} />
         </View>
         <View style={styles.bottomRow}>
-          <Text style={styles.hint}>QR코드가 사각형을 가득 채우도록 가까이 대주세요{'\n'}(잘 안 되면 💡을 눌러 손전등을 켜보세요)</Text>
+          <Text style={styles.hint}>QR코드가 사각형을 가득 채우도록 가까이 대주세요</Text>
           <TouchableOpacity style={styles.linkBtnOnCamera} onPress={() => goToTarget()} activeOpacity={0.7}>
             <Text style={styles.linkBtnOnCameraText}>직접 입력할게요</Text>
           </TouchableOpacity>
