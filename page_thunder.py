@@ -451,7 +451,6 @@ def render():
     st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
 
     if st.button("📝 생일/행운수 관리", key="th_nav_bday_6n36s5", use_container_width=True):
-        st.query_params.clear()
         st.query_params["page"] = "birthday"
         st.rerun()
 
