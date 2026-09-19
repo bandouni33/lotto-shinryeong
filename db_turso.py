@@ -25,61 +25,165 @@ import streamlit as st
 # 호출을 감싸서 강제 타임아웃을 걸어준다 — 타임아웃 나면 TimeoutError를
 # 던지고, 이건 기존에 이미 코드 곳곳(draw_results_db 등)에 있던 try/except가
 # 그대로 잡아서 안전하게 폴백(캐시된 값 사용 등)하도록 설계돼 있다.
-_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=16, thread_name_prefix="turso-guard"
-)
-_QUERY_TIMEOUT_SEC = 10
-
-# P1(2026-09-17, 비동기 스레드 누적 대응): 위 _EXECUTOR는 "이 요청 하나
-# 포기시키기"만 해줄 뿐이다 — 실제 네트워크 요청은 _shared_client()(프로세스
-# 전체가 공유하는 ClientSync 인스턴스 1개, 아래 st.cache_resource 참고)의
-# 내부 전용 스레드 1개(libsql_client/sync.py의 _AsyncExecutor)가 처리한다.
-# 그 내부 스레드가 한 번 멈추면 _EXECUTOR로 새 워커를 몇 개를 쓰든 전부 같은
-# "막힌 내부 줄"에 다시 서게 되므로 사실상 무의미하다 — 이게 9/3 사고(위
-# 주석)의 정확한 재발 패턴. 연속 타임아웃이 _TIMEOUT_RECYCLE_THRESHOLD번
-# 쌓이면 _shared_client()의 캐시를 지워 다음 호출이 완전히 새 클라이언트(새
-# 내부 스레드)를 만들게 하고, 동시에 _EXECUTOR도 새로 교체한다. 막힌 옛
-# 클라이언트/스레드는 강제로 죽일 방법이 없어 그냥 버려두지만, 블록된 채
-# CPU를 쓰지 않으므로 무해하다 — 기존 정상 동작 경로(성공하는 호출)는 전혀
-# 건드리지 않는다.
-_RECOVERY_LOCK = threading.Lock()
-_TIMEOUT_RECYCLE_THRESHOLD = 5
-_consecutive_timeouts = 0
+_DEFAULT_POOL_SIZE = 4
+_MAX_POOL_SIZE = 16
 
 
-def _note_turso_timeout():
-    global _consecutive_timeouts
-    with _RECOVERY_LOCK:
-        _consecutive_timeouts += 1
-        should_recycle = _consecutive_timeouts >= _TIMEOUT_RECYCLE_THRESHOLD
-        if should_recycle:
-            _consecutive_timeouts = 0
-    if should_recycle:
-        _recycle_after_timeouts()
+def _safe_log(message: str) -> None:
+    """복구/장애 경로 전용 로그 — 절대 예외를 밖으로 던지지 않는다.
 
-
-def _note_turso_success():
-    global _consecutive_timeouts
-    if _consecutive_timeouts:
-        with _RECOVERY_LOCK:
-            _consecutive_timeouts = 0
-
-
-def _recycle_after_timeouts():
-    global _EXECUTOR
-    old_executor = _EXECUTOR
-    _EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-        max_workers=16, thread_name_prefix="turso-guard"
-    )
-    old_executor.shutdown(wait=False)
+    이 로그들은 타임아웃을 처리하는 도중에 불린다. print 자체가 실패하면
+    (예: cp949 콘솔에서 em-dash를 못 쎄 UnicodeEncodeError) 그 예외가
+    방금 만든 TimeoutError를 덮어써 호출부의 폴백 로직이 깨진다 — 테스트에서
+    실제로 재현됐다."""
     try:
-        _shared_client.clear()
+        print(message)
     except Exception:
         pass
-    print(
-        f"[db_turso] 연속 타임아웃 {_TIMEOUT_RECYCLE_THRESHOLD}회 누적 — "
-        "Turso 클라이언트/워커풀 재생성"
+
+
+def _pool_size_from_env() -> int:
+    """TURSO_CLIENT_POOL_SIZE (기본 4). 잘못된 값은 조용히 기본값으로
+    폴백한다 — 환경변수를 0/음수/문자로 잘못 넣었다고 클라이언트가 0개가 되어
+    모든 DB 호출이 실패하면 안 된다."""
+    raw = os.getenv("TURSO_CLIENT_POOL_SIZE", "")
+    try:
+        size = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return _DEFAULT_POOL_SIZE
+    if size < 1:
+        return _DEFAULT_POOL_SIZE
+    return min(size, _MAX_POOL_SIZE)
+
+
+def _executor_workers(pool_size: int) -> int:
+    """가드 워커 수 — _guarded()는 호출이 끝날 때까지 워커 하나를 붙잡고
+    future.result()를 기다리므로, 풀을 늘린 만큼 동시에 대기하는 호출 수도
+    늘어난다(16 고정이면 풀을 키운 뒤 여기가 새 병목이 된다)."""
+    return max(16, 4 * pool_size)
+
+
+def _new_executor(pool_size: int) -> concurrent.futures.ThreadPoolExecutor:
+    return concurrent.futures.ThreadPoolExecutor(
+        max_workers=_executor_workers(pool_size), thread_name_prefix="turso-guard"
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-19: Turso 클라이언트 풀 (동시접속 처리량)
+#
+# libsql_client의 ClientSync는 내부에 전용 스레드 1개 + 이벤트루프 1개
+# (libsql_client/sync.py의 _AsyncExecutor)를 두고 그 큐에서 요청을 "하나씩"
+# 처리한다. 앱 전체가 그 클라이언트를 1개만 공유하면 모든 세션·모든 쿼리가
+# 같은 한 줄에 서서 처리량 상한이 "1 / 왕복지연"으로 고정된다 — 왕복 100ms면
+# 초당 10쿼리, 메인 렌더 한 번에 15~20왕복이면 초당 0.5~0.7렌더(분당 30~40)로,
+# 실측된 동시접속 30~50명 한계와 일치한다.
+#
+# 그래서 큐를 _POOL_SIZE개로 갈라 쓴다(기본 4). 슬롯마다 자기 전용 스레드·큐를
+# 가진 독립 클라이언트라 DB 처리량이 슬롯 수에 거의 비례해 늘어난다.
+# 위 _EXECUTOR는 "이 요청 하나를 포기시키는" 가드일 뿐이고(2026-09-03 사고
+# 대응), 실제 직렬화 지점은 각 클라이언트 내부 큐라는 점이 핵심이다.
+#
+# 재생성도 슬롯 단위로 바뀐다: 연속 타임아웃이 _TIMEOUT_RECYCLE_THRESHOLD번
+# 쌓인 슬롯만 교체하고 멀쩡한 슬롯은 건드리지 않는다(예전에는 한 줄이 막히면
+# 클라이언트 캐시 전체를 비워 나머지 연결까지 버렸다). 막힌 옛 클라이언트/
+# 스레드는 강제로 죽일 수 없어 버려두지만 블록된 채 CPU를 쓰지 않으므로
+# 무해하다 — 정상 경로(성공하는 호출)는 전혀 건드리지 않는다.
+# ─────────────────────────────────────────────────────────────
+_TIMEOUT_RECYCLE_THRESHOLD = 5
+_POOL_SIZE = _pool_size_from_env()
+_EXECUTOR = _new_executor(_POOL_SIZE)
+_QUERY_TIMEOUT_SEC = 10
+
+
+class _ClientPool:
+    """Turso 클라이언트 N개를 라운드로빈으로 나눠 쓰는 풀.
+
+    Streamlit 캐시(_client_pool)와 분리해 둔다 — 그래야 테스트가 가짜 팩토리로
+    라운드로빈·임계치·슬롯 단위 재생성 규칙을 그대로 검증할 수 있다. 슬롯 수가
+    곧 앱 전체의 동시 DB 처리 줄 수다.
+
+    범위를 벗어난 인덱스가 들어와도 예외를 던지지 않는다 — note_timeout()은
+    TimeoutError를 처리하는 도중에 불리므로, 여기서 예외가 새면 호출부가
+    원래의 타임아웃 신호를 잃고 폴백 로직이 깨진다.
+    """
+
+    def __init__(self, size: int, factory=None):
+        self._factory = factory or _make_client
+        self._lock = threading.Lock()
+        self._clients = [self._factory() for _ in range(max(1, int(size)))]
+        self._timeouts = [0] * len(self._clients)
+        self._next = 0
+
+    @property
+    def size(self) -> int:
+        return len(self._clients)
+
+    def acquire(self):
+        """(슬롯번호, 클라이언트) — 라운드로빈. 슬롯번호는 타임아웃 집계와
+        재생성 대상 지정에 쓴다."""
+        with self._lock:
+            idx = self._next % len(self._clients)
+            self._next += 1
+            return idx, self._clients[idx]
+
+    def client_at(self, idx: int):
+        return self._clients[idx]
+
+    def note_timeout(self, idx: int) -> bool:
+        """이 슬롯의 연속 타임아웃을 1 늘린다. 임계치에 처음 닿은 순간에만
+        True를 돌려주고 카운터를 0으로 되돌린다(교체는 호출부가 한다)."""
+        with self._lock:
+            if idx < 0 or idx >= len(self._timeouts):
+                return False
+            self._timeouts[idx] += 1
+            if self._timeouts[idx] < _TIMEOUT_RECYCLE_THRESHOLD:
+                return False
+            self._timeouts[idx] = 0
+            return True
+
+    def note_success(self, idx: int) -> None:
+        with self._lock:
+            if 0 <= idx < len(self._timeouts) and self._timeouts[idx]:
+                self._timeouts[idx] = 0
+
+    def replace_slot(self, idx: int) -> bool:
+        """그 슬롯만 새 클라이언트로 교체한다(나머지 슬롯은 그대로). 생성이
+        실패하면 기존 클라이언트를 유지하고 False — 이 함수도 타임아웃 처리
+        경로에서 불리므로 예외를 밖으로 던지지 않는다."""
+        if idx < 0 or idx >= self.size:
+            return False
+        with self._lock:
+            try:
+                new_client = self._factory()
+            except Exception as e:
+                _safe_log(
+                    f"[db_turso] 슬롯 {idx} 클라이언트 재생성 실패"
+                    f"({type(e).__name__}: {e}) — 기존 클라이언트 유지"
+                )
+                return False
+            self._clients[idx] = new_client
+            self._timeouts[idx] = 0
+            return True
+
+
+def _recycle_after_timeouts(slot: int) -> bool:
+    """슬롯 하나를 새 클라이언트로 교체하고, 그때만 가드 워커풀도 새로 만든다
+    (막힌 클라이언트를 기다리느라 눌러앉은 워커를 정리하기 위함)."""
+    global _EXECUTOR
+    replaced = False
+    try:
+        replaced = _client_pool().replace_slot(slot)
+    except Exception as e:
+        _safe_log(f"[db_turso] 슬롯 {slot} 교체 실패({type(e).__name__}: {e})")
+    old_executor = _EXECUTOR
+    _EXECUTOR = _new_executor(_POOL_SIZE)
+    old_executor.shutdown(wait=False)
+    _safe_log(
+        f"[db_turso] 슬롯 {slot} 연속 타임아웃 {_TIMEOUT_RECYCLE_THRESHOLD}회 — "
+        f"클라이언트 재생성(replaced={replaced})"
+    )
+    return replaced
 
 
 class Row(dict):
@@ -122,9 +226,37 @@ class _CursorWrapper:
 
 
 class _ConnectionWrapper:
-    def __init__(self, client):
+    def __init__(self, client, pool: _ClientPool | None = None, slot: int | None = None):
         self._client = client
+        self._pool = pool
+        self._slot = slot
         self.row_factory = None
+
+    @property
+    def slot(self) -> int | None:
+        """이 연결이 잡고 있는 풀 슬롯 번호(진단/테스트용)."""
+        return self._slot
+
+    def _note_timeout(self):
+        """타임아웃을 그 슬롯에만 기록하고, 임계치에 닿으면 그 슬롯만 재생성한다.
+        예외를 밖으로 던지지 않는다 — 여기서 예외가 새면 방금 만든
+        TimeoutError가 다른 예외로 덮여 호출부의 폴백이 깨진다."""
+        if self._pool is None or self._slot is None:
+            return
+        try:
+            due = self._pool.note_timeout(self._slot)
+        except Exception:
+            return
+        if due:
+            _recycle_after_timeouts(self._slot)
+
+    def _note_success(self):
+        if self._pool is None or self._slot is None:
+            return
+        try:
+            self._pool.note_success(self._slot)
+        except Exception:
+            pass
 
     def _guarded(self, func, *args):
         """모든 Turso 호출의 공통 관문 — _QUERY_TIMEOUT_SEC 안에 안 끝나면
@@ -135,12 +267,12 @@ class _ConnectionWrapper:
         try:
             result = future.result(timeout=_QUERY_TIMEOUT_SEC)
         except concurrent.futures.TimeoutError as e:
-            _note_turso_timeout()
+            self._note_timeout()
             raise TimeoutError(
                 f"Turso 쿼리가 {_QUERY_TIMEOUT_SEC}초 안에 응답하지 않았습니다"
                 "(네트워크 문제로 추정, 자동 폴백됨)"
             ) from e
-        _note_turso_success()
+        self._note_success()
         return result
 
     def execute(self, sql, params=()):
@@ -225,15 +357,8 @@ class _ConnectionWrapper:
         pass
 
 
-@st.cache_resource(show_spinner=False)
-def _shared_client() -> libsql_client.sync.ClientSync:
-    # 요청마다(=Streamlit 재실행마다) 원격 Turso로 새 HTTP 클라이언트를
-    # 매번 새로 만들고 있던 게 확인됐다 — 동시접속이 몰리는 시점(예: 토요일
-    # 저녁 로또 구매 마감 직전)에 가장 먼저 병목이 될 지점이라 캐싱한다.
-    # ClientSync는 내부적으로 전용 스레드+락으로 요청을 큐잉해 처리하도록
-    # 만들어져 있어(libsql_client/sync.py의 _AsyncExecutor) 여러 세션이 이
-    # 인스턴스 하나를 동시에 써도 안전하다 — st.cache_resource로 프로세스
-    # 전체가 공유하는 게 의도된 설계와 맞는다.
+def _make_client() -> libsql_client.sync.ClientSync:
+    """Turso 클라이언트 1개 생성 — 풀의 슬롯 수만큼 호출된다."""
     url = os.getenv("TURSO_DATABASE_URL")
     token = os.getenv("TURSO_AUTH_TOKEN")
     if not url or not token:
@@ -249,5 +374,22 @@ def _shared_client() -> libsql_client.sync.ClientSync:
     return libsql_client.create_client_sync(url=url, auth_token=token)
 
 
+@st.cache_resource(show_spinner=False)
+def _client_pool() -> _ClientPool:
+    # 예전엔 원격 클라이언트를 요청마다 새로 만들다가(생성 비용), 그 다음엔
+    # 1개만 만들어 앱 전체가 공유했다(모든 쿼리가 그 클라이언트 내부의 단일
+    # 스레드 큐 한 줄에 서는 처리량 상한). 이제 _POOL_SIZE개를 프로세스 전역으로
+    # 만들어 라운드로빈으로 나눠 쓴다 — 위 _ClientPool 주석 참고.
+    return _ClientPool(_POOL_SIZE)
+
+
+def _shared_client() -> libsql_client.sync.ClientSync:
+    """(호환용) 예전 단일 공유 클라이언트 접근자 — 이제 풀의 첫 슬롯을 준다.
+    신규 코드는 connect()를 쓴다."""
+    return _client_pool().client_at(0)
+
+
 def connect() -> _ConnectionWrapper:
-    return _ConnectionWrapper(_shared_client())
+    pool = _client_pool()
+    slot, client = pool.acquire()
+    return _ConnectionWrapper(client, pool, slot)
