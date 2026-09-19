@@ -21,6 +21,7 @@ EVENT_LABELS = {
     "download_rate_limited": "조합 다운로드 요청 과다",
     "cookie_reachable": "게스트 쿠키 서버 도달 여부(계측)",
     "guest_autologin_ua_mismatch": "게스트 자동로그인 UA 불일치 차단",
+    "mock_charge_rate_limited": "Mock 결제(테스트 충전) 횟수 제한 도달",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용

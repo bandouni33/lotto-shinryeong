@@ -33,6 +33,8 @@ from wallet_db import (
     ADVANCED_MONTHLY_COST,
     CHARGE_WON_AMOUNTS,
     FREE_SUB_DAYS,
+    MOCK_CHARGE_MAX_PER_WINDOW,
+    MOCK_CHARGE_WINDOW_HOURS,
     SIGNUP_BONUS,
     activate_free_advanced_sub,
     activate_paid_advanced_sub,
@@ -40,6 +42,7 @@ from wallet_db import (
     calc_hedge_cost,
     calc_thunder_cost,
     charge_points,
+    count_recent_mock_charges,
     deduct_points,
     eligible_free_advanced_sub,
     get_balance,
@@ -671,21 +674,44 @@ def _render_charge_actions(member_id: int) -> None:
         test_won_amount = 10000
         test_points = won_to_points(test_won_amount)
         st.caption(f"PG 미연동 · 테스트 기간 임시 고정 금액 — {test_won_amount:,}원 → {test_points:,}P")
-        if st.button(
-            f"Mock 결제 (테스트) — {test_points:,}P 충전",
-            type="primary",
-            use_container_width=True,
-        ):
-            ref = f"pg:mock:{member_id}:{uuid.uuid4().hex[:10]}"
-            if charge_points(member_id, test_points, ref):
-                st.session_state.wallet_toast = f"{test_won_amount:,}원 · {test_points:,}P 충전 완료"
-                # insufficient_balance_dialog()에서 호출된 경우, 충전 성공 후에도
-                # 이 플래그가 남아있으면 다음 렌더에서 "부족합니다" 창이 또 뜬다 —
-                # charge_dialog()에서 호출된 경우엔 애초에 없는 키라 pop이 그냥
-                # 무시된다(두 다이얼로그가 이 함수를 공유하므로 항상 같이 정리).
-                st.session_state.pop(INSUFFICIENT_BALANCE_OPEN, None)
-                st.rerun()
-            st.error("충전에 실패했습니다.")
+
+        # 2026-09-19: ref_id가 매번 랜덤이라 무제한 클릭으로 무한 포인트를 받을
+        # 수 있던 구멍 대응 — 회원당 MOCK_CHARGE_WINDOW_HOURS 시간 안에
+        # MOCK_CHARGE_MAX_PER_WINDOW회까지만 허용한다(wallet_db.py 주석 참고).
+        _mock_used = count_recent_mock_charges(member_id)
+        _mock_remaining = max(0, MOCK_CHARGE_MAX_PER_WINDOW - _mock_used)
+        if _mock_remaining <= 0:
+            st.warning(
+                f"테스트 충전은 {MOCK_CHARGE_WINDOW_HOURS}시간당 {MOCK_CHARGE_MAX_PER_WINDOW}회까지만 "
+                "가능합니다. 더 필요하시면 관리자에게 문의해주세요."
+            )
+            _log_key = f"_mock_charge_limit_logged_{member_id}"
+            if not st.session_state.get(_log_key):
+                st.session_state[_log_key] = True
+                try:
+                    import security_log
+
+                    security_log.log_event(
+                        "mock_charge_rate_limited", f"member_id={member_id}"
+                    )
+                except Exception:
+                    pass
+        else:
+            if st.button(
+                f"Mock 결제 (테스트) — {test_points:,}P 충전 (남은 횟수 {_mock_remaining}/{MOCK_CHARGE_MAX_PER_WINDOW})",
+                type="primary",
+                use_container_width=True,
+            ):
+                ref = f"pg:mock:{member_id}:{uuid.uuid4().hex[:10]}"
+                if charge_points(member_id, test_points, ref):
+                    st.session_state.wallet_toast = f"{test_won_amount:,}원 · {test_points:,}P 충전 완료"
+                    # insufficient_balance_dialog()에서 호출된 경우, 충전 성공 후에도
+                    # 이 플래그가 남아있으면 다음 렌더에서 "부족합니다" 창이 또 뜬다 —
+                    # charge_dialog()에서 호출된 경우엔 애초에 없는 키라 pop이 그냥
+                    # 무시된다(두 다이얼로그가 이 함수를 공유하므로 항상 같이 정리).
+                    st.session_state.pop(INSUFFICIENT_BALANCE_OPEN, None)
+                    st.rerun()
+                st.error("충전에 실패했습니다.")
     else:
         st.info("결제 연동 준비 중입니다. 조금만 기다려주세요.")
 

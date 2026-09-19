@@ -567,6 +567,31 @@ def won_to_points(won: int) -> int:
     return int(won) // WON_PER_POINT
 
 
+# 2026-09-19: Mock 결제(테스트용 무료 충전) 무제한 클릭 악용 대응 — ref_id가
+# pg:mock:{member_id}:{uuid} 형태로 매번 랜덤이라 wallet_ledger의 ref_id UNIQUE
+# 멱등성이 이 버튼에는 전혀 작동하지 않는다(클릭할 때마다 새 ref_id라 매번
+# 통과됨). session_state 등 세션별 카운터는 새 브라우저 세션(새 탭·재접속)마다
+# 리셋돼 우회 가능하므로 안 되고, member_id 기준으로 DB(pg_charges)에 남는
+# 기록을 직접 세야 한다. PG 연동 완료(pg_configured()=True) 후에는 이 버튼 자체가
+# 안 보이므로 이 제한도 자동으로 무의미해진다(별도 원복 불필요).
+MOCK_CHARGE_MAX_PER_WINDOW = 3
+MOCK_CHARGE_WINDOW_HOURS = 24
+
+
+def count_recent_mock_charges(member_id: int, hours: int = MOCK_CHARGE_WINDOW_HOURS) -> int:
+    conn = _connect()
+    cutoff = (datetime.now(KST) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S.%f")
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS c FROM pg_charges
+        WHERE member_id = ? AND pg_ref_id LIKE 'pg:mock:%' AND created_at >= ?
+        """,
+        (int(member_id), cutoff),
+    ).fetchone()
+    conn.close()
+    return int(row["c"]) if row else 0
+
+
 def charge_points(member_id: int, amount: int, pg_ref_id: str) -> bool:
     """PG 충전 — 카드정보 미저장, ledger ref_id로 멱등.
 
