@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 from birthday_db import init_birthday_table, get_user_birthdays, upsert_birthday, delete_birthday
-from user_scope import current_birthday_scope, init_guest_scope, internal_nav_href
+from user_scope import current_birthday_scope, init_guest_scope
 from lucky_numbers import (
     get_life_path_number,
     get_lucky_numbers_from_life_path,
@@ -15,21 +15,16 @@ def _render_birthday_nav_html() -> str:
     # 2026-08-28: "메인으로"는 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고
     # 있어(showBack, streamlit-webview.tsx) 화면 공간만 차지하는 중복이라 제거하고,
     # 자리를 거의 안 차지하는 작은 로고 링크로 대신한다(브라우저로 직접 열었을 땐
-    # 툴바가 없어 메인으로 갈 방법이 없어지므로). "← 번개조합"은 툴바가 대신해주지
-    # 않는(메인이 아니라 번개조합으로 돌아가는) 이동이라 그대로 남긴다.
-    # (주의: 아래 HTML을 여러 줄로 들여써서 반환하면 Streamlit이 마크다운 코드
-    # 블록으로 오인해 태그를 그대로 텍스트로 찍어버린다 — 실기기 확인된 버그라
-    # 한 줄짜리 문자열로 이어붙인다.)
+    # 툴바가 없어 메인으로 갈 방법이 없어지므로).
+    # 2026-09-19(사용자 지시): "← 번개조합" 링크를 제거했다 — 이 함수가 상단·하단
+    # 두 곳(render() 참고)에서 호출돼 화면에 동일한 번개조합 버튼이 중복으로 떠
+    # 있어 불필요하게 복잡하다는 지적. 이제 이 화면을 벗어나는 유일한 길은 좌상단
+    # 로고(메인)뿐이고, 메인에서 다시 번개조합으로 들어가면 된다. (참고: 이 변경은
+    # page_thunder.py→page_birthday.py 방향 링크와 무관 — 그쪽은 오늘 별도로
+    # real <a href>로 이미 바꿔뒀다.)
     from shared_ui_styles import brand_home_link_css, brand_home_link_html
 
-    return (
-        brand_home_link_css()
-        + brand_home_link_html()
-        + f'<a href="{internal_nav_href("thunder")}" style="text-align:center;background:#fff;color:#1E293B;'
-        "border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;"
-        'display:flex;align-items:center;justify-content:center;box-sizing:border-box;'
-        'margin-bottom:12px;">← 번개조합</a>'
-    )
+    return brand_home_link_css() + brand_home_link_html()
 
 
 def render():

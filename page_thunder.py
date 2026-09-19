@@ -450,9 +450,23 @@ def render():
 
     st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
 
-    if st.button("📝 생일/행운수 관리", key="th_nav_bday_6n36s5", use_container_width=True):
-        st.query_params["page"] = "birthday"
-        st.rerun()
+    # 2026-09-19(사용자 지시): 이 버튼만 st.query_params["page"]="birthday" + st.rerun()으로
+    # "브라우저 새로고침 없이"(History API 갱신 + 같은 문서 rerun) 페이지를 갈아끼우고 있었다.
+    # 이 화면은 무거운 번호판 iframe·최상위 문서에 심는 폴링 스크립트·sticky/z-index CSS를
+    # 들고 있어서, 문서를 유지한 채 화면을 교체하면 이전 화면의 잔재와 새 화면이 겹쳐
+    # 보일 수 있다(다른 화면 이동은 전부 internal_nav_href()의 진짜 <a href> = 완전
+    # 새로고침이라 문제가 없다). 그래서 다른 내부이동과 같은 방식(진짜 <a href>)으로 바꾼다 —
+    # 텍스트·위치·전체 폭은 기존 버튼과 동일하고, 스타일은 page_birthday.py의 반대 방향
+    # 링크("← 번개조합")와 같은 패턴을 그대로 쓴다.
+    # (주의: 여러 줄로 들여써 반환하면 Streamlit이 코드 블록으로 오인해 태그를 그대로
+    # 텍스트로 찍는다 — page_birthday.py 주석에 기록된 실제 버그다. 한 줄로 이어붙일 것.)
+    st.markdown(
+        f'<a href="{internal_nav_href("birthday")}" style="text-align:center;background:#fff;color:#1E293B;'
+        "border-radius:12px;padding:12px;font-weight:700;text-decoration:none;min-height:48px;"
+        'display:flex;align-items:center;justify-content:center;box-sizing:border-box;'
+        'margin-bottom:12px;">📝 생일/행운수 관리</a>',
+        unsafe_allow_html=True,
+    )
 
     # 예전엔 여기서 postMessage + window.parent.location.href로 iframe 밖(최상위 문서)을
     # 내비게이션 시키려 했는데, Streamlit의 components.html iframe은 sandbox에
