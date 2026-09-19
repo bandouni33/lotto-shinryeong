@@ -1455,7 +1455,7 @@ div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-t
 
     with st.container():
         st.markdown('<div class="main-feedback-section-marker"></div>', unsafe_allow_html=True)
-        with st.expander("개선 요구사항", expanded=False):
+        with st.expander("고객불만 / 개선요구사항", expanded=False):
             with st.form("main_feedback_form_6n36s5", clear_on_submit=True):
                 fb_body = st.text_area(
                     "의견",

@@ -26,7 +26,7 @@ if "is_admin" not in st.session_state:
 # 방 등록
 user_view = st.Page("user_page.py", title="로또 번호 조합", icon="🎰")
 admin_view = st.Page("admin_dashboard.py", title="운영자 대시보드", icon="⚙️")
-feedback_view = st.Page("admin_feedback.py", title="개선 요구사항", icon="💬")
+feedback_view = st.Page("admin_feedback.py", title="고객불만/개선요구사항", icon="💬")
 
 # 2026-08-27: 예전엔 is_admin일 때만 admin_view/feedback_view를 등록해서 접근을
 # 막았는데, 그 방식은 세션이 새로 시작되면(재배포·Streamlit Cloud 재부팅 등)
