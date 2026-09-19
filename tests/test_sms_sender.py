@@ -1,24 +1,36 @@
-"""sms_sender 단위 테스트."""
+"""sms_sender 단위 테스트.
+
+2026-09-19 수정(중요): 예전엔 setUp에서 mdb.DB_PATH를 임시경로로 바꿔 격리한다고
+했지만, marketing_db._connect()는 DB_PATH를 안 봐서 그 패치가 no-op이었다 —
+이 테스트는 운영 DB의 sms_queue에 시험 번호(01012345678/01099998888/01011112222)를
+실제로 남겼다. 이제 db_turso.connect 자체를 임시 sqlite로 바꿔치기한다.
+"""
 
 import os
-import tempfile
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-import marketing_db as mdb
-import sms_sender as sms
+TESTS_DIR = Path(__file__).resolve().parent
+ROOT = TESTS_DIR.parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+import _db_isolation  # noqa: E402
+import marketing_db as mdb  # noqa: E402
+import sms_sender as sms  # noqa: E402
 
 
 class SmsSenderTests(unittest.TestCase):
     def setUp(self):
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._orig_mdb = mdb.DB_PATH
-        mdb.DB_PATH = os.path.join(self._tmpdir.name, "test.db")
+        self._iso = _db_isolation.isolated_db()
+        self._iso.__enter__()
+        self.addCleanup(self._iso.__exit__, None, None, None)
         mdb.init_marketing_tables()
 
     def tearDown(self):
-        mdb.DB_PATH = self._orig_mdb
-        self._tmpdir.cleanup()
         for key in ("ALIGO_API_KEY", "ALIGO_USER_ID", "ALIGO_SENDER"):
             os.environ.pop(key, None)
 

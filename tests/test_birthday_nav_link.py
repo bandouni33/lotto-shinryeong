@@ -35,7 +35,14 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
-ROOT = Path(__file__).resolve().parent.parent
+TESTS_DIR = Path(__file__).resolve().parent
+ROOT = TESTS_DIR.parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+import _db_isolation  # noqa: E402
+
 ENTRY = str(ROOT / "app.py")
 TIMEOUT_SEC = 60
 
@@ -123,7 +130,11 @@ def _main() -> int:
     failed = 0
     for t in tests:
         try:
-            t()
+            # 운영 DB 격리 — 이 테스트는 실제 진입점(app.py)을 AppTest로 렌더한다.
+            # 격리 없이 돌리면 앱 렌더가 진짜 Turso에 붙어(wallet 테이블 생성·
+            # 게스트 회원 생성 등) 운영 DB에 흔적을 남긴다.
+            with _db_isolation.isolated_db():
+                t()
         except AssertionError as exc:
             failed += 1
             print(f"FAIL {t.__name__}: {exc}")
