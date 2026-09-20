@@ -43,6 +43,7 @@ from wallet_db import (
 )
 
 TOSS_CONFIRM_URL = "https://api.tosspayments.com/v1/payments/confirm"
+TOSS_ORDER_LOOKUP_URL = "https://api.tosspayments.com/v1/payments/orders/{order_id}"
 TOSS_SDK_SCRIPT_URL = "https://js.tosspayments.com/v1"
 
 toss_configured = pg_configured
@@ -172,6 +173,37 @@ def _confirm_with_toss(payment_key: str, order_id: str, amount: int) -> tuple[bo
     except Exception:
         msg = resp.text
     return False, f"승인 실패({resp.status_code}): {msg}"
+
+
+def query_toss_order(order_id: str) -> tuple[bool, dict | str]:
+    """2026-09-20: 결제 분쟁 처리용 — 토스에 결제 상태를 직접 조회한다(고객
+    주장이 아니라 토스 공식 기록으로 판단하기 위함, GET /v1/payments/orders).
+    성공 시 (True, {status, totalAmount, ...} 토스 응답 그대로), 실패 시
+    (False, 에러메시지). _confirm_with_toss와 동일한 Basic Auth 방식."""
+    secret_key = toss_secret_key()
+    if not secret_key:
+        return False, "TOSS_SECRET_KEY가 설정되지 않았습니다."
+    auth = base64.b64encode(f"{secret_key}:".encode("utf-8")).decode("utf-8")
+    try:
+        resp = requests.get(
+            TOSS_ORDER_LOOKUP_URL.format(order_id=order_id),
+            headers={"Authorization": f"Basic {auth}"},
+            timeout=15,
+        )
+    except requests.RequestException as e:
+        return False, f"토스 서버 통신 실패: {e}"
+
+    if resp.status_code == 200:
+        try:
+            return True, resp.json()
+        except Exception as e:
+            return False, f"토스 응답 파싱 실패: {e}"
+    try:
+        body = resp.json()
+        msg = body.get("message") or body.get("code") or resp.text
+    except Exception:
+        msg = resp.text
+    return False, f"조회 실패({resp.status_code}): {msg}"
 
 
 def handle_toss_payment_return() -> bool:

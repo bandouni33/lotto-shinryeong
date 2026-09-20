@@ -29,7 +29,7 @@ if not st.session_state.get("is_admin", False):
 if "admin_view" not in st.session_state:
     st.session_state.admin_view = "home"
 _qp_admin_view = st.query_params.get("admin_view")
-if _qp_admin_view in ("home", "filter_manage", "pattern_manage"):
+if _qp_admin_view in ("home", "filter_manage", "pattern_manage", "dispute_resolution"):
     st.session_state.admin_view = _qp_admin_view
 
 MASTER_FILE = "로또기록 앱 업로드용.xlsb"
@@ -184,7 +184,7 @@ def change_view(view_name):
     except Exception:
         pass
 
-st.set_page_config(page_title="운영자 대시보드", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="운영자 대시보드", layout="centered", initial_sidebar_state="expanded")
 
 # ==========================================
 # 🎨 고대비/시인성 극대화 커스텀 CSS (탭 글자 흰색 처리 및 지표 흰색 처리)
@@ -345,6 +345,28 @@ def style_dataframe(df):
 # ==========================================
 if st.button("🏠 홈으로", key="admin_go_home_6n36s5"):
     st.switch_page("user_page.py")
+
+# ==========================================
+# 📂 사이드바 메뉴 — 2026-09-20 추가. 기존 화면(홈/필터관리/패턴관리)은
+# 하나도 옮기거나 지우지 않았다 — 사이드바는 그 화면들로 가는 "추가 경로"일
+# 뿐이라, 기존 버튼(🚀 3종필터 업로드, 📐 기준값패턴 업로드)도 그대로 남아
+# 있다. change_view()는 위에서 이미 쓰던 함수 그대로 재사용 — 새 전환
+# 방식을 만들지 않았다.
+# ==========================================
+with st.sidebar:
+    st.markdown("### ⚙️ 관리자 메뉴")
+    if st.button("🏠 홈", key="admin_nav_home_6n36s5", use_container_width=True):
+        change_view("home")
+        st.rerun()
+    if st.button("🎯 필터/조합 관리", key="admin_nav_filter_6n36s5", use_container_width=True):
+        change_view("filter_manage")
+        st.rerun()
+    if st.button("📐 패턴 관리", key="admin_nav_pattern_6n36s5", use_container_width=True):
+        change_view("pattern_manage")
+        st.rerun()
+    if st.button("💳 결제 분쟁 처리", key="admin_nav_dispute_6n36s5", use_container_width=True):
+        change_view("dispute_resolution")
+        st.rerun()
 
 # ==========================================
 # 🏠 화면 A: 대시보드 홈
@@ -1523,3 +1545,203 @@ elif st.session_state.admin_view == "pattern_manage":
             st.caption(f"현재 저장된 기준값패턴: 고정 {len(_existing_rules) - _auto_n}개, AUTO {_auto_n}개")
         else:
             st.caption("아직 업로드된 기준값패턴이 없습니다.")
+
+# ==========================================
+# 💳 결제 분쟁 처리 — 2026-09-20 신규.
+#
+# 배경: toss_pg.py는 "결제창 → successUrl 콜백 → 승인 → 적립" 흐름만 구현돼
+# 있고(비동기 웹훅은 별도 서버리스 함수로 분리 예정, 아직 없음), 이 흐름은
+# 고객 브라우저가 successUrl로 무사히 돌아오는 것에 전부 의존한다. 토스
+# 개발자 커뮤니티에 실제로 보고된 사례(앱 웹뷰 환경에서 결제 완료 직후
+# successUrl로 이동하지 않고 웹뷰가 그냥 닫혀버림 — 로또신령과 정확히 같은
+# 구조)처럼 콜백이 아예 안 오면, toss_pending_orders가 'pending' 상태로
+# 영원히 멈춘다. 이 화면은 그런 주문을 관리자가 찾아서, "토스 공식 기록"을
+# 직접 조회해 확인한 뒤에만, 이미 검증된 charge_points()를 그대로 재사용해
+# 안전하게(ref_id 중복지급 방지 그대로 적용) 지급할 수 있게 한다. 새 자금
+# 이동 로직은 추가하지 않았다 — 기존 함수 재사용이 핵심 안전장치.
+# ==========================================
+elif st.session_state.admin_view == "dispute_resolution":
+    st.session_state.admin_view = "dispute_resolution"
+    if st.button("⬅️ 대시보드 홈으로 이동", key="dispute_resolution_back_btn"):
+        change_view("home")
+        st.rerun()
+
+    st.markdown(
+        "<h2 style='font-weight:800; color:#FFFFFF; margin-bottom:5px;'>💳 결제 분쟁 처리</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='color:#94A3B8; margin-bottom:25px;'>"
+        "고객이 '결제했는데 포인트가 안 들어왔다'고 문의했을 때, 토스 공식 기록을 "
+        "직접 확인한 뒤에만 안전하게 지급하는 화면입니다.</p>",
+        unsafe_allow_html=True,
+    )
+
+    import security_log
+    import toss_pg
+    import wallet_db
+
+    # ── 1) 정체된 결제 자동 감지 ──
+    st.markdown(
+        "<h4 style='margin-top:10px; color:#FFB300; font-weight:700;'>🔍 정체된 결제 (자동 감지)</h4>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "결제창에서 성공했지만 앱으로 돌아오는 콜백이 없어 'pending' 상태로 멈춰있는 "
+        "주문입니다. 특히 웹뷰(앱) 환경에서 결제 직후 화면이 닫히는 경우 발생할 수 "
+        "있습니다 — 고객이 문의하기 전에 먼저 확인해 보세요."
+    )
+
+    _stale_minutes = st.number_input(
+        "몇 분 이상 멈춰있으면 보여줄지", min_value=1, max_value=1440, value=10, step=1,
+        key="dispute_stale_minutes",
+    )
+    if st.button("🔄 새로고침", key="dispute_refresh_stuck"):
+        st.rerun()
+
+    try:
+        _stuck_orders = wallet_db.list_stuck_toss_orders(stale_minutes=int(_stale_minutes))
+    except Exception as e:
+        _stuck_orders = []
+        st.warning(f"조회 실패: {e}")
+
+    if not _stuck_orders:
+        st.success("현재 정체된 결제가 없습니다.")
+    else:
+        st.error(f"🚨 정체된 결제 {len(_stuck_orders)}건 발견")
+        _stuck_df = pd.DataFrame(
+            [
+                {
+                    "주문ID": o["order_id"],
+                    "회원ID": o["member_id"],
+                    "결제금액": f"{o['won_amount']:,}원",
+                    "지급예정P": f"{o['points']:,}P",
+                    "생성시각": o["created_at"],
+                }
+                for o in _stuck_orders
+            ]
+        )
+        st.dataframe(_stuck_df, use_container_width=True, hide_index=True)
+        st.caption("아래 '주문 조회·처리'에 주문ID를 그대로 복사해서 붙여넣으세요.")
+
+    st.markdown("---")
+
+    # ── 2) 주문 조회 · 처리 ──
+    st.markdown(
+        "<h4 style='margin-top:10px; color:#FFB300; font-weight:700;'>🔎 주문 조회 · 처리</h4>",
+        unsafe_allow_html=True,
+    )
+
+    _lookup_mode = st.radio(
+        "조회 방법", ["주문ID로 조회", "회원ID로 전체 내역 보기"],
+        key="dispute_lookup_mode", horizontal=True,
+    )
+
+    if _lookup_mode == "회원ID로 전체 내역 보기":
+        _member_id_input = st.number_input(
+            "회원 ID", min_value=1, step=1, key="dispute_member_id_input"
+        )
+        if st.button("조회", key="dispute_search_by_member"):
+            try:
+                _member_orders = wallet_db.find_toss_orders_by_member(int(_member_id_input))
+            except Exception as e:
+                _member_orders = []
+                st.warning(f"조회 실패: {e}")
+            if not _member_orders:
+                st.info("해당 회원의 토스 결제 내역이 없습니다.")
+            else:
+                _mo_df = pd.DataFrame(
+                    [
+                        {
+                            "주문ID": o["order_id"],
+                            "금액": f"{o['won_amount']:,}원",
+                            "포인트": f"{o['points']:,}P",
+                            "상태": o["status"],
+                            "생성시각": o["created_at"],
+                            "승인시각": o["confirmed_at"] or "",
+                        }
+                        for o in _member_orders
+                    ]
+                )
+                st.dataframe(_mo_df, use_container_width=True, hide_index=True)
+                st.caption("처리할 주문의 '주문ID'를 복사해서 아래 입력창에 붙여넣으세요.")
+
+    _target_order_id = st.text_input(
+        "주문 ID (order_id)", key="dispute_order_id_input",
+        help="위 목록에서 복사하거나, 고객이 알려준 결제 화면 정보로 찾은 주문 ID를 입력하세요.",
+    ).strip()
+
+    if _target_order_id:
+        _order = wallet_db.get_toss_pending_order(_target_order_id)
+        if not _order:
+            st.error("해당 주문ID를 DB에서 찾을 수 없습니다. 오타를 확인해 주세요.")
+        else:
+            st.markdown(
+                f"**DB 기록**: 회원ID `{_order['member_id']}` · "
+                f"결제금액 `{_order['won_amount']:,}원` · "
+                f"지급예정 `{_order['points']:,}P` · "
+                f"현재상태 `{_order['status']}`"
+            )
+
+            if _order["status"] == "confirmed":
+                st.success("이미 정상적으로 처리 완료된 주문입니다 — 추가 조치가 필요 없습니다.")
+            else:
+                if st.button("🔍 토스에서 실제 결제 상태 확인", key="dispute_query_toss"):
+                    _ok, _result = toss_pg.query_toss_order(_target_order_id)
+                    st.session_state["dispute_toss_result"] = (_ok, _result)
+                    st.session_state["dispute_toss_result_order_id"] = _target_order_id
+
+                _cached = st.session_state.get("dispute_toss_result")
+                _cached_order_id = st.session_state.get("dispute_toss_result_order_id")
+                if _cached and _cached_order_id == _target_order_id:
+                    _ok, _result = _cached
+                    if not _ok:
+                        st.error(f"토스 조회 실패: {_result}")
+                    else:
+                        _toss_status = _result.get("status")
+                        _toss_amount = _result.get("totalAmount")
+                        if isinstance(_toss_amount, (int, float)):
+                            st.info(f"**토스 측 기록**: 상태 `{_toss_status}` · 승인금액 `{_toss_amount:,.0f}원`")
+                        else:
+                            st.info(f"**토스 측 기록**: 상태 `{_toss_status}`")
+
+                        _amount_match = _toss_amount == _order["won_amount"]
+                        if _toss_status == "DONE" and _amount_match:
+                            st.success("토스 기록상 결제가 정상 승인됐고 금액도 일치합니다 — 지급을 진행할 수 있습니다.")
+                            st.warning("아래 버튼을 누르면 실제로 포인트가 지급됩니다 — 신중하게 확인 후 눌러주세요.")
+                            if st.button(
+                                f"✅ 회원ID {_order['member_id']}에게 {_order['points']:,}P 지급",
+                                type="primary", key="dispute_credit_confirm",
+                            ):
+                                _ref_id = f"pg:toss:{_target_order_id}"
+                                _credited = wallet_db.charge_points(
+                                    _order["member_id"], _order["points"], _ref_id
+                                )
+                                wallet_db.mark_toss_order_status(
+                                    _target_order_id, "confirmed" if _credited else "credit_failed"
+                                )
+                                try:
+                                    security_log.log_event(
+                                        "admin_toss_dispute_resolved",
+                                        f"order_id={_target_order_id} member_id={_order['member_id']} "
+                                        f"points={_order['points']} credited={_credited}",
+                                    )
+                                except Exception:
+                                    pass
+                                if _credited:
+                                    st.success(
+                                        "지급 처리 완료했습니다 "
+                                        "(이미 지급돼 있던 건이면 중복 지급 없이 그대로 유지됩니다)."
+                                    )
+                                    st.session_state.pop("dispute_toss_result", None)
+                                    st.session_state.pop("dispute_toss_result_order_id", None)
+                                    st.rerun()
+                                else:
+                                    st.error("지급에 실패했습니다 — 해당 회원의 지갑이 존재하는지 확인해 주세요.")
+                        elif _toss_status == "DONE" and not _amount_match:
+                            st.error(
+                                f"⚠️ 금액 불일치 — DB 기록({_order['won_amount']:,}원)과 "
+                                f"토스 승인금액이 다릅니다. 지급하지 말고 수동으로 다시 확인하세요."
+                            )
+                        else:
+                            st.warning(f"토스 기록상 결제가 완료되지 않았습니다(상태: {_toss_status}). 지급 대상이 아닙니다.")

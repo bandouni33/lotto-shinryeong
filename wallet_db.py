@@ -725,6 +725,45 @@ def mark_toss_order_status(order_id: str, status: str) -> None:
     conn.close()
 
 
+# 2026-09-20: 결제 분쟁 처리(관리자 대시보드) — 웹뷰 환경에서 결제 성공 직후
+# successUrl 콜백 없이 화면이 닫혀버리는 경우(실제 토스 개발자 커뮤니티에
+# 보고된 사례) 등으로, toss_pending_orders가 'pending'에서 멈춘 채 영원히
+# 안 넘어가는 주문이 생길 수 있다. 관리자가 고객 문의 전에 먼저 찾아내거나
+# (list_stuck_toss_orders), 문의받은 회원 기준으로 내역을 찾을 때
+# (find_toss_orders_by_member) 쓴다. 둘 다 읽기 전용 — 잔액에 전혀 영향 없음.
+def list_stuck_toss_orders(stale_minutes: int = 10) -> list:
+    conn = _connect()
+    cutoff = (datetime.now(KST) - timedelta(minutes=stale_minutes)).strftime(
+        "%Y-%m-%d %H:%M:%S.%f"
+    )
+    rows = conn.execute(
+        """
+        SELECT order_id, member_id, won_amount, points, status, created_at
+        FROM toss_pending_orders
+        WHERE status = 'pending' AND created_at < ?
+        ORDER BY created_at
+        """,
+        (cutoff,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def find_toss_orders_by_member(member_id: int) -> list:
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT order_id, member_id, won_amount, points, status, created_at, confirmed_at
+        FROM toss_pending_orders
+        WHERE member_id = ?
+        ORDER BY created_at DESC
+        """,
+        (int(member_id),),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
 def get_or_create_toss_customer_key(member_id: int) -> str:
     """토스 결제위젯의 customerKey — 이미 있으면 재사용, 없으면 1회 발급해
     wallets.toss_customer_key에 저장(회원 내부 DB id를 그대로 밖에 노출하지
