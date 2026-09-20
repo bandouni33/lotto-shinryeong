@@ -116,6 +116,16 @@ builds/
 *.xlsx.beforelinkremoval.bak
 ~$*.xlsx
 
+# 2026-09-20: 위와 같은 이유(경쟁사 등에 필터 로직 노출 우려, 출시전
+# 체크리스트 항목) — combo_filter_rules_stage1/2.json은 "컴파일된 결과"라
+# 이전엔 공개 저장소에 있어도 된다고 판단했지만, 이 파일 자체가 어떤
+# 조합이 통과/탈락하는지 그대로 드러내서 다시 검토 후 제외하기로 함.
+# Turso DB(app_settings.get_filter_rules_json)로 이관 완료 —
+# combo_filter_v2._load_rules()가 DB를 우선 읽고, 로컬 파일은 개발용
+# 폴백으로만 남겨둔다(git 추적에서만 제외, 로컬 파일 자체는 삭제하지 않음).
+combo_filter_rules_stage1.json
+combo_filter_rules_stage2.json
+
 node_modules/
 .astra/
 .claude/
