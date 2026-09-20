@@ -29,7 +29,7 @@ if not st.session_state.get("is_admin", False):
 if "admin_view" not in st.session_state:
     st.session_state.admin_view = "home"
 _qp_admin_view = st.query_params.get("admin_view")
-if _qp_admin_view in ("home", "filter_manage", "pattern_manage", "dispute_resolution"):
+if _qp_admin_view in ("home", "filter_manage", "pattern_manage", "dispute_resolution", "ops_manage"):
     st.session_state.admin_view = _qp_admin_view
 
 MASTER_FILE = "로또기록 앱 업로드용.xlsb"
@@ -367,6 +367,9 @@ with st.sidebar:
     if st.button("💳 결제 분쟁 처리", key="admin_nav_dispute_6n36s5", use_container_width=True):
         change_view("dispute_resolution")
         st.rerun()
+    if st.button("⚙️ 운영관리", key="admin_nav_ops_6n36s5", use_container_width=True):
+        change_view("ops_manage")
+        st.rerun()
 
 # ==========================================
 # 🏠 화면 A: 대시보드 홈
@@ -460,114 +463,10 @@ if st.session_state.admin_view == "home":
         change_view("pattern_manage")
         st.rerun()
 
-    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
-    st.markdown('<div class="admin-update-banner-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
-    with st.expander("배너 설정 (사용자 화면 상단에 노출)"):
-        from app_settings import get_update_notice, set_update_notice
-
-        _notice = get_update_notice()
-        st.caption("배포 버전을 비워두면 배너가 표시되지 않습니다.")
-        _new_version = st.text_input("배포 버전 (예: 1.0.2)", value=_notice["version"], key="admin_update_version")
-        _new_url = st.text_input("업데이트 링크 (APK/스토어 URL)", value=_notice["url"], key="admin_update_url")
-        _new_message = st.text_area("안내 문구", value=_notice["message"], key="admin_update_message")
-        if st.button("저장", key="admin_update_notice_save"):
-            set_update_notice(_new_version, _new_url, _new_message)
-            st.success("저장했습니다. 사용자 화면에 즉시 반영됩니다.")
-            st.rerun()
-
-    # 2026-08-31: 메인화면 아이콘 주변에 도는 숫자 6개(user_page.py의
-    # lucky_display)가 예전엔 코드에 직접 박혀있어서, 매주 값을 바꿀 때마다
-    # git 커밋·푸시를 잊으면 화면이 옛날 숫자로 며칠씩 멈춰있는 사고가
-    # 반복됐다 — 여기서 입력하면 배포 없이 바로 반영되도록 DB 설정값으로
-    # 옮겼다.
-    # 2026-09-19(사용자 지시): 원래 "3종필터 업로드" 화면 안에 묻혀있어서
-    # 운영자가 못 찾겠다고 지적 — 홈 화면의, 역시 사용자 메인화면에 즉시
-    # 반영되는 다른 설정(업데이트 배너)과 나란히 보이도록 옮겼다. 기능은
-    # 그대로다.
-    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔧 메인화면 유력수 보정</h4>", unsafe_allow_html=True)
-    with st.expander("아이콘 주변에 도는 숫자 6개 (사용자 화면에 즉시 반영)"):
-        from app_settings import get_setting as _gs, init_settings_table as _ist, set_setting as _ss
-
-        _ist()
-        _current_lucky = _gs("main_lucky_numbers", "5, 17, 26, 41, 30, 44")
-        st.caption("앞 번호일수록 유력한 순서로, 쉼표로 구분해 6개 입력하세요 (1~45).")
-        lucky_input = st.text_input(
-            "유력수 6개", value=_current_lucky, key="admin_lucky_numbers_input"
-        )
-        if st.button("유력수 저장", key="admin_lucky_numbers_submit"):
-            nums = [x.strip() for x in lucky_input.split(",") if x.strip()]
-            valid = (
-                len(nums) == 6
-                and all(n.isdigit() and 1 <= int(n) <= 45 for n in nums)
-            )
-            if not valid:
-                st.error("숫자 6개를 쉼표로 구분해서, 1~45 범위로 입력해 주세요.")
-            else:
-                _ss("main_lucky_numbers", ", ".join(nums))
-                st.success(f"메인화면 유력수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
-
-    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🚦 동시접속 상한 (입장 제한)</h4>", unsafe_allow_html=True)
-    with st.expander("이용자 폭증 시 신규 유입을 막는 상한값 설정"):
-        import admission_control
-        from app_settings import get_max_concurrent_sessions, set_max_concurrent_sessions
-
-        _live_count, _live_cap = admission_control.get_live_status()
-        st.caption(f"지금 활동 중(최근 {admission_control._HEARTBEAT_TTL_SECONDS}초 이내): **{_live_count}명** / 현재 상한 **{_live_cap}명**")
-        st.caption("이미 입장한 사용자는 상한을 넘어도 절대 쫓아내지 않습니다 — 신규 유입만 막습니다. 값을 바꾸면 최대 30초 안에 반영됩니다.")
-
-        _cur_cap = get_max_concurrent_sessions(default=admission_control.DEFAULT_MAX_CONCURRENT_SESSIONS)
-        _new_cap = st.number_input(
-            "동시접속 상한 (명)", min_value=1, max_value=100000, value=_cur_cap, step=10, key="admin_max_concurrent_input",
-        )
-        if st.button("저장", key="admin_max_concurrent_save"):
-            set_max_concurrent_sessions(int(_new_cap))
-            st.success(f"상한을 {int(_new_cap)}명으로 저장했습니다. 최대 30초 안에 반영됩니다.")
-            st.rerun()
-
-    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔐 게스트 자동로그인 보안(UA 대조)</h4>", unsafe_allow_html=True)
-    with st.expander("guest_id 링크공유 계정탈취 대응 — 코드 배포 없이 즉시 켜고 끌 수 있는 킬스위치"):
-        from app_settings import get_auth_require_ua_match, set_auth_require_ua_match
-
-        st.caption(
-            "켜짐(기본): 로그인 링크를 남에게 공유해도 다른 기기(다른 User-Agent)에서는 "
-            "자동로그인되지 않고 재인증을 요구합니다. 웹 자동로그인이 광범위하게 "
-            "안 되는 등 문제가 생기면 여기서 즉시 꺼서 이전 동작으로 되돌릴 수 있습니다 "
-            "(최대 30초 안에 반영)."
-        )
-        _ua_check_on = get_auth_require_ua_match(default=True)
-        _new_ua_check_on = st.toggle("UA 대조 자동로그인 보호 사용", value=_ua_check_on, key="admin_auth_ua_toggle")
-        if _new_ua_check_on != _ua_check_on:
-            set_auth_require_ua_match(_new_ua_check_on)
-            st.success("저장했습니다. 최대 30초 안에 반영됩니다.")
-            st.rerun()
-
-    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📊 회차별 구매 전환 현황</h4>", unsafe_allow_html=True)
-    from marketing_db import get_draw_purchase_conversion_stats
-
-    @st.cache_data(ttl=60, show_spinner=False)
-    def _conv_stats_cached(limit: int):
-        return get_draw_purchase_conversion_stats(limit=limit)
-
-    _conv_stats = _conv_stats_cached(10)
-    if not _conv_stats:
-        st.caption("데이터가 없습니다.")
-    else:
-        _conv_df = pd.DataFrame(
-            [
-                {
-                    "회차": s["draw_round"],
-                    "추출수량": s["total_count"],
-                    "구매전환": s["purchased_count"],
-                    "전환율": (
-                        f"{s['purchased_count'] / s['total_count'] * 100:.1f}%"
-                        if s["total_count"]
-                        else "0.0%"
-                    ),
-                }
-                for s in _conv_stats
-            ]
-        )
-        st.dataframe(_conv_df, use_container_width=True, hide_index=True)
+    # 2026-09-20(사용자 지시): 아래 있던 배너/유력수/동시접속상한/UA보안/
+    # 구매전환현황 5개 섹션은 홈 화면이 너무 어수선하다는 지적으로 "⚙️
+    # 운영관리"(사이드바)로 이동했다. 위젯 key·내부 로직은 전혀 안 건드렸고
+    # 위치만 옮김 — 이 아래(admin_view == "ops_manage" 블록) 참고.
 
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📥 최신 회차 추출 조합 다운로드</h4>", unsafe_allow_html=True)
     from marketing_db import get_draw_extraction_stats, get_combinations_by_draw
@@ -1745,3 +1644,133 @@ elif st.session_state.admin_view == "dispute_resolution":
                             )
                         else:
                             st.warning(f"토스 기록상 결제가 완료되지 않았습니다(상태: {_toss_status}). 지급 대상이 아닙니다.")
+
+# ==========================================
+# ⚙️ 운영관리 — 2026-09-20 추가. 홈 화면에 있던 5개 섹션(업데이트 배너 /
+# 메인화면 유력수 보정 / 동시접속 상한 / 게스트 자동로그인 보안(UA 대조) /
+# 회차별 구매 전환 현황)을 그대로 옮겨왔다 — 위젯 key·내부 로직은 전혀
+# 손대지 않았고 위치만 옮겼다("home" 블록에 남겨둔 이동 주석 참고).
+# ==========================================
+elif st.session_state.admin_view == "ops_manage":
+    st.session_state.admin_view = "ops_manage"
+    if st.button("⬅️ 대시보드 홈으로 이동", key="ops_manage_back_btn"):
+        change_view("home")
+        st.rerun()
+
+    st.markdown(
+        "<h2 style='font-weight:800; color:#FFFFFF; margin-bottom:5px;'>⚙️ 운영관리</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='color:#94A3B8; margin-bottom:25px;'>사용자 화면에 즉시 반영되는 운영 설정 모음입니다.</p>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
+    st.markdown('<div class="admin-update-banner-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+    with st.expander("배너 설정 (사용자 화면 상단에 노출)"):
+        from app_settings import get_update_notice, set_update_notice
+
+        _notice = get_update_notice()
+        st.caption("배포 버전을 비워두면 배너가 표시되지 않습니다.")
+        _new_version = st.text_input("배포 버전 (예: 1.0.2)", value=_notice["version"], key="admin_update_version")
+        _new_url = st.text_input("업데이트 링크 (APK/스토어 URL)", value=_notice["url"], key="admin_update_url")
+        _new_message = st.text_area("안내 문구", value=_notice["message"], key="admin_update_message")
+        if st.button("저장", key="admin_update_notice_save"):
+            set_update_notice(_new_version, _new_url, _new_message)
+            st.success("저장했습니다. 사용자 화면에 즉시 반영됩니다.")
+            st.rerun()
+
+    # 2026-08-31: 메인화면 아이콘 주변에 도는 숫자 6개(user_page.py의
+    # lucky_display)가 예전엔 코드에 직접 박혀있어서, 매주 값을 바꿀 때마다
+    # git 커밋·푸시를 잊으면 화면이 옛날 숫자로 며칠씩 멈춰있는 사고가
+    # 반복됐다 — 여기서 입력하면 배포 없이 바로 반영되도록 DB 설정값으로
+    # 옮겼다.
+    # 2026-09-19(사용자 지시): 원래 "3종필터 업로드" 화면 안에 묻혀있어서
+    # 운영자가 못 찾겠다고 지적 — 홈 화면의, 역시 사용자 메인화면에 즉시
+    # 반영되는 다른 설정(업데이트 배너)과 나란히 보이도록 옮겼다. 기능은
+    # 그대로다.
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔧 메인화면 유력수 보정</h4>", unsafe_allow_html=True)
+    with st.expander("아이콘 주변에 도는 숫자 6개 (사용자 화면에 즉시 반영)"):
+        from app_settings import get_setting as _gs, init_settings_table as _ist, set_setting as _ss
+
+        _ist()
+        _current_lucky = _gs("main_lucky_numbers", "5, 17, 26, 41, 30, 44")
+        st.caption("앞 번호일수록 유력한 순서로, 쉼표로 구분해 6개 입력하세요 (1~45).")
+        lucky_input = st.text_input(
+            "유력수 6개", value=_current_lucky, key="admin_lucky_numbers_input"
+        )
+        if st.button("유력수 저장", key="admin_lucky_numbers_submit"):
+            nums = [x.strip() for x in lucky_input.split(",") if x.strip()]
+            valid = (
+                len(nums) == 6
+                and all(n.isdigit() and 1 <= int(n) <= 45 for n in nums)
+            )
+            if not valid:
+                st.error("숫자 6개를 쉼표로 구분해서, 1~45 범위로 입력해 주세요.")
+            else:
+                _ss("main_lucky_numbers", ", ".join(nums))
+                st.success(f"메인화면 유력수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
+
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🚦 동시접속 상한 (입장 제한)</h4>", unsafe_allow_html=True)
+    with st.expander("이용자 폭증 시 신규 유입을 막는 상한값 설정"):
+        import admission_control
+        from app_settings import get_max_concurrent_sessions, set_max_concurrent_sessions
+
+        _live_count, _live_cap = admission_control.get_live_status()
+        st.caption(f"지금 활동 중(최근 {admission_control._HEARTBEAT_TTL_SECONDS}초 이내): **{_live_count}명** / 현재 상한 **{_live_cap}명**")
+        st.caption("이미 입장한 사용자는 상한을 넘어도 절대 쫓아내지 않습니다 — 신규 유입만 막습니다. 값을 바꾸면 최대 30초 안에 반영됩니다.")
+
+        _cur_cap = get_max_concurrent_sessions(default=admission_control.DEFAULT_MAX_CONCURRENT_SESSIONS)
+        _new_cap = st.number_input(
+            "동시접속 상한 (명)", min_value=1, max_value=100000, value=_cur_cap, step=10, key="admin_max_concurrent_input",
+        )
+        if st.button("저장", key="admin_max_concurrent_save"):
+            set_max_concurrent_sessions(int(_new_cap))
+            st.success(f"상한을 {int(_new_cap)}명으로 저장했습니다. 최대 30초 안에 반영됩니다.")
+            st.rerun()
+
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔐 게스트 자동로그인 보안(UA 대조)</h4>", unsafe_allow_html=True)
+    with st.expander("guest_id 링크공유 계정탈취 대응 — 코드 배포 없이 즉시 켜고 끌 수 있는 킬스위치"):
+        from app_settings import get_auth_require_ua_match, set_auth_require_ua_match
+
+        st.caption(
+            "켜짐(기본): 로그인 링크를 남에게 공유해도 다른 기기(다른 User-Agent)에서는 "
+            "자동로그인되지 않고 재인증을 요구합니다. 웹 자동로그인이 광범위하게 "
+            "안 되는 등 문제가 생기면 여기서 즉시 꺼서 이전 동작으로 되돌릴 수 있습니다 "
+            "(최대 30초 안에 반영)."
+        )
+        _ua_check_on = get_auth_require_ua_match(default=True)
+        _new_ua_check_on = st.toggle("UA 대조 자동로그인 보호 사용", value=_ua_check_on, key="admin_auth_ua_toggle")
+        if _new_ua_check_on != _ua_check_on:
+            set_auth_require_ua_match(_new_ua_check_on)
+            st.success("저장했습니다. 최대 30초 안에 반영됩니다.")
+            st.rerun()
+
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📊 회차별 구매 전환 현황</h4>", unsafe_allow_html=True)
+    from marketing_db import get_draw_purchase_conversion_stats
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _conv_stats_cached(limit: int):
+        return get_draw_purchase_conversion_stats(limit=limit)
+
+    _conv_stats = _conv_stats_cached(10)
+    if not _conv_stats:
+        st.caption("데이터가 없습니다.")
+    else:
+        _conv_df = pd.DataFrame(
+            [
+                {
+                    "회차": s["draw_round"],
+                    "추출수량": s["total_count"],
+                    "구매전환": s["purchased_count"],
+                    "전환율": (
+                        f"{s['purchased_count'] / s['total_count'] * 100:.1f}%"
+                        if s["total_count"]
+                        else "0.0%"
+                    ),
+                }
+                for s in _conv_stats
+            ]
+        )
+        st.dataframe(_conv_df, use_container_width=True, hide_index=True)
