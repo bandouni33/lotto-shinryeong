@@ -448,6 +448,26 @@ def restore_member_from_guest() -> int | None:
     if not member_id:
         return None
 
+    # 2026-09-20(진단 모드, 구름님 지시 — 아래 _ua_check_enabled() 차단 로직은
+    # 전혀 건드리지 않는다): 지금 기본값이 꺼짐(2026-09-19 긴급 롤백)이라
+    # 아래 차단 분기 자체가 안 타면서 UA 불일치 데이터가 전혀 안 쌓이고 있다.
+    # 다시 켜기 전에 실제로 저장된 UA 해시와 지금 요청의 UA 해시가 얼마나/
+    # 어떤 패턴으로 다른지 먼저 데이터로 확인하기 위해, 차단 여부와 완전히
+    # 무관하게(항상) 불일치만 별도 이벤트명으로 기록한다. 완전히 새 변수명·
+    # 이벤트명만 쓰고 기존 로직 변수는 하나도 참조하지 않으며, 이 블록이
+    # 죽어도 로그인 자체에는 영향이 없도록 예외를 전부 삼킨다.
+    try:
+        _diag_ua_hash_now = _current_ua_hash()
+        if stored_ua_hash and _diag_ua_hash_now and stored_ua_hash != _diag_ua_hash_now:
+            import security_log
+
+            security_log.log_event(
+                "guest_ua_diag_mismatch",
+                f"member_id={member_id} guest={str(guest_id)[:8]}… enforced={_ua_check_enabled()}",
+            )
+    except Exception:
+        pass
+
     # 2026-09-19: guest_id 링크공유 계정탈취 대응(1단계) — guest_id는
     # internal_nav_href()를 통해 모든 내부이동 링크에 실려 노출되므로, 그 값
     # 하나만으로 인증 없이 로그인시키던 기존 동작은 링크 공유·주소창 복사로
