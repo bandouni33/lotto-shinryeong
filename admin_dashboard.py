@@ -157,7 +157,7 @@ def _master_file_mtime() -> float:
 
 
 @st.cache_data(show_spinner=False)
-def _load_lotto_history_cached(_mtime: float):
+def _load_lotto_history_cached(mtime: float):
     if os.path.exists(MASTER_FILE):
         try:
             df = pd.read_excel(MASTER_FILE, sheet_name='당번', engine='pyxlsb')

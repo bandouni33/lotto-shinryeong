@@ -349,7 +349,7 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
 
 
 @st.cache_data(ttl=120, show_spinner=False)
-def _load_stats_table_cached(_cache_key: tuple[float, float]) -> tuple[pd.DataFrame, bool]:
+def _load_stats_table_cached(cache_key: tuple[float, float]) -> tuple[pd.DataFrame, bool]:
     return _load_stats_table()
 
 
@@ -395,7 +395,7 @@ def _pattern_applied_count() -> int:
 
 
 @st.cache_data(show_spinner=False)
-def _winning_numbers_for_draw_cached(draw_round: int, _cache_key: tuple) -> tuple[set[int], int | None]:
+def _winning_numbers_for_draw_cached(draw_round: int, cache_key: tuple) -> tuple[set[int], int | None]:
     try:
         from lotto_stats import get_draw_result_by_round
 

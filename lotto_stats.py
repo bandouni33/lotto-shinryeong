@@ -40,7 +40,7 @@ def _xlsb_mtime(path: str) -> float:
 
 
 @st.cache_data(show_spinner=False)
-def _load_lotto_data_cached(path: str, _mtime: float) -> pd.DataFrame:
+def _load_lotto_data_cached(path: str, mtime: float) -> pd.DataFrame:
     """pyxlsb는 순수 파이썬 파서라 6MB 파일 재파싱에 초 단위가 걸린다.
     파일 mtime을 캐시 키에 포함해, 관리자가 새 회차로 갱신하면 즉시 무효화되면서도
     바뀌지 않은 동안에는 렌더마다 재파싱하지 않도록 한다."""
@@ -79,10 +79,18 @@ def _build_dataframe_from_draw_results(rows: list[dict]) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def _load_lotto_data_db_cached(_cache_key: tuple[int, int]) -> pd.DataFrame | None:
+def _load_lotto_data_db_cached(cache_key: tuple[int, int]) -> pd.DataFrame | None:
     """DB(Turso)가 일시적으로 불안정해도 load_lotto_data() 전체가 죽으면 안
     되므로(호출부가 워낙 많음), 여기서 실패하면 None을 반환해 xlsb 폴백으로
-    자연스럽게 넘어가게 한다."""
+    자연스럽게 넘어가게 한다.
+
+    2026-09-20: 인자명을 _cache_key → cache_key로 바꿨다(밑줄 제거). Streamlit은
+    밑줄로 시작하는 인자를 캐시 키 해시에서 아예 제외하기 때문에, 예전 이름으로는
+    _draw_results_cache_key()가 아무리 정확해도 캐시 키가 항상 같은 값이 되어 —
+    DB에 새 회차가 들어와도(관리자 입력·자동 동기화 모두) 프로세스가 살아 있는
+    동안 최초 로드값만 계속 반환됐다. 이 캐시에 인자를 더 추가할 때도 이름 앞에
+    밑줄을 붙이면 똑같은 함정에 빠진다(회귀 테스트:
+    tests/test_lotto_stats_db_cache.py)."""
     try:
         import draw_results_db
 
@@ -178,7 +186,7 @@ def calc_hot_numbers(data: pd.DataFrame, top_n: int = 10) -> list[tuple[int, int
 
 
 @st.cache_data(show_spinner=False)
-def _number_weights_cached(path: str, _cache_key: tuple) -> dict[int, int]:
+def _number_weights_cached(path: str, cache_key: tuple) -> dict[int, int]:
     """1~45번 각각이 지금까지(1회~최신회차) 실제 당첨번호로 나온 누적 횟수.
     번개조합·안티/액땜조합 번호 추첨 시 이 값을 가중치로 써서, 완전 무작위
     대신 과거 출현 빈도가 높을수록 더 잘 뽑히게 한다. load_lotto_data()가
