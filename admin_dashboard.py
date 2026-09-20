@@ -1693,6 +1693,38 @@ elif st.session_state.admin_view == "ops_manage":
             hide_index=True,
         )
 
+    # 2026-09-20(사용자 지시): "배포본이 어디 저장돼 있고 화요일 배포에
+    # 문제없는지 확인하고 싶다"는 요청 — 실제 화요일부터 판매(배포)에 쓰이는
+    # 저장본은 파일이 아니라 Turso DB(marketing_db.lotto_combinations)에만
+    # 있고, lotto-app 폴더의 CSV들(조합_확인용.csv, 1242회차_배포후보.csv
+    # 등)은 감사/검증용이거나 일회성 백업이라 실제 배포 로직이 읽지 않는다
+    # (파일을 옮겨도 화요일 배포엔 영향 없음) — 그래서 파일 경로를 바꾸는
+    # 대신, DB에 실제로 뭐가 들어있는지 한눈에 보이는 현황판만 추가한다.
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📦 현재 배포현황</h4>", unsafe_allow_html=True)
+    st.caption("화요일 09:00부터 판매(배포)되는 조합은 이 회차 기준입니다 — 로컬 CSV 파일이 아니라 DB(Turso)에 저장된 값입니다.")
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _ops_latest_distribution_cached():
+        from marketing_db import get_draw_extraction_stats
+
+        stats = get_draw_extraction_stats(limit=1)
+        return stats[0] if stats else None
+
+    try:
+        _ops_latest_dist = _ops_latest_distribution_cached()
+    except Exception as e:
+        _ops_latest_dist = None
+        st.warning(f"배포현황 조회 실패: {e}")
+
+    if _ops_latest_dist is None:
+        st.caption("등록된 배포 회차가 없습니다.")
+    else:
+        _dist_col1, _dist_col2 = st.columns(2)
+        with _dist_col1:
+            st.metric("최신 배포 회차", f"{_ops_latest_dist['draw_round']}회차")
+        with _dist_col2:
+            st.metric("등록된 조합 개수", f"{_ops_latest_dist['total_count']:,} 개")
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
     st.markdown('<div class="admin-update-banner-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
     with st.expander("배너 설정 (사용자 화면 상단에 노출)"):
