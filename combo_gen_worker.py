@@ -4,6 +4,14 @@
 83만개 조합 계산이 너무 오래 걸려서(3~5분) 별도 프로세스로 뺀다.
 
 app.py 쪽 트리거가 새 회차 감지 후 이 스크립트를 subprocess.Popen으로 띄운다.
+subprocess로 뜰 때는 부모(Streamlit) 프로세스가 이미 app.py 맨 위에서
+load_dotenv_file()을 호출해둔 환경변수(os.environ)를 그대로 물려받아서 문제가
+없었는데, 2026-09-20에 이 스크립트를 터미널에서 단독 실행(수동 실행)해보니
+그 부모 프로세스가 없어 TURSO_DATABASE_URL/TURSO_AUTH_TOKEN이 비어
+RuntimeError가 났다 — app.py·check_real_toss_charges.py 등 기존 단독 실행
+스크립트들과 동일하게 이 파일도 자체적으로 .env를 로드하도록 아래 두 줄을
+추가한다(이미 환경변수가 설정돼 있으면 override=False라 아무 영향 없음 —
+subprocess로 뜨는 기존 자동 실행 경로는 그대로 안전).
 """
 
 from __future__ import annotations
@@ -15,6 +23,10 @@ import os
 import random
 import sys
 import traceback
+
+from env_loader import load_dotenv_file
+
+load_dotenv_file()
 
 STATUS_FILE = os.path.join(os.path.dirname(__file__), "combo_gen_job.status")
 
@@ -176,6 +188,25 @@ def main() -> int:
         app_settings.init_settings_table()
 
         history = draw_results_db.get_all_draw_results()
+
+        # 2026-09-20 신규: 830만개 조합 계산(수동 실행 시 최대 30분+) 전에
+        # 먼저 "이미 저장됐는지" 저비용으로 확인한다 — 1243회차를 수동
+        # 재확인하는 과정에서, 이미 저장된 회차를 재실행할 때마다 스킵
+        # 여부를 알기도 전에 매번 무거운 재계산을 반복하는 게 실측
+        # 확인됐다. peek_target_round()는 generate_next_round_combos()와
+        # 동일한 방식으로 target_round만 계산하고 계산 자체는 하지 않는다.
+        # 계산 완료 후의 기존 체크(아래)는 동시 실행(레이스 컨디션) 대비로
+        # 그대로 남겨둔다 — 안전장치 이중화, 기존 동작 변화 없음.
+        early_target_round = combo_filter_v2.peek_target_round(history)
+        already_early = marketing_db.get_combination_count_by_draw(early_target_round)
+        if already_early > 0:
+            write_status(
+                "skipped",
+                message=f"{early_target_round}회차는 이미 {already_early}개 등록돼 있어 건너뜀(계산 전 확인)",
+                target_round=early_target_round,
+            )
+            return 0
+
         target_round, combos, stats = combo_filter_v2.generate_next_round_combos(history)
         anchor_round = stats["anchor_round"]
 

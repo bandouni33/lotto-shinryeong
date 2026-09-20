@@ -232,6 +232,19 @@ def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
     return combos, combo_oh, stage4_mask, int(base_mask.sum()), int(stage2_mask.sum()), gap_order
 
 
+def peek_target_round(history_desc: list[dict]) -> int:
+    """generate_next_round_combos()가 실제 830만개 조합 계산을 시작하기 전에,
+    이번 실행이 예측할 target_round 번호만 먼저 알고 싶을 때 쓴다(2026-09-20
+    신규 — combo_gen_worker.py가 "이미 저장됐는지" 확인을 무거운 계산 전에
+    할 수 있도록 추가. 1243회차를 수동 재확인하는 과정에서, 이미 저장된
+    회차를 재실행할 때마다 스킵 여부를 알기도 전에 매번 최대 30분+짜리
+    재계산을 반복하는 게 실측 확인됐다). _prep_history()로 generate_next_round_combos()와
+    동일한 검증(최소 101회차)을 거치고 동일한 방식(anchor_round+1)으로 계산하므로,
+    두 함수는 로직 중복 없이 항상 같은 target_round를 반환한다."""
+    history_asc = _prep_history(history_desc)
+    return history_asc[-1]["draw_round"] + 1
+
+
 def generate_next_round_combos(history_desc: list[dict]) -> tuple[int, list[tuple[int, ...]], dict]:
     """history_desc: draw_results_db.get_all_draw_results() 그대로(최신 먼저).
     반환: (예측 대상 회차번호, 통과 조합 리스트, 통계dict)."""
