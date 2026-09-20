@@ -645,6 +645,23 @@ def pg_configured() -> bool:
     return bool(toss_client_key()) and bool(toss_secret_key())
 
 
+def mock_charge_enabled() -> bool:
+    """PG 미연동 상태에서 "Mock 결제(테스트)" 버튼을 노출할지 — 명시적
+    opt-in(env MOCK_CHARGE_ENABLED=true/1/yes)일 때만 True(fail-closed,
+    2026-09-20 구름님 지시). 2026-09-05~09-08엔 "소수 테스터만 접근 가능한
+    단계"라는 전제로 PG 미연동이면 로그인만 해도 이 버튼이 무조건 떠서,
+    회원당 하루 최대 3,000P(=30,000원 상당, MOCK_CHARGE_MAX_PER_WINDOW 기준)
+    까지 제한 없이 충전할 수 있었다(wallet_ui.py 참고) — 심사용 PG 키를
+    나중에 제거하는 시점에 실키 투입 전 잠깐이라도 공백이 생기면 이 분기가
+    그대로 다시 열린다. 이 값을 명시적으로 켜지 않으면(Streamlit Cloud
+    secrets에 안 넣으면) 실사용자에게는 버튼 자체가 안 보이고 대신 기존
+    "결제 연동 준비 중입니다" 안내만 뜬다. 테스터 기간엔 이 값 하나만
+    env/secrets에 넣으면 기존과 동일하게 쓸 수 있다."""
+    import os
+
+    return os.environ.get("MOCK_CHARGE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
 # 1만원 충전 시 1,000점 지급 — 10원당 1점.
 WON_PER_POINT = 10
 CHARGE_WON_AMOUNTS = (10000, 30000, 50000)

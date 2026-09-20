@@ -46,6 +46,7 @@ from wallet_db import (
     deduct_points,
     eligible_free_advanced_sub,
     get_balance,
+    mock_charge_enabled,
     pg_configured,
     won_to_points,
 )
@@ -700,7 +701,16 @@ def _render_charge_actions(member_id: int) -> None:
             from toss_pg import render_checkout_trigger
 
             render_checkout_trigger(member_id, won_amount)
-    elif not pg_configured():
+    elif not pg_configured() and mock_charge_enabled():
+        # 2026-09-20(fail-closed, 구름님 지시): 이 분기가 원래 "elif not
+        # pg_configured():"였는데, if 분기 조건의 정확한 반대라 아래 else가
+        # 절대 실행되지 않는 죽은 코드였다 — 즉 지금까지 PG 미연동 상태에서는
+        # 예외 없이 이 Mock 버튼이 항상 노출되고 있었다. mock_charge_enabled()
+        # (env MOCK_CHARGE_ENABLED 명시적 opt-in)를 추가로 요구해, 그 값을
+        # 안 켜두면 아래 else의 "결제 연동 준비 중입니다" 안내로 떨어지게
+        # 한다 — 심사용 PG 키를 나중에 빼는 시점에 실키 투입 전 공백이 생겨도
+        # 이 버튼이 자동으로 열리지 않는다.
+        #
         # 2026-09-05: 이 버튼은 원래 "카카오 로그인이 아직 mock인 테스트 기간"
         # (_testing_period_active())에만 보이게 막아뒀었다 — 실제 카카오 로그인이
         # 연동된 뒤에도 PG만 아직이면 아무나 눌러서 무한 포인트를 받을 수 있었기
