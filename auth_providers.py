@@ -681,11 +681,19 @@ def toss_review_login(input_id: str, input_pw: str) -> tuple[int, bool, bool] | 
     provider가 달라 완전히 분리된다(oauth_hash가 provider까지 포함해 해시하므로
     다른 계정으로 섞일 수 없음).
 
-    자격증명은 환경변수(TOSS_REVIEW_TEST_ID / TOSS_REVIEW_TEST_PW)로 바꿀 수
-    있고, 설정 안 돼 있으면 기본값(사용자 지정: ID "toss" / PW "3333")을 쓴다.
+    2026-09-20(fail-closed, 구름님 지시): 하드코딩된 기본 자격증명(ID "toss" /
+    PW "3333")을 완전히 제거했다 — 이 저장소가 Public이라 그 기본값이 사실상
+    공개돼 있었고, 진입 URL(user_page.py의 ?page=toss_test_login)도 공개돼
+    있어 사람이면 누구나 로그인할 수 있는 상태였다. 이제 TOSS_REVIEW_TEST_ID/
+    TOSS_REVIEW_TEST_PW 두 환경변수가 모두 비어있지 않게 설정돼 있을 때만
+    이 경로가 동작하고, 하나라도 없으면 입력값과 무관하게 무조건 거부한다.
+    심사 기간엔 이 두 값을 Streamlit Cloud secrets에 넣어 그대로 쓰고, 심사가
+    끝나면 그 두 값만 지우면 이 경로가 자동으로 닫힌다(코드 변경 불필요).
     """
-    expected_id = os.environ.get("TOSS_REVIEW_TEST_ID", "toss").strip()
-    expected_pw = os.environ.get("TOSS_REVIEW_TEST_PW", "3333").strip()
+    expected_id = os.environ.get("TOSS_REVIEW_TEST_ID", "").strip()
+    expected_pw = os.environ.get("TOSS_REVIEW_TEST_PW", "").strip()
+    if not expected_id or not expected_pw:
+        return None
     if (input_id or "").strip() != expected_id or (input_pw or "").strip() != expected_pw:
         return None
     return finalize_login("toss_review", "toss_review_fixed_account_001")
