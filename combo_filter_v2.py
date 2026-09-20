@@ -27,11 +27,26 @@ RECENT_WINDOW = 100
 MAXGAP = 46
 
 
+def _load_stage_json(stage: int, local_file: str):
+    """DB(app_settings) 우선, 없거나(마이그레이션 전) DB 접속 실패 시 기존
+    로컬 파일로 폴백 — 2026-09-20: 저장소 Public 유지 문제로 이 규칙
+    파일들을 git에서 빼고 DB로 옮기는 작업 1단계. DB에 값이 채워지기
+    전까지는 지금과 100% 동일하게 로컬 파일을 읽는다(동작 변화 없음)."""
+    try:
+        import app_settings
+
+        raw = app_settings.get_filter_rules_json(stage)
+    except Exception:
+        raw = ""
+    if raw:
+        return json.loads(raw)
+    with open(local_file, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def _load_rules():
-    with open(_STAGE1_FILE, encoding="utf-8") as f:
-        stage1 = json.load(f)
-    with open(_STAGE2_FILE, encoding="utf-8") as f:
-        stage2 = json.load(f)
+    stage1 = _load_stage_json(1, _STAGE1_FILE)
+    stage2 = _load_stage_json(2, _STAGE2_FILE)
     static_rules = [r for r in stage1 if not r["is_auto"]]
     auto_rules = [r for r in stage1 if r["is_auto"]]
     return static_rules, auto_rules, stage2

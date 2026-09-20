@@ -9,6 +9,8 @@ UPDATE_URL_KEY = "update_url"
 UPDATE_MESSAGE_KEY = "update_message"
 MAX_CONCURRENT_SESSIONS_KEY = "max_concurrent_sessions"
 AUTH_REQUIRE_UA_MATCH_KEY = "auth_require_ua_match"
+FILTER_RULES_STAGE1_KEY = "filter_rules_stage1_json"
+FILTER_RULES_STAGE2_KEY = "filter_rules_stage2_json"
 
 
 def _connect():
@@ -128,6 +130,24 @@ def get_auth_require_ua_match(default: bool = True) -> bool:
 def set_auth_require_ua_match(value: bool) -> None:
     init_settings_table()
     set_setting(AUTH_REQUIRE_UA_MATCH_KEY, "1" if value else "0")
+
+
+def get_filter_rules_json(stage: int) -> str:
+    """1차(stage=1)/2차(stage=2) 조합필터 규칙 JSON 원문 텍스트.
+    2026-09-20: 저장소를 Public으로 유지해야 해서(배포 파이프라인 문제, 별도
+    기록 참고) combo_filter_rules_stage1/2.json을 git에서 빼고 여기로
+    옮기는 작업의 일부. 값이 저장된 적 없으면 빈 문자열을 반환하니
+    호출부(combo_filter_v2._load_rules)에서 반드시 로컬 파일 폴백을 둬야
+    한다."""
+    init_settings_table()
+    key = FILTER_RULES_STAGE1_KEY if stage == 1 else FILTER_RULES_STAGE2_KEY
+    return get_setting(key, "")
+
+
+def set_filter_rules_json(stage: int, raw_json: str) -> None:
+    init_settings_table()
+    key = FILTER_RULES_STAGE1_KEY if stage == 1 else FILTER_RULES_STAGE2_KEY
+    set_setting(key, raw_json)
 
 
 def save_blob_setting(key: str, raw_bytes: bytes) -> None:
