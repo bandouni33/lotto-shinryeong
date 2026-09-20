@@ -1666,6 +1666,33 @@ elif st.session_state.admin_view == "ops_manage":
         unsafe_allow_html=True,
     )
 
+    # 2026-09-20(사용자 지시): 앱 설치 현황 + 요일별(월~일) 활동 유저를 한눈에
+    # 보는 표. member_daily_activity는 오늘부터 새로 쌓기 시작한 표라(과거
+    # last_login_at은 로그인마다 덮어써져서 요일별 집계가 불가능했음, wallet_db.py
+    # 주석 참고) 도입 초반 며칠은 앞 요일이 0으로 보이는 게 정상이다.
+    st.markdown("<h4 style='margin-top:10px; color:#FFB300; font-weight:700;'>📈 앱 설치 현황 / 일간 활동 유저</h4>", unsafe_allow_html=True)
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _ops_install_and_weekly_activity_cached():
+        import wallet_db
+
+        return wallet_db.get_total_installed_members(), wallet_db.get_weekly_active_users()
+
+    try:
+        _ops_total_installed, _ops_weekly_rows = _ops_install_and_weekly_activity_cached()
+    except Exception as e:
+        _ops_total_installed, _ops_weekly_rows = 0, []
+        st.warning(f"설치·활동 현황 조회 실패: {e}")
+
+    st.metric("앱 설치 현황 (누적 가입자)", f"{_ops_total_installed:,} 명")
+    if _ops_weekly_rows:
+        st.caption("이번 주(월~일, KST) 일간 활동 유저 수 — 2026-09-20부터 집계를 시작해 그 이전 요일은 0으로 표시됩니다.")
+        st.dataframe(
+            pd.DataFrame(_ops_weekly_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
     st.markdown('<div class="admin-update-banner-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
     with st.expander("배너 설정 (사용자 화면 상단에 노출)"):

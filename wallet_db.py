@@ -186,6 +186,23 @@ def init_wallet_tables() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_toss_pending_member
             ON toss_pending_orders(member_id, created_at);
+
+        -- 2026-09-20(운영관리 "일간 활동 유저" 표): members.last_login_at은
+        -- 로그인마다 덮어써져서 한 회원의 마지막 접속 요일 1개만 남는다 — 한
+        -- 주에 여러 요일 접속한 회원은 그 전 요일 기록이 사라져 "요일별 활동
+        -- 유저 수" 집계가 불가능했다. last_login_at은 그대로 두고(다른 로직이
+        -- 이미 이 컬럼에 의존하므로 손대지 않음), 날짜별 방문 이력만 별도로
+        -- 쌓는다. PRIMARY KEY(member_id, activity_date)라 하루 여러 번
+        -- 로그인해도 INSERT OR IGNORE로 자동 중복 제거된다. 이 표는 오늘부터
+        -- 쌓이기 시작하며 과거 데이터는 없다.
+        CREATE TABLE IF NOT EXISTS member_daily_activity (
+            member_id INTEGER NOT NULL,
+            activity_date TEXT NOT NULL,
+            PRIMARY KEY (member_id, activity_date),
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_member_daily_activity_date
+            ON member_daily_activity(activity_date);
         """
     )
     # 2026-09-06: 기존 DB 호환 ALTER — marketing_db._migrate_lotto_combinations와
@@ -343,6 +360,7 @@ def get_or_create_member(provider: str, provider_user_id: str) -> tuple[int, boo
         conn.execute(
             "UPDATE members SET last_login_at = ? WHERE id = ?", (now, member_id)
         )
+        _record_daily_activity(conn, member_id)
         conn.commit()
         conn.close()
         return member_id, False
@@ -355,9 +373,63 @@ def get_or_create_member(provider: str, provider_user_id: str) -> tuple[int, boo
     conn.execute(
         "INSERT INTO wallets (member_id, balance) VALUES (?, 0)", (member_id,)
     )
+    _record_daily_activity(conn, member_id)
     conn.commit()
     conn.close()
     return member_id, True
+
+
+def _record_daily_activity(conn, member_id: int) -> None:
+    """오늘(KST) 날짜로 방문 이력 1행 기록 — member_daily_activity의
+    PRIMARY KEY(member_id, activity_date) 덕분에 하루 여러 번 로그인해도
+    자동으로 1건만 남는다(INSERT OR IGNORE)."""
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    conn.execute(
+        "INSERT OR IGNORE INTO member_daily_activity (member_id, activity_date) VALUES (?, ?)",
+        (member_id, today),
+    )
+
+
+def get_total_installed_members() -> int:
+    """누적 가입자 수(=설치 인원) — admin_dashboard.py 홈 화면의 기존 통계와
+    동일한 정의(SELECT COUNT(*) FROM members)."""
+    conn = _connect()
+    row = conn.execute("SELECT COUNT(*) AS c FROM members").fetchone()
+    conn.close()
+    return int(row["c"]) if row else 0
+
+
+def get_weekly_active_users(reference_date: datetime | None = None) -> list[dict]:
+    """이번 주(월~일, KST) 요일별 순수 활동 유저 수. member_daily_activity가
+    2026-09-20부터 쌓이기 시작하므로 그 이전 날짜는 항상 0으로 나온다 —
+    과거 데이터를 소급 복원할 방법은 없다(이전엔 last_login_at 1개만
+    있었고 그마저 로그인마다 덮어써졌기 때문)."""
+    ref = (reference_date or datetime.now(KST)).date()
+    monday = ref - timedelta(days=ref.weekday())
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT activity_date, COUNT(DISTINCT member_id) AS cnt
+        FROM member_daily_activity
+        WHERE activity_date >= ? AND activity_date <= ?
+        GROUP BY activity_date
+        """,
+        (monday.isoformat(), (monday + timedelta(days=6)).isoformat()),
+    ).fetchall()
+    conn.close()
+    counts = {r["activity_date"]: int(r["cnt"]) for r in rows}
+    weekday_names = ["월", "화", "수", "목", "금", "토", "일"]
+    result = []
+    for i, name in enumerate(weekday_names):
+        d = monday + timedelta(days=i)
+        result.append(
+            {
+                "요일": name,
+                "날짜": d.isoformat(),
+                "활동유저": counts.get(d.isoformat(), 0),
+            }
+        )
+    return result
 
 
 def grant_signup_bonus(member_id: int, amount: int = SIGNUP_BONUS) -> bool:
