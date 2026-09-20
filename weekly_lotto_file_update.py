@@ -62,14 +62,18 @@ from openpyxl.worksheet.formula import ArrayFormula
 
 # ============================== CONFIG ======================================
 
-# TODO: 실제 lotto-app 폴더 경로로 수정하세요.
-LOTTO_APP_DIR = Path(r"C:\Users\사용자명\lotto-app")
+LOTTO_APP_DIR = Path(r"C:\Users\PC\Desktop\lotto-app")
+
+# 2026-09-20(사용자 지시): 4개 엑셀 파일이 lotto-app 폴더 바로 밑에서
+# "★조합생성_후보숫자_추적표" 하위 폴더로 이동됨 — 경로만 반영, 파일명·구조는
+# 그대로다(candidate_tracker_auto_update.py의 TARGET_FILE도 동일한 폴더를 쓴다).
+_TRACKER_DIR = LOTTO_APP_DIR / "★조합생성_후보숫자_추적표"
 
 FILE_PATHS = {
-    "샘플": LOTTO_APP_DIR / "조합생성_후보숫자_추적표_샘플.xlsx",
-    "200회검증용": LOTTO_APP_DIR / "조합생성_후보숫자_추적표_샘플_200회검증용.xlsx",
-    "전체표본": LOTTO_APP_DIR / "조합생성_후보숫자_추적표_전체표본_윈도우비교.xlsx",
-    "최근500표본": LOTTO_APP_DIR / "조합생성_후보숫자_추적표_최근500표본_윈도우비교.xlsx",
+    "샘플": _TRACKER_DIR / "조합생성_후보숫자_추적표_샘플.xlsx",
+    "200회검증용": _TRACKER_DIR / "조합생성_후보숫자_추적표_샘플_200회검증용.xlsx",
+    "전체표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_전체표본_윈도우비교.xlsx",
+    "최근500표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_최근500표본_윈도우비교.xlsx",
 }
 
 # 3차필터(NN회_후보) 구조를 가진 파일(= 자동 예측행 갱신까지 수행)
