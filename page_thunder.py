@@ -44,10 +44,13 @@ def render():
     if not st.session_state.get("_guest_id_confirmed"):
         components.html(guest_id_cookie_sync_html(get_or_create_guest_id()), height=0)
     # ─── 데이터 로드 및 행운수 계산 ───
-    # "관리자 행운수"(admin_lucky) 기능은 완전히 제거했다 — 실제로는 메인 화면
-    # 캐릭터 이미지 주변 장식용 숫자 볼(user_page.py의 lucky_display)과 동일한,
-    # admin이 매주 감으로 손수 입력하던 리스트가 조합 생성에까지 몰래 섞여 들어가고
-    # 있었다(과거 데이터 근거 전혀 없음) — 조합에는 절대 반영되면 안 된다는 요청.
+    # "관리자 행운수"(admin_lucky, 메인 화면 캐릭터 이미지 주변 장식용 숫자 볼과
+    # 같은 값 — user_page.py의 lucky_display) 기능은 한때 완전히 제거됐었다 —
+    # 몇 개를 어떤 기준으로 끼워넣는지 불분명한 채로 조합 생성에 몰래 섞여
+    # 들어가고 있어서였다. 2026-09-20(사용자 지시, 재도입): 기준을
+    # "조합당 최소 1개 강제 포함, 최대 2개까지만 허용"으로 명확히 한정해서
+    # 다시 반영한다 — 실제 주입 로직은 fillRandomSlots()의
+    # ADMIN_LUCKY_NUMBERS 처리 부분 참고.
     # 2026-09-10(사용자 지시): 조합시작 시 차감했지만 번호 생성·저장이 끝내
     # 안 된 미정산 건을 자동 환불한다(안티·액땜/자동구매와 같은 "실패 시 환불"
     # 정책 통일). 10분 지나도 저장 안 됐으면 환불. 정상 저장되면 th_save
@@ -100,6 +103,31 @@ def render():
         ]
     )
     has_birthdays = bool(birthdays)
+
+    # 2026-09-20(사용자 지시, 재도입): "메인화면 유력수 보정"(관리자가
+    # admin_dashboard.py > 운영관리에서 손으로 입력, app_settings의
+    # main_lucky_numbers 키에 저장 — user_page.py 아이콘 주변 장식용 숫자와
+    # 같은 값)을 번개조합 생성에도 반영해달라는 요청. 예전엔 이 기능(당시
+    # 이름 "관리자 행운수")이 기준을 명확히 못 정해서(몇 개를 어떻게
+    # 끼워넣는지 불분명) "몰래 섞여 들어간다"는 문제로 완전히 제거된 적이
+    # 있다(위 weightedPickWithoutReplacement 함수 주석 참고) — 이번엔
+    # "조합당 최소 1개 강제 포함, 최대 2개까지만 허용"으로 기준을 명확히
+    # 한정해서 다시 넣는다. 값이 없거나(설정 안 함) 형식이 깨졌으면 빈
+    # 리스트로 폴백 — 그러면 아래 JS 로직은 강제 삽입 없이 기존 동작 그대로
+    # 동작한다(동작 변화 없음, admin_dashboard.py의 검증 로직과 동일한
+    # 방식으로 파싱).
+    try:
+        from app_settings import get_setting as _thunder_get_setting
+
+        _raw_admin_lucky = _thunder_get_setting("main_lucky_numbers", "")
+        _admin_lucky_nums = [
+            int(x.strip()) for x in _raw_admin_lucky.split(",") if x.strip()
+        ]
+        if len(_admin_lucky_nums) != 6 or not all(1 <= n <= 45 for n in _admin_lucky_nums):
+            _admin_lucky_nums = []
+    except Exception:
+        _admin_lucky_nums = []
+    js_admin_lucky_numbers = json.dumps(_admin_lucky_nums)
 
     # 결과저장 — 실제 클릭이 최상위 문서의 진짜 <a>에서 일어나야 브라우저가 이동을
     # 허용한다(components.html iframe은 sandbox에 allow-top-navigation 권한이 아예
@@ -176,13 +204,11 @@ def render():
             # 적립금이 부족해도 조합 생성이 그냥 진행되는 버그가 있었다(실측
             # 확인: member 105 잔액 0인 상태). 차감이 실제로 성공했을 때만
             # 진행시킨다.
-            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
-
-            if not is_sales_window_open():
-                # 다이얼로그가 열려있는 사이 판매시간대 경계를 넘는 경우 대비
-                # (자동구매와 동일하게 확정 시점에도 한 번 더 확인).
-                st.session_state["thunder_purchase_error"] = SALES_WINDOW_BANNER
-                return
+            # 2026-09-20(사용자 지시): 번개조합만 판매시간대(화~토) 제한을
+            # 제거 — 자동구매는 sales_window.py 체크를 그대로 유지, 헷지
+            # 화면은 2026-09-14에 이미 예외 처리됨(page_hedge.py 참고). 이
+            # 화면(번개조합)만 그날 예외 처리가 안 돼 있었던 것 — 이 콜백에
+            # 있던 is_sales_window_open() 게이트를 제거한다.
             mid = current_member_id()
             if not mid:
                 from login_gate import GATE_INLINE_HINT
@@ -500,15 +526,12 @@ def render():
             세우고 rerun을 하지 않는다 — 콜백은 본문보다 먼저 돌기 때문에 배너는
             이번 렌더에서 render_wallet_bar가 그리고, 확정창은 아래
             open_thunder_dialog 분기가 같은 렌더에서 그린다."""
-            from sales_window import SALES_WINDOW_BANNER, is_sales_window_open
             from wallet_ui import login_gate
 
-            # 2026-09-09(사용자 지시): 자동구매와 동일한 방식으로 판매시간대 제한
-            # 확정 적용 — 세 화면이 각자 따로 관리하면 시간대가 바뀔 때 하나를
-            # 빠뜨리는 사고로 이어지므로 sales_window.py 공용 모듈을 그대로 쓴다.
-            if not is_sales_window_open():
-                st.session_state["thunder_purchase_error"] = SALES_WINDOW_BANNER
-                return
+            # 2026-09-09(사용자 지시): 자동구매와 동일한 방식으로 판매시간대 제한을
+            # 걸었었으나, 2026-09-20(사용자 지시)에 번개조합만 이 제한을 다시
+            # 제거했다 — 헷지 화면(2026-09-14)과 마찬가지로 24시간 이용 가능.
+            # 자동구매만 sales_window.py 게이트를 그대로 유지한다.
             if not login_gate(
                 resume="open_thunder_dialog",
                 resume_data={"games": games},
@@ -937,6 +960,12 @@ def render():
             let luckyNumbers = new Set();
             const registeredFamilyLucky = {js_lucky_array};
             const numberWeights = {js_number_weights};
+            // 2026-09-20(사용자 지시, 재도입): 관리자 "메인화면 유력수" 6개 —
+            // registeredFamilyLucky(사용자 개인 행운수)와는 완전히 다른 별개
+            // 데이터다. 값이 없거나 형식이 깨졌으면(Python 쪽에서 이미 검증)
+            // 빈 배열이라 아래 fillRandomSlots()의 강제삽입 로직이 자동으로
+            // 아무 영향 없이 건너뛴다.
+            const ADMIN_LUCKY_NUMBERS = {js_admin_lucky_numbers};
             let poolCombos = {js_pool_combos};
             const thunderFilter = {js_filter_config};
             const patternRules = {js_pattern_rules};
@@ -1183,9 +1212,12 @@ def render():
             // 나머지 빈 자리를 채울 때 완전 무작위 대신, 1회~최신회차 실제 당첨
             // 데이터의 번호별 출현 횟수(numberWeights)를 가중치로 비복원 추출한다
             // — "과거 데이터를 근거로 그 패턴 유형 우선순위로 조합이 생성돼야
-            // 한다"는 요구사항. (예전엔 여기서 "관리자 행운수"라는 admin이 매주
-            // 손으로 감으로 입력하던, 과거 데이터와 무관한 리스트를 섞어 넣고
-            // 있었다 — 완전히 제거했다.)
+            // 한다"는 요구사항. 관리자가 손으로 입력하는 "메인화면 유력수"
+            // (ADMIN_LUCKY_NUMBERS)는 이 함수 자체에는 안 섞는다 — 강제 삽입은
+            // fillRandomSlots()에서 최소1~최대2개로 한정해서 별도 처리하고,
+            // 이 함수는 순수하게 과거 데이터 가중치로만 나머지를 채운다(둘의
+            // 책임을 분리 — fillRandomSlots가 상한 2개를 넘지 않도록 이 함수에
+            // 넘기는 sourcePool에서 이미 유력수를 걸러줄 때도 있음).
             function weightedPickWithoutReplacement(count, sourcePool) {{
                 const candidates = sourcePool.slice();
                 const picked = [];
@@ -1266,7 +1298,37 @@ def render():
                 game = game.concat(pickedLucky);
                 pickedLucky.forEach(n => gameSet.add(n));
 
-                const remainingPool = pool.filter(n => !gameSet.has(n));
+                // 2026-09-20(사용자 지시, 재도입): 관리자 "메인화면 유력수" 6개
+                // (ADMIN_LUCKY_NUMBERS) 중 최소 1개는 반드시 강제 포함시킨다 —
+                // 단, 고정수/개인 행운수로 이미 우연히 포함돼 있으면(예: 고정수
+                // 중 하나가 마침 유력수이기도 한 경우) 추가로 더 강제하지 않고
+                // 그대로 인정한다(이중 강제 방지). 자리가 이미 다 찼거나(고정수
+                // 6개 — 이 경우 이 함수 자체가 안 불림, buildOneGame 참고), 6개
+                // 유력수가 전부 삭제수/고정수와 겹쳐 pool에 하나도 안 남았으면
+                // 강제할 후보가 없으므로 조용히 건너뛴다(생성 자체를 막지 않음).
+                let adminLuckyInGame = game.filter(n => ADMIN_LUCKY_NUMBERS.includes(n)).length;
+                if (adminLuckyInGame === 0 && game.length < 6) {{
+                    const adminLuckyCandidates = pool.filter(
+                        n => ADMIN_LUCKY_NUMBERS.includes(n) && !gameSet.has(n)
+                    );
+                    if (adminLuckyCandidates.length > 0) {{
+                        const forced = adminLuckyCandidates[
+                            Math.floor(Math.random() * adminLuckyCandidates.length)
+                        ];
+                        game.push(forced);
+                        gameSet.add(forced);
+                        adminLuckyInGame = 1;
+                    }}
+                }}
+
+                // 최대 2개 상한: 이미 2개(또는 그 이상, 고정수만으로 2개 이상
+                // 겹쳤을 수도 있음) 도달했으면, 나머지 자리를 채우는 가중치
+                // 추첨 후보에서 유력수를 미리 제외해 3개째가 우연히도 안
+                // 들어가게 막는다(1~2개 초과 방지).
+                let remainingPool = pool.filter(n => !gameSet.has(n));
+                if (adminLuckyInGame >= 2) {{
+                    remainingPool = remainingPool.filter(n => !ADMIN_LUCKY_NUMBERS.includes(n));
+                }}
                 const pickedRest = weightedPickWithoutReplacement(6 - game.length, remainingPool);
                 game = game.concat(pickedRest);
                 return game;

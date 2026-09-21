@@ -21,9 +21,16 @@ from user_scope import get_or_create_guest_id, init_guest_scope
 MAX_LINES = 5
 _NUMS = range(1, 46)
 _MAX_ATTEMPTS = 30000
-# 0~2개 허용으로 시도해보고 부족하면 0~3개까지만 완화한다(4개부터는 "안티/액땜"의
-# 의미가 퇴색된다는 게 사용자와 합의된 기준) — 이 필터 자체는 UI에 노출하지 않는다.
-_OVERLAP_STEPS = (2, 3)
+# 2026-09-20(사용자 지시 — "모호한 기준 없이 명확하게"): 예전엔 0~2개로
+# 시도하다 후보가 부족하면 0~3개까지 자동으로 완화하는 2단계 로직이었는데,
+# 기준이 흔들려 혼선이 있었다. 완화 없이 고정 상한 하나만 쓴다.
+# 개별리셋(줄별, generate_anti_combinations): 입력 줄 하나하나와 겹침이
+# 각각 최대 2개.
+_ANTI_MAX_OVERLAP = 2
+# 전체리셋(합산, generate_aekddaem_combinations): 입력 줄 전체를 합친 풀과의
+# 겹침이 "결과로 선택되는 5줄 전체를 합산"해서 최대 3개(조합 하나하나가
+# 아니라 5줄 누적 합계에 적용되는 상한 — 자세한 건 해당 함수 주석 참고).
+_AEKDDAEM_TOTAL_OVERLAP_CAP = 3
 
 # 동행복권 로또 용지 QR의 v= 값 포맷: {회차4자리}({모드글자1}{번호6개를 2자리씩
 # 이어붙인 12자리}) 이 최대 5번 반복. 글자(수동/자동 구분으로 추정) 자체의 의미는
@@ -117,45 +124,56 @@ def _pool_priority_matches(
 
 
 def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
-    """각 입력 줄과 개별적으로 겹침이 적은 조합을 생성 — 안티조합(줄별 방식)."""
+    """각 입력 줄과 개별적으로 겹침이 적은 조합을 생성 — 개별리셋(줄별 방식).
+
+    2026-09-20(사용자 지시): 예전엔 줄당 최대 2개로 시도하다 후보가 부족하면
+    3개까지 자동으로 완화하는 2단계 로직이었다 — "모호한 기준 없이"로
+    정리한다: 입력된 줄 하나하나와 겹치는 개수가 항상 _ANTI_MAX_OVERLAP(2)
+    이하가 되도록 고정하고, 완화하지 않는다. 그래도 count를 못 채우면(이론상
+    가능성은 낮지만) 기준값패턴 최다충족 후보로 채운다 — 겹침 기준 자체는
+    절대 안 풀린다."""
     from lotto_stats import get_number_weights, get_resolved_pattern_rules, score_combo_against_pattern_rules
 
     weights = get_number_weights()
     pattern_rules = get_resolved_pattern_rules()
-    results: list[tuple[int, ...]] = []
-    for max_overlap in _OVERLAP_STEPS:
-        results = list(
-            _pool_priority_matches(
-                lambda c, mo=max_overlap: all(
-                    len(set(c) & set(line)) <= mo for line in lines
-                ),
-                count,
-            )
+
+    results: list[tuple[int, ...]] = list(
+        _pool_priority_matches(
+            lambda c: all(len(set(c) & set(line)) <= _ANTI_MAX_OVERLAP for line in lines),
+            count,
         )
-        fallback: list[tuple[int, tuple[int, ...]]] = []
-        seen: set[tuple[int, ...]] = set(results)
-        for _ in range(_MAX_ATTEMPTS):
-            if len(results) >= count:
-                break
-            candidate = _weighted_combo(weights)
-            if candidate in seen:
-                continue
-            seen.add(candidate)
-            if not all(len(set(candidate) & set(line)) <= max_overlap for line in lines):
-                continue
-            all_pass, matched, _total = score_combo_against_pattern_rules(candidate, pattern_rules)
-            if all_pass:
-                results.append(candidate)
-            else:
-                fallback.append((matched, candidate))
-        results = _fill_with_best_pattern_fallback(results, fallback, count)
+    )
+    fallback: list[tuple[int, tuple[int, ...]]] = []
+    seen: set[tuple[int, ...]] = set(results)
+    for _ in range(_MAX_ATTEMPTS):
         if len(results) >= count:
             break
+        candidate = _weighted_combo(weights)
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if not all(len(set(candidate) & set(line)) <= _ANTI_MAX_OVERLAP for line in lines):
+            continue
+        all_pass, matched, _total = score_combo_against_pattern_rules(candidate, pattern_rules)
+        if all_pass:
+            results.append(candidate)
+        else:
+            fallback.append((matched, candidate))
+    results = _fill_with_best_pattern_fallback(results, fallback, count)
     return results[:count]
 
 
 def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> list[tuple[int, ...]]:
-    """입력된 모든 줄을 합친 전체 번호 풀과 겹침이 적은 조합을 생성 — 액땜조합(전체 방식)."""
+    """입력된 모든 줄을 합친 전체 번호 풀과, 결과로 선택되는 5줄 전체를
+    합산했을 때의 겹침이 적은 조합을 생성 — 전체리셋(합산 방식).
+
+    2026-09-20(사용자 지시, 재정의): 예전엔 조합 하나하나를 서로 독립적으로
+    "그 조합과 구매번호 풀의 겹침 ≤2(부족하면 3)"만 검사했다 — 이러면 5줄을
+    다 채웠을 때 최대 10~15개까지 겹칠 수 있어, 실제 기준("5줄 합산 최대
+    3개")과 달랐다. 이제는 지금까지 선택된 결과 조합들의 누적 합산 겹침이
+    _AEKDDAEM_TOTAL_OVERLAP_CAP(3)을 넘지 않는 한도 안에서만 새 조합을
+    추가한다 — 조합 하나하나의 상한이 아니라 5줄 전체의 상한이라는 점이
+    핵심. 완화 없음(고정 상한)."""
     from lotto_stats import get_number_weights, get_resolved_pattern_rules, score_combo_against_pattern_rules
 
     weights = get_number_weights()
@@ -163,32 +181,64 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
     pool: set[int] = set()
     for line in lines:
         pool |= set(line)
+
+    def _overlap(combo: tuple[int, ...]) -> int:
+        return len(set(combo) & pool)
+
     results: list[tuple[int, ...]] = []
-    for max_overlap in _OVERLAP_STEPS:
-        results = list(
-            _pool_priority_matches(
-                lambda c, mo=max_overlap: len(set(c) & pool) <= mo, count
-            )
-        )
-        fallback: list[tuple[int, tuple[int, ...]]] = []
-        seen: set[tuple[int, ...]] = set(results)
-        for _ in range(_MAX_ATTEMPTS):
-            if len(results) >= count:
-                break
-            candidate = _weighted_combo(weights)
-            if candidate in seen:
-                continue
-            seen.add(candidate)
-            if len(set(candidate) & pool) > max_overlap:
-                continue
-            all_pass, matched, _total = score_combo_against_pattern_rules(candidate, pattern_rules)
-            if all_pass:
-                results.append(candidate)
-            else:
-                fallback.append((matched, candidate))
-        results = _fill_with_best_pattern_fallback(results, fallback, count)
+    seen: set[tuple[int, ...]] = set()
+    cumulative_overlap = 0
+
+    # 1) 저장된 배포용 풀(참고 샘플, 소비되지 않음)에서 예산 안에 드는 것부터
+    #    우선 채운다. 조건 자체는 "겹침 개수"가 아니라 항상 통과(True)시켜서
+    #    여기서 직접 누적 예산을 관리한다 — _pool_priority_matches의 조건
+    #    콜백은 조합 1개 단위라 누적 상태를 못 들고 있기 때문.
+    for combo in _pool_priority_matches(lambda c: True, count * 5):
         if len(results) >= count:
             break
+        if combo in seen:
+            continue
+        seen.add(combo)
+        ov = _overlap(combo)
+        if cumulative_overlap + ov > _AEKDDAEM_TOTAL_OVERLAP_CAP:
+            continue
+        results.append(combo)
+        cumulative_overlap += ov
+
+    # 2) 남은 자리는 가중치 추첨 — 매 시도마다 "지금까지 누적 + 이 후보의
+    #    겹침"이 상한을 넘는지 먼저 확인하고, 넘으면 이 후보는 건너뛴다.
+    fallback: list[tuple[int, tuple[int, ...], int]] = []
+    for _ in range(_MAX_ATTEMPTS):
+        if len(results) >= count:
+            break
+        candidate = _weighted_combo(weights)
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        ov = _overlap(candidate)
+        if cumulative_overlap + ov > _AEKDDAEM_TOTAL_OVERLAP_CAP:
+            continue
+        all_pass, matched, _total = score_combo_against_pattern_rules(candidate, pattern_rules)
+        if all_pass:
+            results.append(candidate)
+            cumulative_overlap += ov
+        else:
+            fallback.append((matched, candidate, ov))
+
+    # 3) 그래도 못 채웠으면 기준값패턴 최다충족 순으로, 역시 누적 예산이
+    #    허용하는 것만 채운다 — 겹침 상한은 이 단계에서도 절대 안 풀린다
+    #    (_fill_with_best_pattern_fallback을 그대로 못 쓰는 이유 — 그 함수는
+    #    누적 예산 개념이 없어 상한을 넘겨버릴 수 있다).
+    if len(results) < count:
+        fallback.sort(key=lambda x: -x[0])
+        for _matched, cand, ov in fallback:
+            if len(results) >= count:
+                break
+            if cumulative_overlap + ov > _AEKDDAEM_TOTAL_OVERLAP_CAP:
+                continue
+            results.append(cand)
+            cumulative_overlap += ov
+
     return results[:count]
 
 
