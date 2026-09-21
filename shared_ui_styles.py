@@ -58,8 +58,26 @@ def main_nav_button_css() -> str:
     return _MAIN_NAV_BTN_CSS
 
 
-def main_nav_button_html(href: str = "?") -> str:
+def _main_href_default() -> str:
+    """"메인으로" 내부이동 링크의 기본값 — 반드시 internal_nav_href()를 거친다.
+
+    2026-09-21(카카오 로그인 버튼이 눌러도 먹통인 원인): 예전 기본값은 `"?"`였다 —
+    `?`는 쿼리스트링을 통째로 비우는 이동이라, 이 링크(상세페이지 좌상단 로또신령
+    아이콘)를 한 번 누르면 주소창의 gid와 native=1이 함께 사라졌고 아랫단의 클릭
+    패치(user_page.py)는 gid만 되붙였다. native=1은 wallet_ui.py 로그인 배너가
+    "앱 전용(카카오 SDK 버튼)"과 "일반 웹 링크"를 가르는 유일한 신호라, 이 아이콘을
+    누른 뒤에는 앱인데도 배너가 웹 분기로 떨어졌다 — 카카오 로그인 페이지가 앱
+    웹뷰 안에서 열리고 리다이렉트 주소도 개발 PC IP로 잡혀 로그인이 끝나지 않았다.
+    지금 요청에 있는 gid·native를 그대로 이어서 보낸다."""
+    from user_scope import internal_nav_href
+
+    return internal_nav_href("main")
+
+
+def main_nav_button_html(href: str | None = None) -> str:
     """모든 상세페이지 공통 "메인으로" 버튼 HTML — 검은 알약 + 금테 원형 아이콘."""
+    if not href:
+        href = _main_href_default()
     icon_base64 = _main_nav_icon_base64()
     icon_html = (
         f'<img class="auto-back-main-icon" src="data:image/jpeg;base64,{icon_base64}" alt="로또신령">'
@@ -111,10 +129,16 @@ def brand_home_link_css() -> str:
     return _BRAND_HOME_LINK_CSS
 
 
-def brand_home_link_html(href: str = "?") -> str:
+def brand_home_link_html(href: str | None = None) -> str:
     """화면 좌상단에 떠 있는 작은 원형 아이콘(글자 없음) — 클릭하면 메인으로.
     position:fixed라 문서 흐름에서 빠져 있어 다른 요소를 밀어내지 않는다
-    (진짜 "자리를 차지하지 않는" 버전)."""
+    (진짜 "자리를 차지하지 않는" 버전).
+
+    href를 주지 않으면 internal_nav_href("main")으로 만든다(_main_href_default
+    참고 — 예전 기본값 `"?"`는 gid와 native=1을 통째로 잃어, 앱에서 카카오 로그인
+    배너가 웹 분기로 새는 원인이었다)."""
+    if not href:
+        href = _main_href_default()
     icon_base64 = _main_nav_icon_base64()
     icon_html = (
         f'<img class="brand-home-link-icon" src="data:image/jpeg;base64,{icon_base64}" alt="메인으로">'

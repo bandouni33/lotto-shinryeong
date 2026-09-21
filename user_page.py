@@ -185,8 +185,16 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
             // (네이티브 앱이 아직 안 보내던 시절과 똑같이) 쿠키 폴백으로 되돌아가
             // 버린다. 클릭 시점에 현재 URL의 gid를 읽어 그 링크의 href에 실시간으로
             // 붙여줘서, 앱 안에서 어떤 링크를 눌러도 게스트 식별자가 계속 이어지게 한다.
-            function currentGid() {
-                const m = doc.location.search.match(/[?&]gid=([^&]*)/);
+            // 2026-09-21(카카오 로그인 버튼 먹통): 예전엔 gid만 되붙였는데, native=1
+            // (= 이 요청이 네이티브 앱에서 왔다는 유일한 신호)도 같은 방식으로 사라질
+            // 수 있어서 앱인데도 wallet_ui.py 로그인 배너가 "일반 웹 링크" 분기로
+            // 떨어졌다 — 그 링크는 앱 웹뷰 안에서 카카오 로그인 페이지를 열고
+            // 리다이렉트 주소가 개발 PC IP라 로그인이 끝나지 않는다. 지금 요청에
+            // native가 있으면 gid와 똑같이 이어 붙인다(어느 링크를 눌러도 앱 모드가
+            // 유지되는 안전망 — 상세페이지 로또신령 아이콘은 shared_ui_styles 쪽에서
+            // 아예 internal_nav_href로 고쳤다).
+            function currentParam(name) {
+                const m = doc.location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
                 return m ? m[1] : null;
             }
             // 이 컴포넌트는 st.rerun()마다 다시 렌더링되는데, 매번 새 리스너를 doc에
@@ -194,14 +202,21 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
             if (!doc.__gidLinkPatchBound) {
                 doc.__gidLinkPatchBound = true;
                 doc.addEventListener('click', function(e) {
-                    const gid = currentGid();
-                    if (!gid) return;
+                    const gid = currentParam('gid');
+                    const nativeMark = currentParam('native');
+                    if (!gid && !nativeMark) return;
                     const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
                     if (!a) return;
                     const href = a.getAttribute('href') || '';
-                    if (!href || /^https?:\\/\\//i.test(href) || href.indexOf('gid=') !== -1) return;
+                    if (!href || /^https?:\\/\\//i.test(href)) return;
+                    const add = [];
+                    if (gid && href.indexOf('gid=') === -1) add.push('gid=' + encodeURIComponent(gid));
+                    if (nativeMark && href.indexOf('native=') === -1) {
+                        add.push('native=' + encodeURIComponent(nativeMark));
+                    }
+                    if (!add.length) return;
                     const sep = href.endsWith('?') ? '' : (href.indexOf('?') === -1 ? '?' : '&');
-                    a.setAttribute('href', href + sep + 'gid=' + encodeURIComponent(gid));
+                    a.setAttribute('href', href + sep + add.join('&'));
                 }, true);
             }
         })();

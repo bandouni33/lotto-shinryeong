@@ -487,6 +487,39 @@ def _fire_kakao_native_login_trigger() -> None:
     )
 
 
+def _log_login_branch_once(is_native_app: bool) -> None:
+    """로그인 배너가 어느 분기(앱 전용 카카오 SDK 버튼 / 일반 웹 링크)로 그려졌는지
+    세션당 1회만 기록한다(2026-09-21 진단).
+
+    앱인데도 native=1이 유실돼 웹 분기로 떨어지는 사례가 실제로 있었고, 그때는 앱
+    웹뷰 안에서 카카오 로그인 페이지가 열려 로그인이 끝나지 않는다("눌러도 먹통").
+    수정 전후로 실사용 데이터를 비교할 수 있게 남긴다. 순수 계측이라 실패해도 배너
+    렌더에 영향을 주지 않도록 예외를 전부 삼킨다(security_log._NON_ALERTING_EVENT_TYPES
+    에 등록해 '침입 시도' 배지 집계에서는 빠진다)."""
+    key = "_kakao_login_branch_logged"
+    if st.session_state.get(key):
+        return
+    st.session_state[key] = True
+    try:
+        import security_log
+
+        try:
+            ua = st.context.headers.get("User-Agent") or ""
+        except Exception:
+            ua = ""
+        # 참고용 진단값이다 — 문자열이 아니면(모의 컨텍스트 등) 비우고 진행한다.
+        if not isinstance(ua, str):
+            ua = ""
+        security_log.log_event(
+            "kakao_login_branch",
+            f"branch={'native' if is_native_app else 'web'} "
+            f"native_param={st.query_params.get('native')!r} "
+            f"wv={'1' if 'wv' in ua else '0'} android={'1' if 'Android' in ua else '0'}",
+        )
+    except Exception:
+        pass
+
+
 def _render_auth_banner_form() -> None:
     # 2026-09-12(사용자 지시 — "초간단하게 가로·세로 대폭 줄이기"): 제목 문구,
     # "카카오 로그인 후 이 화면으로 돌아옵니다" 안내, PASS·금융인증서 안내를
@@ -546,6 +579,7 @@ def _render_auth_banner_form() -> None:
         # 네이티브 SDK를 직접 호출하는 버튼으로 바꾼다. 일반 웹 접속은
         # 기존 방식 그대로 둔다(영향 없음).
         is_native_app = st.query_params.get("native") == "1"
+        _log_login_branch_once(is_native_app)
         with st.container(key="auth_banner_kakao"):
             if is_native_app:
                 if st.button(

@@ -34,8 +34,44 @@ def fincert_configured() -> bool:
     return bool(os.environ.get("FINCERT_CLIENT_ID", "").strip())
 
 
+def _origin_from_headers(headers) -> str | None:
+    """요청 헤더에서 "이 서버가 지금 어느 주소로 서비스되고 있는지"(origin)를 만든다.
+
+    2026-09-21(카카오 로그인 버튼이 눌러도 먹통): 예전엔 KAKAO_REDIRECT_URI가
+    설정돼 있지 않으면 무조건 "http://localhost:8501"을 카카오에 알려줬다 — 로컬
+    개발 서버에서는 그게 맞지만, 배포된 서버가 이 값을 그대로 쓰면 카카오는 로그인을
+    마치고 "접속한 기기 자신의 localhost"로 돌려보내려 해서 어떤 폰에서도 돌아올 수
+    없다(버튼을 눌러도 로그인이 끝나지 않음). 환경변수가 비어 있을 때는 요청이 실제로
+    들어온 호스트를 그대로 쓴다 — 로컬 개발은 Host가 localhost라 기존과 동일하다."""
+    try:
+        get = getattr(headers, "get", None)
+        if get is None:
+            return None
+        host = (get("Host") or get("host") or "").strip()
+        if not host:
+            return None
+        proto = (
+            get("X-Forwarded-Proto") or get("x-forwarded-proto") or ""
+        ).split(",")[0].strip().lower()
+        if proto not in ("http", "https"):
+            proto = "http" if host.split(":")[0] in ("localhost", "127.0.0.1", "0.0.0.0") else "https"
+        return f"{proto}://{host}"
+    except Exception:
+        return None
+
+
+def _request_origin() -> str | None:
+    try:
+        return _origin_from_headers(st.context.headers)
+    except Exception:
+        return None
+
+
 def _redirect_uri() -> str:
-    return os.environ.get("KAKAO_REDIRECT_URI", "http://localhost:8501").strip()
+    configured = os.environ.get("KAKAO_REDIRECT_URI", "").strip()
+    if configured:
+        return configured
+    return _request_origin() or "http://localhost:8501"
 
 
 def _current_ua_hash() -> str | None:

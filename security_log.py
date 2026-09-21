@@ -23,6 +23,7 @@ EVENT_LABELS = {
     "guest_autologin_ua_mismatch": "게스트 자동로그인 UA 불일치 차단",
     "mock_charge_rate_limited": "Mock 결제(테스트 충전) 횟수 제한 도달",
     "toss_amount_mismatch": "토스 결제 콜백 금액 위·변조 의심(승인 거부)",
+    "kakao_login_branch": "카카오 로그인 배너 분기(계측)",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용
@@ -30,7 +31,10 @@ EVENT_LABELS = {
 # 배지가 정상 트래픽만으로 상시 빨간불이 된다(admin_dashboard.py의
 # `_sec_recent_count > 0` 조건). 침입 의심 배지 집계에서는 제외하고,
 # list_recent_events()의 상세 목록에는 그대로 남겨 계측 목적은 유지한다.
-_NON_ALERTING_EVENT_TYPES = frozenset({"cookie_reachable"})
+# 2026-09-21: kakao_login_branch도 같은 이유(순수 계측)로 뺀다 — 로그인 배너가
+# 네이티브 분기/웹 분기 중 어디로 그려졌는지 세션당 1회 기록하는 진단용 이벤트라,
+# 정상 트래픽만으로 "🚨 침입 시도 의심" 배지가 켜지면 안 된다.
+_NON_ALERTING_EVENT_TYPES = frozenset({"cookie_reachable", "kakao_login_branch"})
 
 
 def _connect():
@@ -81,6 +85,11 @@ def log_event(event_type: str, detail: str = "") -> None:
     try:
         ip = st.context.ip_address
     except Exception:
+        ip = None
+    # 2026-09-21: ip_address가 문자열이 아닌 값이면(테스트 하네스의 모의 컨텍스트 등)
+    # 파라미터 바인딩 자체가 실패해 이벤트 기록이 통째로 날아간다 — 참고용 값이므로
+    # 문자열이 아니면 None으로 떨어뜨려 기록 자체는 항상 남게 한다.
+    if not isinstance(ip, str) or not ip.strip():
         ip = None
     conn = _connect()
     conn.execute(
