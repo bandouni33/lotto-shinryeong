@@ -35,6 +35,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
+  // 2026-09-23(사용자 지시): st.dialog(내정보·사용설명서 등)가 열려있는지 —
+  // Streamlit 쪽 wallet_ui.inject_manual_dialog_back_bridge()가 postMessage로
+  // 실시간으로 알려준다. st.dialog는 웹뷰 히스토리를 전혀 안 써서 canGoBack이
+  // 항상 false로 남는다 — 그래서 다이얼로그가 열려 있어도 뒤로가기를 누르면
+  // 곧장 앱 종료로 떨어지던 문제(실기기 신고)의 대응.
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -310,7 +316,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 이 메시지를 아예 안 보내고 URL 폴백만 쓰도록 이미 분기해뒀다.
   const onMessage = useCallback(
     (event: { nativeEvent: { data: string } }) => {
-      let payload: { type?: string; target?: string } | null = null;
+      let payload: { type?: string; target?: string; open?: boolean } | null = null;
       try {
         payload = JSON.parse(event.nativeEvent.data);
       } catch {
@@ -320,6 +326,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         goToQrScan();
       } else if (payload?.type === 'kakaoNativeLogin') {
         triggerKakaoNativeLoginOnce();
+      } else if (payload?.type === 'dialogState') {
+        // wallet_ui.inject_manual_dialog_back_bridge()가 보내는 신호 — st.dialog
+        // (내정보·사용설명서 등 전부 공통)가 지금 열려 있는지.
+        setDialogOpen(!!payload.open);
       }
     },
     [goToQrScan, triggerKakaoNativeLoginOnce]
@@ -329,9 +339,31 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     router.replace('/');
   }, []);
 
+  // 2026-09-23: 열려 있는 st.dialog의 실제 닫기(X) 버튼을 눌러준다 — Streamlit
+  // 공식 dialog testid([data-testid="stDialog"])와 그 안의 aria-label="Close"
+  // 버튼은 Playwright로 직접 렌더해 확인한 값(버전 바뀌어도 대개 안정적인 ARIA
+  // 계약). 웹뷰의 injectJavaScript는 항상 최상위 문서에서 실행되므로(iframe이
+  // 아님) 별도 브릿지 없이 바로 클릭할 수 있다.
+  const closeOpenDialog = useCallback(() => {
+    webViewRef.current?.injectJavaScript(
+      "(function(){try{" +
+        'var b=document.querySelector(\'[data-testid="stDialog"] button[aria-label="Close"]\');' +
+        'if(b){b.click();}' +
+        '}catch(e){}})();true;'
+    );
+  }, []);
+
   const handleNativeBack = useCallback(() => {
     if (error) {
       setError(null);
+      return true;
+    }
+    // 2026-09-23(사용자 지시): 다이얼로그가 열려 있으면 최우선으로 그것부터
+    // 닫는다 — canGoBack/showBack보다 먼저 확인해야, 다이얼로그가 열린 채로
+    // 뒤로가기를 눌렀을 때 앱이 그대로 종료되던 문제가 사라진다.
+    if (dialogOpen) {
+      closeOpenDialog();
+      setDialogOpen(false);
       return true;
     }
     if (canGoBack && webViewRef.current) {
@@ -344,7 +376,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     }
     BackHandler.exitApp();
     return true;
-  }, [canGoBack, error, goToStreamlitHome, showBack]);
+  }, [canGoBack, closeOpenDialog, dialogOpen, error, goToStreamlitHome, showBack]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {

@@ -324,8 +324,37 @@ def manual_css() -> str:
     padding-top: 9px;
     margin-top: 6px;
 }
+/* 2026-09-23(사용자 지시): (1) 차례 바로 아래 — 버튼만 나열돼 있어서 누르면 자세한
+   설명이 나온다는 걸 이용자가 알기 어렵다는 피드백 대응 안내문구. (2) 항목 세부
+   설명창 우측 상단 "닫기" — 뒤로가기로 앱이 종료되는 문제(네이티브 다음 빌드에서
+   대응)와 별개로, 그 안에서 바로 접을 수 있는 버튼이 필요하다는 요청. 버튼 자체는
+   st.button이라 key로 CSS를 건다(manual_dialog()의 exp_key + "_close" 조합).
+   */
+.ln-manual-hint {
+    color: #9aa5c0;
+    font-size: 12px;
+    text-align: left;
+    margin: 0 2px 12px 2px;
+}
+[class*="st-key-manual_exp_"][class*="_close"] button {
+    background: rgba(28, 28, 56, 0.9) !important;
+    color: #c7cee2 !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    padding: 2px 10px !important;
+    min-height: 0 !important;
+    height: auto !important;
+    border: 1px solid rgba(42, 58, 96, 0.9) !important;
+    border-radius: 999px !important;
+}
 </style>
 """
+
+
+def manual_hint_html() -> str:
+    """차례 바로 아래에 두는 한 줄 안내 — 아래 항목 버튼을 눌러야 자세한 설명이
+    펼쳐진다는 걸 이용자가 알 수 있게 한다(2026-09-23 사용자 지시)."""
+    return '<div class="ln-manual-hint">세부사항은 아래 버튼을 클릭해보세요</div>'
 
 
 def manual_overview_html() -> str:
@@ -371,13 +400,40 @@ def manual_footer_html() -> str:
 
 
 # ── 화면 연결부 ─────────────────────────────────────────────────────────────
+def _close_manual_section(exp_key: str) -> None:
+    """항목 세부설명창 우측 상단 "닫기" 버튼 콜백 — 그 항목 하나만 접는다.
+
+    st.expander(key=..., on_change="rerun")로 열어야 expanded 상태를
+    st.session_state[key]로 읽고 쓸 수 있다(Streamlit 공식 동작) — 콜백은
+    그 값을 False로 세팅만 하고, 실제 접힘은 다음 렌더에서 반영된다(이
+    프로젝트의 기존 안전 패턴과 동일하게 콜백 안에서 st.rerun()을 직접
+    부르지 않는다).
+    """
+    st.session_state[exp_key] = False
+
+
+def _render_manual_close_row(exp_key: str) -> None:
+    """항목 카드 맨 위, 우측에 작은 "닫기" 버튼을 놓는다(2026-09-23 사용자 지시)."""
+    _, right = st.columns([5, 1])
+    with right:
+        st.button(
+            "닫기",
+            key=f"{exp_key}_close",
+            on_click=_close_manual_section,
+            args=(exp_key,),
+        )
+
+
 @st.dialog("📖 사용설명서", width="large")
 def manual_dialog() -> None:
-    """표지 → 목차 → 7개 항목(접힘) → 각주."""
+    """표지 → 목차 → 안내문구 → 7개 항목(접힘, 각각 우측상단 닫기) → 각주."""
     st.markdown(manual_css(), unsafe_allow_html=True)
     st.markdown(manual_overview_html(), unsafe_allow_html=True)
-    for section in manual_sections():
-        with st.expander(section["title"]):
+    st.markdown(manual_hint_html(), unsafe_allow_html=True)
+    for idx, section in enumerate(manual_sections()):
+        exp_key = f"manual_exp_{idx}"
+        with st.expander(section["title"], key=exp_key, on_change="rerun"):
+            _render_manual_close_row(exp_key)
             st.markdown(manual_section_html(section), unsafe_allow_html=True)
     st.markdown(manual_footer_html(), unsafe_allow_html=True)
 

@@ -1068,6 +1068,69 @@ def inject_app_haptic() -> None:
     )
 
 
+def inject_manual_dialog_back_bridge() -> None:
+    """st.dialog(내정보·사용설명서 등 전부 공통) 열림 여부를 네이티브 앱에 실시간
+    으로 알린다 — render_wallet_bar가 모든 페이지에서 부르므로 한 곳에서 전체 커버
+    (inject_app_haptic()과 동일한 설치 위치 원칙).
+
+    2026-09-23(사용자 지시): 안드로이드 하드웨어 뒤로가기가, 다이얼로그가 열려
+    있어도 "웹뷰 히스토리가 없다"고 보고 앱을 그대로 종료해버리는 문제 대응 —
+    st.dialog는 브라우저 히스토리를 전혀 안 써서(webview canGoBack이 항상 false)
+    생기는 문제다. 이 함수는 열림/닫힘 신호만 네이티브로 보내고, 실제로 뒤로가기를
+    가로채 다이얼로그를 닫는 처리는 네이티브(streamlit-webview.tsx handleNativeBack)
+    에서 한다 — 그쪽은 앱을 다시 빌드해야 반영되므로 다음 빌드에 포함.
+
+    감지 대상은 Streamlit 공식 dialog testid인 [data-testid="stDialog"] 하나뿐이라
+    st.dialog로 만든 모든 다이얼로그에 공통 적용된다(항목별로 따로 손댈 필요 없음).
+
+    두 기법을 섞어 쓴다 — 둘 다 이 파일에서 이미 실기기로 검증된 방식 그대로 재사용:
+      · MutationObserver 설치 자체는 위 inject_app_haptic()과 같은 방식
+        (window.parent.document에 직접, 가드 플래그로 1회만 설치).
+      · window.ReactNativeWebView.postMessage 호출은 아래 _fire_kakao_native_login_
+        trigger()와 같은 방식(최상위 문서에 <script>를 직접 심어 그 컨텍스트에서
+        실행) — 이 브릿지 객체만은 단순 window.parent 참조로는 실기기에서 안 잡히는
+        경우가 이미 그 함수 독스트링에서 확인돼 있어 그대로 따른다.
+    """
+    components.html(
+        """
+        <script>
+        (function () {
+            var doc = window.parent.document;
+            if (doc.__lnDialogBridgeInstalled) { return; }
+            doc.__lnDialogBridgeInstalled = true;
+
+            var lastOpen = null;
+            function notify(open) {
+                if (open === lastOpen) { return; }
+                lastOpen = open;
+                try {
+                    var top = window.top;
+                    var s = top.document.createElement('script');
+                    s.textContent =
+                        "try{" +
+                        "var rnwv = window.ReactNativeWebView;" +
+                        "if(rnwv && typeof rnwv.postMessage === 'function'){" +
+                        "rnwv.postMessage(JSON.stringify({type:'dialogState', open: " +
+                        (open ? "true" : "false") + "}));" +
+                        "}" +
+                        "}catch(e){}";
+                    top.document.body.appendChild(s);
+                } catch (e) {}
+            }
+
+            function check() {
+                notify(!!doc.querySelector('[data-testid="stDialog"]'));
+            }
+            var observer = new MutationObserver(check);
+            observer.observe(doc.body, { childList: true, subtree: true });
+            check();
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 @st.cache_data(ttl=3, show_spinner=False)
 def _cached_zp_user(zp_uid: str) -> dict | None:
     """render_wallet_bar()의 zp_uid(카카오 미연동 테스트 기간 임시 로그인) 잔액
@@ -1102,6 +1165,7 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     st.session_state[AUTH_BANNER_JUST_DISMISSED] = st.session_state.pop(AUTH_BANNER_DISMISSED, False)
 
     inject_app_haptic()
+    inject_manual_dialog_back_bridge()
     init_zero_phone_tables()
 
     if current_member_id() and st.session_state.get(AUTH_RESUME_FLAG):
