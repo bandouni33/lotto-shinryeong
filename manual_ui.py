@@ -331,13 +331,20 @@ def manual_css() -> str:
    st.button이라 key로 CSS를 건다(manual_dialog()의 exp_key + "_close" 조합).
    */
 .ln-manual-hint {
-    color: #e8ecf7;
+    /* 2026-09-23(실기기 재확인): 안 보이던 진짜 원인은 레이어(z-index)가 아니라
+       다이얼로그 자체 배경이 흰색이라는 것 — 위 .ln-manual-toc처럼 배경을
+       직접 칠하고(카드와 같은 톤), 글자색은 이 파일에서 이미 쓰는 금색
+       (.ln-manual-steps li::before와 동일한 #ffd479)으로 흰 배경이든
+       어떤 배경이든 항상 읽히게 만든다 — 배경색을 추측하지 않아도 된다.*/
+    color: #ffd479;
     font-size: 12.5px;
     font-weight: 800;
     text-align: left;
-    margin: 0 2px 12px 2px;
-    position: relative;
-    z-index: 2;
+    margin: 0 2px 14px 2px;
+    padding: 8px 12px;
+    background: #171f3d;
+    border: 1px solid #2a3a60;
+    border-radius: 10px;
 }
 [class*="st-key-manual_exp_"][class*="_close"] button {
     background: rgba(28, 28, 56, 0.9) !important;
