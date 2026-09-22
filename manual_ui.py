@@ -331,10 +331,13 @@ def manual_css() -> str:
    st.button이라 key로 CSS를 건다(manual_dialog()의 exp_key + "_close" 조합).
    */
 .ln-manual-hint {
-    color: #9aa5c0;
-    font-size: 12px;
+    color: #e8ecf7;
+    font-size: 12.5px;
+    font-weight: 800;
     text-align: left;
     margin: 0 2px 12px 2px;
+    position: relative;
+    z-index: 2;
 }
 [class*="st-key-manual_exp_"][class*="_close"] button {
     background: rgba(28, 28, 56, 0.9) !important;
