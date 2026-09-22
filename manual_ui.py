@@ -207,83 +207,45 @@ def manual_css() -> str:
     return """
 <style>
 /* 사용설명서 — 앱 다크 팔레트(#12182b/#1c2645/#2a3a60) + 금색 괘선의 메뉴얼 톤.
-   클래스 접두사를 ln-manual-로 고정해 다른 화면 CSS와 충돌하지 않게 한다. */
-.ln-manual-head {
-    background: linear-gradient(150deg, #1c2645 0%, #141c33 55%, #101728 100%);
-    border: 1px solid #2a3a60;
-    border-radius: 16px;
-    padding: 16px 16px 14px 16px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-    position: relative;
-    overflow: hidden;
-    margin-bottom: 12px;
-}
-.ln-manual-head::after {
-    content: "";
-    position: absolute;
-    left: 16px; right: 16px; bottom: 10px;
-    height: 1px;
-    background: linear-gradient(90deg, rgba(255, 179, 0, 0) 0%, rgba(255, 179, 0, 0.85) 35%,
-                rgba(255, 179, 0, 0.85) 65%, rgba(255, 179, 0, 0) 100%);
-}
-.ln-manual-kicker {
-    color: #ffb300;
-    font-size: 10.5px;
-    font-weight: 800;
-    letter-spacing: 2.2px;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-}
-.ln-manual-title {
-    color: #ffffff;
-    font-size: 21px;
-    font-weight: 900;
-    letter-spacing: -0.3px;
-    line-height: 1.25;
-}
-.ln-manual-sub {
-    color: #9aa5b1;
-    font-size: 12.5px;
-    line-height: 1.5;
-    margin-top: 6px;
-}
-.ln-manual-ver {
-    position: absolute;
-    top: 14px; right: 14px;
-    background: rgba(255, 179, 0, 0.12);
-    border: 1px solid rgba(255, 179, 0, 0.45);
-    color: #ffd479;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.4px;
-    border-radius: 999px;
-    padding: 3px 9px;
-    white-space: nowrap;
-}
+   클래스 접두사를 ln-manual-로 고정해 다른 화면 CSS와 충돌하지 않게 한다.
+
+   2026-09-23(사용자 지시): 표지 카드(USER GUIDE/제목/버전칩)는 다이얼로그 자체 제목
+   "📖 사용설명서"와 트리거 버튼 라벨이 이미 같은 말을 하고 있어 중복이라 삭제했다.
+   차례의 번호(01~07)·이모지도 같은 이유로 뺐다. 요약 텍스트가 "뿌옇게" 보인다는
+   지적은 색 대비가 낮았던 게 원인으로 보여(#8f9bb0, 11.5px) 더 밝은 색·큰 글자로
+   올렸고, 혹시 겹쳐 보일 만한 레이어가 없도록 position/z-index를 명시했다. */
 .ln-manual-toc {
     border: 1px solid #2a3a60;
     border-radius: 14px;
-    padding: 6px 8px;
-    background: rgba(255, 255, 255, 0.02);
+    padding: 4px 12px;
+    background: #171f3d;
     margin-bottom: 14px;
+    position: relative;
+    z-index: 1;
 }
 .ln-manual-toc-row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    padding: 5px 4px;
+    padding: 9px 0;
     border-bottom: 1px dashed rgba(42, 58, 96, 0.85);
+    text-align: left;
 }
 .ln-manual-toc-row:last-child { border-bottom: none; }
-.ln-manual-toc-no {
-    color: #ffb300;
-    font-size: 11px;
-    font-weight: 900;
-    letter-spacing: 0.6px;
-    min-width: 20px;
+.ln-manual-toc-t {
+    display: block;
+    color: #f2f4fb;
+    font-size: 13.5px;
+    font-weight: 800;
+    text-align: left;
 }
-.ln-manual-toc-t { color: #e8eef2; font-size: 13px; font-weight: 800; }
-.ln-manual-toc-s { color: #8f9bb0; font-size: 11.5px; }
+.ln-manual-toc-s {
+    display: block;
+    color: #c7cee2;
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin-top: 3px;
+    text-align: left;
+    position: relative;
+    z-index: 1;
+}
 .ln-manual-card {
     background: linear-gradient(150deg, #1c2645 0%, #141c33 100%);
     border: 1px solid #2a3a60;
@@ -367,25 +329,15 @@ def manual_css() -> str:
 
 
 def manual_overview_html() -> str:
-    """표지 + 목차."""
+    """차례 — 표지 카드는 다이얼로그 제목("📖 사용설명서")과 중복이라 뺐다(사용자 지시)."""
     rows = "".join(
         f'<div class="ln-manual-toc-row">'
-        f'<span class="ln-manual-toc-no">{_esc(s["no"])}</span>'
-        f'<span class="ln-manual-toc-t">{_esc(s["icon"])} {_esc(s["title"])}</span>'
-        f'<span class="ln-manual-toc-s">— {_esc(s["summary"])}</span>'
+        f'<span class="ln-manual-toc-t">{_esc(s["title"])}</span>'
+        f'<span class="ln-manual-toc-s">{_esc(s["summary"])}</span>'
         f"</div>"
         for s in manual_sections()
     )
-    return (
-        '<div class="ln-manual-head">'
-        f'<div class="ln-manual-ver">{DRAFT_LABEL}</div>'
-        '<div class="ln-manual-kicker">USER GUIDE</div>'
-        '<div class="ln-manual-title">로또신령 사용설명서</div>'
-        '<div class="ln-manual-sub">화면별 이용 방법 · 배포 시간 · 적립금 기준을 한 곳에서 확인하세요.'
-        "</div>"
-        "</div>"
-        f'<div class="ln-manual-toc">{rows}</div>'
-    )
+    return f'<div class="ln-manual-toc">{rows}</div>'
 
 
 def manual_section_html(section: dict) -> str:
@@ -397,7 +349,7 @@ def manual_section_html(section: dict) -> str:
     return (
         '<div class="ln-manual-card">'
         f'<div class="ln-manual-badges"><span class="ln-manual-badge">{_esc(section["badge"])}</span></div>'
-        f'<div class="ln-manual-h">{_esc(section["no"])}. {_esc(section["icon"])} {_esc(section["title"])}</div>'
+        f'<div class="ln-manual-h">{_esc(section["title"])}</div>'
         f'<div class="ln-manual-lead">{_esc(section["summary"])}</div>'
         '<div class="ln-manual-label">이렇게 사용하세요</div>'
         f'<ul class="ln-manual-steps">{steps}</ul>'
@@ -425,7 +377,7 @@ def manual_dialog() -> None:
     st.markdown(manual_css(), unsafe_allow_html=True)
     st.markdown(manual_overview_html(), unsafe_allow_html=True)
     for section in manual_sections():
-        with st.expander(f'{section["no"]} · {section["icon"]} {section["title"]}'):
+        with st.expander(section["title"]):
             st.markdown(manual_section_html(section), unsafe_allow_html=True)
     st.markdown(manual_footer_html(), unsafe_allow_html=True)
 
@@ -442,10 +394,12 @@ def maybe_open_manual() -> None:
 
 
 def render_manual_trigger_button() -> None:
-    """메인화면 "내정보" 버튼 바로 아래에 붙는 안내 버튼(고정 위치).
+    """메인화면 "내정보" 버튼 아래에 간격을 두고 붙는 안내 버튼(고정 위치).
 
     내정보 버튼이 우측 상단(right:12px, top:8px, z-index:999) 고정이라, 같은 폭/스타일로
-    36px 아래에 둔다. 로그인 배너가 떠 있을 때 이 버튼과 겹칠 수 있는지는 컨펌 시 확인 필요.
+    48px 아래(top:56px)에 둔다. 2026-09-22(사용자 지시): 원래 top:44px(36px 간격)이었는데
+    "내정보"와 너무 붙어 보인다는 실기기 피드백으로 12px 더 내렸다. 로그인 배너가 떠 있을 때
+    이 버튼과 겹칠 수 있는지는 컨펌 시 확인 필요.
     """
     st.markdown(
         """
@@ -453,7 +407,7 @@ def render_manual_trigger_button() -> None:
 .st-key-manual_trigger_wrap {
     position: fixed !important;
     right: 12px !important;
-    top: 44px !important;
+    top: 56px !important;
     z-index: 999 !important;
     width: auto !important;
 }
