@@ -229,6 +229,14 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
 
     render_wallet_bar(show_my_info_trigger=(current_page == "main"))
 
+    # 2026-09-22(사용자 지시): 메인화면 "내정보" 버튼 아래에 "사용설명서" 버튼을 고정 노출.
+    # 상세화면(자동구매 등)에는 아직 두지 않는다 — 노출 범위는 메인만으로 컨펌된 범위.
+    if current_page == "main":
+        from manual_ui import maybe_open_manual, render_manual_trigger_button
+
+        render_manual_trigger_button()
+        maybe_open_manual()
+
     import html as _html
 
     # 2026-09-12 수정: get_update_notice()(원격 DB 3회 왕복 — 지금은 1회로
