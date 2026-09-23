@@ -1605,7 +1605,7 @@ from shared_ui_styles import brand_home_link_css, brand_home_link_html
 
 st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
 st.markdown(
-    "<h2 class='af-page-title' style='margin:0; padding-top:2px;'>📊 <span>프리\u200b미엄 패턴 분석 세\u200b팅</span></h2>",
+    "<h2 class='af-page-title' style='margin:0; padding-top:2px;'>📊 <span>프리미엄 패턴 분석 세팅</span></h2>",
     unsafe_allow_html=True,
 )
 
@@ -1927,7 +1927,7 @@ with st.container(key="af_bottom_center"):
     # ==========================================================
     # ==========================================================
     st.markdown("---")
-    st.markdown("<h3 class='af-section-title'>🛠️ 나만의 고\u200b급필터 (2단계 전용)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='af-section-title'>🛠️ 나만의 고급필터 (2단계 전용)</h3>", unsafe_allow_html=True)
 
     # K-295 엑셀 양식 업로드
     uploaded_file = st.file_uploader("K-295 엑셀 파일 업로드", type=["xlsx"], key="af_k295_upload_6n36s5")

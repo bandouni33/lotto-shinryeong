@@ -139,7 +139,7 @@
     <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box gold">
             <div class="menu-icon">⚡</div>
-            <div class="menu-title">번\u200b\u200b개조합</div>
+            <div class="menu-title">번개조합</div>
             <div class="menu-sub">빠른 조합</div>
         </div>
     </a>

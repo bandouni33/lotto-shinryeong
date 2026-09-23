@@ -449,7 +449,7 @@ def render():
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="main-title">⚡ 번\u200b\u200b개조합</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">⚡ 번개조합</div>', unsafe_allow_html=True)
 
     # 2026-09-11(사용자 지시): "조합생성 완료" 안내는 버튼 바로 밑에 표시 —
     # 조합시작 버튼 줄 다음(번호판 iframe 앞)으로 옮겼다(자동구매·안티액땜·타로와
@@ -935,9 +935,9 @@ def render():
     <body>
         <div class="gen-progress-banner" id="genProgressBanner" style="display:none;"></div>
         <div class="tab-container">
-            <div id="tab-delete" class="tab active" onclick="setMode('delete')">삭\u200b제수</div>
-            <div id="tab-fixed" class="tab" onclick="setMode('fixed')">고\u200b정수</div>
-            <div id="tab-lucky" class="tab" onclick="setMode('lucky')">행\u200b운수</div>
+            <div id="tab-delete" class="tab active" onclick="setMode('delete')">삭제수</div>
+            <div id="tab-fixed" class="tab" onclick="setMode('fixed')">고정수</div>
+            <div id="tab-lucky" class="tab" onclick="setMode('lucky')">행운수</div>
         </div>
 
         <div class="lucky-warn-slot">

@@ -923,7 +923,7 @@ def render():
             st.markdown("</div></div>", unsafe_allow_html=True)
 
             # ── 3. 구매 안내 Expander ──
-            with st.expander("⚠️ 구매 안\u200b내 및 유의사항 (필독)"):
+            with st.expander("⚠️ 구매 안내 및 유의사항 (필독)"):
                 st.markdown(
                     """
 • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.
@@ -1009,7 +1009,7 @@ def render():
     if not stats_df.empty:
         stats_df = stats_df[~stats_df["회차"].isin([1233, 1])]
     st.markdown(
-        '<div class="auto-table-title">회차별 당\u200b첨번호 배출</div>',
+        '<div class="auto-table-title">회차별 당첨번호 배출</div>',
         unsafe_allow_html=True,
     )
     if is_mock:

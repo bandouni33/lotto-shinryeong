@@ -35,7 +35,7 @@ if st.session_state.get("is_admin", False):
 # ==========================================
 # 1. 페이지 초기 설정 및 상태 관리
 # ==========================================
-st.set_page_config(page_title="로\u200b또신령", page_icon="K-325.jpg", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="로또신령", page_icon="K-325.jpg", layout="centered", initial_sidebar_state="collapsed")
 
 from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
@@ -955,7 +955,7 @@ if current_page == "main":
     <a href="?page=thunder&fresh=1" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box gold">
             <div class="menu-icon">⚡</div>
-            <div class="menu-title">번\u200b\u200b개조합</div>
+            <div class="menu-title">번개조합</div>
             <div class="menu-sub">빠른 조합</div>
         </div>
     </a>
@@ -1515,7 +1515,7 @@ div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-t
     # 똑같은 접힌 스타일로 통일한다(별도 CSS 추가 불필요).
     with st.container():
         st.markdown('<div class="main-feedback-section-marker"></div>', unsafe_allow_html=True)
-        with st.expander("⚠️ 구매 안​내 및 유의사항 (필독)", expanded=False):
+        with st.expander("⚠️ 구매 안내 및 유의사항 (필독)", expanded=False):
             st.markdown(
                 """
     • **수신 번호 확인:** 본 서비스는 회원정보에 등록된 연락처로 문자가 발송됩니다. 발송 전 번호를 반드시 확인해 주세요.

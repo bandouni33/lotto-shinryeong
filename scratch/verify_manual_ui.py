@@ -1,4 +1,4 @@
-"""manual_ui.py 초안 검증 — 컨펌 전에 확인해야 할 불변식(M1~M5).
+"""manual_ui.py 검증 — 확인해야 할 불변식(M1~M8).
 
   M1. 항목은 7개, 모든 필수 키가 채워져 있고 빈 문자열이 없다.
   M2. 적립금 문구는 하드코딩이 아니라 legal_notices.PRICING에서 계산돼 들어간다
@@ -8,6 +8,8 @@
         · 번개조합/번호검증 = 제한 없음 (해당 화면 소스가 sales_window를 부르지 않음)
   M4. 렌더 HTML이 온전하다 — 태그 짝이 맞고, 7개 제목이 모두 들어가며, None/미치환 표기가 없다.
   M5. 다이얼로그와 트리거 버튼이 예외 없이 뜨고, 버튼 클릭이 rerun 없이 열림 플래그만 세운다.
+  M6. 설명서 연결은 user_page.py 한 곳뿐이고(게시 상태 확정), 트리거 버튼과
+      다이얼로그 열기가 둘 다 실제로 붙어 있다.
 
 실행: venv312\\Scripts\\python.exe scratch\\verify_manual_ui.py
 """
@@ -244,21 +246,29 @@ def check_dialog_and_trigger() -> None:
         failures.append("M5: 클릭해도 설명서 다이얼로그가 열리지 않았다")
 
 
-def check_module_not_wired() -> None:
-    """M6 — 초안은 실제 앱 동작을 바꾸지 않는다: 어떤 진입점/화면도 manual_ui를 안 부른다.
+def check_module_wired_once() -> None:
+    """M6 — 설명서는 메인화면(user_page.py) 한 곳에만 붙어 있다. 커밋 1c228ffa에서 게시 상태로 확정됐다.
 
-    게시 전이므로 저장소 루트의 모든 *.py(초안 자신 제외)를 훑어 참조가 0건이어야 한다 —
-    파일 하나만 보는 검사로는 다른 곳에 슬쩍 연결돼도 못 잡는다."""
+    저장소 루트의 모든 *.py(설명서 자신 제외)를 훑어 참조 파일이 user_page.py 하나인지 본다 —
+    파일 하나만 보는 검사로는 다른 화면으로 번져도 못 잡는다."""
     live = sorted(p for p in ROOT.glob("*.py") if p.name != "manual_ui.py")
     markers = ("manual_ui", "maybe_open_manual", "render_manual_trigger")
-    offenders = [
+    wired = [
         p.name
         for p in live
         if any(m in p.read_text(encoding="utf-8") for m in markers)
     ]
-    print(f"M6 검사 파일 {len(live)}개 · manual_ui 참조 {len(offenders)}개 {offenders}")
-    if offenders:
-        failures.append(f"M6: 초안이 이미 다른 파일에 연결됐다(미연결 상태여야 함): {offenders}")
+    print(f"M6 검사 파일 {len(live)}개 · manual_ui 참조 {len(wired)}개 {wired}")
+    if wired != ["user_page.py"]:
+        failures.append(f"M6: 설명서 연결 위치가 user_page.py 하나가 아니다: {wired}")
+
+
+    main_src = (ROOT / "user_page.py").read_text(encoding="utf-8")
+    for needed in ("render_manual_trigger_button", "maybe_open_manual"):
+        if needed not in main_src:
+            failures.append(
+                f"M6: user_page.py에 {needed} 호출이 없다 — 버튼/다이얼로그 중 하나가 안 붙었다"
+            )
 
 
 def check_all_pricing_keys_drive_text() -> None:
@@ -344,7 +354,7 @@ def main() -> int:
         check_sales_window_matches_code()
         check_html_rendering()
         check_dialog_and_trigger()
-        check_module_not_wired()
+        check_module_wired_once()
         check_all_pricing_keys_drive_text()
         check_special_characters_are_safe()
     print()
