@@ -5,7 +5,7 @@
       (값을 바꾸면 문구도 같이 바뀐다 — 설명서가 실제 가격과 어긋나지 않는다).
   M3. "배포 시간" 표기가 실제 코드와 일치한다:
         · 자동조합 = 화 09:00~토 19:55 (sales_window.is_sales_window_open 과 동일)
-        · 번개조합/구매복권검증 = 제한 없음 (해당 화면 소스가 sales_window를 부르지 않음)
+        · 번개조합/번호검증 = 제한 없음 (해당 화면 소스가 sales_window를 부르지 않음)
   M4. 렌더 HTML이 온전하다 — 태그 짝이 맞고, 7개 제목이 모두 들어가며, None/미치환 표기가 없다.
   M5. 다이얼로그와 트리거 버튼이 예외 없이 뜨고, 버튼 클릭이 rerun 없이 열림 플래그만 세운다.
 
@@ -38,7 +38,7 @@ TITLES = [
     "타로점",
     "자동조합",
     "번개조합",
-    "구매복권 검증 (전체·개별리셋)",
+    "번호 검증 (전체·개별리셋)",
     "고급필터",
     "통계센터",
     "고객불만 / 개선요구사항",
@@ -85,7 +85,7 @@ def check_prices_follow_pricing() -> None:
         ("타로점", f"{PRICING['tarot_extra_draw']:,}P"),
         ("자동조합", f"{PRICING['auto_per_unit'] * 5:,}P"),
         ("번개조합", f"{PRICING['thunder_per_game'] * 10:,}P"),
-        ("구매복권 검증 (전체·개별리셋)", f"{5 * 2 * PRICING['hedge_per_combo']:,}P"),
+        ("번호 검증 (전체·개별리셋)", f"{5 * 2 * PRICING['hedge_per_combo']:,}P"),
         ("고급필터", f"{PRICING['advanced_monthly']:,}P"),
         ("고급필터", f"{PRICING['advanced_3month']:,}P"),
     )
@@ -147,10 +147,10 @@ def check_sales_window_matches_code() -> None:
         failures.append("M3: 자동조합이 sales_window를 안 쓴다 — 설명서 전제가 깨졌다")
     if uses["page_thunder.py"] or uses["page_hedge.py"]:
         failures.append(
-            "M3: 번개조합/구매복권검증이 다시 시간 제한을 쓰기 시작했다 — "
+            "M3: 번개조합/번호검증이 다시 시간 제한을 쓰기 시작했다 — "
             "설명서의 '제한 없음' 문구를 고쳐야 한다"
         )
-    for title in ("번개조합", "구매복권 검증 (전체·개별리셋)"):
+    for title in ("번개조합", "번호 검증 (전체·개별리셋)"):
         badge = sections[title]["badge"]
         if "제한 없음" not in badge:
             failures.append(f"M3: {title} 배지에 '제한 없음'이 없다: {badge!r}")
@@ -269,7 +269,7 @@ def check_all_pricing_keys_drive_text() -> None:
         "tarot_extra_draw": "타로점",
         "auto_per_unit": "자동조합",
         "thunder_per_game": "번개조합",
-        "hedge_per_combo": "구매복권 검증 (전체·개별리셋)",
+        "hedge_per_combo": "번호 검증 (전체·개별리셋)",
         "advanced_monthly": "고급필터",
         "advanced_3month": "고급필터",
     }

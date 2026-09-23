@@ -430,7 +430,7 @@ def _sms_schedule_label(purchase_method: str, sms_days: list[str] | str) -> str:
         days = [d.strip() for d in days.split(",") if d.strip()]
     if purchase_method == "월간구독" and days:
         return "문자 발송 예정: 매주 " + " · ".join(f"{d}요일" for d in days)
-    return "문자 발송: 즉시 구매 (테스트 기간 — 화면 확인)"
+    return "문자 발송: 즉시 조합 (테스트 기간 — 화면 확인)"
 
 
 def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
@@ -503,7 +503,7 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
         else:
             title = f"주문 #{oid}"
     else:
-        title = "구매 완료"
+        title = "조합 완료"
     meta_parts = [f"{combo_count}개 배정", schedule]
     if cost_line:
         meta_parts.append(cost_line)
@@ -842,9 +842,9 @@ def _render_auto_history_content():
     history_items, load_error = _collect_purchase_history_items(mid)
     if not history_items:
         if load_error:
-            st.caption("구매내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.")
+            st.caption("저장내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.")
         else:
-            st.caption("아직 저장한 내역이 없습니다. 구매 확정 후 이곳에 저장됩니다.")
+            st.caption("아직 저장한 내역이 없습니다. 조합시작 후 이곳에 저장됩니다.")
         return
     if load_error:
         st.caption("일부 내역을 불러오지 못했어요. 잠시 후 새로고침하면 전체가 보입니다.")
@@ -2535,7 +2535,7 @@ def render():
                             # 알리고 SMS 없이는 매주 새 번호를 알릴 방법도 없다 — 사용자
                             # 요청 시 다시 추가하기로 하고 정식 출시 범위에서는 뺀다.
                             purchase_method = st.selectbox(
-                                "구매 방식",
+                                "조합 방식",
                                 ["즉시"],
                                 label_visibility="collapsed",
                                 key="auto_purchase_method_6n36s5",
@@ -2567,7 +2567,7 @@ def render():
                     with col_qty:
                         with st.container(key="auto_quantity_zone_6n36s5"):
                             quantity_label = st.selectbox(
-                                "구매 수량",
+                                "조합 수량",
                                 ["5개", "10개"],
                                 label_visibility="collapsed",
                                 key="auto_purchase_quantity_6n36s5",
@@ -2808,7 +2808,7 @@ def render():
             st.markdown(
                 f"""
             <div class="auto-stats-head-row">
-                <div class="auto-table-title">회차별 당\u200b첨번호 배출</div>
+                <div class="auto-table-title">회차별 당첨번호 배출</div>
                 <div class="auto-pattern-applied-note">당 회차에는 {pattern_count:,}개의 필터 규칙이 적용되었습니다</div>
             </div>
             """,
