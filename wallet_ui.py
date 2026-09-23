@@ -925,7 +925,7 @@ def points_notice_dialog(
         _svc_label = {
             "thunder": f"번개조합 {game_count}게임",
             "hedge": f"안티·액땜조합 {quantity}개",
-            "auto": f"자동구매 {quantity}개",
+            "auto": f"자동조합 {quantity}개",
             "tarot": "타로 추가뽑기",
         }.get(service, "구매")
         _amt = {

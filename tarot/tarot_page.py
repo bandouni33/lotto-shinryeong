@@ -854,7 +854,7 @@ def _render_result():
                 <a class="tarot-cta-card primary" href="{internal_nav_href('auto')}" target="_self">
                     <span class="tarot-cta-badge">지금 이 흐름대로</span>
                     <div class="tarot-cta-icon">💎</div>
-                    <div class="tarot-cta-title">자동구매</div>
+                    <div class="tarot-cta-title">자동조합</div>
                     <div class="tarot-cta-desc">고민 없이, 오늘의 조합을<br>바로 받아보세요</div>
                 </a>
                 <a class="tarot-cta-card secondary" href="{internal_nav_href('thunder', fresh='1')}" target="_self">

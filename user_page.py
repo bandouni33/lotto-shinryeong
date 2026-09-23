@@ -948,7 +948,7 @@ if current_page == "main":
     <a href="?page=auto" target="_self" style="text-decoration:none; display:block;">
         <div class="menu-box purple">
             <div class="menu-icon">💎</div>
-            <div class="menu-title">자동구매</div>
+            <div class="menu-title">자동조합</div>
             <div class="menu-sub">자동 발송</div>
         </div>
     </a>
@@ -1524,7 +1524,7 @@ div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-t
 
     • **당첨 면책 조항:** 본 조합 서비스는 당첨을 100% 보장하지 않으며, 실제 로또 결과에 대한 어떠한 법적 책임도 지지 않습니다.
 
-    • **배정 번호 보관 기간:** 자동구매로 배정된 실제 번호는 판매 풀 운영상 최근 2개 회차까지만 보관되며, 그 이전 회차의 배정 번호는 별도로 보관·증빙되지 않습니다. 받으신 번호는 추첨 전에 구매내역 화면에서 미리 확인해 주세요.
+    • **배정 번호 보관 기간:** 자동조합으로 배정된 실제 번호는 운영 풀 운영상 최근 2개 회차까지만 보관되며, 그 이전 회차의 배정 번호는 별도로 보관·증빙되지 않습니다. 받으신 번호는 추첨 전에 저장내역 화면에서 미리 확인해 주세요.
                 """
             )
 

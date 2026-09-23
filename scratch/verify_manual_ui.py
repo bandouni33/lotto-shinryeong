@@ -4,7 +4,7 @@
   M2. 적립금 문구는 하드코딩이 아니라 legal_notices.PRICING에서 계산돼 들어간다
       (값을 바꾸면 문구도 같이 바뀐다 — 설명서가 실제 가격과 어긋나지 않는다).
   M3. "배포 시간" 표기가 실제 코드와 일치한다:
-        · 자동구매 = 화 09:00~토 19:55 (sales_window.is_sales_window_open 과 동일)
+        · 자동조합 = 화 09:00~토 19:55 (sales_window.is_sales_window_open 과 동일)
         · 번개조합/구매복권검증 = 제한 없음 (해당 화면 소스가 sales_window를 부르지 않음)
   M4. 렌더 HTML이 온전하다 — 태그 짝이 맞고, 7개 제목이 모두 들어가며, None/미치환 표기가 없다.
   M5. 다이얼로그와 트리거 버튼이 예외 없이 뜨고, 버튼 클릭이 rerun 없이 열림 플래그만 세운다.
@@ -36,7 +36,7 @@ failures: list[str] = []
 #  한 번 그렇게 어긋나 잡혔다. 제목을 바꿀 때는 이 목록도 같이 고칠 것.)
 TITLES = [
     "타로점",
-    "자동구매",
+    "자동조합",
     "번개조합",
     "구매복권 검증 (전체·개별리셋)",
     "고급필터",
@@ -83,7 +83,7 @@ def check_prices_follow_pricing() -> None:
     sections = {s["title"]: s for s in _manual().manual_sections()}
     checks = (
         ("타로점", f"{PRICING['tarot_extra_draw']:,}P"),
-        ("자동구매", f"{PRICING['auto_per_unit'] * 5:,}P"),
+        ("자동조합", f"{PRICING['auto_per_unit'] * 5:,}P"),
         ("번개조합", f"{PRICING['thunder_per_game'] * 10:,}P"),
         ("구매복권 검증 (전체·개별리셋)", f"{5 * 2 * PRICING['hedge_per_combo']:,}P"),
         ("고급필터", f"{PRICING['advanced_monthly']:,}P"),
@@ -103,7 +103,7 @@ def check_prices_follow_pricing() -> None:
     try:
         legal_notices.PRICING["auto_per_unit"] = 77
         sections2 = {s["title"]: s for s in _manual().manual_sections()}
-        moved = "385P" in sections2["자동구매"]["price"]  # 77 × 5
+        moved = "385P" in sections2["자동조합"]["price"]  # 77 × 5
         print(f"M2   가격 변경 반영(50P→385P): {moved}")
         if not moved:
             failures.append("M2: PRICING을 바꿔도 문구가 따라오지 않는다(하드코딩 의심)")
@@ -131,20 +131,20 @@ def check_sales_window_matches_code() -> None:
     assert is_sales_window_open is not None
     sections = {s["title"]: s for s in _manual().manual_sections()}
 
-    auto_badge = sections["자동구매"]["badge"]
+    auto_badge = sections["자동조합"]["badge"]
     ok = "화 09:00" in auto_badge and "토 19:55" in auto_badge
-    print(f"M3 {'OK ' if ok else '!! '} 자동구매 배지 → {auto_badge!r}")
+    print(f"M3 {'OK ' if ok else '!! '} 자동조합 배지 → {auto_badge!r}")
     if not ok:
-        failures.append(f"M3: 자동구매 배지가 sales_window 규칙과 다르다: {auto_badge!r}")
+        failures.append(f"M3: 자동조합 배지가 sales_window 규칙과 다르다: {auto_badge!r}")
 
-    # 자동구매만 sales_window를 실제로 '호출'한다 → 나머지는 '제한 없음'이 맞다.
+    # 자동조합만 sales_window를 실제로 '호출'한다 → 나머지는 '제한 없음'이 맞다.
     # 단순 문자열 검색은 주석에 남은 함수 이름까지 잡으므로 AST로 호출만 본다
     # (page_thunder.py/page_hedge.py는 제거 이력을 설명하는 주석에 이름이 남아 있다).
     uses = {name: _calls_sales_window(ROOT / name) for name in
             ("page_auto.py", "page_thunder.py", "page_hedge.py")}
     print(f"M3   화면별 sales_window 실제 호출: {uses}")
     if not uses["page_auto.py"]:
-        failures.append("M3: 자동구매가 sales_window를 안 쓴다 — 설명서 전제가 깨졌다")
+        failures.append("M3: 자동조합이 sales_window를 안 쓴다 — 설명서 전제가 깨졌다")
     if uses["page_thunder.py"] or uses["page_hedge.py"]:
         failures.append(
             "M3: 번개조합/구매복권검증이 다시 시간 제한을 쓰기 시작했다 — "
@@ -267,7 +267,7 @@ def check_all_pricing_keys_drive_text() -> None:
 
     key_to_title = {
         "tarot_extra_draw": "타로점",
-        "auto_per_unit": "자동구매",
+        "auto_per_unit": "자동조합",
         "thunder_per_game": "번개조합",
         "hedge_per_combo": "구매복권 검증 (전체·개별리셋)",
         "advanced_monthly": "고급필터",
