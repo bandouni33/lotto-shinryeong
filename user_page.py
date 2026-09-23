@@ -1743,7 +1743,7 @@ elif current_page == "stats":
                 <span class="stat-value" style="color:#aaa; font-size:13px;">이상적 구간 (7~10)</span>
                 <span class="highlight">{ac_val}</span>
             </div>
-            <div style="font-size:12px; color:#4fc3f7; margin-top:8px;">💡 AC값이 7 이상일 때 1등 당첨 확률이 통계적으로 가장 높습니다.</div>
+            <div style="font-size:12px; color:#4fc3f7; margin-top:8px;">💡 AC값 7 이상 구간에서 역대 1등 당첨 조합이 가장 많이 나왔습니다.</div>
         </div>
         
         <div class="stat-card">
