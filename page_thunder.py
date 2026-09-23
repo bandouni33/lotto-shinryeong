@@ -104,7 +104,7 @@ def render():
     )
     has_birthdays = bool(birthdays)
 
-    # 2026-09-20(사용자 지시, 재도입): "메인화면 유력수 보정"(관리자가
+    # 2026-09-20(사용자 지시, 재도입): "메인화면 핵심수 보정"(관리자가
     # admin_dashboard.py > 운영관리에서 손으로 입력, app_settings의
     # main_lucky_numbers 키에 저장 — user_page.py 아이콘 주변 장식용 숫자와
     # 같은 값)을 번개조합 생성에도 반영해달라는 요청. 예전엔 이 기능(당시
@@ -960,7 +960,7 @@ def render():
             let luckyNumbers = new Set();
             const registeredFamilyLucky = {js_lucky_array};
             const numberWeights = {js_number_weights};
-            // 2026-09-20(사용자 지시, 재도입): 관리자 "메인화면 유력수" 6개 —
+            // 2026-09-20(사용자 지시, 재도입): 관리자 "메인화면 핵심수" 6개 —
             // registeredFamilyLucky(사용자 개인 행운수)와는 완전히 다른 별개
             // 데이터다. 값이 없거나 형식이 깨졌으면(Python 쪽에서 이미 검증)
             // 빈 배열이라 아래 fillRandomSlots()의 강제삽입 로직이 자동으로
@@ -1212,12 +1212,12 @@ def render():
             // 나머지 빈 자리를 채울 때 완전 무작위 대신, 1회~최신회차 실제 당첨
             // 데이터의 번호별 출현 횟수(numberWeights)를 가중치로 비복원 추출한다
             // — "과거 데이터를 근거로 그 패턴 유형 우선순위로 조합이 생성돼야
-            // 한다"는 요구사항. 관리자가 손으로 입력하는 "메인화면 유력수"
+            // 한다"는 요구사항. 관리자가 손으로 입력하는 "메인화면 핵심수"
             // (ADMIN_LUCKY_NUMBERS)는 이 함수 자체에는 안 섞는다 — 강제 삽입은
             // fillRandomSlots()에서 최소1~최대2개로 한정해서 별도 처리하고,
             // 이 함수는 순수하게 과거 데이터 가중치로만 나머지를 채운다(둘의
             // 책임을 분리 — fillRandomSlots가 상한 2개를 넘지 않도록 이 함수에
-            // 넘기는 sourcePool에서 이미 유력수를 걸러줄 때도 있음).
+            // 넘기는 sourcePool에서 이미 핵심수를 걸러줄 때도 있음).
             function weightedPickWithoutReplacement(count, sourcePool) {{
                 const candidates = sourcePool.slice();
                 const picked = [];
@@ -1298,13 +1298,13 @@ def render():
                 game = game.concat(pickedLucky);
                 pickedLucky.forEach(n => gameSet.add(n));
 
-                // 2026-09-20(사용자 지시, 재도입): 관리자 "메인화면 유력수" 6개
+                // 2026-09-20(사용자 지시, 재도입): 관리자 "메인화면 핵심수" 6개
                 // (ADMIN_LUCKY_NUMBERS) 중 최소 1개는 반드시 강제 포함시킨다 —
                 // 단, 고정수/개인 행운수로 이미 우연히 포함돼 있으면(예: 고정수
-                // 중 하나가 마침 유력수이기도 한 경우) 추가로 더 강제하지 않고
+                // 중 하나가 마침 핵심수이기도 한 경우) 추가로 더 강제하지 않고
                 // 그대로 인정한다(이중 강제 방지). 자리가 이미 다 찼거나(고정수
                 // 6개 — 이 경우 이 함수 자체가 안 불림, buildOneGame 참고), 6개
-                // 유력수가 전부 삭제수/고정수와 겹쳐 pool에 하나도 안 남았으면
+                // 핵심수가 전부 삭제수/고정수와 겹쳐 pool에 하나도 안 남았으면
                 // 강제할 후보가 없으므로 조용히 건너뛴다(생성 자체를 막지 않음).
                 let adminLuckyInGame = game.filter(n => ADMIN_LUCKY_NUMBERS.includes(n)).length;
                 if (adminLuckyInGame === 0 && game.length < 6) {{
@@ -1323,7 +1323,7 @@ def render():
 
                 // 최대 2개 상한: 이미 2개(또는 그 이상, 고정수만으로 2개 이상
                 // 겹쳤을 수도 있음) 도달했으면, 나머지 자리를 채우는 가중치
-                // 추첨 후보에서 유력수를 미리 제외해 3개째가 우연히도 안
+                // 추첨 후보에서 핵심수를 미리 제외해 3개째가 우연히도 안
                 // 들어가게 막는다(1~2개 초과 방지).
                 let remainingPool = pool.filter(n => !gameSet.has(n));
                 if (adminLuckyInGame >= 2) {{

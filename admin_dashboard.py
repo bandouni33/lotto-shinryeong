@@ -463,7 +463,7 @@ if st.session_state.admin_view == "home":
         change_view("pattern_manage")
         st.rerun()
 
-    # 2026-09-20(사용자 지시): 아래 있던 배너/유력수/동시접속상한/UA보안/
+    # 2026-09-20(사용자 지시): 아래 있던 배너/핵심수/동시접속상한/UA보안/
     # 구매전환현황 5개 섹션은 홈 화면이 너무 어수선하다는 지적으로 "⚙️
     # 운영관리"(사이드바)로 이동했다. 위젯 key·내부 로직은 전혀 안 건드렸고
     # 위치만 옮김 — 이 아래(admin_view == "ops_manage" 블록) 참고.
@@ -1041,7 +1041,7 @@ elif st.session_state.admin_view == "filter_manage":
                     record_draw_pattern_count(int(pc_round), int(pc_value))
                     st.success(f"{int(pc_round)}회차 적용패턴수를 {int(pc_value):,}(으)로 기록했습니다.")
 
-            # 2026-09-19(사용자 지시): "메인화면 유력수 보정"은 여기(3종필터 업로드
+            # 2026-09-19(사용자 지시): "메인화면 핵심수 보정"은 여기(3종필터 업로드
             # 화면) 안에 있어서 운영자가 못 찾는다는 지적으로 홈 화면(작업 프로세스
             # 메뉴 위쪽, 📣 업데이트 안내 배너 section 바로 옆)으로 옮겼다 — 코드는
             # admin_view == "home" 블록 안에 그대로 있으니 그쪽 참고.
@@ -1647,7 +1647,7 @@ elif st.session_state.admin_view == "dispute_resolution":
 
 # ==========================================
 # ⚙️ 운영관리 — 2026-09-20 추가. 홈 화면에 있던 5개 섹션(업데이트 배너 /
-# 메인화면 유력수 보정 / 동시접속 상한 / 게스트 자동로그인 보안(UA 대조) /
+# 메인화면 핵심수 보정 / 동시접속 상한 / 게스트 자동로그인 보안(UA 대조) /
 # 회차별 구매 전환 현황)을 그대로 옮겨왔다 — 위젯 key·내부 로직은 전혀
 # 손대지 않았고 위치만 옮겼다("home" 블록에 남겨둔 이동 주석 참고).
 # ==========================================
@@ -1749,17 +1749,17 @@ elif st.session_state.admin_view == "ops_manage":
     # 운영자가 못 찾겠다고 지적 — 홈 화면의, 역시 사용자 메인화면에 즉시
     # 반영되는 다른 설정(업데이트 배너)과 나란히 보이도록 옮겼다. 기능은
     # 그대로다.
-    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔧 메인화면 유력수 보정</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🔧 메인화면 핵심수 보정</h4>", unsafe_allow_html=True)
     with st.expander("아이콘 주변에 도는 숫자 6개 (사용자 화면에 즉시 반영)"):
         from app_settings import get_setting as _gs, init_settings_table as _ist, set_setting as _ss
 
         _ist()
         _current_lucky = _gs("main_lucky_numbers", "5, 17, 26, 41, 30, 44")
-        st.caption("앞 번호일수록 유력한 순서로, 쉼표로 구분해 6개 입력하세요 (1~45).")
+        st.caption("앞 번호부터 순서대로, 핵심수 6개를 쉼표로 구분해 입력하세요 (1~45).")
         lucky_input = st.text_input(
-            "유력수 6개", value=_current_lucky, key="admin_lucky_numbers_input"
+            "핵심수 6개", value=_current_lucky, key="admin_lucky_numbers_input"
         )
-        if st.button("유력수 저장", key="admin_lucky_numbers_submit"):
+        if st.button("핵심수 저장", key="admin_lucky_numbers_submit"):
             nums = [x.strip() for x in lucky_input.split(",") if x.strip()]
             valid = (
                 len(nums) == 6
@@ -1769,7 +1769,7 @@ elif st.session_state.admin_view == "ops_manage":
                 st.error("숫자 6개를 쉼표로 구분해서, 1~45 범위로 입력해 주세요.")
             else:
                 _ss("main_lucky_numbers", ", ".join(nums))
-                st.success(f"메인화면 유력수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
+                st.success(f"메인화면 핵심수를 [{', '.join(nums)}]로 저장했습니다 — 즉시 반영됩니다.")
 
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>🚦 동시접속 상한 (입장 제한)</h4>", unsafe_allow_html=True)
     with st.expander("이용자 폭증 시 신규 유입을 막는 상한값 설정"):
