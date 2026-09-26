@@ -720,6 +720,12 @@ IAP_CHARGE_ENABLED = False
 # 안에서 무료 분기가 먼저 return한다는 점을 유지할 것).
 IAP_SUBSCRIPTION_ENABLED = False
 
+# 테스터 임시 충전 — 2026-09-26 사용자 지시("지금은 테스터들 활동 중이라 1,000P 적립금
+# 충전이 가능해야 한다"). 앱 결제(Google Play)가 실제로 동작하는 빌드가 나오기 전까지
+# 앱(native=1)에서도 테스트 충전 분기를 그대로 태운다(1,000P · 같은 회수 제한 공유).
+# 심사 제출 전에는 False로 내린다 — 되삼리는 지점은 여기 한 곳뿐이다.
+TEST_CHARGE_ENABLED = True
+
 # 충전을 못 하는 상황의 공통 안내 문구(웹 미연동 분기와 앱 준비중 분기가 같이 쓴다 —
 # 문구가 두 곳에 복사되면 한쪽만 바뀐다).
 CHARGE_PENDING_NOTICE = "결제 연동 준비 중입니다. 조금만 기다려주세요."
@@ -902,10 +908,13 @@ def _render_charge_actions(member_id: int) -> None:
         # 되살리는 지점은 위 IAP_CHARGE_ENABLED 한 곳이다.
         if IAP_CHARGE_ENABLED:
             _render_iap_charge_options()
-        else:
+            return
+        if not TEST_CHARGE_ENABLED:
             st.info(CHARGE_PENDING_NOTICE)
-        return
-    if pg_configured():
+            return
+        # 2026-09-26(사용자 지시): 앱 결제(IAP)를 내려둔 동안 테스터가 1,000P를 충전할 수
+        # 있어야 한다 — 아래 테스트 충전 분기를 앱에서도 같은 코드로 태운다(회수 제한 공유).
+    if pg_configured() and not in_native_app():
         # 2026-09-19(Task #13): TOSS_CLIENT_KEY/TOSS_SECRET_KEY가 설정되는
         # 순간(pg_configured()=True) 이 분기로 자동 전환 — 실제 토스 결제창을
         # 띄운다(카드정보는 서버에 저장하지 않음, toss_pg.py가 처리).
@@ -925,7 +934,7 @@ def _render_charge_actions(member_id: int) -> None:
             from toss_pg import render_checkout_trigger
 
             render_checkout_trigger(member_id, won_amount)
-    elif not pg_configured() and mock_charge_enabled():
+    elif mock_charge_enabled() or in_native_app():
         # 2026-09-20(fail-closed, 구름님 지시): 이 분기가 원래 "elif not
         # pg_configured():"였는데, if 분기 조건의 정확한 반대라 아래 else가
         # 절대 실행되지 않는 죽은 코드였다 — 즉 지금까지 PG 미연동 상태에서는
@@ -953,7 +962,7 @@ def _render_charge_actions(member_id: int) -> None:
         # 오면 이 조건은 반드시 다시 좁혀야 한다(사용자에게 고지함).
         test_won_amount = 10000
         test_points = won_to_points(test_won_amount)
-        st.caption(f"PG 미연동 · 테스트 기간 임시 고정 금액 — {test_won_amount:,}원 → {test_points:,}P")
+        st.caption(f"테스트 기간 임시 고정 금액 - {test_won_amount:,}원 → {test_points:,}P")
 
         # 2026-09-19: ref_id가 매번 랜덤이라 무제한 클릭으로 무한 포인트를 받을
         # 수 있던 구멍 대응 — 회원당 MOCK_CHARGE_WINDOW_HOURS 시간 안에
@@ -981,6 +990,10 @@ def _render_charge_actions(member_id: int) -> None:
                 f"Mock 결제 (테스트) — {test_points:,}P 충전 (남은 횟수 {_mock_remaining}/{MOCK_CHARGE_MAX_PER_WINDOW})",
                 type="primary",
                 use_container_width=True,
+                # 2026-09-26: 키 없는 버튼은 자동 생성 id에 의존해 화면이 바뀔 때마다
+                # 다르게 잡히고 테스트로 재현할 수 없다 — 이 프로젝트의 다른 버튼처럼
+                # 명시 키를 준다(동작은 그대로, 잡히는 이름만 고정).
+                key="test_charge_btn",
             ):
                 ref = f"pg:mock:{member_id}:{uuid.uuid4().hex[:10]}"
                 if charge_points(member_id, test_points, ref):

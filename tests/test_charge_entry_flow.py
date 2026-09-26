@@ -50,6 +50,11 @@ def _keys(at: AppTest) -> list[str]:
     return [b.key for b in at.button]
 
 
+def _safe(text: str) -> str:
+    """콘솔(cp949)에서 못 찍는 문자(—, ❌ 등) 때문에 테스트 출력이 죽는 것을 막는다."""
+    return str(text).encode("ascii", "replace").decode("ascii")
+
+
 def _body(at: AppTest) -> str:
     return "\n".join((m.value or "") for m in at.markdown)
 
@@ -83,8 +88,37 @@ def test_C1_my_info_charge_button_opens_charge_dialog():
         )
 
 
+def test_C3_app_charge_window_offers_test_charge_button():
+    """앱 경로(실제 진입점)로 충전창까지 들어가면 테스터 임시 충전 버튼이 실제로 화면에 있다.
+
+    지급 자체는 다이얼로그 안 버튼 클릭을 AppTest가 재현하지 못해(위젯을 다시 만나지 못함)
+    test_iap_native_branch의 N1d가 1,000P 지급·3회 제한까지 검증한다."""
+    with _db_isolation.isolated_db():
+        mid = _member("tester_charge")
+
+        at = _open_my_info(mid)
+        assert not at.exception, f"진입점 렌더 예외: {at.exception}"
+        assert "wallet_charge_btn" in _keys(at), f"내정보 창에 충전 버튼이 없다: {_keys(at)}"
+        for button in at.button:
+            if button.key == "wallet_charge_btn":
+                at = button.click().run()
+                break
+        assert not at.exception, f"충전 클릭 후 예외: {at.exception}"
+
+        keys = _keys(at)
+        assert "test_charge_btn" in keys, (
+            "앱 충전창에 테스터 임시 충전 버튼이 없다(테스터가 충전할 방법이 없다): "
+            f"{_safe(str(keys))}"
+        )
+        labels = _safe(str([(b.key, b.label) for b in at.button]))
+        print(f"  (앱 경로 충전창 버튼: {labels[:200]})")
+
+
 def _main() -> int:
-    tests = [test_C1_my_info_charge_button_opens_charge_dialog]
+    tests = [
+        test_C1_my_info_charge_button_opens_charge_dialog,
+        test_C3_app_charge_window_offers_test_charge_button,
+    ]
     failed = 0
     for test in tests:
         try:

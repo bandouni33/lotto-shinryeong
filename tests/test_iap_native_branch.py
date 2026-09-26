@@ -5,9 +5,9 @@
 웹 접속에서는 종전 동작이 그대로인가(회귀 없음). 버튼→앱 트리거 배선과 그 페이로드
 (앱 코드와의 약속)까지 함께 검증한다.
 
-  N1  네이티브 충전(기본값): 구글플레이 버튼 대신 "결제 연동 준비 중" 안내만 뜼다
-      (IAP 수신부가 없는 빌드가 사용 중인 동안은 버튼이 먹통이라 안 보여준다)
+  N1  네이티브 충전(기본값): 구글플레이 버튼 대신 테스터용 "Mock 결제(테스트)" 1,000P 충전
   N1b 스위치를 켜면(IAP_CHARGE_ENABLED=True) 앱에서도 IAP 버튼만 뜬다(토스 없음)
+  N1c 테스터 임시 충전 스위치를 내리면(TEST_CHARGE_ENABLED=False) 준비중 안내만 뜼다
   N2  네이티브 구독(기본값): 요금제 버튼 대신 "결제 연동 준비 중" 안내 + 닫기만 뜼다
   N2c 스위치를 켜면(IAP_SUBSCRIPTION_ENABLED=True) 앱에서도 IAP 요금제 버튼만 뜬다
   N2b 네이티브 구독(무료 프로모 대상): 무료 시작 버튼은 유지, IAP 버튼은 없음
@@ -133,24 +133,49 @@ def _spy_trigger():
         wallet_ui._fire_iap_purchase_trigger = original
 
 
-def test_N1_native_charge_shows_pending_notice_not_dead_buttons():
-    """앱 충전 화면(기본값): IAP 수신부가 없는 빌드가 사용 중이므로 구글플레이 버튼을
-    그리지 않고 준비중 안내를 낸다 — 눌러도 반응 없는 버튼을 보여주지 않는다."""
+def test_N1_native_charge_offers_test_charge_not_dead_buttons():
+    """앱 충전 화면(기본값): IAP 수신부가 없는 빌드가 사용 중이라 구글플레이 버튼 대신
+    테스터용 'Mock 결제(테스트)' 1,000P 충전을 낸다 — 눌러도 반응 없는 버튼은 안 낸다
+    (사용자 지시: 테스터 활동 중이므로 지금은 충전이 가능해야 한다)."""
     with _prod_like_env(), _db_isolation.isolated_db():
-        import wallet_ui
-
         mid = _member("iap_n1")
         at = _render_probe("charge", mid, native=True)
         assert not at.exception, f"네이티브 충전 화면 렌더 예외: {at.exception}"
-        keys = _keys(at)
+        keys = [key for key in _keys(at) if key]
         assert not any(key.startswith("iap_buy_") for key in keys), (
             f"앱인데 IAP 충전 버튼이 그려졌다(수신부 없는 빌드에서는 먹통): {keys}"
         )
         assert TOSS_KEY not in keys, f"앱인데 토스 결제 버튼이 그려졌다(정책 위반 소지): {keys}"
-        infos = "\n".join((m.value or "") for m in at.info)
-        assert wallet_ui.CHARGE_PENDING_NOTICE in infos, (
-            f"앱 충전 화면에 준비중 안내가 없다: {infos!r}"
+        labels = [(b.label or "") for b in at.button]
+        assert any("Mock 결제" in label for label in labels), (
+            f"앱 충전 화면에 테스트 충전 버튼이 없다(테스터가 충전할 방법이 없다): {labels}"
         )
+        assert any("1,000P" in label for label in labels), (
+            f"테스트 충전 금액이 1,000P가 아니다: {labels}"
+        )
+
+
+def test_N1c_native_charge_shows_pending_notice_when_test_charge_off():
+    """테스터 임시 충전 스위치를 내리면(심사 제출 전 상태) 준비중 안내만 뜼다."""
+    with _prod_like_env(), _db_isolation.isolated_db():
+        import wallet_ui
+
+        mid = _member("iap_n1c")
+        original = wallet_ui.TEST_CHARGE_ENABLED
+        wallet_ui.TEST_CHARGE_ENABLED = False
+        try:
+            at = _render_probe("charge", mid, native=True)
+        finally:
+            wallet_ui.TEST_CHARGE_ENABLED = original
+        assert not at.exception, f"네이티브 충전 화면 렌더 예외: {at.exception}"
+        keys = [key for key in _keys(at) if key]
+        assert not any(key.startswith("iap_buy_") for key in keys), f"버튼이 남아 있다: {keys}"
+        labels = [(b.label or "") for b in at.button]
+        assert not any("Mock 결제" in label for label in labels), (
+            f"스위치를 내렸는데 테스트 충전이 남아 있다: {labels}"
+        )
+        infos = "\n".join((m.value or "") for m in at.info)
+        assert wallet_ui.CHARGE_PENDING_NOTICE in infos, f"준비중 안내가 없다: {infos!r}"
 
 
 def test_N1b_native_charge_shows_iap_when_switch_on():
@@ -171,6 +196,34 @@ def test_N1b_native_charge_shows_iap_when_switch_on():
         for key in IAP_BUY_KEYS:
             assert key in keys, f"스위치가 켜졌는데 IAP 충전 버튼이 없다: {keys}"
         assert TOSS_KEY not in keys, f"앱인데 토스 결제 버튼이 그려졌다(정책 위반 소지): {keys}"
+
+
+def test_N1d_test_charge_btn_credits_1000_points_and_respects_the_limit():
+    """테스터 임시 충전의 실제 동작(불변식): 한 번 누를 때마다 정확히 1,000P가 늘고,
+    정해진 횟수(MOCK_CHARGE_MAX_PER_WINDOW)를 넘으면 버튼이 사라져 더는 안 늘어난다.
+
+    결제창(dialog) 안에서 누르는 경로는 AppTest가 위젯을 다시 만나지 못해 재현이 안 되므로
+    (충전 화면 자체를 그리는 프로브로 누른다 — 같은 상품 코드·같은 회수 제한을 탄다)."""
+    with _prod_like_env(), _db_isolation.isolated_db():
+        mid = _member("iap_n1d")
+        before = int(wdb.get_balance(mid) or 0)
+        at = _render_probe("charge", mid, native=True)
+        assert not at.exception, f"충전 화면 렌더 예외: {at.exception}"
+        assert "test_charge_btn" in _keys(at), f"테스트 충전 버튼이 없다: {_keys(at)}"
+
+        for expected_credits in range(1, 4):
+            at = _click(at, "test_charge_btn")
+            balance = int(wdb.get_balance(mid) or 0)
+            assert balance == before + 1000 * expected_credits, (
+                f"{expected_credits}번째 충전 뒤 잔액이 기대와 다르다: {before} -> {balance}"
+            )
+
+        # 3회를 다 쓴 뒤에는 버튼 자체가 사라져야 한다(무한 충전 방지).
+        at = _render_probe("charge", mid, native=True)
+        assert "test_charge_btn" not in _keys(at), (
+            f"회수 제한을 다 썼는데도 테스트 충전 버튼이 남아 있다: {_keys(at)}"
+        )
+        assert int(wdb.get_balance(mid) or 0) == before + 3000, "회수 제한 뒤 잔액이 더 늘었다"
 
 
 def test_N2_native_subscription_shows_pending_notice_not_dead_buttons():
@@ -442,8 +495,10 @@ def test_N11_resume_reopens_subscription_dialog_after_login():
 
 def _main() -> int:
     tests = [
-        test_N1_native_charge_shows_pending_notice_not_dead_buttons,
+        test_N1_native_charge_offers_test_charge_not_dead_buttons,
         test_N1b_native_charge_shows_iap_when_switch_on,
+        test_N1c_native_charge_shows_pending_notice_when_test_charge_off,
+        test_N1d_test_charge_btn_credits_1000_points_and_respects_the_limit,
         test_N2_native_subscription_shows_pending_notice_not_dead_buttons,
         test_N2c_native_subscription_shows_iap_when_switch_on,
         test_N2b_native_free_promo_keeps_free_button,
