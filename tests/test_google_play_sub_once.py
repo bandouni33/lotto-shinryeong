@@ -36,6 +36,7 @@ import ast
 import os
 import sqlite3
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -143,6 +144,31 @@ def _gplay():
     import importlib
 
     return importlib.import_module("google_play_pg")
+
+
+@contextmanager
+def _google_play_configured():
+    """구글플레이 '설정 게이트'를 참으로 고정한다(2026-09-27).
+
+    왜 필요한가: 이 파일은 HTTP 경계(`_api_get`/`_api_post`)만 스텁하고
+    `google_play_configured()`는 환경에 맡기고 있었다. 그 함수는
+    GOOGLE_PLAY_SERVICE_ACCOUNT_JSON(.env·gitignore)을 읽으므로, 시크릿이 없는
+    환경(신규 클론·CI)에서는 진입점 경로가 `google_play_pg.py:268`의
+    `if not google_play_configured(): ... return True`에서 **조용히 끝나** 지급이
+    일어나지 않는다 — 실측: 그 변수만 비우면 W12가 "진입점을 통과했는데 지급
+    마커가 없다"로 실패했다(예외 없이 문구 없는 실패라 원인이 잘 안 보인다).
+
+    이 테스트가 검증하는 것은 지급·승인 로직이지 시크릿 존재 여부가 아니므로,
+    게이트만 참으로 고정하고 나머지(HTTP 응답)는 기존 스텁이 담당하게 둔다.
+    (W13은 로그인 검사가 게이트보다 먼저라 이 고정이 필요 없다.)
+    """
+    gplay = _gplay()
+    original = gplay.google_play_configured
+    gplay.google_play_configured = lambda: True
+    try:
+        yield gplay
+    finally:
+        gplay.google_play_configured = original
 
 
 def _stub_google_apis(gplay, payload_factory, *, token: str):
@@ -455,7 +481,7 @@ def test_W12_entry_credits_when_token_and_login_present():
     gplay = _gplay()
     gid = "gplay_entry_login"
     token = "token_W12"
-    with _db_isolation.isolated_db() as db_path:
+    with _google_play_configured(), _db_isolation.isolated_db() as db_path:
         wdb.init_wallet_tables()
         _disable_ua_gate()
         mid = _member("gplay_w12")

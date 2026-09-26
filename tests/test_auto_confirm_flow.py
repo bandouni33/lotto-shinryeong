@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import sys
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
@@ -32,6 +33,35 @@ import wallet_db as wdb  # noqa: E402
 ENTRY = str(ROOT / "app.py")
 TIMEOUT_SEC = 60
 AUTO_START_KEY = "auto_purchase_confirm_6n36s5"
+
+
+@contextmanager
+def _sales_window_open():
+    """자동구매 배포 가능 창을 '항상 열림'으로 고정한다(2026-09-27).
+
+    왜 필요한가: A1/A2는 자동구매의 구매확정·안내 콜백을 밝는데, 그 콜백은 창이 닫혀
+    있으면 로그인 안내 대신 "배포 가능 시간이 아닙니다..." 배너를 남기고 끝난다
+    (`page_auto._auto_dialog_close`가 member_id 검사보다 먼저 창을 본다).
+    창은 화 09:00~토 19:55(`sales_window`)라 실행 시각이 그 밖이면(일·월 종일,
+    화 09:00 전, 토 19:55 후) 이 두 테스트가 무조건 실패한다 — 실측: 토 20:49 실행에서
+    A2가 "로그인 안내 문구가 없다"로 실패했고, 같은 시각에 이 고정을 넣자 통과했다.
+    같은 이유로 `tests/test_login_gate_callbacks.py`도 sales_window를 고정한다.
+
+    패치 지점은 **sales_window 모듈**이어야 한다 — `page_auto`의 별칭만 바꾸면
+    클릭 경로의 늦은 `from sales_window import ...`에는 안 먹는다(실측 확인).
+    """
+    import page_auto
+    import sales_window
+
+    original = sales_window.is_sales_window_open
+    original_alias = page_auto._is_auto_deploy_window_open
+    sales_window.is_sales_window_open = lambda *args, **kwargs: True
+    page_auto._is_auto_deploy_window_open = lambda *args, **kwargs: True
+    try:
+        yield
+    finally:
+        sales_window.is_sales_window_open = original
+        page_auto._is_auto_deploy_window_open = original_alias
 
 
 def _member_with_points(handle: str, points: int = 50000) -> int:
@@ -66,7 +96,7 @@ def _messages(at: AppTest) -> str:
 
 
 def test_A1_confirm_keeps_the_auto_screen():
-    with _db_isolation.isolated_db():
+    with _sales_window_open(), _db_isolation.isolated_db():
         mid = _member_with_points("auto_flow")
         gid = "autoflow01"
 
@@ -118,7 +148,7 @@ def test_A2_confirm_without_login_shows_the_login_hint():
 
     이 테스트는 수정 전에는 실패한다(문구가 없다).
     """
-    with _db_isolation.isolated_db():
+    with _sales_window_open(), _db_isolation.isolated_db():
         gid = "autoflow02"
 
         at = AppTest.from_file(ENTRY, default_timeout=TIMEOUT_SEC)
