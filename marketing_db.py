@@ -1306,6 +1306,34 @@ def delete_guest_auto_order(order_id: int) -> None:
     conn.close()
 
 
+def delete_guest_data(guest_id: str) -> int:
+    """이 기기(guest_id)에 묶인 **사용자 데이터**를 파기한다 — 반환: 삭제 건수.
+
+    2026-09-27(계정 삭제) — account_deletion.delete_account가 회원에 묶인 guest_id마다
+    호출한다. 대상: 구매내역 메타(guest_auto_orders), 저장된 번호 조합
+    (guest_generated_combos — 번개·안티·자동 저장내역), 타로 뽑기 횟수
+    (guest_tarot_draws), 업데이트 배너 확인 기록(guest_update_notice).
+
+    건드리지 않는 것: lotto_combinations·draw_*(상품 재고·회차 통계) — 개인과 연결되지
+    않으므로 지우면 당첨 판정·재고 집계가 깨진다(그쪽은 개인정보가 아니다)."""
+    gid = str(guest_id or "").strip()
+    if not gid:
+        return 0
+    conn = _connect()
+    deleted = 0
+    for sql in (
+        "DELETE FROM guest_generated_combos WHERE guest_id = ?",
+        "DELETE FROM guest_auto_orders WHERE guest_id = ?",
+        "DELETE FROM guest_tarot_draws WHERE guest_id = ?",
+        "DELETE FROM guest_update_notice WHERE guest_id = ?",
+    ):
+        cur = conn.execute(sql, (gid,))
+        deleted += int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def list_guest_auto_orders(guest_id: str, limit: int = 20) -> list[dict]:
     """guest_id에 묶인 구매내역 메타데이터를 최신순으로 반환 (조합 목록은 미포함)."""
     import json

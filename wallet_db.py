@@ -66,7 +66,12 @@ def init_wallet_tables() -> None:
             provider TEXT NOT NULL,
             oauth_hash TEXT NOT NULL UNIQUE,
             created_at TEXT NOT NULL,
-            last_login_at TEXT NOT NULL
+            last_login_at TEXT NOT NULL,
+            -- 2026-09-27(계정 삭제 정책): 탈퇴해도 이 행 자체는 지우지 않고 신원만
+            -- 익명화한다(anonymize_member_account 참고) — 행을 지우면 결제·차감
+            -- 증빙(wallet_ledger·pg_charges)이 가리킬 대상이 사라져 전자상거래법상
+            -- 5년 보관 의무를 못 지킨다. 탈퇴 시각은 이 컬럼에 남긴다.
+            deleted_at TEXT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_members_oauth ON members(oauth_hash);
 
@@ -219,6 +224,12 @@ def init_wallet_tables() -> None:
     # 동작이다(하드 컷오버 — 테스터 16명 규모라 1회 재인증 비용이 낮음).
     if "ua_hash" not in cols:
         conn.execute("ALTER TABLE guest_member_links ADD COLUMN ua_hash TEXT NULL")
+    # 2026-09-27: 계정 삭제(탈퇴) 도입에 따른 기존 DB 호환 ALTER — 같은 패턴
+    # (PRAGMA 확인 후에만 추가). 탈퇴한 계정이 누적 가입자 통계나 자동로그인
+    # 재연결에 섞이지 않게 하는 표식이다.
+    member_cols = {row[1] for row in conn.execute("PRAGMA table_info(members)")}
+    if "deleted_at" not in member_cols:
+        conn.execute("ALTER TABLE members ADD COLUMN deleted_at TEXT NULL")
     # 2026-09-19(Task #13): 토스 결제위젯의 customerKey(카드 저장 등에 쓰이는
     # 고객 식별자) — 회원의 내부 DB id를 그대로 밖으로 노출하지 않기 위해
     # 별도의 무작위 키를 한 번만 발급해 저장해둔다.
@@ -349,6 +360,68 @@ def unlink_guest_from_member(guest_id: str) -> None:
     conn.close()
 
 
+def anonymize_member_account(member_id: int) -> dict:
+    """계정 삭제(탈퇴) 시 회원의 **신원·연결·연락처**를 파기한다 — 반환: 처리 건수.
+
+    2026-09-27 신규(Play "계정 삭제" 정책 + 개인정보 처리방침의 탈퇴·삭제 요청 이행).
+    실행 순서·대상 목록의 기준점은 account_deletion.py이고, 이 함수는 members 테이블을
+    소유한 이 모듈의 몫만 담당한다.
+
+    남기는 것(전자상거래법 제6조 — 계약·대금결제 기록 5년): wallet_ledger·pg_charges
+    (confirmed)·toss_pending_orders(confirmed)·auto_orders 행·subscriptions·consent_log·
+    signup_grants. 이 행들은 익명화된 members 행에만 이어져 개인을 특정할 수 없다.
+
+    지우는 것: OAuth 식별자 해시(신원) · guest_member_links(기기 연결 — 남기면
+    restore_member_from_guest()가 다음 접속에 조용히 다시 로그인시킨다) ·
+    wallets.toss_customer_key(카드 저장용 고객 식별자) · auto_orders.phone(연락처) ·
+    미정산/미완료 대기행(탈퇴 후 환불·승인이 이뤄지면 안 된다).
+
+    지갑 잔액은 0으로 만든다 — 남은 적립금은 현금 환불 대상이 아니라 서비스 이용권이고
+    (이용약관·적립금 정책의 "현금 환불 불가"), 보관 의무가 있는 것은 결제·차감 기록이다.
+    """
+    mid = int(member_id)
+    now = _now_iso()
+    conn = _connect()
+    counts: dict[str, int] = {}
+
+    # 1) 기기 ↔ 회원 연결 파기(자동 로그인 재연결 차단)
+    cur = conn.execute("DELETE FROM guest_member_links WHERE member_id = ?", (mid,))
+    counts["guest_member_links"] = int(cur.rowcount or 0)
+
+    # 2) 신원 익명화 — 다시 나오지 않는 해시로 교체하고 탈퇴 시각을 남긴다.
+    #    해시를 지우므로 같은 간편인증 계정으로 다시 로그인하면 **새 회원**이 된다
+    #    (이전 적립금·구독은 이어지지 않는다 — 약관·탈퇴 안내에 명시돼 있다).
+    cur = conn.execute(
+        "UPDATE members SET provider = 'deleted', oauth_hash = ?, deleted_at = ? WHERE id = ?",
+        (oauth_hash("deleted", f"{mid}:{uuid.uuid4().hex}"), now, mid),
+    )
+    counts["members"] = int(cur.rowcount or 0)
+
+    # 3) 지갑: 잔액 0 + 결제 고객 식별키 파기
+    cur = conn.execute(
+        "UPDATE wallets SET balance = 0, toss_customer_key = NULL WHERE member_id = ?",
+        (mid,),
+    )
+    counts["wallets"] = int(cur.rowcount or 0)
+
+    # 4) 주문 기록은 남기되 연락처는 파기
+    cur = conn.execute("UPDATE auto_orders SET phone = '' WHERE member_id = ?", (mid,))
+    counts["auto_orders"] = int(cur.rowcount or 0)
+
+    # 5) 미정산 대기행 제거 — 탈퇴한 계정으로 환불·승인이 이뤄지지 않게 한다.
+    #    이미 정산된 차감은 wallet_ledger에 남으므로 증빙은 유지된다.
+    cur = conn.execute("DELETE FROM thunder_pending_charges WHERE member_id = ?", (mid,))
+    counts["thunder_pending_charges"] = int(cur.rowcount or 0)
+    cur = conn.execute(
+        "DELETE FROM toss_pending_orders WHERE member_id = ? AND status = 'pending'", (mid,)
+    )
+    counts["toss_pending_orders_pending"] = int(cur.rowcount or 0)
+
+    conn.commit()
+    conn.close()
+    return counts
+
+
 def get_or_create_member(provider: str, provider_user_id: str) -> tuple[int, bool]:
     """returns (member_id, is_new)."""
     ohash = oauth_hash(provider, provider_user_id)
@@ -396,7 +469,10 @@ def get_total_installed_members() -> int:
     """누적 가입자 수(=설치 인원) — admin_dashboard.py 홈 화면의 기존 통계와
     동일한 정의(SELECT COUNT(*) FROM members)."""
     conn = _connect()
-    row = conn.execute("SELECT COUNT(*) AS c FROM members").fetchone()
+    # 2026-09-27: 탈퇴(익명화)한 계정은 누적 가입자 수에서 뺀다 — 계정 삭제를
+    # 도입하면서 이 숫자가 "지금 서비스에 있는 회원"이 아니라 "한 번이라도 가입한
+    # 행"이 되어버리는 것을 막는다(deleted_at은 anonymize_member_account가 세운다).
+    row = conn.execute("SELECT COUNT(*) AS c FROM members WHERE deleted_at IS NULL").fetchone()
     conn.close()
     return int(row["c"]) if row else 0
 

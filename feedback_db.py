@@ -147,3 +147,19 @@ def update_feedback_status(feedback_id: int, status: str) -> None:
     )
     conn.commit()
     conn.close()
+
+
+def delete_member_feedback(member_id: int) -> int:
+    """이 회원이 남긴 개선 의견을 삭제 — 반환: 삭제 건수.
+
+    2026-09-27(계정 삭제): 닉네임·본문은 회원이 직접 쓴 내용이라 탈퇴 후 보관할
+    근거가 없다(account_deletion.delete_account가 호출한다). 운영자가 이미 처리한
+    건도 함께 지운다 — 남는 것은 삭제 건수뿐이다."""
+    conn = db_turso.connect()
+    cur = conn.execute(
+        "DELETE FROM improvement_feedback WHERE member_id = ?", (int(member_id),)
+    )
+    deleted = int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted

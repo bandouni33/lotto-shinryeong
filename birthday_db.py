@@ -99,3 +99,19 @@ def delete_birthday(user_id, slot):
     )
     conn.commit()
     conn.close()
+
+
+def delete_all_birthdays(user_id) -> int:
+    """이 사용자 스코프의 생일 슬롯을 **전부** 삭제 — 반환: 삭제 건수.
+
+    2026-09-27(계정 삭제): delete_birthday(슬롯 1개)와 달리 슬롯 수와 무관하게 전부
+    지운다. 생년월일은 회원이 직접 등록한 개인정보라 탈퇴 시 남길 근거가 없다
+    (account_deletion.delete_account가 호출한다)."""
+    init_birthday_table()
+    scope = _normalize_scope(user_id)
+    conn = db_turso.connect()
+    cur = conn.execute("DELETE FROM userBirthdays WHERE user_id = ?", (scope,))
+    deleted = int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted

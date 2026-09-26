@@ -18,12 +18,38 @@ KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_URL = "https://kapi.kakao.com/v2/user/me"
 
 
+def _env_or_secret(name: str) -> str:
+    """환경변수 → st.secrets 순으로 읽는다(wallet_db._toss_secret·db_turso._shared_client와
+    같은 패턴). 2026-09-27: 예전엔 kakao_configured()가 os.environ만 봤다 — Streamlit
+    Cloud에서 시크릿을 secrets로만 넣는 구성이면 이 값이 비어 보이고, 그러면
+    wallet_ui._testing_period_active()가 True로 돌아가 ① 구독창을 건너뛰고 3650일 무료
+    구독 지급 ② 안내 없는 조용한 자동 로그인이 켜졌다(돈이 새는 방향). 읽는 경로를 맞춘다."""
+    val = os.environ.get(name, "").strip()
+    if val:
+        return val
+    try:
+        import streamlit as st
+
+        return str(st.secrets.get(name, "") or "").strip()
+    except Exception:
+        return ""
+
+
 def _dev_mock_enabled() -> bool:
-    return os.environ.get("LOTTO_DEV_MOCK_AUTH", "1").strip() not in ("0", "false", "False")
+    """개발용 Mock 인증 사용 여부 — **명시적으로 켤 때만** True(fail-closed).
+
+    2026-09-27(하드닝): 예전 기본값은 "1"(켜짐)이었다 — 시크릿 누락·오타 등으로 이
+    환경변수가 빠진 배포에서 이 값이 True가 되고, 카카오 키 판정까지 비면
+    _testing_period_active()가 True로 돌아가 3650일 무료 구독과 조용한 자동 로그인이
+    켜졌다(= 기본값이 돈이 새는 방향이었다). 이제 명시적으로 LOTTO_DEV_MOCK_AUTH=1
+    (또는 true/yes)일 때만 켜지고, 없거나 다른 값이면 꺼진다.
+    로컬 개발은 .env·run_server.ps1이 이 값을 넣어준다(기본값에 기대지 말 것).
+    """
+    return os.environ.get("LOTTO_DEV_MOCK_AUTH", "").strip().lower() in ("1", "true", "yes")
 
 
 def kakao_configured() -> bool:
-    return bool(os.environ.get("KAKAO_REST_API_KEY", "").strip())
+    return bool(_env_or_secret("KAKAO_REST_API_KEY"))
 
 
 def pass_configured() -> bool:
@@ -255,6 +281,23 @@ def _forget_pending_resume() -> None:
 
         init_settings_table()
         set_setting(_PENDING_RESUME_PREFIX + get_or_create_guest_id(), "")
+    except Exception:
+        pass
+
+
+def forget_pending_resume_for(guest_id: str) -> None:
+    """이 기기에 남아있는 로그인 재개 의도를 지운다(2026-09-27, 계정 삭제 시 호출).
+
+    재개 의도는 15분 TTL이고 개인정보도 아니지만, 탈퇴한 계정에 대해 남아있을
+    이유가 없으므로 account_deletion.delete_account가 기기별로 정리한다."""
+    gid = str(guest_id or "").strip()
+    if not gid:
+        return
+    try:
+        from app_settings import init_settings_table, set_setting
+
+        init_settings_table()
+        set_setting(_PENDING_RESUME_PREFIX + gid, "")
     except Exception:
         pass
 

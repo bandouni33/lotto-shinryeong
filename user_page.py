@@ -1896,6 +1896,32 @@ elif current_page == "privacy":
 
 
 # ==========================================================
+# 🗑️ 계정 삭제(회원 탈퇴) 안내 — Play 스토어 "계정 삭제" 요구 웹 URL (2026-09-27)
+# privacy 페이지와 같은 패턴: 앱을 열거나 로그인하지 않아도 바로 보이는 독립 경로.
+# Play Console의 Data safety → "계정 삭제 URL"에 이 주소(?page=delete_account)를 신고한다.
+# 실제 파기는 앱 내 [내정보] → [회원 탈퇴]에서 일어나고(account_deletion.delete_account),
+# 웹으로 온 요청은 이 페이지 안내대로 이메일로 접수한다.
+# ==========================================================
+elif current_page == "delete_account":
+    st.markdown(
+        """
+        <style>
+        .stApp { background-color: #12182b; color: white; }
+        .block-container { max-width: 680px; padding: 24px 20px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    from legal_notices import ACCOUNT_DELETION_BODY, ACCOUNT_DELETION_TITLE
+
+    st.markdown(f"## {ACCOUNT_DELETION_TITLE}")
+    st.markdown(ACCOUNT_DELETION_BODY)
+    st.caption(
+        "이 페이지는 Google Play '계정 삭제' 요구사항에 따라 앱 밖에서도 열 수 있게 공개되어 있습니다."
+    )
+
+
+# ==========================================================
 # 📋 상품안내·환불정책·사업자정보 — PG(토스페이먼츠) 계약 심사 제출용 단독 URL
 # (privacy 페이지와 같은 패턴: 앱을 열거나 로그인하지 않아도 바로 보이는
 #  독립 경로. 2026-09-18 추가.)

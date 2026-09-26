@@ -38,11 +38,14 @@
 | K | 적립금 안내창(구매 전 확인창) | `wallet_ui.points_notice_dialog` + **열림 플래그는 `dialog_registry.DIALOGS`에 `points_notice_trigger=True`로 등록**(자동구매·번개·안티액땜·타로) | 네 화면의 열림 플래그·X닫기 정리(`_points_notice_on_dismiss`)·로그아웃 정리 키 | `tests/test_dialog_registry.py`(D9), `tests/test_tarot_gate_flow.py`(T1) |
 | L | 적립금 부족/충전창 | 화면이 아니라 공통 자리 **`wallet_ui.render_wallet_bar` 한 곳에서만** 띄운다(화면은 `open_insufficient_balance_dialog()`로 플래그만 세운다) | 각 화면 안의 띄우기 사본(금지), 충전창 `charge_dialog` | `tests/test_dialog_registry.py`(D8), `tests/test_tarot_gate_flow.py`(T2) |
 | M | "메인으로" 이동 버튼·링크 | `shared_ui_styles.brand_home_link_html()` (href는 `user_scope.internal_nav_href`) | 각 화면 좌상단 아이콘, 타로 게이트 | `tests/test_kakao_login_branch_links.py`, `tests/test_tarot_gate_flow.py`(T3) |
+| N | 계정 삭제(회원 탈퇴) 실행 | `account_deletion.delete_account()` (순서·대상 목록) + 표별 SQL은 각 DB 모듈(`wallet_db.anonymize_member_account`·`marketing_db.delete_guest_data`·`birthday_db.delete_all_birthdays`·`feedback_db.delete_member_feedback`) | 앱 내 진입점 `wallet_ui._my_info_dialog`(버튼 키 `wallet_delete_account_btn`) → `_delete_account_dialog`; 웹 공개 URL `user_page`의 `page=delete_account`; 문구 `legal_notices.ACCOUNT_DELETION_BODY`; 삭제/보관 목록 `account_deletion.DELETED_ITEMS`·`RETAINED_ITEMS` | `tests/test_account_deletion.py`(I1~I8, B1·B2, F1·F2), `tests/test_dialog_registry.py` |
+| O | 무료 지급 우회 판정 | `auth_providers._dev_mock_enabled()`(명시적으로 켤 때만 True) + `kakao_configured()`(env → st.secrets) → `wallet_ui._testing_period_active()` | 3650일 무료 구독 지급·조용한 자동 로그인 분기(`wallet_ui`), `.env`·`run_server.ps1`(개발용 켜기) | `tests/test_free_grant_hardening.py`(H1~H5), `scripts/preflight_review_build.py` |
 
 ### A(다이얼로그)에 등록된 재개 이름 — 이 목록이 정본이다
 
 `open_thunder_dialog`, `open_hedge_dialog`, `open_hedge_qr_scan`, `auto_show_points`,
-`af_show_subscribe`, `my_info_dialog`, `wallet_show_charge`, `open_tarot_dialog`
+`af_show_subscribe`, `my_info_dialog`, `wallet_show_charge`, `open_tarot_dialog`,
+`delete_account_dialog`
 
 - 새 창을 추가할 때: `dialog_registry.DIALOGS`에 항목 추가 → 화면에서는
   `dialog_registry.flag_key(이름)`과 `DIALOGS[이름].name`만 사용(문자열을 새로 쓰지 않는다).

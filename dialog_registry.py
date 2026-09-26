@@ -106,6 +106,15 @@ DIALOGS: dict[str, DialogSpec] = {
             "안내창을 여는 네 화면은 전부 여기에 등록한다."
         ),
     ),
+    "delete_account_dialog": DialogSpec(
+        name="delete_account_dialog",
+        flag="delete_account_dialog",
+        consumer="wallet_ui.py",
+        note=(
+            "2026-09-27 신규(Play '계정 삭제' 정책 - 앱 내 삭제 경로). 내정보 안에서만 "
+            "열리므로(이미 로그인 상태) 재개 요청 없음이 정상."
+        ),
+    ),
 }
 
 

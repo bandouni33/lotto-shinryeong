@@ -50,6 +50,10 @@ _LOGOUT_EXACT_KEYS = frozenset(
         "auto_purchase_error",
         "auto_purchase_notice",
         "my_info_dialog_open",
+        # 2026-09-27(계정 삭제): 탈퇴 확인 체크박스 — 로그아웃 뒤에도 True로 남으면
+        # 다음 로그인에서 확인 없이 [탈퇴 실행]이 눌린다(되돌릴 수 없는 작업이라
+        # 매번 다시 확인하게 한다). 다이얼로그 플래그 자체는 dialog_registry에서 파생된다.
+        "delete_account_agree",
     }
 )
 

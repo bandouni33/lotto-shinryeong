@@ -20,6 +20,8 @@ from auth_providers import (
     mock_kakao_login,
 )
 from legal_notices import (
+    ACCOUNT_DELETION_BODY,
+    ACCOUNT_DELETION_DONE,
     AUTH_CONSENT_ITEMS,
     NOTICE_VERSION,
     PRICING,
@@ -1555,6 +1557,15 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     if st.session_state.get("my_info_dialog_open"):
         _my_info_dialog(zp_uid=zp_uid, member_id=member_id)
 
+    # 2026-09-27(계정 삭제, Play 정책): 탈퇴 확인창도 내정보와 같은 방식(플래그를 세우고
+    # 다음 렌더에서 띄우기)으로 연다 — 이미 열린 다이얼로그 위에 겹쳐 열지 않는다.
+    # 로그인 상태가 아니면(세션 유실 등) 남겨두지 않고 정리한다(적립금 부족창과 같은 규칙).
+    if st.session_state.get(dialog_registry.flag_key("delete_account_dialog")):
+        if member_id:
+            _delete_account_dialog(member_id=int(member_id))
+        else:
+            st.session_state.pop(dialog_registry.flag_key("delete_account_dialog"), None)
+
     return member_id
 
 
@@ -1591,8 +1602,56 @@ def _my_info_dialog(*, zp_uid: str | None, member_id: int | None) -> None:
                 st.session_state["my_info_dialog_open"] = False
                 st.rerun()
 
+        # 2026-09-27(계정 삭제, Play 정책): 앱 안에서 계정을 지우는 경로. 바로 지우지
+        # 않고 확인창을 한 단계 거친다(_delete_account_dialog) — 되돌릴 수 없는 작업이라
+        # 삭제/보관 항목을 보여주고 체크를 받은 뒤에만 실행된다.
+        if st.button("회원 탈퇴", key="wallet_delete_account_btn", use_container_width=True, type="secondary"):
+            st.session_state["my_info_dialog_open"] = False
+            st.session_state[dialog_registry.flag_key("delete_account_dialog")] = True
+            st.rerun()
+
     if st.button("닫기", key="my_info_dialog_close_btn", use_container_width=True):
         st.session_state["my_info_dialog_open"] = False
+        st.rerun()
+
+
+def perform_account_deletion(member_id: int) -> dict:
+    """회원 탈퇴 실행 — 실제 파기 + 로그아웃 + 완료 안내 (2026-09-27, Play 계정 삭제 정책).
+
+    확인창의 [회원 탈퇴 실행] 버튼이 이 함수 **한 곳만** 부르게 해서, 파기 순서와 세션
+    정리가 화면마다 달라지지 않게 한다. 순서가 중요하다: logout()이 세션을 비우면서
+    wallet_toast까지 지우므로(둘 다 로그아웃 정리 대상) 완료 안내는 로그아웃 뒤에 세운다.
+    파기 자체는 account_deletion.delete_account()가 전담한다(여러 DB에 걸친 단일 실행점).
+    """
+    import account_deletion
+
+    summary = account_deletion.delete_account(int(member_id))
+    logout()
+    st.session_state["wallet_toast"] = ACCOUNT_DELETION_DONE
+    return summary
+
+
+@_dialog_decorator("회원 탈퇴")
+def _delete_account_dialog(*, member_id: int | None) -> None:
+    """탈퇴 확인창 — 되돌릴 수 없는 작업이라 두 단계로 둔다.
+
+    ① 삭제되는 항목·법령상 남는 항목을 먼저 보여주고 ② 확인 체크를 한 뒤에만 실행
+    버튼이 눌리게 한다(오조작 방지). 체크박스 키와 다이얼로그 플래그는 로그아웃 시 함께
+    지워진다 — 남으면 다음 로그인에서 확인 없이 실행될 수 있다(user_scope 참고).
+    """
+    st.markdown(ACCOUNT_DELETION_BODY)
+    agreed = st.checkbox("위 내용을 확인했으며, 탈퇴에 동의합니다.", key="delete_account_agree")
+    if st.button(
+        "회원 탈퇴 실행",
+        key="delete_account_confirm_btn",
+        use_container_width=True,
+        type="primary",
+        disabled=not agreed,
+    ):
+        perform_account_deletion(int(member_id))
+        st.rerun()
+    if st.button("취소", key="delete_account_cancel_btn", use_container_width=True, type="secondary"):
+        st.session_state.pop(dialog_registry.flag_key("delete_account_dialog"), None)
         st.rerun()
 
 
