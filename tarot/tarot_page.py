@@ -375,6 +375,11 @@ def _render_extra_draw_gate():
 
             mid = current_member_id()
             if not mid:
+                # 2026-09-26 통일(번개·안티액땜과 같은 규격): 예전엔 무음 return이라
+                # 창만 닫히고 화면에 문구가 없었다. 문구는 login_gate 한 곳만 쓴다.
+                from login_gate import GATE_INLINE_HINT
+
+                st.session_state["tarot_purchase_error"] = GATE_INLINE_HINT
                 return
             import uuid
 
@@ -390,6 +395,12 @@ def _render_extra_draw_gate():
 
         # 2026-09-26 통일: 적립금 부족/충전창은 wallet_ui.render_wallet_bar() 한 곳에서만
         # 띄운다(화면별 사본을 두지 않는다) — 여기는 플래그만 세우고 끝낸다.
+
+    # 위 _tarot_dialog_close가 로그인 정보 없이 돌았을 때 남긴 문구를 여기서 한 번
+    # 소비해 보여준다 — 번개조합·안티액땜의 구매오류 자리와 같은 규격.
+    _tarot_purchase_error = st.session_state.pop("tarot_purchase_error", None)
+    if _tarot_purchase_error:
+        st.error(f"❌ {_tarot_purchase_error}")
 
     # 2026-09-26 통일(실기기 신고 "처음으로 먹통"): "메인 이동"은 모든 화면이 같은
     # 컴포넌트(shared_ui_styles의 아이콘 링크) 하나만 쓴다. 이 화면만 st.button

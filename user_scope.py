@@ -45,6 +45,7 @@ _LOGOUT_EXACT_KEYS = frozenset(
         "auth_resume_data",
         "wallet_show_charge",
         "thunder_purchase_error",
+        "tarot_purchase_error",
         "thunder_pending_ref",
         "auto_purchase_error",
         "auto_purchase_notice",

@@ -224,12 +224,44 @@ def test_T4_entry_point_renders_tarot_page():
         print(f"  (진입점 page=tarot 렌더 OK - 버튼 {keys[:6]})")
 
 
+def test_T5_extra_draw_without_login_shows_the_login_hint():
+    """④ 추가뽑기 안내창의 '확인 후 진행'도 로그인 없이 누르면 문구를 남긴다.
+
+    번개조합(page_thunder.py)·안티액땜(page_hedge.py)은 같은 자리에서 이미
+    login_gate.GATE_INLINE_HINT를 남기고 있었는데 타로 추가뽑기만 무음
+    return이었다 - 창만 닫히고 아무 안내도 없어 "눌러도 반응이 없다"로 보였다.
+
+    페이지 전체 게이트를 통과하지 않은 채(로그인 정보 없음) 창을 여는 상황은
+    프로브의 extra_gate 모드로 재현한다 - 일반 경로는 페이지 전체 login_gate가
+    먼저 막아서 이 자리에 도달할 수 없다.
+    """
+    with _db_isolation.isolated_db():
+        at = AppTest.from_file(PROBE, default_timeout=TIMEOUT_SEC)
+        at.query_params["probe"] = "extra_gate"
+        # member_id를 심지 않는다 - 세션이 끊긴 채 창을 누른 상황.
+        at.run()
+        assert not at.exception, f"프로브 렌더 예외: {at.exception}"
+        assert "tarot_extra_draw_btn" in _keys(at), f"추가뽑기 버튼이 없다: {_keys(at)}"
+
+        at = _click(at, "tarot_extra_draw_btn")
+        assert "pn_confirm_tarot" in _keys(at), f"적립금 안내창이 안 떴다: {_keys(at)}"
+
+        at = _click(at, "pn_confirm_tarot")
+        assert not at.exception, f"확인 후 예외: {at.exception}"
+        errors = "\n".join((e.value or "") for e in at.error)
+        assert "로그인이 필요합니다" in errors, (
+            f"로그인 없이 확인을 눌렀는데 안내 문구가 없다(무음 return): {errors!r}"
+        )
+        print(f"  (로그인 없이 확인 후 문구={errors[:60]!r})")
+
+
 def _main() -> int:
     tests = [
         test_T1_dismiss_closes_the_notice_on_every_screen,
         test_T2_confirm_without_balance_opens_charge_dialog,
         test_T3_gate_uses_the_shared_main_link_and_has_no_dead_button,
         test_T4_entry_point_renders_tarot_page,
+        test_T5_extra_draw_without_login_shows_the_login_hint,
     ]
     failed = 0
     for test in tests:
