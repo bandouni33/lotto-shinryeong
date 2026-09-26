@@ -8,9 +8,6 @@ import uuid
 import streamlit as st
 import streamlit.components.v1 as components
 
-import dialog_registry
-import products
-
 from auth_providers import (
     _dev_mock_enabled,
     current_member_id,
@@ -20,8 +17,6 @@ from auth_providers import (
     mock_kakao_login,
 )
 from legal_notices import (
-    ACCOUNT_DELETION_BODY,
-    ACCOUNT_DELETION_DONE,
     AUTH_CONSENT_ITEMS,
     NOTICE_VERSION,
     PRICING,
@@ -41,7 +36,6 @@ from wallet_db import (
     MOCK_CHARGE_MAX_PER_WINDOW,
     MOCK_CHARGE_WINDOW_HOURS,
     SIGNUP_BONUS,
-    WON_PER_POINT,
     activate_free_advanced_sub,
     activate_paid_advanced_sub,
     calc_auto_cost,
@@ -169,9 +163,32 @@ def close_auth_banner() -> None:
 def _resume_after_auth() -> None:
     resume = st.session_state.pop(AUTH_RESUME_FLAG, None)
     data = st.session_state.pop(AUTH_RESUME_DATA, None) or {}
-    # 2026-09-26: 이름→동작 매핑은 dialog_registry.py 한 곳에만 있다. 새 창을
-    # 추가할 때 여기에 분기를 더 쓰지 말 것(한쪽만 고쳐 재개가 안 되는 사고의 원인).
-    dialog_registry.apply(resume, data)
+    if resume == "auto_show_points":
+        st.session_state["auto_show_points"] = True
+    elif resume == "open_thunder_dialog":
+        st.session_state["open_thunder_dialog"] = True
+        st.session_state["open_thunder_dialog_games"] = int(data.get("games", 5))
+    elif resume == "open_hedge_dialog":
+        # 2026-08-27: 조합시작 한 번에 개별리셋·전체리셋을 항상 함께 생성하도록
+        # 바뀌면서 "모드" 선택 자체가 없어져 더 이상 넘길 값이 없다.
+        st.session_state["open_hedge_dialog"] = True
+        st.session_state["hedge_pending_lines"] = data.get("lines") or []
+        st.session_state["hedge_pending_count"] = int(data.get("count", 5))
+    elif resume == "open_tarot_dialog":
+        st.session_state["open_tarot_dialog"] = True
+    elif resume == "af_show_step1_points":
+        st.session_state["af_show_step1_points"] = True
+    elif resume == "af_show_step2_points":
+        st.session_state["af_show_step2_points"] = True
+    elif resume == "wallet_show_charge":
+        st.session_state["wallet_show_charge"] = True
+    elif resume == "open_hedge_qr_scan":
+        # 2026-09-19: 안티·액땜조합의 QR스캔 버튼을 로그인 없이 눌렀을 때 —
+        # 로그인이 끝난 그 렌더에서 스캐너 트리거를 다시 살린다(page_hedge.py의
+        # hedge_qr_request 소비부가 한 번만 집어가 실행하고 지운다).
+        st.session_state["hedge_qr_request"] = True
+    elif resume == "my_info_dialog":
+        st.session_state["my_info_dialog_open"] = True
 
 
 def _finish_auth_success() -> None:
@@ -693,230 +710,12 @@ def render_auth_banner() -> None:
     _render_auth_banner_form()
 
 
-# ── 2026-09-26 구글 인앱결제(네이티브 앱 전용) ────────────────────────
-# 앱(안드로이드 웹뷰) 안에서는 디지털 재화(적립금·구독)를 Google Play 결제로만
-# 팔 수 있다 — 토스 카드결제나 포인트 차감으로 앱 안에서 사게 두는 것은 Play
-# 결제정책 위반 소지가 있다(2026-09-26 결정). 그래서 충전·구독 화면을 "네이티브면
-# IAP만, 웹이면 기존 그대로"로 가른다. 웹(PC·모바일 브라우저 직접 접속)은 이
-# 분기의 영향을 받지 않는다.
-IAP_POINTS_PRODUCT_IDS = products.points_product_ids()
-IAP_SUBSCRIPTION_PRODUCT = products.SUBSCRIPTION_PRODUCT
-IAP_SUBSCRIPTION_PLANS = products.subscription_plans()
-IAP_ALLOWED_PRODUCT_IDS = IAP_POINTS_PRODUCT_IDS + (IAP_SUBSCRIPTION_PRODUCT,)
-IAP_ALLOWED_BASE_PLANS = tuple(plan for _key, plan in IAP_SUBSCRIPTION_PLANS)
-# 값의 기준점은 위에서 products.py로부터 파생시켰다(여기에 문자열을 다시 쓰지 말 것).
-IAP_PRICE_PARAMS = dict(products.IAP_PRICE_PARAMS)
-IAP_PRICE_FALLBACK = dict(products.IAP_PRICE_FALLBACK)
-
-# 앱 결제(Google Play) 버튼 노출 스위치 — 2026-09-27 사용자 지시(심사 제출 진행)로 켠다.
-# 왜 켜는가: 수신부가 없는 빌드(v54)에서는 버튼을 눌러도 반응이 없어 2026-09-26에 내려뒀는데,
-# 이제 앱 소스에 expo-iap 수신부가 들어갔으므로 **수신부를 포함한 빌드(v55)와 함께** 제출한다.
-# 되돌리는 지점은 여기 한 곳뿐이다(화면마다 분기를 만들지 않는다).
-# ⚠️ 이 값이 True인데 v54(수신부 없음)를 제출하면 그 자체가 "먹통 버튼" 반려 사유다 —
-# 제출할 빌드와 이 값을 항상 같이 확인할 것(preflight R4c가 이걸 검사한다).
-IAP_CHARGE_ENABLED = True
-
-# 앱 구독(Google Play 정기결제) 버튼 노출 스위치 — 2026-09-27 위 IAP_CHARGE_ENABLED와
-# 같은 이유로 같이 켠다(수신부를 포함한 빌드를 제출한다). 무료 프로모(첫 구독 무료)는
-# 결제가 아니라서 이 스위치와 무관하게 그대로 제공된다(`_render_iap_subscription_options`
-# 안에서 무료 분기가 먼저 return한다는 점을 유지할 것).
-IAP_SUBSCRIPTION_ENABLED = True
-
-# 테스터 임시 충전 — 2026-09-26에 "테스터 활동 중"을 이유로 켜뒀던 것을, 2026-09-27
-# 심사 제출 진행에 맞춰 **끈다**(사용자 지시). 이 값이 켜져 있으면 앱 심사자가 충전
-# 화면에서 'Mock 결제(테스트) 1,000P 충전'을 보게 된다 — 전형적인 반려 사유다.
-# 테스터 빌드를 다시 만들 땐 이 한 줄만 True로 되돌리면 된다(되살리는 지점은 여기 하나).
-TEST_CHARGE_ENABLED = False
-
-# 충전을 못 하는 상황의 공통 안내 문구(웹 미연동 분기와 앱 준비중 분기가 같이 쓴다 —
-# 문구가 두 곳에 복사되면 한쪽만 바뀐다).
-CHARGE_PENDING_NOTICE = "결제 연동 준비 중입니다. 조금만 기다려주세요."
-
-# 앱(streamlit-webview.tsx)이 스토어에서 읽은 실제 가격을 실어 보내는 파라미터 이름과,
-# 그 값이 아직 없을 때 쓸 기본값(2026-09-26). 실제 표시는 항상 앱이 보내온 값이
-# 우선하므로, Play Console에서 가격을 바꾸면 다음 앱 실행 때 화면에 자동 반영되고
-# 코드 수정이 필요 없다(스토어 가격은 나라·프로모션에 따라 달라질 수 있다).
-# 값은 위에서 products.py로부터 파생시켰다 — 여기에 문자열을 다시 쓰지 말 것.
-
-
-def iap_prices() -> dict:
-    """화면 표시용 가격 {키: 표시 문자열}.
-
-    우선순위: 이번 요청의 URL 파라미터(앱이 스토어에서 읽은 실제 가격) > 저장해둔 값
-    (app_settings) > 기본값(IAP_PRICE_FALLBACK).
-
-    왜 저장까지 하는가: 앱은 웹뷰 주소를 새로 만들 때(앱 실행·로그인 직후·결제 직후)만
-    파라미터를 실을 수 있는데, 그 뒤 화면 이동은 Streamlit 내부링크라(내부링크는
-    page/gid/native만 전달) 파라미터가 사라진다. 그래서 앱이 보내준 값을 DB에 남겨
-    이후 모든 렌더가 같은 값을 쓰게 한다 — 결제 화면 어느 진입로에서든 가격이
-    일관되고, Play Console 가격 변경이 다음 앱 실행에 자동 반영된다.
-    값이 달라졌을 때만 쓴다(렌더마다 원격 DB 쓰기를 피한다)."""
-    prices = dict(IAP_PRICE_FALLBACK)
-    saved = {}
-    try:
-        import app_settings
-
-        saved = app_settings.get_store_prices() or {}
-        for key, value in saved.items():
-            if key in prices:
-                prices[key] = value
-    except Exception:
-        saved = {}
-
-    fresh = {}
-    try:
-        for key, param in IAP_PRICE_PARAMS.items():
-            raw = st.query_params.get(param)
-            if isinstance(raw, (list, tuple)):
-                raw = raw[0] if raw else ""
-            raw = str(raw or "").strip()
-            if raw:
-                fresh[key] = raw
-    except Exception:
-        fresh = {}
-
-    if fresh:
-        prices.update(fresh)
-        if any(saved.get(key) != value for key, value in fresh.items()):
-            try:
-                import app_settings
-
-                merged = dict(saved)
-                merged.update(fresh)
-                app_settings.set_store_prices(merged)
-            except Exception:
-                pass
-    return prices
-
-
-def in_native_app() -> bool:
-    """이 렌더가 네이티브 앱(안드로이드 웹뷰) 안에서 온 요청인지.
-
-    판별 신호는 이미 있다 — LottoShinryeong/constants/streamlit.ts의
-    getStreamlitPageUrl()이 웹뷰 주소에 항상 native=1을 붙이고,
-    user_scope.internal_nav_href()가 내부이동 링크에도 그대로 실어 보낸다(로그인
-    배너가 같은 값으로 "앱 전용 카카오 버튼"과 "일반 웹 링크"를 가른다).
-    값이 리스트로 오는 Streamlit 버전도 있어 둘 다 처리한다."""
-    try:
-        value = st.query_params.get("native")
-    except Exception:
-        return False
-    if isinstance(value, (list, tuple)):
-        value = value[0] if value else ""
-    return str(value or "") == "1"
-
-
-def _iap_points_products() -> dict:
-    """상품 ID → 지급 포인트. 기준점은 products.py다(여기서 새로 만들지 말 것)."""
-    return dict(products.POINTS_PRODUCTS)
-
-
-def _fire_iap_purchase_trigger(product_id: str, base_plan_id: str | None = None) -> None:
-    """네이티브 앱에 "이 상품을 결제해달라"를 알린다.
-
-    카카오 네이티브 로그인 트리거(_fire_kakao_native_login_trigger)와 완전히 같은
-    이중화 기법이다: components.html은 항상 iframe 안에서 실행돼 안드로이드 웹뷰가
-    심어주는 window.ReactNativeWebView 브릿지가 보이지 않으므로(최상위 프레임에만
-    존재) 최상위 문서에 <script>를 직접 심고, 브릿지가 있으면 postMessage로,
-    없으면 URL 쿼리(iap_buy/iap_plan) 폴백으로 알린다 — 실기기마다 어느 쪽이
-    걸리는지가 달라서 하나에만 의존하면 특정 기기에서 결제창이 아예 안 뜬다.
-
-    상품 ID·기본요금제는 화이트리스트로 검증한다 — 값이 JS 소스에 그대로
-    들어가므로 임의 문자열이 들어가면 스크립트가 깨진다(호출부는 상수만 넘긴다).
-
-    수신부는 앱 쪽(LottoShinryeong/components/streamlit-webview.tsx)이며
-    postMessage 페이로드 키(type/productId/basePlanId)와 URL 파라미터명
-    (iap_buy/iap_plan)은 그 파일과 한 쌍이다 — 한쪽만 바꾸면 결제가 안 뜬다."""
-    if product_id not in IAP_ALLOWED_PRODUCT_IDS:
-        raise ValueError(f"unknown iap product: {product_id}")
-    if base_plan_id is not None and base_plan_id not in IAP_ALLOWED_BASE_PLANS:
-        raise ValueError(f"unknown iap base plan: {base_plan_id}")
-    plan_js = f"'{base_plan_id}'" if base_plan_id else "null"
-    plan_url_js = (
-        f"u.searchParams.set('iap_plan', '{base_plan_id}');" if base_plan_id else ""
-    )
-    plan_url_js_fallback = (
-        f"u2.searchParams.set('iap_plan', '{base_plan_id}');" if base_plan_id else ""
-    )
-    components.html(
-        f"""<script>
-        (function () {{
-            var top = window.top;
-            try {{
-                var s = top.document.createElement('script');
-                s.textContent =
-                    "try{{" +
-                    "var rnwv = window.ReactNativeWebView;" +
-                    "if(rnwv && typeof rnwv.postMessage === 'function'){{" +
-                    "rnwv.postMessage(JSON.stringify({{type:'iapPurchase',productId:'{product_id}',basePlanId:{plan_js}}}));" +
-                    "}}else{{" +
-                    "var u = new URL(window.location.href);" +
-                    "u.searchParams.set('iap_buy', '{product_id}');" +
-                    "{plan_url_js}" +
-                    "window.location.href = u.toString();" +
-                    "}}" +
-                    "}}catch(e){{}}";
-                top.document.head.appendChild(s);
-                s.parentNode.removeChild(s);
-            }} catch (e) {{
-                // 최상위 문서에 스크립트를 못 심을 정도로 예외적인 상황이면
-                // 최소한 이 URL 폴백만이라도 시도한다.
-                try {{
-                    var u2 = new URL(top.location.href);
-                    u2.searchParams.set('iap_buy', '{product_id}');
-                    {plan_url_js_fallback}
-                    top.location.href = u2.toString();
-                }} catch (e2) {{}}
-            }}
-        }})();
-        </script>""",
-        height=0,
-    )
-
-
-def _render_iap_charge_options() -> None:
-    """네이티브 앱 전용 충전 화면 — Google Play 소모성 상품(1,000P/3,000P)만 노출한다.
-    실제 지급은 서버가 purchaseToken을 검증한 뒤에만 일어난다(google_play_pg.py)."""
-    products = _iap_points_products()
-    prices = iap_prices()
-    st.caption("Google Play 계정으로 결제됩니다. 카드정보는 앱과 서버에 저장되지 않습니다.")
-    for index, product_id in enumerate(IAP_POINTS_PRODUCT_IDS):
-        points = products.get(product_id)
-        if not points:
-            continue
-        # 표시 가격은 앱이 읽어온 스토어 가격이 우선, 없으면 기본값으로 폴백한다.
-        label_price = prices.get(product_id) or f"{int(points) * WON_PER_POINT:,}원"
-        if st.button(
-            f"{label_price} · {points:,}P 충전",
-            type="primary" if index == 0 else "secondary",
-            use_container_width=True,
-            key=f"iap_buy_{product_id}",
-        ):
-            _fire_iap_purchase_trigger(product_id)
-
-
 def _render_charge_actions(member_id: int) -> None:
     """충전 버튼/안내 렌더링 — charge_dialog()와 insufficient_balance_dialog()가
     공유한다(2026-09-08 분리). 두 곳에 똑같은 로직을 복붙해두면 나중에 금액·문구를
     한쪽만 고치고 다른 쪽을 놓치는 사고로 이어지므로, 결제 관련 코드는 항상 여기
     한 곳만 고치면 두 다이얼로그 모두에 반영되게 한다."""
-    if in_native_app():
-        # 2026-09-26: 앱(안드로이드 웹뷰)에서는 Google Play 인앱결제만 노출한다 —
-        # 토스 결제창은 앱 안에서 아예 렌더하지 않는다(Play 결제정책). 이 판단을
-        # pg_configured() 분기보다 먼저 두는 게 핵심이다: 나중에 실키가 들어와도
-        # 앱에서는 이 분기를 지나 토스 버튼이 자동 복귀하지 않는다.
-        # 2026-09-26(사용자 지시 2안): 아직 IAP 수신부가 없는 빌드가 사용 중이라
-        # 구글플레이 버튼 대신 준비 중 안내를 낸다(죽은 버튼을 보여주지 않는다).
-        # 되살리는 지점은 위 IAP_CHARGE_ENABLED 한 곳이다.
-        if IAP_CHARGE_ENABLED:
-            _render_iap_charge_options()
-            return
-        if not TEST_CHARGE_ENABLED:
-            st.info(CHARGE_PENDING_NOTICE)
-            return
-        # 2026-09-26(사용자 지시): 앱 결제(IAP)를 내려둔 동안 테스터가 1,000P를 충전할 수
-        # 있어야 한다 — 아래 테스트 충전 분기를 앱에서도 같은 코드로 태운다(회수 제한 공유).
-    if pg_configured() and not in_native_app():
+    if pg_configured():
         # 2026-09-19(Task #13): TOSS_CLIENT_KEY/TOSS_SECRET_KEY가 설정되는
         # 순간(pg_configured()=True) 이 분기로 자동 전환 — 실제 토스 결제창을
         # 띄운다(카드정보는 서버에 저장하지 않음, toss_pg.py가 처리).
@@ -936,7 +735,7 @@ def _render_charge_actions(member_id: int) -> None:
             from toss_pg import render_checkout_trigger
 
             render_checkout_trigger(member_id, won_amount)
-    elif mock_charge_enabled() or in_native_app():
+    elif not pg_configured() and mock_charge_enabled():
         # 2026-09-20(fail-closed, 구름님 지시): 이 분기가 원래 "elif not
         # pg_configured():"였는데, if 분기 조건의 정확한 반대라 아래 else가
         # 절대 실행되지 않는 죽은 코드였다 — 즉 지금까지 PG 미연동 상태에서는
@@ -964,7 +763,7 @@ def _render_charge_actions(member_id: int) -> None:
         # 오면 이 조건은 반드시 다시 좁혀야 한다(사용자에게 고지함).
         test_won_amount = 10000
         test_points = won_to_points(test_won_amount)
-        st.caption(f"테스트 기간 임시 고정 금액 - {test_won_amount:,}원 → {test_points:,}P")
+        st.caption(f"PG 미연동 · 테스트 기간 임시 고정 금액 — {test_won_amount:,}원 → {test_points:,}P")
 
         # 2026-09-19: ref_id가 매번 랜덤이라 무제한 클릭으로 무한 포인트를 받을
         # 수 있던 구멍 대응 — 회원당 MOCK_CHARGE_WINDOW_HOURS 시간 안에
@@ -992,10 +791,6 @@ def _render_charge_actions(member_id: int) -> None:
                 f"Mock 결제 (테스트) — {test_points:,}P 충전 (남은 횟수 {_mock_remaining}/{MOCK_CHARGE_MAX_PER_WINDOW})",
                 type="primary",
                 use_container_width=True,
-                # 2026-09-26: 키 없는 버튼은 자동 생성 id에 의존해 화면이 바뀔 때마다
-                # 다르게 잡히고 테스트로 재현할 수 없다 — 이 프로젝트의 다른 버튼처럼
-                # 명시 키를 준다(동작은 그대로, 잡히는 이름만 고정).
-                key="test_charge_btn",
             ):
                 ref = f"pg:mock:{member_id}:{uuid.uuid4().hex[:10]}"
                 if charge_points(member_id, test_points, ref):
@@ -1008,7 +803,7 @@ def _render_charge_actions(member_id: int) -> None:
                     st.rerun()
                 st.error("충전에 실패했습니다.")
     else:
-        st.info(CHARGE_PENDING_NOTICE)
+        st.info("결제 연동 준비 중입니다. 조금만 기다려주세요.")
 
 
 @_dialog_decorator("적립금 충전")
@@ -1062,8 +857,7 @@ POINTS_NOTICE_SEEN_ONCE = "points_notice_seen_once"
 # 예전엔 그 재-렌더가 SEEN_ONCE 자동통과 분기를 타면서 사용자가 취소했는데도
 # 적립금이 차감되는 사고로 이어졌다(2026-09-10 사용자 지적 — 분쟁 리스크).
 # on_dismiss에서 이 플래그를 모두 지워 "X로 닫음 = 취소"가 되게 한다.
-# 2026-09-26: 목록은 dialog_registry가 기준점이다(여기에 이름을 직접 쓰지 말 것).
-_PN_TRIGGER_FLAGS = dialog_registry.points_notice_trigger_flags()
+_PN_TRIGGER_FLAGS = ("open_thunder_dialog", "open_hedge_dialog", "auto_show_points")
 
 
 def _points_notice_on_dismiss() -> None:
@@ -1156,75 +950,6 @@ def points_notice_dialog(
             st.rerun()
 
 
-def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
-    """네이티브 앱 전용 구독 화면 — Google Play 정기결제(월간/분기)만 노출한다.
-
-    포인트 차감 "구독하기"는 앱에서 렌더하지 않는다(2026-09-26 결정 — 포인트로
-    앱 안에서 구독을 사는 것도 결제 우회에 해당).
-    단, 첫 구독 무료 프로모(ADVANCED_FILTER_FIRST_SUB_FREE)는 결제가 아니라
-    무료 지급이라 정책과 무관하므로 기존 동작 그대로 유지한다 — 앱 사용자만
-    혜택에서 빠지면 안 된다.
-
-    서버는 구글 검증 응답의 basePlanId로만 기간을 정하고
-    (google_play_pg._verify_and_credit_subscription), 이 화면의 버튼이 보내는
-    기본요금제 ID는 "어느 상품을 결제할지"를 고르는 용도일 뿐이다."""
-    balance = get_balance(member_id)
-    free_ok = ADVANCED_FILTER_FIRST_SUB_FREE and eligible_free_advanced_sub(member_id)
-    if free_ok:
-        st.markdown(format_advanced_points_notice(has_free_sub=True, balance=balance))
-        st.caption(f"첫 구독은 무료 혜택으로 시작됩니다(결제 없음, {FREE_SUB_DAYS}일).")
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("취소", use_container_width=True, key="iap_free_sub_cancel"):
-                on_close()
-                st.rerun()
-        with c2:
-            if st.button(
-                "무료로 시작하기",
-                type="primary",
-                use_container_width=True,
-                key="iap_free_sub_confirm",
-            ):
-                if not activate_free_advanced_sub(member_id):
-                    st.error("구독 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.")
-                on_close()
-                st.rerun()
-        return
-
-    if not IAP_SUBSCRIPTION_ENABLED:
-        # 2026-09-26(사용자 지시): 충전과 같은 이유·같은 방식 — 수신부 없는 빌드에서
-        # 구글플레이 요금제 버튼이 먹통이라 준비중 안내만 낸다(죽은 버튼을 안 보여준다).
-        # 되삼리는 지점은 위 IAP_SUBSCRIPTION_ENABLED 한 곳이다.
-        st.info(CHARGE_PENDING_NOTICE)
-        if st.button("닫기", use_container_width=True, key="iap_sub_pending_close"):
-            on_close()
-            st.rerun()
-        return
-
-    costs = {"monthly": ADVANCED_MONTHLY_COST, "3month": ADVANCED_3MONTH_COST}
-    labels = {"monthly": "1개월", "3month": "3개월"}
-    prices = iap_prices()
-    st.markdown("**구독 기간**")
-    for index, (plan_key, base_plan_id) in enumerate(IAP_SUBSCRIPTION_PLANS):
-        days = FREE_SUB_DAYS if plan_key == "monthly" else ADVANCED_3MONTH_DAYS
-        # 표시 가격은 앱이 읽어온 스토어 가격(기본요금제별)이 우선이다.
-        label_price = prices.get(base_plan_id) or f"{int(costs[plan_key]) * WON_PER_POINT:,}원"
-        if st.button(
-            f"{labels[plan_key]} · {label_price} ({days}일)",
-            type="primary" if index == 0 else "secondary",
-            use_container_width=True,
-            key=f"iap_sub_{plan_key}",
-        ):
-            _fire_iap_purchase_trigger(IAP_SUBSCRIPTION_PRODUCT, base_plan_id)
-    st.caption(
-        "Google Play 계정으로 결제되고 매 기간 자동 갱신됩니다. "
-        "해지·환불은 Google Play 앱 → 결제 및 정기결제에서 하실 수 있습니다."
-    )
-    if st.button("취소", use_container_width=True, key="iap_sub_cancel"):
-        on_close()
-        st.rerun()
-
-
 @_dialog_decorator("고급필터 구독")
 def advanced_subscription_dialog(*, on_close) -> None:
     """구독 활성화까지 여기서 끝내고 on_close()를 호출한 뒤 st.rerun()한다 — 반환값을
@@ -1246,12 +971,6 @@ def advanced_subscription_dialog(*, on_close) -> None:
     if not member_id:
         on_close()
         st.rerun()
-        return
-
-    if in_native_app():
-        # 2026-09-26: 앱에서는 포인트 차감 구독 버튼을 렌더하지 않고 Google Play
-        # 정기결제만 노출한다(웹은 종전과 동일).
-        _render_iap_subscription_options(member_id, on_close=on_close)
         return
 
     balance = get_balance(member_id)
@@ -1473,17 +1192,6 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
         st.session_state.pop("wallet_show_charge", None)
         charge_dialog()
 
-    # 2026-09-26 통일(사용자 지시): 적립금 부족/충전창은 **모든 화면 공통인 여기 한 곳**에서만
-    # 띄운다. 화면이 자기 분기 안에서 대신 띄우면(타로가 그랬다) 창을 열어둔 플래그를 닫기
-    # 콜백이 먼저 내려버려 창이 아예 안 뜨는 사고가 화면마다 다르게 난다 — 버튼/창마다
-    # "고치는 원점"을 하나로 두기 위한 배치다. 화면은 open_insufficient_balance_dialog()로
-    # 플래그만 세우고, 띄우는 판정·순서는 여기가 전담한다(로그인 전이면 남기지 않고 정리).
-    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
-        if member_id:
-            insufficient_balance_dialog()
-        else:
-            st.session_state.pop(INSUFFICIENT_BALANCE_OPEN, None)
-
     if not member_id and not zp_uid:
         # 2026-09-02: 예전엔 여기서 "개발용 테스트 로그인" 버튼을 사용자에게 직접
         # 노출했는데, 애플 심사(가이드라인 2.2 베타 테스트)에서 "테스트/평가판
@@ -1557,15 +1265,6 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     if st.session_state.get("my_info_dialog_open"):
         _my_info_dialog(zp_uid=zp_uid, member_id=member_id)
 
-    # 2026-09-27(계정 삭제, Play 정책): 탈퇴 확인창도 내정보와 같은 방식(플래그를 세우고
-    # 다음 렌더에서 띄우기)으로 연다 — 이미 열린 다이얼로그 위에 겹쳐 열지 않는다.
-    # 로그인 상태가 아니면(세션 유실 등) 남겨두지 않고 정리한다(적립금 부족창과 같은 규칙).
-    if st.session_state.get(dialog_registry.flag_key("delete_account_dialog")):
-        if member_id:
-            _delete_account_dialog(member_id=int(member_id))
-        else:
-            st.session_state.pop(dialog_registry.flag_key("delete_account_dialog"), None)
-
     return member_id
 
 
@@ -1602,56 +1301,8 @@ def _my_info_dialog(*, zp_uid: str | None, member_id: int | None) -> None:
                 st.session_state["my_info_dialog_open"] = False
                 st.rerun()
 
-        # 2026-09-27(계정 삭제, Play 정책): 앱 안에서 계정을 지우는 경로. 바로 지우지
-        # 않고 확인창을 한 단계 거친다(_delete_account_dialog) — 되돌릴 수 없는 작업이라
-        # 삭제/보관 항목을 보여주고 체크를 받은 뒤에만 실행된다.
-        if st.button("회원 탈퇴", key="wallet_delete_account_btn", use_container_width=True, type="secondary"):
-            st.session_state["my_info_dialog_open"] = False
-            st.session_state[dialog_registry.flag_key("delete_account_dialog")] = True
-            st.rerun()
-
     if st.button("닫기", key="my_info_dialog_close_btn", use_container_width=True):
         st.session_state["my_info_dialog_open"] = False
-        st.rerun()
-
-
-def perform_account_deletion(member_id: int) -> dict:
-    """회원 탈퇴 실행 — 실제 파기 + 로그아웃 + 완료 안내 (2026-09-27, Play 계정 삭제 정책).
-
-    확인창의 [회원 탈퇴 실행] 버튼이 이 함수 **한 곳만** 부르게 해서, 파기 순서와 세션
-    정리가 화면마다 달라지지 않게 한다. 순서가 중요하다: logout()이 세션을 비우면서
-    wallet_toast까지 지우므로(둘 다 로그아웃 정리 대상) 완료 안내는 로그아웃 뒤에 세운다.
-    파기 자체는 account_deletion.delete_account()가 전담한다(여러 DB에 걸친 단일 실행점).
-    """
-    import account_deletion
-
-    summary = account_deletion.delete_account(int(member_id))
-    logout()
-    st.session_state["wallet_toast"] = ACCOUNT_DELETION_DONE
-    return summary
-
-
-@_dialog_decorator("회원 탈퇴")
-def _delete_account_dialog(*, member_id: int | None) -> None:
-    """탈퇴 확인창 — 되돌릴 수 없는 작업이라 두 단계로 둔다.
-
-    ① 삭제되는 항목·법령상 남는 항목을 먼저 보여주고 ② 확인 체크를 한 뒤에만 실행
-    버튼이 눌리게 한다(오조작 방지). 체크박스 키와 다이얼로그 플래그는 로그아웃 시 함께
-    지워진다 — 남으면 다음 로그인에서 확인 없이 실행될 수 있다(user_scope 참고).
-    """
-    st.markdown(ACCOUNT_DELETION_BODY)
-    agreed = st.checkbox("위 내용을 확인했으며, 탈퇴에 동의합니다.", key="delete_account_agree")
-    if st.button(
-        "회원 탈퇴 실행",
-        key="delete_account_confirm_btn",
-        use_container_width=True,
-        type="primary",
-        disabled=not agreed,
-    ):
-        perform_account_deletion(int(member_id))
-        st.rerun()
-    if st.button("취소", key="delete_account_cancel_btn", use_container_width=True, type="secondary"):
-        st.session_state.pop(dialog_registry.flag_key("delete_account_dialog"), None)
         st.rerun()
 
 
