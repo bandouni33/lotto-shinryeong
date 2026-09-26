@@ -2730,6 +2730,14 @@ def render():
                             # 발송 대상 확인용이었음).
                             mid = current_member_id()
                             if not mid:
+                                # 2026-09-26: 여기서 무음 return이었다 — 창만 닫히고
+                                # 화면에 아무 문구도 남지 않아 "눌러도 반응이 없다"로
+                                # 보였다(실기기 신고). 문구·규격은 번개조합
+                                # (page_thunder.py)·안티액땜조합(page_hedge.py)과
+                                # 동일하게 login_gate.GATE_INLINE_HINT 한 곳만 쓴다.
+                                from login_gate import GATE_INLINE_HINT
+
+                                st.session_state["auto_purchase_error"] = GATE_INLINE_HINT
                                 return
                             outcome = process_auto_purchase(
                                 mid,

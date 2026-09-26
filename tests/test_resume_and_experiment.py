@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -319,6 +320,66 @@ def test_resume_survives_full_reload_in_real_entry() -> None:
             setattr(mod, name, fn)
 
 
+# ── R3(조립·앱 경로): 네이티브 토큰 로그인 한 줄기를 진입점에서 이어본다 ──────
+def test_native_token_login_reopens_the_pending_dialog_in_real_entry() -> None:
+    """앱(native)이 실제로 밟는 한 줄기: 창을 열며 배너를 띄우고(서버에 재개 의도
+    임시저장) → native_kakao_token으로 로그인(세션 리셋 왕복) → 열려 있던 창이
+    되살아나는가.
+
+    부품(_remember_pending_resume/_restore_pending_resume)은 각각 테스트돼
+    있었지만, 앱이 밟는 이 순서를 진입점(app.py)에서 한 번도 이어본 적이
+    없었다 — 여기서 조립해 확인한다(DB·카카오 호출은 스텁)."""
+    import app_settings
+    import auth_providers as ap
+    import wallet_ui as wu
+
+    store: dict[str, str] = {}
+    app_settings.init_settings_table = lambda: None
+    app_settings.get_setting = lambda key, default="": store.get(key, default)
+    app_settings.set_setting = lambda key, value: store.__setitem__(key, value)
+    patched = {
+        (ap, "init_wallet_tables"): lambda: None,
+        (ap, "login_member"): lambda provider, uid: (424242, False, False),
+        (ap, "_link_guest_to_member_safe"): lambda *a, **k: None,
+        (ap, "_fetch_kakao_uid_with_token"): lambda token: ("uid_native", None),
+        (wu, "get_balance"): lambda mid: 100000,
+    }
+    saved = {(mod, name): getattr(mod, name) for (mod, name) in patched}
+    for (mod, name), fn in patched.items():
+        setattr(mod, name, fn)
+    try:
+        gid = "natgid" + os.urandom(4).hex()
+        # 앱에서 '조합시작'을 누르며 배너가 열린 순간(wallet_ui.open_auth_banner의
+        # _remember_pending_resume)을 그대로 만든다 — state를 안 거치는 게 이 경로의 핵심.
+        store[ap._PENDING_RESUME_PREFIX + gid] = json.dumps(
+            {
+                "resume": "open_thunder_dialog",
+                "data": {"games": 20},
+                "ts": int(time.time()),
+            }
+        )
+        at = AppTest.from_file(ENTRY, default_timeout=TIMEOUT_SEC)
+        at.query_params["page"] = "thunder"
+        at.query_params["gid"] = gid
+        at.query_params["native"] = "1"
+        at.query_params["native_kakao_token"] = "dummy_access_token"
+        at.run()
+        assert len(at.exception) == 0, f"진입점이 예외로 죽었다: {at.exception}"
+        assert _ss(at, "member_id") == 424242, "네이티브 토큰 로그인이 완료되지 않았다"
+        assert _ss(at, "open_thunder_dialog") is True, (
+            "R3(앱 조립): 로그인 후 창이 재개되지 않았다"
+        )
+        assert _ss(at, "open_thunder_dialog_games") == 20, (
+            "R3(앱 조립): 재개 데이터(games)가 반영되지 않았다"
+        )
+        assert store.get(ap._PENDING_RESUME_PREFIX + gid, "") == "", (
+            "R4(앱 조립): 서버 임시저장이 1회 소비로 지워지지 않았다"
+        )
+    finally:
+        for (mod, name), fn in saved.items():
+            setattr(mod, name, fn)
+
+
 def _main() -> int:
     tests = [
         test_decode_state_handles_legacy_and_hostile_input,
@@ -326,6 +387,7 @@ def _main() -> int:
         test_resume_survives_full_reload_via_callback,
         test_pending_resume_is_consumed_once_and_expires,
         test_resume_survives_full_reload_in_real_entry,
+        test_native_token_login_reopens_the_pending_dialog_in_real_entry,
     ]
     failed = 0
     for t in tests:

@@ -50,6 +50,11 @@ def _keys(at: AppTest) -> list[str]:
     return [b.key for b in at.button]
 
 
+def _safe(text: str) -> str:
+    """콘솔(cp949)에서 못 찍는 문자(—, ❌ 등) 때문에 테스트 출력이 죽는 것을 막는다."""
+    return str(text).encode("ascii", "replace").decode("ascii")
+
+
 def _messages(at: AppTest) -> str:
     parts = []
     for attr in ("info", "error", "warning", "success", "markdown"):
@@ -100,21 +105,70 @@ def test_A1_confirm_keeps_the_auto_screen():
             "확인 후 진행 뒤 자동조합 화면이 아니라 다른 화면이 그려졌다: "
             f"버튼={keys} / 문구={_messages(at)!r}"
         )
-        print(f"  (확인 후 진행 뒤 page={page_value!r}, 화면 문구={_messages(at)[:160]!r})")
+        print(_safe(f"  (확인 후 진행 뒤 page={page_value!r}, 화면 문구={_messages(at)[:160]!r})"))
+
+
+def test_A2_confirm_without_login_shows_the_login_hint():
+    """로그인 없이 '확인 후 진행'을 누르면 아무 문구도 없던 결함 (2026-09-26).
+
+    page_auto._auto_dialog_close는 current_member_id()가 없으면 조용히 return했다 -
+    창만 닫히고 화면에는 아무 안내도 남지 않아 "눌러도 반응이 없다"로 보였다.
+    번개조합(page_thunder.py)·안티액땜조합(page_hedge.py)은 같은 자리에서 이미
+    login_gate.GATE_INLINE_HINT를 남기고 있었다 - 자동구매만 무음이었다.
+
+    이 테스트는 수정 전에는 실패한다(문구가 없다).
+    """
+    with _db_isolation.isolated_db():
+        gid = "autoflow02"
+
+        at = AppTest.from_file(ENTRY, default_timeout=TIMEOUT_SEC)
+        at.query_params["page"] = "auto"
+        at.query_params["gid"] = gid
+        at.query_params["native"] = "1"
+        at.session_state["_guest_id"] = gid
+        # 로그인 정보 없음(member_id를 세우지 않는다) - 신고 흐름 그대로.
+        at.session_state["auto_show_points"] = True
+        at.run()
+
+        assert not at.exception, f"자동조합 렌더 예외: {at.exception}"
+        assert "pn_confirm_auto" in _keys(at), (
+            f"적립금 이용안내창이 떠 있지 않다: {_keys(at)}"
+        )
+
+        for button in at.button:
+            if button.key == "pn_confirm_auto":
+                at = button.click().run()
+                break
+        assert not at.exception, f"확인 후 진행에서 예외: {at.exception}"
+
+        page = at.query_params.get("page")
+        page_value = page[0] if isinstance(page, (list, tuple)) else page
+        assert page_value == "auto", (
+            f"확인 후 진행 뒤 page가 바뀌었다: {page_value!r}"
+        )
+        messages = _messages(at)
+        assert "로그인이 필요합니다" in messages, (
+            "로그인 없이 확인 후 진행을 눌렀는데 안내 문구가 없다(무음 return): "
+            f"화면 문구={messages!r}"
+        )
+        print(_safe(f"  (로그인 없이 확인 후 진행 뒤 문구={messages[:160]!r})"))
 
 
 def _main() -> int:
-    tests = [test_A1_confirm_keeps_the_auto_screen]
+    tests = [
+        test_A1_confirm_keeps_the_auto_screen,
+        test_A2_confirm_without_login_shows_the_login_hint,
+    ]
     failed = 0
     for test in tests:
         try:
             test()
         except AssertionError as exc:
             failed += 1
-            print(f"FAIL {test.__name__}: {exc}")
+            print(_safe(f"FAIL {test.__name__}: {exc}"))
         except Exception as exc:  # noqa: BLE001
             failed += 1
-            print(f"ERROR {test.__name__}: {type(exc).__name__}: {exc}")
+            print(_safe(f"ERROR {test.__name__}: {type(exc).__name__}: {exc}"))
         else:
             print(f"PASS {test.__name__}")
         sys.stdout.flush()
