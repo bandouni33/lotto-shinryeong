@@ -46,6 +46,45 @@ type Props = {
 const IAP_URL_PARAM = 'iap_buy';
 const IAP_PLAN_URL_PARAM = 'iap_plan';
 
+/** 스토어에서 읽은 가격(displayPrice)을 서버로 넘길 때 쓰는 파라미터 이름 —
+ * 서버(wallet_ui.IAP_PRICE_PARAMS)와 한 쌍이다. */
+const IAP_PRICE_PARAMS: Record<string, string> = {
+  points_1000: 'iap_price_points_1000',
+  points_3000: 'iap_price_points_3000',
+  'premium-monthly': 'iap_price_premium_monthly',
+  'premium-quarterly': 'iap_price_premium_quarterly',
+};
+const IAP_IN_APP_SKUS = ['points_1000', 'points_3000'];
+const IAP_SUBSCRIPTION_SKU = 'premium';
+/** 상품 가격 조회를 이만큼만 기다리고 첫 화면을 띄운다(스토어가 느려도 앱은 뜨게). */
+const PRICE_WAIT_MS = 2500;
+
+/** URL의 기존 쿼리를 그대로 두고 넘긴 키만 바꾼 주소를 만든다(2026-09-26).
+ * 로그인·결제 후 "지금 보고 있던 그 주소"로 되돌아가기 위한 것이라
+ * page/gid/native/가격 파라미터가 전부 보존된다(재빌드하면 처음 페이지로 튕긴다). */
+function withParams(url: string, params: Record<string, string | undefined>): string {
+  const [base, query = ''] = url.split('#')[0].split('?');
+  const pairs = new Map<string, string>();
+  for (const part of query.split('&')) {
+    if (!part) {
+      continue;
+    }
+    const eq = part.indexOf('=');
+    pairs.set(eq === -1 ? part : part.slice(0, eq), eq === -1 ? '' : part.slice(eq + 1));
+  }
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') {
+      pairs.delete(key);
+    } else {
+      pairs.set(key, encodeURIComponent(value));
+    }
+  }
+  const qs = Array.from(pairs.entries())
+    .map(([key, value]) => (value === '' ? key : `${key}=${value}`))
+    .join('&');
+  return qs ? `${base}?${qs}` : base;
+}
+
 /** 서버가 보내는 결제 요청 — basePlanId가 있으면 정기결제(구독), 없으면 소모성 상품. */
 type IapRequest = { sku: string; basePlanId?: string };
 
@@ -197,9 +236,86 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
 
   const buildUri = useCallback(
     (overrides?: Record<string, string>) =>
-      getStreamlitPageUrl(page, guestId, { ...(extraParams || {}), ...(overrides || {}) }),
+      getStreamlitPageUrl(page, guestId, {
+        ...(extraParams || {}),
+        ...priceParamsRef.current,
+        ...(overrides || {}),
+      }),
     [page, guestId, extraParams]
   );
+
+  // ── 2026-09-26 스토어 가격 · 현재 주소 기억 ────────────────────────────
+  // priceParamsRef: 스토어에서 읽은 실제 가격(표시용). 첫 화면 주소에 실어 보내면
+  //   서버가 저장해두고 이후 모든 화면이 그 값을 쓴다(wallet_ui.iap_prices 참고) —
+  //   Play Console에서 가격을 바꾸면 다음 앱 실행에 자동 반영되고 코드 수정이 필요 없다.
+  //   ref로 두는 이유: state로 두면 buildUri 신원이 계속 바뀌어 다른 effect가 다시 돈다.
+  const priceParamsRef = useRef<Record<string, string>>({});
+  const [pricesReady, setPricesReady] = useState(Platform.OS !== 'android');
+  // 지금 웹뷰가 실제로 보고 있는 주소 — 로그인 성공·결제 완료 후 이 자리로 돌아온다.
+  const currentUrlRef = useRef<string | null>(null);
+
+  /** 현재 주소에 파라미터만 더한 주소. 저장된 주소가 아직 없으면(첫 로드 전)
+   * buildUri()로 만든 기본 주소를 쓴다. */
+  const reloadWith = useCallback(
+    (params: Record<string, string>) => withParams(currentUrlRef.current ?? buildUri(), params),
+    [buildUri]
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    let cancelled = false;
+    const finish = () => {
+      if (!cancelled) {
+        setPricesReady(true);
+      }
+    };
+    const timer = setTimeout(finish, PRICE_WAIT_MS);
+    (async () => {
+      try {
+        await initConnection();
+        const [inAppFetched, subsFetched] = await Promise.all([
+          fetchProducts({ skus: IAP_IN_APP_SKUS, type: 'in-app' }),
+          fetchProducts({ skus: [IAP_SUBSCRIPTION_SKU], type: 'subs' }),
+        ]);
+        const displayPrices: Record<string, string> = {};
+        for (const item of (Array.isArray(inAppFetched) ? inAppFetched : []) as Product[]) {
+          if (item.displayPrice) {
+            displayPrices[item.id] = item.displayPrice;
+          }
+        }
+        for (const item of (Array.isArray(subsFetched) ? subsFetched : []) as ProductSubscription[]) {
+          if (item.displayPrice) {
+            displayPrices[item.id] = item.displayPrice;
+          }
+          for (const offer of item.subscriptionOffers ?? []) {
+            const planId = offer.basePlanIdAndroid;
+            if (planId && offer.displayPrice) {
+              displayPrices[planId] = offer.displayPrice;
+            }
+          }
+        }
+        const params: Record<string, string> = {};
+        for (const [key, param] of Object.entries(IAP_PRICE_PARAMS)) {
+          const value = displayPrices[key];
+          if (value) {
+            params[param] = value;
+          }
+        }
+        priceParamsRef.current = params;
+      } catch {
+        // 스토어 연결 실패 — 서버 기본값(상수)으로 표시된다. 결제 시점에 다시 안내된다.
+      } finally {
+        clearTimeout(timer);
+        finish();
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
 
   // ── 2026-09-26 구글 인앱결제 ────────────────────────────────────────────
   // 지급·승인은 서버(google_play_pg.py)가 전담한다 — 여기서는 (1) Streamlit이
@@ -223,14 +339,14 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       }
       setIapRequest(null);
       setWebViewUri(
-        buildUri({
+        reloadWith({
           iap_purchase_token: token,
           iap_product_id: purchase.productId,
           _cb: String(Date.now()),
         })
       );
     },
-    [buildUri]
+    [reloadWith]
   );
 
   // 매 렌더마다 새 함수를 쓰면 리스너가 재등록되므로 ref로 최신 구현을 본다.
@@ -244,12 +360,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       return;
     }
     let cancelled = false;
-    // 스토어 연결 — purchaseUpdatedListener로 미완료 구매(이전 실행에서 서버 전달이
-    // 실패한 건)까지 다시 올라오므로, 그걸 그대로 서버에 넘기는 것이 곧 재전송
-    // 안전장치가 된다(서버 멱등성이 중복 지급을 막는다).
-    void initConnection().catch(() => {
-      // 스토어 미연결 — 결제 시도 시점에 fetchProducts가 실패하며 안내된다.
-    });
+    // 스토어 연결·상품 조회·미완료 구매 재전송은 아래 가격 수집 effect가 한 번에
+    // 처리한다(initConnection을 두 곳에서 부르면 관리 포인트만 늘어난다).
+    // purchaseUpdatedListener로 이전 실행에서 서버 전달이 실패한 구매까지 다시
+    // 올라오므로, 그걸 그대로 서버에 넘기는 것이 곧 재전송 안전장치가 된다
+    // (서버 멱등성이 중복 지급을 막는다).
     const updated = purchaseUpdatedListener((purchase) => {
       if (!cancelled) {
         deliverRef.current(purchase);
@@ -353,7 +468,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // cacheEnabled=false로도 해결 안 되는 경우 있음) 때문에 매번 다른 값을
   // 끼워 넣어 웹뷰가 "완전히 새로운 주소"로 인식하게 만든다.
   useEffect(() => {
-    if (guestId === null || initialUriSetRef.current) {
+    if (guestId === null || initialUriSetRef.current || !pricesReady) {
       return;
     }
     initialUriSetRef.current = true;
@@ -361,10 +476,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     setWebViewUri(
       buildUri(shouldSendFreshStart ? { fresh_start: '1', _cb: String(Date.now()) } : {})
     );
-    // guestId가 처음 채워지는 순간에만 실행 — 이후 buildUri/shouldSendFreshStart가
-    // 바뀌어도(예: extraParams 참조가 매 렌더 새로 생성돼도) 재실행하지 않는다.
+    // guestId가 처음 채워지는 순간과 스토어 가격 조회가 끝난 순간(pricesReady)
+    // 중 늦은 쪽에서 한 번만 실행한다 — 첫 주소에 가격 파라미터를 함께 실어 보내
+    // 서버가 저장하게 하려는 것(pricesReady가 안 오면 타임아웃으로 먼저 진행한다).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guestId]);
+  }, [guestId, pricesReady]);
 
   // 최초 로드 이후에 idle 타임아웃이 새로 감지되면(예: 웹뷰가 오래 떠있다가
   // 백그라운드에서 복귀) 그때만 fresh_start를 실어 딱 한 번 다시 이동시킨다.
@@ -423,17 +539,16 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     try {
       const token = await kakaoNativeLogin();
       // 2026-09-17: 로그인 성공 시 딱 한 번만 새 주소로 이동시킨다 — 위
-      // webViewUri 설명 참고. 이 로드가 끝난 뒤 uri를 다시 바꿀 일이 없으므로
-      // (주소창의 토큰은 서버가 1회용 소비 후 알아서 지운다) 두 번째 재생성
-      // 자체가 더는 없다.
-      setWebViewUri(
-        buildUri({ native_kakao_token: token.accessToken, _cb: String(Date.now()) })
-      );
+      // webViewUri 설명 참고.
+      // 2026-09-26: 재빌드(buildUri) 대신 "지금 보고 있던 주소 + 토큰"으로 바꿨다 —
+      // 재빌드하면 사용자가 웹뷰 안에서 이동해둔 페이지(그리고 주소에 남아있던
+      // 파라미터·열린 화면 표시)를 잃고 처음 페이지로 튕긴다.
+      setWebViewUri(reloadWith({ native_kakao_token: token.accessToken, _cb: String(Date.now()) }));
     } catch {
       // 사용자가 취소했거나 카카오 로그인 자체가 실패 — 로그인 배너에서
       // 다시 시도할 수 있으니 조용히 무시한다.
     }
-  }, [buildUri]);
+  }, [reloadWith]);
 
   // 2026-09-06: QR스캔에서 이미 겪은 문제(위 qrScanRedirected 부근 주석 —
   // 특정 실기기에서 window.ReactNativeWebView 자체가 안 만들어져 postMessage
@@ -458,8 +573,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 그 대체 경로로 추가함.
   const onNavigationStateChange = useCallback(
     (navState: { canGoBack: boolean; url?: string }) => {
-      setCanGoBack(navState.canGoBack);
-      if (navState.url && navState.url.includes('qrscan=1')) {
+  setCanGoBack(navState.canGoBack);
+  // 지금 보고 있는 실제 주소를 기억해 둔다 — 로그인·결제 후 이 주소로 돌아온다.
+  if (navState.url) {
+    currentUrlRef.current = navState.url;
+  }
+  if (navState.url && navState.url.includes('qrscan=1')) {
         goToQrScan();
       }
       if (navState.url && navState.url.includes('kakao_native_trigger=1')) {
