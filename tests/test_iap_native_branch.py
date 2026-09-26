@@ -5,7 +5,9 @@
 웹 접속에서는 종전 동작이 그대로인가(회귀 없음). 버튼→앱 트리거 배선과 그 페이로드
 (앱 코드와의 약속)까지 함께 검증한다.
 
-  N1  네이티브 충전: IAP 버튼만 있고 토스 버튼은 없다
+  N1  네이티브 충전(기본값): 구글플레이 버튼 대신 "결제 연동 준비 중" 안내만 뜼다
+      (IAP 수신부가 없는 빌드가 사용 중인 동안은 버튼이 먹통이라 안 보여준다)
+  N1b 스위치를 켜면(IAP_CHARGE_ENABLED=True) 앱에서도 IAP 버튼만 뜬다(토스 없음)
   N2  네이티브 구독: IAP 구독 버튼만 있고 포인트차감 "구독하기"는 없다
   N2b 네이티브 구독(무료 프로모 대상): 무료 시작 버튼은 유지, IAP 버튼은 없음
   N3  웹 충전: 토스 버튼이 그대로 있고 IAP 버튼은 없다 (회귀)
@@ -130,14 +132,43 @@ def _spy_trigger():
         wallet_ui._fire_iap_purchase_trigger = original
 
 
-def test_N1_native_charge_shows_only_iap():
+def test_N1_native_charge_shows_pending_notice_not_dead_buttons():
+    """앱 충전 화면(기본값): IAP 수신부가 없는 빌드가 사용 중이므로 구글플레이 버튼을
+    그리지 않고 준비중 안내를 낸다 — 눌러도 반응 없는 버튼을 보여주지 않는다."""
     with _prod_like_env(), _db_isolation.isolated_db():
+        import wallet_ui
+
         mid = _member("iap_n1")
         at = _render_probe("charge", mid, native=True)
         assert not at.exception, f"네이티브 충전 화면 렌더 예외: {at.exception}"
         keys = _keys(at)
+        assert not any(key.startswith("iap_buy_") for key in keys), (
+            f"앱인데 IAP 충전 버튼이 그려졌다(수신부 없는 빌드에서는 먹통): {keys}"
+        )
+        assert TOSS_KEY not in keys, f"앱인데 토스 결제 버튼이 그려졌다(정책 위반 소지): {keys}"
+        infos = "\n".join((m.value or "") for m in at.info)
+        assert wallet_ui.CHARGE_PENDING_NOTICE in infos, (
+            f"앱 충전 화면에 준비중 안내가 없다: {infos!r}"
+        )
+
+
+def test_N1b_native_charge_shows_iap_when_switch_on():
+    """스위치를 켜면(IAP_CHARGE_ENABLED=True) 앱에서 구글플레이 버튼이 나온다 —
+    되살릴 때 그 경로가 살아 있어야 하므로 스위치 양쪽을 다 검사한다."""
+    with _prod_like_env(), _db_isolation.isolated_db():
+        import wallet_ui
+
+        mid = _member("iap_n1b")
+        original = wallet_ui.IAP_CHARGE_ENABLED
+        wallet_ui.IAP_CHARGE_ENABLED = True
+        try:
+            at = _render_probe("charge", mid, native=True)
+        finally:
+            wallet_ui.IAP_CHARGE_ENABLED = original
+        assert not at.exception, f"네이티브 충전 화면 렌더 예외: {at.exception}"
+        keys = _keys(at)
         for key in IAP_BUY_KEYS:
-            assert key in keys, f"앱인데 IAP 충전 버튼이 없다: {keys}"
+            assert key in keys, f"스위치가 켜졌는데 IAP 충전 버튼이 없다: {keys}"
         assert TOSS_KEY not in keys, f"앱인데 토스 결제 버튼이 그려졌다(정책 위반 소지): {keys}"
 
 
@@ -194,12 +225,19 @@ def test_N4_web_subscription_keeps_points_button():
 
 def test_N5_buttons_call_trigger_with_exact_product():
     with _prod_like_env(), _db_isolation.isolated_db():
+        import wallet_ui
+
         mid = _member("iap_n5")
         wdb.activate_free_advanced_sub(mid)
 
         with _spy_trigger() as calls:
-            at = _render_probe("charge", mid, native=True)
-            at = _click(at, IAP_BUY_KEYS[1])
+            original = wallet_ui.IAP_CHARGE_ENABLED
+            wallet_ui.IAP_CHARGE_ENABLED = True
+            try:
+                at = _render_probe("charge", mid, native=True)
+                at = _click(at, IAP_BUY_KEYS[1])
+            finally:
+                wallet_ui.IAP_CHARGE_ENABLED = original
         assert calls == [("points_3000", None)], f"충전 버튼 트리거 인자: {calls}"
 
         with _spy_trigger() as calls:
@@ -290,23 +328,31 @@ def test_N9_store_price_is_shown_and_persists_across_navigation():
     """앱이 스토어에서 읽어 보낸 가격이 화면에 뜨고, 내부이동(파라미터가 사라진
     렌더)에서도 유지되나 — Play Console 가격 변경이 코드 수정 없이 반영되는 경로."""
     with _prod_like_env(), _db_isolation.isolated_db():
-        mid = _member("iap_n9")
-        at = _render_probe("charge", mid, native=True, iap_price_points_1000="₩9,900")
-        assert not at.exception, f"가격 파라미터 렌더 예외: {at.exception}"
-        labels = {b.key: b.label for b in at.button}
-        assert "₩9,900" in labels[IAP_BUY_KEYS[0]], (
-            f"앱이 보낸 스토어 가격이 화면에 안 떴다: {labels[IAP_BUY_KEYS[0]]}"
-        )
-        assert "30,000원" in labels[IAP_BUY_KEYS[1]], (
-            f"안 보낸 상품은 기본값으로 떠야 한다: {labels[IAP_BUY_KEYS[1]]}"
-        )
+        import wallet_ui
 
-        # 다음 렌더: 파라미터가 없다(Streamlit 내부링크로 이동한 상태와 같다).
-        at2 = _render_probe("charge", mid, native=True)
-        labels2 = {b.key: b.label for b in at2.button}
-        assert "₩9,900" in labels2[IAP_BUY_KEYS[0]], (
-            f"저장해둔 가격이 다음 화면에서 사라졌다: {labels2[IAP_BUY_KEYS[0]]}"
-        )
+        mid = _member("iap_n9")
+        # 충전 화면 가격표시는 스위치가 켜졌을 때의 동작이다(기본값은 준비중 안내).
+        original = wallet_ui.IAP_CHARGE_ENABLED
+        wallet_ui.IAP_CHARGE_ENABLED = True
+        try:
+            at = _render_probe("charge", mid, native=True, iap_price_points_1000="₩9,900")
+            assert not at.exception, f"가격 파라미터 렌더 예외: {at.exception}"
+            labels = {b.key: b.label for b in at.button}
+            assert "₩9,900" in labels[IAP_BUY_KEYS[0]], (
+                f"앱이 보낸 스토어 가격이 화면에 안 떴다: {labels[IAP_BUY_KEYS[0]]}"
+            )
+            assert "30,000원" in labels[IAP_BUY_KEYS[1]], (
+                f"안 보낸 상품은 기본값으로 떠야 한다: {labels[IAP_BUY_KEYS[1]]}"
+            )
+
+            # 다음 렌더: 파라미터가 없다(Streamlit 내부링크로 이동한 상태와 같다).
+            at2 = _render_probe("charge", mid, native=True)
+            labels2 = {b.key: b.label for b in at2.button}
+            assert "₩9,900" in labels2[IAP_BUY_KEYS[0]], (
+                f"저장해둔 가격이 다음 화면에서 사라졌다: {labels2[IAP_BUY_KEYS[0]]}"
+            )
+        finally:
+            wallet_ui.IAP_CHARGE_ENABLED = original
 
         # 기본요금제 가격도 같은 경로로 반영되는지.
         wdb.activate_free_advanced_sub(mid)
@@ -354,7 +400,8 @@ def test_N11_resume_reopens_subscription_dialog_after_login():
 
 def _main() -> int:
     tests = [
-        test_N1_native_charge_shows_only_iap,
+        test_N1_native_charge_shows_pending_notice_not_dead_buttons,
+        test_N1b_native_charge_shows_iap_when_switch_on,
         test_N2_native_subscription_shows_only_iap,
         test_N2b_native_free_promo_keeps_free_button,
         test_N3_web_charge_keeps_toss_button,

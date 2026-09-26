@@ -1014,10 +1014,8 @@ def render():
     if hedge_purchase_error:
         st.error(f"❌ {hedge_purchase_error}")
 
-    from wallet_ui import INSUFFICIENT_BALANCE_OPEN, insufficient_balance_dialog
-
-    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
-        insufficient_balance_dialog()
+    # 2026-09-26 통일: 적립금 부족/충전창은 wallet_ui.render_wallet_bar() 한 곳에서만
+    # 띄운다(화면별 사본 제거) — 이 화면은 open_insufficient_balance_dialog()로 플래그만 세운다.
 
     # hedge_results는 방금 자동저장된 결과를 한 번만 보여주기 위한 1회성 플래시다 —
     # pop으로 꺼내 쓰기 때문에 다음 재실행부턴 저절로 사라지고(중복 표시 없음),

@@ -13,6 +13,10 @@
 추가로 지킬 것:
 - 이름·플래그·상품ID·금액·요일·단가는 **표에 적힌 기준점 파일에만** 존재해야 한다. 다른
   파일에 같은 값이 보이면 그건 버그 예약이다(그 자리에서 기준점을 import하도록 바꾼다).
+- **같은 기능의 버튼·창은 화면마다 새로 만들지 않는다**(2026-09-26 사용자 지시). 로그인
+  안내·적립금 안내·부족/충전·구독 안내·"메인으로" 이동은 §2의 K~M 기준점을 **호출만**
+  한다 — 화면별 사본이 생기면 한 곳만 고쳐져 나머지 화면이 조용히 어긋난다(실제 사고:
+  타로만 적립금 안내창 X가 먹통이고 부족/충전창이 안 떴음).
 - 화면 CSS·문구를 새로 쓰기 전에 §3의 보류 항목(테마/토큰)과 죽은 코드 목록을 확인한다.
 - 기준점을 바꾸면 **§2의 "같이 영향받는 곳"과 "걸리는 테스트"를 전부 실행**하고 결과를
   보고한다. 결제·로그인·지급 경로는 승인 없이 바꾸지 않는다.
@@ -31,6 +35,9 @@
 | H | 네이티브 앱 여부 판정 | `wallet_ui.in_native_app()` | `native=1` 판정이 필요한 모든 곳(카카오 배너, IAP 분기) | `tests/test_iap_native_branch.py` |
 | I | 서버↔앱 파라미터·프로토콜 이름 | 파이썬 쪽 상수(`wallet_ui.IAP_PRICE_PARAMS` 등) + TS 상수(`IAP_PRICE_PARAMS`) | `streamlit-webview.tsx`, `google_play_pg.py` | `tests/test_iap_native_branch.py` |
 | J | 화면 문구·라벨 | `legal_notices.py`(고지·가격 안내) / 기능별 상수 | 화면에 직접 박힌 한글 라벨 | 심사 문구 정리 커밋 참고 — 라벨이 여러 곳에 복사되면 제로폭 공백 사건처럼 일부만 바뀐다 |
+| K | 적립금 안내창(구매 전 확인창) | `wallet_ui.points_notice_dialog` + **열림 플래그는 `dialog_registry.DIALOGS`에 `points_notice_trigger=True`로 등록**(자동구매·번개·안티액땜·타로) | 네 화면의 열림 플래그·X닫기 정리(`_points_notice_on_dismiss`)·로그아웃 정리 키 | `tests/test_dialog_registry.py`(D9), `tests/test_tarot_gate_flow.py`(T1) |
+| L | 적립금 부족/충전창 | 화면이 아니라 공통 자리 **`wallet_ui.render_wallet_bar` 한 곳에서만** 띄운다(화면은 `open_insufficient_balance_dialog()`로 플래그만 세운다) | 각 화면 안의 띄우기 사본(금지), 충전창 `charge_dialog` | `tests/test_dialog_registry.py`(D8), `tests/test_tarot_gate_flow.py`(T2) |
+| M | "메인으로" 이동 버튼·링크 | `shared_ui_styles.brand_home_link_html()` (href는 `user_scope.internal_nav_href`) | 각 화면 좌상단 아이콘, 타로 게이트 | `tests/test_kakao_login_branch_links.py`, `tests/test_tarot_gate_flow.py`(T3) |
 
 ### A(다이얼로그)에 등록된 재개 이름 — 이 목록이 정본이다
 

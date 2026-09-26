@@ -98,7 +98,13 @@ DIALOGS: dict[str, DialogSpec] = {
         name="open_tarot_dialog",
         flag="open_tarot_dialog",
         consumer="tarot/tarot_page.py",
-        note="타로 페이지 전체가 로그인 게이트를 통과한 뒤에만 도달한다 → 재개 요청 없음.",
+        points_notice_trigger=True,
+        note=(
+            "타로 페이지 전체가 로그인 게이트를 통과한 뒤에만 도달한다 → 재개 요청 없음. "
+            "2026-09-26 실기기 신고 대응: 적립금 안내창을 여는 화면인데 points_notice_trigger가 "
+            "빠져 있어 X로 닫아도 플래그가 남아 창이 곧바로 다시 떴다(자동구매는 지워짐) — "
+            "안내창을 여는 네 화면은 전부 여기에 등록한다."
+        ),
     ),
 }
 

@@ -18,7 +18,6 @@ from user_scope import (
 )
 from wallet_ui import (
     deduct_after_result,
-    insufficient_balance_dialog,
     open_insufficient_balance_dialog,
     points_notice_dialog,
     INSUFFICIENT_BALANCE_OPEN,
@@ -467,8 +466,8 @@ def render():
     if thunder_purchase_error:
         st.error(f"❌ {thunder_purchase_error}")
 
-    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
-        insufficient_balance_dialog()
+    # 2026-09-26 통일: 적립금 부족/충전창은 wallet_ui.render_wallet_bar() 한 곳에서만
+    # 띄운다(화면별 사본 제거) — 이 화면은 open_insufficient_balance_dialog()로 플래그만 세운다.
 
     # 2026-08-28: 네이티브 앱 툴바가 이미 자체 "← 메인" 버튼을 갖고 있어서(showBack,
     # streamlit-webview.tsx) 화면 안 "메인으로" 버튼은 지웠다(옆 "생일/행운수 관리"는

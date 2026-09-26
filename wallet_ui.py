@@ -706,6 +706,17 @@ IAP_ALLOWED_BASE_PLANS = tuple(plan for _key, plan in IAP_SUBSCRIPTION_PLANS)
 IAP_PRICE_PARAMS = dict(products.IAP_PRICE_PARAMS)
 IAP_PRICE_FALLBACK = dict(products.IAP_PRICE_FALLBACK)
 
+# 앱 결제(Google Play) 버튼 노출 스위치 — 2026-09-26 사용자 지시(2안: 준비중 안내)로 내려둔다.
+# 왜: 서버가 먼저 배포돼 앱에 구글플레이 충전 버튼이 그려졌는데, 사용자 손에 있는
+# 빌드(v54)에는 그 요청을 받는 수신부가 없어 눌러도 아무 반응이 없었다(실기기 신고:
+# "1,000점 버튼 먹통"). IAP가 실제로 동작하는 빌드가 배포되면 이 값을 True로
+# 되돌린다 — 버튼을 되살리는 지점은 여기 한 곳뿐이다(화면마다 분기를 만들지 않는다).
+IAP_CHARGE_ENABLED = False
+
+# 충전을 못 하는 상황의 공통 안내 문구(웹 미연동 분기와 앱 준비중 분기가 같이 쓴다 —
+# 문구가 두 곳에 복사되면 한쪽만 바뀐다).
+CHARGE_PENDING_NOTICE = "결제 연동 준비 중입니다. 조금만 기다려주세요."
+
 # 앱(streamlit-webview.tsx)이 스토어에서 읽은 실제 가격을 실어 보내는 파라미터 이름과,
 # 그 값이 아직 없을 때 쓸 기본값(2026-09-26). 실제 표시는 항상 앱이 보내온 값이
 # 우선하므로, Play Console에서 가격을 바꾸면 다음 앱 실행 때 화면에 자동 반영되고
@@ -879,7 +890,13 @@ def _render_charge_actions(member_id: int) -> None:
         # 토스 결제창은 앱 안에서 아예 렌더하지 않는다(Play 결제정책). 이 판단을
         # pg_configured() 분기보다 먼저 두는 게 핵심이다: 나중에 실키가 들어와도
         # 앱에서는 이 분기를 지나 토스 버튼이 자동 복귀하지 않는다.
-        _render_iap_charge_options()
+        # 2026-09-26(사용자 지시 2안): 아직 IAP 수신부가 없는 빌드가 사용 중이라
+        # 구글플레이 버튼 대신 준비 중 안내를 낸다(죽은 버튼을 보여주지 않는다).
+        # 되살리는 지점은 위 IAP_CHARGE_ENABLED 한 곳이다.
+        if IAP_CHARGE_ENABLED:
+            _render_iap_charge_options()
+        else:
+            st.info(CHARGE_PENDING_NOTICE)
         return
     if pg_configured():
         # 2026-09-19(Task #13): TOSS_CLIENT_KEY/TOSS_SECRET_KEY가 설정되는
@@ -969,7 +986,7 @@ def _render_charge_actions(member_id: int) -> None:
                     st.rerun()
                 st.error("충전에 실패했습니다.")
     else:
-        st.info("결제 연동 준비 중입니다. 조금만 기다려주세요.")
+        st.info(CHARGE_PENDING_NOTICE)
 
 
 @_dialog_decorator("적립금 충전")
@@ -1423,6 +1440,17 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     if st.session_state.get("wallet_show_charge") and member_id:
         st.session_state.pop("wallet_show_charge", None)
         charge_dialog()
+
+    # 2026-09-26 통일(사용자 지시): 적립금 부족/충전창은 **모든 화면 공통인 여기 한 곳**에서만
+    # 띄운다. 화면이 자기 분기 안에서 대신 띄우면(타로가 그랬다) 창을 열어둔 플래그를 닫기
+    # 콜백이 먼저 내려버려 창이 아예 안 뜨는 사고가 화면마다 다르게 난다 — 버튼/창마다
+    # "고치는 원점"을 하나로 두기 위한 배치다. 화면은 open_insufficient_balance_dialog()로
+    # 플래그만 세우고, 띄우는 판정·순서는 여기가 전담한다(로그인 전이면 남기지 않고 정리).
+    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
+        if member_id:
+            insufficient_balance_dialog()
+        else:
+            st.session_state.pop(INSUFFICIENT_BALANCE_OPEN, None)
 
     if not member_id and not zp_uid:
         # 2026-09-02: 예전엔 여기서 "개발용 테스트 로그인" 버튼을 사용자에게 직접

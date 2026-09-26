@@ -388,14 +388,17 @@ def _render_extra_draw_gate():
 
         points_notice_dialog("tarot", on_close=_tarot_dialog_close)
 
-        from wallet_ui import INSUFFICIENT_BALANCE_OPEN, insufficient_balance_dialog
+        # 2026-09-26 통일: 적립금 부족/충전창은 wallet_ui.render_wallet_bar() 한 곳에서만
+        # 띄운다(화면별 사본을 두지 않는다) — 여기는 플래그만 세우고 끝낸다.
 
-        if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
-            insufficient_balance_dialog()
+    # 2026-09-26 통일(실기기 신고 "처음으로 먹통"): "메인 이동"은 모든 화면이 같은
+    # 컴포넌트(shared_ui_styles의 아이콘 링크) 하나만 쓴다. 이 화면만 st.button
+    # ("처음으로")로 따로 만들어 두었는데, 오늘 뽑기를 다 쓴 상태에서는 이 화면이 곧
+    # "처음"이라(_reset 후에도 같은 게이트가 다시 그려진다) 눌러도 아무 변화가 없었다.
+    # 링크는 internal_nav_href("main")을 거치므로 gid·native=1도 그대로 이어진다.
+    from shared_ui_styles import brand_home_link_css, brand_home_link_html
 
-    if st.button("처음으로", use_container_width=True, key="tarot_extra_gate_home"):
-        _reset()
-        st.rerun()
+    st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
 
 
 # ────────────────────────────────────────────────

@@ -156,6 +156,61 @@ def test_D7_logout_keys_are_derived_from_registry():
         assert key in routed, f"로그아웃 정리 목록에 {key!r}가 빠졌다(다이얼로그 플래그 누락)"
 
 
+def test_D8_insufficient_balance_dialog_has_exactly_one_render_site():
+    """적립금 부족/충전창은 **한 곳에서만** 띄운다(2026-09-26 규격).
+
+    화면이 자기 분기 안에서 대신 띄우면, 창을 열어둔 플래그를 닫기 콜백이 먼저
+    내려버려 창이 아예 안 뜨는 사고가 화면마다 다르게 난다(타로 실기기 신고).
+    호출(`open_insufficient_balance_dialog`)은 화면에서 해도 되지만, 띄우는 자리는
+    wallet_ui.render_wallet_bar 한 곳뿐이어야 한다."""
+    import re
+
+    offenders: list[str] = []
+    for path in sorted(list(ROOT.glob("*.py")) + list(ROOT.glob("tarot/*.py"))):
+        if path.name == "wallet_ui.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"^\s*insufficient_balance_dialog\(\)", text, re.M):
+            line = text[: match.start()].count("\n") + 1
+            offenders.append(f"{path.name}:{line}")
+    assert offenders == [], (
+        "적립금 부족/충전창을 화면에서 직접 띄우고 있다 - 공통 자리(wallet_ui.render_wallet_bar)만 "
+        f"쓰도록 통일할 것: {offenders}"
+    )
+
+    wallet_ui_src = (ROOT / "wallet_ui.py").read_text(encoding="utf-8")
+    call_sites = re.findall(
+        r"^\s*insufficient_balance_dialog\(\)\s*$", wallet_ui_src, re.M
+    )
+    assert len(call_sites) == 1, (
+        "wallet_ui 안에서 부족/충전창을 띄우는 자리가 정확히 하나여야 한다: "
+        f"{len(call_sites)}곳"
+    )
+
+
+def test_D9_every_notice_screen_flag_is_registered_as_trigger():
+    """적립금 안내창을 여는 네 화면의 플래그는 모두 points_notice_trigger로 등록된다.
+
+    빠진 화면은 X로 닫아도 플래그가 남아 창이 곧바로 다시 뜨고(X 먹통), 자동구매만
+    정상인 것처럼 보인다(2026-09-26 실기기 신고 - 타로가 빠져 있었다)."""
+    import re
+
+    trigger_flags = set(dialog_registry.points_notice_trigger_flags())
+    missing: list[str] = []
+    for rel in ("page_thunder.py", "page_hedge.py", "page_auto.py", "tarot/tarot_page.py"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for match in re.finditer(r"points_notice_dialog\(\s*\"(\w+)\"", text):
+            head = text[: match.start()]
+            flags = re.findall(r'st\.session_state\.get\("([a-z_]+)"\)', head)
+            assert flags, f"{rel}: 안내창을 열어둔 플래그를 찾지 못했다"
+            if flags[-1] not in trigger_flags:
+                missing.append(f"{rel}:{flags[-1]}")
+    assert missing == [], (
+        "적립금 안내창을 여는 화면인데 X닫기 플래그로 등록되지 않았다(창이 다시 떠서 X 먹통): "
+        f"{missing}"
+    )
+
+
 def _main() -> int:
     tests = [
         test_D1_every_resume_literal_is_registered,
@@ -165,6 +220,8 @@ def _main() -> int:
         test_D5_agents_md_lists_the_same_resume_names,
         test_D6_removed_dead_names_stay_removed,
         test_D7_logout_keys_are_derived_from_registry,
+        test_D8_insufficient_balance_dialog_has_exactly_one_render_site,
+        test_D9_every_notice_screen_flag_is_registered_as_trigger,
     ]
     failed = 0
     for test in tests:

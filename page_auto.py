@@ -2783,10 +2783,8 @@ def render():
                     if _auto_purchase_error:
                         st.error(_auto_purchase_error)
 
-                    from wallet_ui import INSUFFICIENT_BALANCE_OPEN, insufficient_balance_dialog
-
-                    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
-                        insufficient_balance_dialog()
+                    # 2026-09-26 통일: 적립금 부족/충전창은 wallet_ui.render_wallet_bar()
+                    # 한 곳에서만 띄운다(화면별 사본 제거) — 여기는 플래그만 세운다.
 
             with col_visual:
                 pass
