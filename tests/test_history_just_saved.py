@@ -141,6 +141,19 @@ def test_H3_auto_cards_use_the_same_class_and_css():
     assert "@keyframes historyJustSavedBlink" in css, "깜빡임 키프레임이 공용 CSS에 없다"
     assert f".{chu.JUST_SAVED_CLASS}" in css, "깜빡임 클래스 규칙이 공용 CSS에 없다"
 
+    # 2026-09-26(실기기 재신고): 저장 직후 페이지가 하얘졌다가 다시 그려지면서
+    # 깜박임이 끝나버려 안 보였다 — 표시가 "애니메이션에만" 기대면 안 된다.
+    rule = css.split(f".{chu.JUST_SAVED_CLASS} {{", 1)[1].split("}", 1)[0]
+    assert "border" in rule, (
+        "정적 테두리 강조가 없다 - 애니메이션이 안 보이는 환경에서는 아무 표시도 안 된다"
+    )
+    assert "::after" in css and "방금 저장" in css, (
+        "애니메이션 없이도 보이는 정적 배지(방금 저장)가 없다"
+    )
+    assert " 0.6s !important" in rule, (
+        "애니메이션 시작 지연이 없다 - 하얀 화면 전환 중에 깜박임이 끝난다"
+    )
+
     item = {
         "draw_round": 1242,
         "combo_count": 1,

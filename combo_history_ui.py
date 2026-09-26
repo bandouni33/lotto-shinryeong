@@ -207,7 +207,13 @@ def history_css(container_key: str = "") -> str:
         min-width: 16px;
     }
     /* 2026-09-26(사용자 지시): 방금 저장한 조합을 눈으로 확인할 수 있게 최신 카드
-       1개만 잠깐 깜박인다(2~3회). 붙이는 클래스도 이 파일 한 곳. */
+       1개만 잠깐 깜박인다(2~3회). 붙이는 클래스도 이 파일 한 곳.
+       2026-09-26(실기기 재신고 — "저장 후 화면이 하얘졌다가 뜨는 동안 깜박임이 끝나
+       안 보인다"): 깜박임은 **저장 후 페이지가 통째로 다시 그려지는 전환**(하얀 화면)
+       뒤에 시작된다. 그래서 시간에만 기대지 않게 ① 시작을 0.6초 늦추고
+       ② 애니메이션과 별개로 **정적 표시**(보라 테두리 + "방금 저장" 배지)를 같이
+       붙인다 — 애니메이션이 늦거나 아예 안 도는 기기(접근성 "애니메이션 줄이기")에서도
+       표시가 남고, 다음 상호작용(rerun)까지 유지된다. */
     @keyframes historyJustSavedBlink {
         0%, 100% {
             box-shadow: 0 0 0 0 rgba(206, 147, 216, 0);
@@ -217,8 +223,24 @@ def history_css(container_key: str = "") -> str:
         }
     }
     .history-just-saved {
+        position: relative;
         border-radius: 10px;
-        animation: historyJustSavedBlink 0.8s ease-in-out 3 !important;
+        border: 2px solid rgba(171, 71, 188, 0.85) !important;
+        animation: historyJustSavedBlink 0.8s ease-in-out 3 0.6s !important;
+    }
+    .history-just-saved::after {
+        content: "방금 저장";
+        position: absolute;
+        top: -9px;
+        right: 8px;
+        background: #ab47bc;
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 1;
+        padding: 3px 7px;
+        border-radius: 999px;
+        z-index: 2;
     }
     </style>
     """
