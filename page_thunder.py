@@ -6,6 +6,8 @@ from lotto_stats import get_number_weights, get_resolved_pattern_rules, get_thun
 import json
 import uuid
 
+import ball_style
+
 from auth_kakao import current_member_id
 from user_scope import (
     current_birthday_scope,
@@ -577,6 +579,16 @@ def render():
     # 보여야 한다(번호판 밑에서 이동) — 아래 저장내역 렌더 지점에서 처리한다.
 
     # ─── 메인 UI HTML (Grid & Logic) ───
+    # 볼 색·글자색은 ball_style.py가 단일 기준점이다(2026-09-26) — 이 iframe JS가 쓰는
+    # 값도 여기서 만들어 넣는다(예전엔 그라디언트 5줄이 JS에 복사돼 있었고, 글자색은
+    # CSS의 흰색 고정이라 노란 볼에서 잘 안 보였다).
+    _ball_style_js = json.dumps(
+        {
+            limit: [ball_style.ball_fill(limit), ball_style.ball_text_color(limit)]
+            for limit in (10, 20, 30, 40, 45)
+        },
+        ensure_ascii=False,
+    )
     thunder_ui_html = f"""
     <!DOCTYPE html>
     <html>
@@ -1554,19 +1566,24 @@ def render():
                 activeGenTimers.push(completeId);
             }}
 
-            /* 메인화면 user_page get_ball_style() / orbit-ball radial-gradient 재사용 */
-            function getBallBackground(n) {{
-                if (n <= 10) return 'radial-gradient(circle at 35% 35%, #ffeb3b, #f9a825, #f57f17)';
-                if (n <= 20) return 'radial-gradient(circle at 35% 35%, #4fc3f7, #1976d2, #0d47a1)';
-                if (n <= 30) return 'radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c)';
-                if (n <= 40) return 'radial-gradient(circle at 35% 35%, #bdbdbd, #757575, #424242)';
-                return 'radial-gradient(circle at 35% 35%, #81c784, #388e3c, #1b5e20)';
+            /* 볼 색·글자색은 ball_style.py가 단일 기준점이다(2026-09-26).
+               예전엔 메인 화면 그라디언트 5줄이 여기 복사돼 있었고 글자색은 CSS의 흰색
+               고정이라 노란 볼(1~10)에서 대비가 2.0 수준이었다. */
+            const BALL_STYLE = {_ball_style_js};
+            function ballStyleFor(n) {{
+                for (const limit of [10, 20, 30, 40, 45]) {{
+                    if (n <= limit) return BALL_STYLE[limit];
+                }}
+                return BALL_STYLE[45];
             }}
+            function getBallBackground(n) {{ return ballStyleFor(n)[0]; }}
+            function getBallTextColor(n) {{ return ballStyleFor(n)[1]; }}
 
             function createBallEl(n) {{
                 const ball = document.createElement('div');
                 ball.className = 'ball';
                 ball.style.background = getBallBackground(n);
+                ball.style.color = getBallTextColor(n);
                 ball.innerText = n;
                 return ball;
             }}

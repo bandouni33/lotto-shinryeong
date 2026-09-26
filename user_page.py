@@ -577,12 +577,10 @@ if current_page == "main":
 
     # 상단 로고 + 회전 볼 오버레이
 
-    def get_ball_color(n):
-        if 1 <= n <= 10: return "#f9a825"
-        if 11 <= n <= 20: return "#1976d2"
-        if 21 <= n <= 30: return "#e53935"
-        if 31 <= n <= 40: return "#757575"
-        return "#388e3c"
+    # 볼 채우기·글자색은 ball_style.py가 단일 기준점이다(2026-09-26) — 여기서 색을
+    # 새로 만들지 말 것(예전엔 이 파일에 색 표가 복사돼 있었고, 글자가 흰색 고정이라
+    # 노란 볼(1~10)에서 대비가 2.0 수준이었다).
+    from ball_style import orbit_ball_css
 
     balls_css = ""
     for i, num in enumerate(lucky_display):
@@ -591,19 +589,7 @@ if current_page == "main":
         # 앞번호(인덱스 0)가 맨 마지막에 나왔다 — 인덱스와 등장 순서가
         # 일치하도록 시작각을 뒤집는다(0번이 가장 큰 각도로 시작 → 가장 먼저 등장).
         angle = (len(lucky_display) - 1 - i) * 30
-        color = get_ball_color(num)
-        balls_css += f"""
-        .orbit-ball-{i} {{
-            position: absolute; width: 30px; height: 30px; border-radius: 50%;
-            background: radial-gradient(circle at 35% 35%, {color}, #000);
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: 900; font-size: 15px;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-            box-shadow: 2px 3px 5px rgba(0,0,0,0.6), inset 2px 2px 4px rgba(255,255,255,0.4);
-            top: 50%; left: 50%;
-            margin-top: -11px; margin-left: -11px;
-            animation: orbit{i} 10s linear infinite;
-        }}
+        balls_css += orbit_ball_css(i, num) + f"""
         @keyframes orbit{i} {{
             from {{ transform: rotate({angle}deg) translateX(82px) rotate(-{angle}deg); }}
             to {{ transform: rotate({angle + 360}deg) translateX(82px) rotate(-{angle + 360}deg); }}
@@ -801,12 +787,8 @@ if current_page == "main":
     # 🟢 1. 로또볼 디자인 (3D 입체감 & 크기 확대)
     col1 = st.columns([1])[0]
     with col1:
-        def get_ball_style(n):
-            if 1 <= n <= 10: return "background: radial-gradient(circle at 35% 35%, #ffeb3b, #f9a825, #f57f17);"
-            if 11 <= n <= 20: return "background: radial-gradient(circle at 35% 35%, #4fc3f7, #1976d2, #0d47a1);"
-            if 21 <= n <= 30: return "background: radial-gradient(circle at 35% 35%, #ef5350, #e53935, #b71c1c);"
-            if 31 <= n <= 40: return "background: radial-gradient(circle at 35% 35%, #bdbdbd, #757575, #424242);"
-            return "background: radial-gradient(circle at 35% 35%, #81c784, #388e3c, #1b5e20);"
+        # 볼 채우기·글자색은 ball_style.py가 단일 기준점이다(2026-09-26).
+        from ball_style import ball_html
 
         # 34px 공 6개 + 보너스공 + 라벨을 고정폭으로 한 줄에 다 넣으면 합계가
         # 약 475px에 달해, 실제 폰 화면(보통 360~412dp)에서는 항상 넘쳐서
@@ -816,13 +798,7 @@ if current_page == "main":
         # 아예 라벨을 위 줄로 올리고 공들만 따로 한 줄로 뺐다 — 공 6개+보너스공만
         # 합쳐도 ~210px이라 어떤 폰 폭에도 넉넉히 들어간다. 그래도 만약을 대비해
         # 이 줄만 별도로 가로 스크롤 가능하게 해서 최소한 잘려서 안 보이는 일은 없게 한다.
-        _ball_css = (
-            "width:26px; height:26px; border-radius:50%; display:flex; align-items:center; "
-            "justify-content:center; color:white; font-weight:900; font-size:12px; "
-            "flex-shrink:0; box-shadow: 2px 3px 5px rgba(0,0,0,0.5), inset -3px -3px 5px rgba(0,0,0,0.4), "
-            "inset 2px 2px 4px rgba(255,255,255,0.6); text-shadow: 1px 1px 2px rgba(0,0,0,0.8);"
-        )
-        balls_html = "".join([f'<div style="{get_ball_style(n)} {_ball_css} margin-right:4px;">{n}</div>' for n in numbers])
+        balls_html = "".join(ball_html(n, size=26, font_size=12) for n in numbers)
 
         st.markdown(f"""
         <div style="background: linear-gradient(145deg, #1c2645, #12182b); border-radius:16px; padding:10px 12px; border: 1px solid #2a3a60; box-shadow: 0 6px 12px rgba(0,0,0,0.5); margin-bottom: 12px; max-width: 100%; box-sizing: border-box;">
@@ -830,7 +806,7 @@ if current_page == "main":
             <div style="display:flex; align-items:center; justify-content:center; max-width: 100%; overflow-x: auto;">
                 {balls_html}
                 <span style="color:#aaa; font-weight:900; font-size:16px; margin: 0 4px; flex-shrink:0;">+</span>
-                <div style="{get_ball_style(bonus_val)} {_ball_css}">{bonus_val}</div>
+                {ball_html(bonus_val, size=26, font_size=12, margin_right=0)}
             </div>
         </div>
         """, unsafe_allow_html=True)
