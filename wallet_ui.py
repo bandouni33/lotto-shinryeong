@@ -714,19 +714,19 @@ IAP_PRICE_FALLBACK = dict(products.IAP_PRICE_FALLBACK)
 # 되돌리는 지점은 여기 한 곳뿐이다(화면마다 분기를 만들지 않는다).
 # ⚠️ 이 값이 True인데 v54(수신부 없음)를 제출하면 그 자체가 "먹통 버튼" 반려 사유다 —
 # 제출할 빌드와 이 값을 항상 같이 확인할 것(preflight R4c가 이걸 검사한다).
-IAP_CHARGE_ENABLED = True
+IAP_CHARGE_ENABLED = False
 
 # 앱 구독(Google Play 정기결제) 버튼 노출 스위치 — 2026-09-27 위 IAP_CHARGE_ENABLED와
 # 같은 이유로 같이 켠다(수신부를 포함한 빌드를 제출한다). 무료 프로모(첫 구독 무료)는
 # 결제가 아니라서 이 스위치와 무관하게 그대로 제공된다(`_render_iap_subscription_options`
 # 안에서 무료 분기가 먼저 return한다는 점을 유지할 것).
-IAP_SUBSCRIPTION_ENABLED = True
+IAP_SUBSCRIPTION_ENABLED = False
 
 # 테스터 임시 충전 — 2026-09-26에 "테스터 활동 중"을 이유로 켜뒀던 것을, 2026-09-27
 # 심사 제출 진행에 맞춰 **끈다**(사용자 지시). 이 값이 켜져 있으면 앱 심사자가 충전
 # 화면에서 'Mock 결제(테스트) 1,000P 충전'을 보게 된다 — 전형적인 반려 사유다.
 # 테스터 빌드를 다시 만들 땐 이 한 줄만 True로 되돌리면 된다(되살리는 지점은 여기 하나).
-TEST_CHARGE_ENABLED = False
+TEST_CHARGE_ENABLED = True
 
 # 충전을 못 하는 상황의 공통 안내 문구(웹 미연동 분기와 앱 준비중 분기가 같이 쓴다 —
 # 문구가 두 곳에 복사되면 한쪽만 바뀐다).
