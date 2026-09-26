@@ -190,8 +190,15 @@ def render():
             st.session_state["thunder_clear_selections"] = True
         # 생성·저장이 끝났으니 "생성 중" 상태 해제 — 조합시작 버튼/게임수 선택을
         # 다시 활성화한다(아래 참고).
+        #
+        # 2026-09-26(사용자 신고 "저장 후 3초 넘게 화면이 하얗게 변했다가 저장내역이
+        # 보인다"): 여기 있던 st.rerun()을 없앤다. 저장은 위에서 이미 끝났고, 이때
+        # 세운 플래그들(저장내역 열기·완료 안내·저장내역으로 스크롤·선택 초기화)은
+        # 전부 **이 실행 안에서** 아래 렌더가 그대로 소비한다(테스트가 그 결과를 고정:
+        # tests/test_thunder_save_path_e2e.py). rerun을 한 번 더 돌리면 페이지 전체가
+        # 처음부터 다시 실행되며 서버 왕복과 DOM 재생성이 한 번 더 일어나 — 하얀 화면
+        # 시간이 그만큼 길어졌다. (주소에 남은 th_save 파라미터도 위에서 이미 지운다.)
         st.session_state.pop("thunder_approved", None)
-        st.rerun()
 
     if st.session_state.get("open_thunder_dialog"):
         g = int(st.session_state.get("open_thunder_dialog_games", 5))
@@ -1914,7 +1921,9 @@ def render():
                     // 2500 → 3500ms. 이 값은 "모든 게임이 currentResults에 쌓인 뒤"부터
                     // 세는 시간이다(한 줄씩 2초 간격으로 쌓임 · 마지막 줄 리빌 애니메이션
                     // 약 1.3초) — 즉 늘리는 만큼 생성화면이 그대로 길어진다.
-                }, 3500);
+                    // 2026-09-26 재신고("생성화면 1초 늘려야") → 3500 → 4500ms.
+                    // 되돌리는 지점은 이 숫자 한 곳뿐이다.
+                }, 4500);
             }
             // 이 작은 폴링 iframe은 Streamlit이 rerun될 때마다 통째로 새로 만들어지는데,
             // 예전엔 "한 번만 setInterval 걸기" 플래그를 최상위 document(재생성돼도 안
