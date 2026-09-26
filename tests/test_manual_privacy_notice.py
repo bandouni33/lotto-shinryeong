@@ -25,7 +25,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 TIMEOUT_SEC = 60
-NOTICE = "번호 생성, 보관 등 서비스 이용의 어떠한 개인정보도 수집하지 않습니다."
+NOTICE = "번호 생성, 보관 등 앱 이용의 어떠한 개인정보도 수집하지 않습니다."
 BADGE = "ln-manual-privacy"
 
 # 실제 진입점(app.py)이 아니라 다이얼로그 자체를 여는 경로 — 이 다이얼로그는
