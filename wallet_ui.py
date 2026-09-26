@@ -713,6 +713,13 @@ IAP_PRICE_FALLBACK = dict(products.IAP_PRICE_FALLBACK)
 # 되돌린다 — 버튼을 되살리는 지점은 여기 한 곳뿐이다(화면마다 분기를 만들지 않는다).
 IAP_CHARGE_ENABLED = False
 
+# 앱 구독(Google Play 정기결제) 버튼 노출 스위치 — 2026-09-26 사용자 지시로 같이 내려둔다.
+# 이유는 위 IAP_CHARGE_ENABLED와 전부 동일하다: 수신부가 없는 빌드에서는 눌러도
+# 반응이 없는 버튼이라 준비중 안내로 대체한다. 무료 프로모(첫 구독 무료)는 결제가
+# 아니라서 이 스위치와 무관하게 그대로 제공된다(`_render_iap_subscription_options`
+# 안에서 무료 분기가 먼저 return한다는 점을 유지할 것).
+IAP_SUBSCRIPTION_ENABLED = False
+
 # 충전을 못 하는 상황의 공통 안내 문구(웹 미연동 분기와 앱 준비중 분기가 같이 쓴다 —
 # 문구가 두 곳에 복사되면 한쪽만 바뀐다).
 CHARGE_PENDING_NOTICE = "결제 연동 준비 중입니다. 조금만 기다려주세요."
@@ -1167,6 +1174,16 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
                     st.error("구독 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.")
                 on_close()
                 st.rerun()
+        return
+
+    if not IAP_SUBSCRIPTION_ENABLED:
+        # 2026-09-26(사용자 지시): 충전과 같은 이유·같은 방식 — 수신부 없는 빌드에서
+        # 구글플레이 요금제 버튼이 먹통이라 준비중 안내만 낸다(죽은 버튼을 안 보여준다).
+        # 되삼리는 지점은 위 IAP_SUBSCRIPTION_ENABLED 한 곳이다.
+        st.info(CHARGE_PENDING_NOTICE)
+        if st.button("닫기", use_container_width=True, key="iap_sub_pending_close"):
+            on_close()
+            st.rerun()
         return
 
     costs = {"monthly": ADVANCED_MONTHLY_COST, "3month": ADVANCED_3MONTH_COST}

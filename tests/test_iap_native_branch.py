@@ -8,7 +8,8 @@
   N1  네이티브 충전(기본값): 구글플레이 버튼 대신 "결제 연동 준비 중" 안내만 뜼다
       (IAP 수신부가 없는 빌드가 사용 중인 동안은 버튼이 먹통이라 안 보여준다)
   N1b 스위치를 켜면(IAP_CHARGE_ENABLED=True) 앱에서도 IAP 버튼만 뜬다(토스 없음)
-  N2  네이티브 구독: IAP 구독 버튼만 있고 포인트차감 "구독하기"는 없다
+  N2  네이티브 구독(기본값): 요금제 버튼 대신 "결제 연동 준비 중" 안내 + 닫기만 뜼다
+  N2c 스위치를 켜면(IAP_SUBSCRIPTION_ENABLED=True) 앱에서도 IAP 요금제 버튼만 뜬다
   N2b 네이티브 구독(무료 프로모 대상): 무료 시작 버튼은 유지, IAP 버튼은 없음
   N3  웹 충전: 토스 버튼이 그대로 있고 IAP 버튼은 없다 (회귀)
   N4  웹 구독: 포인트차감 구독 버튼이 그대로 있다 (회귀)
@@ -172,16 +173,47 @@ def test_N1b_native_charge_shows_iap_when_switch_on():
         assert TOSS_KEY not in keys, f"앱인데 토스 결제 버튼이 그려졌다(정책 위반 소지): {keys}"
 
 
-def test_N2_native_subscription_shows_only_iap():
+def test_N2_native_subscription_shows_pending_notice_not_dead_buttons():
+    """앱 구독 화면(기본값): 구글플레이 요금제 버튼 대신 준비중 안내 + 닫기만 낸다
+    (충전과 같은 스위치·같은 이유 — 수신부 없는 빌드에서는 누를 것이 없다)."""
     with _prod_like_env(), _db_isolation.isolated_db():
+        import wallet_ui
+
         mid = _member("iap_n2")
         # 이미 무료 프로모를 쓴 회원 = 유료 구독 화면을 보는 실제 대상
         wdb.activate_free_advanced_sub(mid)
         at = _render_probe("sub", mid, native=True)
         assert not at.exception, f"네이티브 구독 화면 렌더 예외: {at.exception}"
         keys = _keys(at)
+        plan_keys = [k for k in keys if k.startswith("iap_sub_") and k != "iap_sub_pending_close"]
+        assert plan_keys == [], f"앱인데 IAP 요금제 버튼이 그려졌다(먹통): {plan_keys}"
+        assert POINT_SUB_KEY not in keys, f"앱인데 포인트차감 구독 버튼이 그려졌다: {keys}"
+        assert "iap_sub_pending_close" in keys, (
+            f"준비중 안내에 닫기 버튼이 없다(창을 닫을 길이 없어진다): {keys}"
+        )
+        infos = "\n".join((m.value or "") for m in at.info)
+        assert wallet_ui.CHARGE_PENDING_NOTICE in infos, (
+            f"앱 구독 화면에 준비중 안내가 없다: {infos!r}"
+        )
+
+
+def test_N2c_native_subscription_shows_iap_when_switch_on():
+    """스위치를 켜면(IAP_SUBSCRIPTION_ENABLED=True) 앱에서 구글플레이 요금제 버튼이 나온다."""
+    with _prod_like_env(), _db_isolation.isolated_db():
+        import wallet_ui
+
+        mid = _member("iap_n2c")
+        wdb.activate_free_advanced_sub(mid)
+        original = wallet_ui.IAP_SUBSCRIPTION_ENABLED
+        wallet_ui.IAP_SUBSCRIPTION_ENABLED = True
+        try:
+            at = _render_probe("sub", mid, native=True)
+        finally:
+            wallet_ui.IAP_SUBSCRIPTION_ENABLED = original
+        assert not at.exception, f"네이티브 구독 화면 렌더 예외: {at.exception}"
+        keys = _keys(at)
         for key in IAP_SUB_KEYS:
-            assert key in keys, f"앱인데 IAP 구독 버튼이 없다: {keys}"
+            assert key in keys, f"스위치가 켜졌는데 IAP 구독 버튼이 없다: {keys}"
         assert POINT_SUB_KEY not in keys, f"앱인데 포인트차감 구독 버튼이 그려졌다: {keys}"
 
 
@@ -241,8 +273,13 @@ def test_N5_buttons_call_trigger_with_exact_product():
         assert calls == [("points_3000", None)], f"충전 버튼 트리거 인자: {calls}"
 
         with _spy_trigger() as calls:
-            at = _render_probe("sub", mid, native=True)
-            at = _click(at, IAP_SUB_KEYS[1])
+            original = wallet_ui.IAP_SUBSCRIPTION_ENABLED
+            wallet_ui.IAP_SUBSCRIPTION_ENABLED = True
+            try:
+                at = _render_probe("sub", mid, native=True)
+                at = _click(at, IAP_SUB_KEYS[1])
+            finally:
+                wallet_ui.IAP_SUBSCRIPTION_ENABLED = original
         assert calls == [("premium", "premium-quarterly")], f"구독 버튼 트리거 인자: {calls}"
 
 
@@ -354,11 +391,16 @@ def test_N9_store_price_is_shown_and_persists_across_navigation():
         finally:
             wallet_ui.IAP_CHARGE_ENABLED = original
 
-        # 기본요금제 가격도 같은 경로로 반영되는지.
+        # 기본요금제 가격도 같은 경로로 반영되는지(스위치를 켠 상태의 동작).
         wdb.activate_free_advanced_sub(mid)
-        at3 = _render_probe(
-            "sub", mid, native=True, iap_price_premium_quarterly="₩33,000"
-        )
+        original_sub = wallet_ui.IAP_SUBSCRIPTION_ENABLED
+        wallet_ui.IAP_SUBSCRIPTION_ENABLED = True
+        try:
+            at3 = _render_probe(
+                "sub", mid, native=True, iap_price_premium_quarterly="₩33,000"
+            )
+        finally:
+            wallet_ui.IAP_SUBSCRIPTION_ENABLED = original_sub
         labels3 = {b.key: b.label for b in at3.button}
         assert "₩33,000" in labels3[IAP_SUB_KEYS[1]], (
             f"구독 요금제 가격이 화면에 안 떴다: {labels3[IAP_SUB_KEYS[1]]}"
@@ -402,7 +444,8 @@ def _main() -> int:
     tests = [
         test_N1_native_charge_shows_pending_notice_not_dead_buttons,
         test_N1b_native_charge_shows_iap_when_switch_on,
-        test_N2_native_subscription_shows_only_iap,
+        test_N2_native_subscription_shows_pending_notice_not_dead_buttons,
+        test_N2c_native_subscription_shows_iap_when_switch_on,
         test_N2b_native_free_promo_keeps_free_button,
         test_N3_web_charge_keeps_toss_button,
         test_N4_web_subscription_keeps_points_button,
