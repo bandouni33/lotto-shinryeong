@@ -6,6 +6,8 @@ import re
 import urllib.parse
 import streamlit as st
 
+import dialog_registry
+
 GUEST_SCOPE = "guest_local"
 
 # 로그아웃 시 제거할 session_state 키 (접두/정확 일치)
@@ -49,6 +51,11 @@ _LOGOUT_EXACT_KEYS = frozenset(
         "my_info_dialog_open",
     }
 )
+
+# 2026-09-26: 다이얼로그 재개 플래그(+재개 데이터 키)는 dialog_registry가 기준점이다 —
+# 새 창을 추가하면 이 손목록을 고치지 않아도 로그아웃 시 함께 정리된다(묵은 플래그가
+# 남아 다음 로그인에 엉뚱한 창이 열리는 사고 방지).
+_LOGOUT_EXACT_KEYS = _LOGOUT_EXACT_KEYS | dialog_registry.logout_keys()
 
 _LOGOUT_PREFIXES = (
     "editing_",

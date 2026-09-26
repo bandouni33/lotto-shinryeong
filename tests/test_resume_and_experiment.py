@@ -31,6 +31,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import dialog_registry  # noqa: E402
+
 ENTRY = str(ROOT / "app.py")
 TIMEOUT_SEC = 60
 
@@ -41,17 +43,9 @@ def _ss(at: AppTest, key: str, default=None):
     except KeyError:
         return default
 
-RESUME_KINDS = [
-    "open_thunder_dialog",
-    "open_hedge_dialog",
-    "open_hedge_qr_scan",
-    "open_tarot_dialog",
-    "my_info_dialog",
-    "wallet_show_charge",
-    "auto_show_points",
-    "af_show_step1_points",
-    "af_show_step2_points",
-]
+# 2026-09-26: 재개 종류 목록의 기준점은 dialog_registry다 — 여기에 이름을 손으로
+# 나열하지 않는다(빠뜨리면 이 테스트가 '일관성 있게' 통과해버리는 구멍이 된다).
+RESUME_KINDS = list(dialog_registry.names())
 
 RESUME_DATA_SHAPES = [
     {},

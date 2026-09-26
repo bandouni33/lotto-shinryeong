@@ -8,14 +8,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import db_turso
+import products
 
 DB_PATH = "lotto.db"
 SIGNUP_BONUS = 500  # 5,000원 상당 (10원=1점 환산)
 ADVANCED_PRODUCT = "advanced_filter_monthly"
-FREE_SUB_DAYS = 30
-ADVANCED_MONTHLY_COST = 1200
-ADVANCED_3MONTH_COST = 3000  # 3개월분 묶음 가격(월 1,200P 대비 할인)
-ADVANCED_3MONTH_DAYS = 90
+# 2026-09-26: 구독 기간·포인트 가격의 기준점은 products.py다(여기서 숫자를 새로 쓰지 말 것).
+FREE_SUB_DAYS = products.FREE_PROMO_DAYS
+ADVANCED_MONTHLY_COST = products.SUBSCRIPTION_POINTS_COST[products.BASE_PLAN_MONTHLY]
+ADVANCED_3MONTH_COST = products.SUBSCRIPTION_POINTS_COST[products.BASE_PLAN_QUARTERLY]
+ADVANCED_3MONTH_DAYS = products.SUBSCRIPTION_BASE_PLAN_DAYS[products.BASE_PLAN_QUARTERLY]
 
 KST = timezone(timedelta(hours=9))
 
@@ -831,12 +833,13 @@ def mock_charge_enabled() -> bool:
 
 
 # 1만원 충전 시 1,000점 지급 — 10원당 1점.
-WON_PER_POINT = 10
-CHARGE_WON_AMOUNTS = (10000, 30000, 50000)
+# 2026-09-26: 환산 기준과 금액 후보의 기준점은 products.py다(여기서 다시 정의하지 않는다).
+WON_PER_POINT = products.WON_PER_POINT
+CHARGE_WON_AMOUNTS = products.CHARGE_WON_AMOUNTS
 
 
 def won_to_points(won: int) -> int:
-    return int(won) // WON_PER_POINT
+    return products.won_to_points(won)
 
 
 # 2026-09-19(Task #13): 토스 결제창을 열기 전 서버가 주문을 선기록 → 콜백에서

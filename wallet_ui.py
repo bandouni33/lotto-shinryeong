@@ -8,6 +8,9 @@ import uuid
 import streamlit as st
 import streamlit.components.v1 as components
 
+import dialog_registry
+import products
+
 from auth_providers import (
     _dev_mock_enabled,
     current_member_id,
@@ -164,38 +167,9 @@ def close_auth_banner() -> None:
 def _resume_after_auth() -> None:
     resume = st.session_state.pop(AUTH_RESUME_FLAG, None)
     data = st.session_state.pop(AUTH_RESUME_DATA, None) or {}
-    if resume == "auto_show_points":
-        st.session_state["auto_show_points"] = True
-    elif resume == "open_thunder_dialog":
-        st.session_state["open_thunder_dialog"] = True
-        st.session_state["open_thunder_dialog_games"] = int(data.get("games", 5))
-    elif resume == "open_hedge_dialog":
-        # 2026-08-27: 조합시작 한 번에 개별리셋·전체리셋을 항상 함께 생성하도록
-        # 바뀌면서 "모드" 선택 자체가 없어져 더 이상 넘길 값이 없다.
-        st.session_state["open_hedge_dialog"] = True
-        st.session_state["hedge_pending_lines"] = data.get("lines") or []
-        st.session_state["hedge_pending_count"] = int(data.get("count", 5))
-    elif resume == "open_tarot_dialog":
-        st.session_state["open_tarot_dialog"] = True
-    elif resume == "af_show_step1_points":
-        st.session_state["af_show_step1_points"] = True
-    elif resume == "af_show_step2_points":
-        st.session_state["af_show_step2_points"] = True
-    elif resume == "wallet_show_charge":
-        st.session_state["wallet_show_charge"] = True
-    elif resume == "open_hedge_qr_scan":
-        # 2026-09-19: 안티·액땜조합의 QR스캔 버튼을 로그인 없이 눌렀을 때 —
-        # 로그인이 끝난 그 렌더에서 스캐너 트리거를 다시 살린다(page_hedge.py의
-        # hedge_qr_request 소비부가 한 번만 집어가 실행하고 지운다).
-        st.session_state["hedge_qr_request"] = True
-    elif resume == "my_info_dialog":
-        st.session_state["my_info_dialog_open"] = True
-    elif resume == "af_show_subscribe":
-        # 2026-09-26: 고급필터 화면의 "구독하기"는 로그인이 필요해 로그인 배너를
-        # 거치는데, 이 분기가 없어서 로그인을 마쳐도 구독 안내창이 다시 열리지
-        # 않았다(안내창은 세션 상태로 열리는 모달이라 페이지 주소만 복원해서는
-        # 되살아나지 않는다). admin_filter.py가 이 플래그를 소비해 안내창을 띄운다.
-        st.session_state["af_show_subscribe"] = True
+    # 2026-09-26: 이름→동작 매핑은 dialog_registry.py 한 곳에만 있다. 새 창을
+    # 추가할 때 여기에 분기를 더 쓰지 말 것(한쪽만 고쳐 재개가 안 되는 사고의 원인).
+    dialog_registry.apply(resume, data)
 
 
 def _finish_auth_success() -> None:
@@ -723,28 +697,20 @@ def render_auth_banner() -> None:
 # 결제정책 위반 소지가 있다(2026-09-26 결정). 그래서 충전·구독 화면을 "네이티브면
 # IAP만, 웹이면 기존 그대로"로 가른다. 웹(PC·모바일 브라우저 직접 접속)은 이
 # 분기의 영향을 받지 않는다.
-IAP_POINTS_PRODUCT_IDS = ("points_1000", "points_3000")  # google_play_pg.POINTS_PRODUCTS와 같은 ID
-IAP_SUBSCRIPTION_PRODUCT = "premium"
-IAP_SUBSCRIPTION_PLANS = (("monthly", "premium-monthly"), ("3month", "premium-quarterly"))
+IAP_POINTS_PRODUCT_IDS = products.points_product_ids()
+IAP_SUBSCRIPTION_PRODUCT = products.SUBSCRIPTION_PRODUCT
+IAP_SUBSCRIPTION_PLANS = products.subscription_plans()
 IAP_ALLOWED_PRODUCT_IDS = IAP_POINTS_PRODUCT_IDS + (IAP_SUBSCRIPTION_PRODUCT,)
 IAP_ALLOWED_BASE_PLANS = tuple(plan for _key, plan in IAP_SUBSCRIPTION_PLANS)
+# 값의 기준점은 위에서 products.py로부터 파생시켰다(여기에 문자열을 다시 쓰지 말 것).
+IAP_PRICE_PARAMS = dict(products.IAP_PRICE_PARAMS)
+IAP_PRICE_FALLBACK = dict(products.IAP_PRICE_FALLBACK)
 
 # 앱(streamlit-webview.tsx)이 스토어에서 읽은 실제 가격을 실어 보내는 파라미터 이름과,
 # 그 값이 아직 없을 때 쓸 기본값(2026-09-26). 실제 표시는 항상 앱이 보내온 값이
 # 우선하므로, Play Console에서 가격을 바꾸면 다음 앱 실행 때 화면에 자동 반영되고
 # 코드 수정이 필요 없다(스토어 가격은 나라·프로모션에 따라 달라질 수 있다).
-IAP_PRICE_PARAMS = {
-    "points_1000": "iap_price_points_1000",
-    "points_3000": "iap_price_points_3000",
-    "premium-monthly": "iap_price_premium_monthly",
-    "premium-quarterly": "iap_price_premium_quarterly",
-}
-IAP_PRICE_FALLBACK = {
-    "points_1000": "10,000원",
-    "points_3000": "30,000원",
-    "premium-monthly": "12,000원",
-    "premium-quarterly": "30,000원",
-}
+# 값은 위에서 products.py로부터 파생시켰다 — 여기에 문자열을 다시 쓰지 말 것.
 
 
 def iap_prices() -> dict:
@@ -815,15 +781,8 @@ def in_native_app() -> bool:
 
 
 def _iap_points_products() -> dict:
-    """상품 ID → 지급 포인트. 정본은 서버(google_play_pg.POINTS_PRODUCTS)이며
-    여기서는 화면 표시(금액·포인트)에만 쓴다 — 서버가 모르는 상품은 결제가
-    성립하지 않으므로, 불러오기에 실패해도 화면이 죽지 않도록 폴백을 둔다."""
-    try:
-        from google_play_pg import POINTS_PRODUCTS
-
-        return dict(POINTS_PRODUCTS)
-    except Exception:
-        return {"points_1000": 1000, "points_3000": 3000}
+    """상품 ID → 지급 포인트. 기준점은 products.py다(여기서 새로 만들지 말 것)."""
+    return dict(products.POINTS_PRODUCTS)
 
 
 def _fire_iap_purchase_trigger(product_id: str, base_plan_id: str | None = None) -> None:
@@ -1064,7 +1023,8 @@ POINTS_NOTICE_SEEN_ONCE = "points_notice_seen_once"
 # 예전엔 그 재-렌더가 SEEN_ONCE 자동통과 분기를 타면서 사용자가 취소했는데도
 # 적립금이 차감되는 사고로 이어졌다(2026-09-10 사용자 지적 — 분쟁 리스크).
 # on_dismiss에서 이 플래그를 모두 지워 "X로 닫음 = 취소"가 되게 한다.
-_PN_TRIGGER_FLAGS = ("open_thunder_dialog", "open_hedge_dialog", "auto_show_points")
+# 2026-09-26: 목록은 dialog_registry가 기준점이다(여기에 이름을 직접 쓰지 말 것).
+_PN_TRIGGER_FLAGS = dialog_registry.points_notice_trigger_flags()
 
 
 def _points_notice_on_dismiss() -> None:

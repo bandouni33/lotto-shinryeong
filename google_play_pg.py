@@ -34,22 +34,23 @@ import requests
 
 from wallet_db import activate_paid_advanced_sub_once, charge_points
 
+# 2026-09-26: 상품 ID·구독 기간의 기준점은 products.py다(여기서 숫자를 새로 쓰지 말 것).
+# 이름을 그대로 다시 내보내므로 기존 import(POINTS_PRODUCTS 등)는 그대로 동작한다.
+from products import POINTS_PRODUCTS, SUBSCRIPTION_BASE_PLAN_DAYS, SUBSCRIPTION_PRODUCT
+
 PACKAGE_NAME = "com.bandouni.lottoshinryeong"
 ANDROID_PUBLISHER_SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 API_BASE = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications"
 
-# 2026-09-25: Play Console에 실제 등록한 상품 ID와 정확히 일치해야 한다.
+# 2026-09-25: Play Console에 실제 등록한 상품 ID와 정확히 일치해야 한다(정의는 products.py).
 # 일회성 소모성 상품 → 지급 포인트 (product ID 자체가 지급 포인트를 의미하는
 # 이름이라 별도 환산 없이 그대로 값으로 씀 — points_1000=1,000P/10,000원 등).
-POINTS_PRODUCTS = {"points_1000": 1000, "points_3000": 3000}
-
-SUBSCRIPTION_PRODUCT = "premium"
-# 기본요금제 → 연장 일수. 반드시 "구글이 검증 응답으로 돌려준 basePlanId"에서
-# 구해야 한다(아래 _verify_and_credit_subscription 참고) — 클라이언트가 URL에
-# 실어 보낸 basePlanId는 참고용일 뿐 신뢰하지 않는다. 안 그러면 저가 요금제
-# (월간)를 결제해놓고 고가 요금제(분기)라고 우겨서 3배 구독기간을 받아가는
+#
+# 기본요금제 → 연장 일수도 products.py에서 온다. 반드시 "구글이 검증 응답으로
+# 돌려준 basePlanId"에서 구해야 한다(아래 _verify_and_credit_subscription 참고) —
+# 클라이언트가 URL에 실어 보낸 basePlanId는 참고용일 뿐 신뢰하지 않는다. 안 그러면
+# 저가 요금제(월간)를 결제해놓고 고가 요금제(분기)라고 우겨서 3배 구독기간을 받아가는
 # 걸 서버가 막을 수 없다.
-SUBSCRIPTION_BASE_PLAN_DAYS = {"premium-monthly": 30, "premium-quarterly": 90}
 
 
 def _service_account_info() -> dict | None:
