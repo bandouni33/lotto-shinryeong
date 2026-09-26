@@ -31,7 +31,7 @@ from user_scope import birthday_scope_for
 # 탈퇴 시 **즉시 파기**되는 항목(문구와 대조됨 — 목록을 고치면 legal_notices의
 # ACCOUNT_DELETION_BODY도 같이 고쳐야 한다).
 DELETED_ITEMS = (
-    "로그인 식별자",       # members.oauth_hash (간편인증 provider + 식별자 해시)
+    "로그인 식별자",       # members.oauth_hash — 계정에서는 파기(재가입 차단용 지문 1건은 보관)
     "기기 연결",           # guest_member_links (자동 로그인 연결)
     "생일",                # birthday_db.userBirthdays (m_<member_id> 스코프)
     "번호 조합",           # marketing_db.guest_generated_combos (저장내역)
@@ -46,6 +46,7 @@ RETAINED_ITEMS = (
     "적립금 충전·차감·지급 기록",   # wallet_db.wallet_ledger
     "결제 승인 기록",               # wallet_db.pg_charges (confirmed)
     "약관·동의 기록",               # wallet_db.consent_log
+    "탈퇴 계정 식별자 해시",         # wallet_db.signup_blocklist (재가입 적립금 차단 목적)
 )
 
 # 보관 이유(전자상거래법 제6조 — 계약·대금결제 기록 5년). 화면 문구와 대조된다.

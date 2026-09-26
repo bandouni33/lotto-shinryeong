@@ -91,27 +91,37 @@ def test_C1_my_info_charge_button_opens_charge_dialog():
 def test_C3_app_charge_window_offers_test_charge_button():
     """앱 경로(실제 진입점)로 충전창까지 들어가면 테스터 임시 충전 버튼이 실제로 화면에 있다.
 
+    2026-09-27: 제출 구성(기본값)에서는 테스터 임시 충전이 꺼져 있고(IAP 스위치가 켜져 있다)
+    — 테스터 빌드 구성을 여기서 명시적으로 세워 검증한다. IAP 스위치를 같이 내리지 않으면
+    먼저 보는 분기가 IAP라서 테스트 충전이 그려지지 않는다(N1과 같은 구성).
     지급 자체는 다이얼로그 안 버튼 클릭을 AppTest가 재현하지 못해(위젯을 다시 만나지 못함)
     test_iap_native_branch의 N1d가 1,000P 지급·3회 제한까지 검증한다."""
     with _db_isolation.isolated_db():
+        import wallet_ui
+
         mid = _member("tester_charge")
+        before = (wallet_ui.IAP_CHARGE_ENABLED, wallet_ui.TEST_CHARGE_ENABLED)
+        wallet_ui.IAP_CHARGE_ENABLED = False
+        wallet_ui.TEST_CHARGE_ENABLED = True
+        try:
+            at = _open_my_info(mid)
+            assert not at.exception, f"진입점 렌더 예외: {at.exception}"
+            assert "wallet_charge_btn" in _keys(at), f"내정보 창에 충전 버튼이 없다: {_keys(at)}"
+            for button in at.button:
+                if button.key == "wallet_charge_btn":
+                    at = button.click().run()
+                    break
+            assert not at.exception, f"충전 클릭 후 예외: {at.exception}"
 
-        at = _open_my_info(mid)
-        assert not at.exception, f"진입점 렌더 예외: {at.exception}"
-        assert "wallet_charge_btn" in _keys(at), f"내정보 창에 충전 버튼이 없다: {_keys(at)}"
-        for button in at.button:
-            if button.key == "wallet_charge_btn":
-                at = button.click().run()
-                break
-        assert not at.exception, f"충전 클릭 후 예외: {at.exception}"
-
-        keys = _keys(at)
-        assert "test_charge_btn" in keys, (
-            "앱 충전창에 테스터 임시 충전 버튼이 없다(테스터가 충전할 방법이 없다): "
-            f"{_safe(str(keys))}"
-        )
-        labels = _safe(str([(b.key, b.label) for b in at.button]))
-        print(f"  (앱 경로 충전창 버튼: {labels[:200]})")
+            keys = _keys(at)
+            assert "test_charge_btn" in keys, (
+                "앱 충전창에 테스터 임시 충전 버튼이 없다(테스터가 충전할 방법이 없다): "
+                f"{_safe(str(keys))}"
+            )
+            labels = _safe(str([(b.key, b.label) for b in at.button]))
+            print(f"  (앱 경로 충전창 버튼: {labels[:200]})")
+        finally:
+            wallet_ui.IAP_CHARGE_ENABLED, wallet_ui.TEST_CHARGE_ENABLED = before
 
 
 def _main() -> int:

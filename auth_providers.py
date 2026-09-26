@@ -399,11 +399,17 @@ def get_fincert_authorize_url(return_page: str = "main") -> str | None:
 
 
 def login_member(provider: str, provider_user_id: str) -> tuple[int, bool, bool]:
-    from wallet_db import get_or_create_member
+    from wallet_db import get_or_create_member, is_signup_bonus_blocked
 
     init_wallet_tables()
     member_id, is_new = get_or_create_member(provider, provider_user_id)
-    bonus = grant_signup_bonus(member_id) if is_new else False
+    # 2026-09-27(계정 삭제): 탈퇴한 계정과 같은 간편인증 계정으로 재가입해도 가입 적립금은
+    # 지급하지 않는다. 탈퇴가 신원을 파기하므로 이 판정이 없으면 탈퇴→재가입 반복으로
+    # 적립금을 계속 받아갈 수 있었다(이용약관 §7 부정가입 방지). 지급 여부를 결정하는
+    # 지점은 여기 한 곳 — 화면이나 다른 로그인 경로에 같은 조건을 복사하지 말 것
+    # (mock·카카오·PASS·금융인증서·심사용 로그인이 전부 이 함수를 지나간다).
+    blocked = is_signup_bonus_blocked(oauth_hash(provider, provider_user_id))
+    bonus = grant_signup_bonus(member_id) if (is_new and not blocked) else False
     return member_id, is_new, bonus
 
 

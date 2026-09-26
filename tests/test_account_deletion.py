@@ -284,6 +284,11 @@ def test_I1_identity_is_destroyed_and_relogin_creates_new_member():
             "옛 해시로 조회된다 — 신원이 파기되지 않았다"
         )
         assert summary["members"] == 1
+        # 신원은 계정에서 파기되지만, 재가입 적립금 차단용 지문 1건만 별도 표에 남는다
+        # (남는 위치과 목적은 탈퇴 안내·약관에 고지 — I8·I9).
+        assert _count("signup_blocklist", "oauth_hash = ?", before_hash) == 1, (
+            "재가입 가입적립금 차단 지문이 없다(탈퇴→재가입 반복으로 적립금을 다시 받아간다)"
+        )
 
         new_mid, is_new = wdb.get_or_create_member("kakao", "del_i1")
         assert is_new and int(new_mid) != mid, "탈퇴 후 재로그인이 새 계정으로 처리되지 않았다"
@@ -439,6 +444,68 @@ def test_I8_notice_text_matches_the_real_deletion_lists():
     assert "내정보" in body, "안내 문구가 앱 내 경로를 안내하지 않는다"
 
 
+    assert "page=delete_account" in body, "안내 문구가 공개 URL을 가리키지 않는다"
+    assert "내정보" in body, "안내 문구가 앱 내 경로를 안내하지 않는다"
+    assert "가입 적립금" in body, "재가입 시 가입 적립금 미지급 안내가 문구에 없다"
+    assert "가입 적립금" in legal_notices.NOTICES["terms"]["body"], (
+        "이용약관에 재가입 가입적립금 미지급 조건이 없다(지급 조건은 약관에도 있어야 한다)"
+    )
+
+
+def test_I9_relogin_after_deletion_creates_new_account_without_signup_bonus():
+    """탈퇴 후 같은 간편인증 계정으로 재가입 → 회원은 새로 생기지만 가입 적립금은 0이다."""
+    with _db_isolation.isolated_db():
+        import account_deletion
+        import auth_providers
+
+        # 대조군(경계): 탈퇴 이력이 없는 신규 가입은 적립금을 받는다 — 차단이 정상 가입을
+        # 막지 않는다는 것을 같은 실행에서 확인한다.
+        fresh_mid, fresh_new, fresh_bonus = auth_providers.login_member("kakao", "del_i9_fresh")
+        assert fresh_new is True and fresh_bonus is True, "신규 가입 적립금 지급이 깨졌다"
+        assert int(wdb.get_balance(int(fresh_mid)) or 0) == wdb.SIGNUP_BONUS
+
+        mid = _seed_member("del_i9", ("gid-i9",))
+        account_deletion.delete_account(mid)
+
+        new_mid, is_new, bonus = auth_providers.login_member("kakao", "del_i9")
+        assert is_new is True and int(new_mid) != mid, "재가입이 새 계정으로 처리되지 않았다"
+        assert bonus is False, "탈퇴 후 재가입인데 가입 적립금이 지급됐다"
+        assert _count("signup_grants", "member_id = ?", int(new_mid)) == 0, (
+            "재가입 계정에 가입 적립금 지급 기록이 생겼다"
+        )
+        assert int(wdb.get_balance(int(new_mid)) or 0) == 0, "재가입 계정 잔액이 0이 아니다"
+
+
+def test_I10_bonus_block_holds_across_repeated_cycles_and_only_same_provider():
+    """탈퇴→재가입을 반복해도 매번 차단되고, 차단 기록은 1건만 유지된다(멱등).
+
+    반대 경계도 같이 본다: 다른 provider로 가입한 계정은 영향을 받지 않는다
+    (차단 단위는 provider + 식별자다 — 해시 계산이 그렇게 돼 있다)."""
+    with _db_isolation.isolated_db():
+        import account_deletion
+        import auth_providers
+
+        mid = _seed_member("del_i10", ())
+        account_deletion.delete_account(mid)
+
+        for round_index in range(2):
+            again_mid, is_new, bonus = auth_providers.login_member("kakao", "del_i10")
+            assert is_new is True and bonus is False, f"{round_index + 1}회차 재가입에 적립금이 지급됐다"
+            assert int(wdb.get_balance(int(again_mid)) or 0) == 0
+            if round_index == 0:
+                account_deletion.delete_account(int(again_mid))
+
+        assert _count("signup_blocklist") == 1, (
+            "같은 지문이 반복해서 쌓였다(차단 기록은 1건이어야 한다)"
+        )
+
+        other_mid, other_new, other_bonus = auth_providers.login_member("pass", "del_i10")
+        assert other_new is True and other_bonus is True, (
+            "다른 provider로 가입한 계정까지 차단됐다(차단 범위가 너무 넓다)"
+        )
+        assert int(wdb.get_balance(int(other_mid)) or 0) == wdb.SIGNUP_BONUS
+
+
 # ── B. 행동(사용자가 실제로 밟는 경로) ──────────────────────────
 def test_B1_my_info_offers_account_deletion_button():
     with _prod_like_env(), _db_isolation.isolated_db():
@@ -547,6 +614,8 @@ def _main() -> int:
         test_I6_deletion_is_idempotent_and_leaves_other_members_alone,
         test_I7_deleted_account_leaves_installed_member_count,
         test_I8_notice_text_matches_the_real_deletion_lists,
+        test_I9_relogin_after_deletion_creates_new_account_without_signup_bonus,
+        test_I10_bonus_block_holds_across_repeated_cycles_and_only_same_provider,
         test_B1_my_info_offers_account_deletion_button,
         test_B2_confirm_dialog_guards_the_irreversible_action,
         test_F1_running_deletion_destroys_logs_out_and_announces,

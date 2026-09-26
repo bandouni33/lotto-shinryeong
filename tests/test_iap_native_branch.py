@@ -5,10 +5,11 @@
 웹 접속에서는 종전 동작이 그대로인가(회귀 없음). 버튼→앱 트리거 배선과 그 페이로드
 (앱 코드와의 약속)까지 함께 검증한다.
 
-  N1  네이티브 충전(기본값): 구글플레이 버튼 대신 테스터용 "Mock 결제(테스트)" 1,000P 충전
+  N1  네이티브 충전(테스터 빌드 구성): 구글플레이 버튼 대신 테스터용 "Mock 결제(테스트)" 1,000P 충전
+  N1e 제출 구성(기본값): 구글플레이 버튼만 뜨고 테스터 임시충전·토스는 없다
   N1b 스위치를 켜면(IAP_CHARGE_ENABLED=True) 앱에서도 IAP 버튼만 뜬다(토스 없음)
   N1c 테스터 임시 충전 스위치를 내리면(TEST_CHARGE_ENABLED=False) 준비중 안내만 뜼다
-  N2  네이티브 구독(기본값): 요금제 버튼 대신 "결제 연동 준비 중" 안내 + 닫기만 뜼다
+  N2  네이티브 구독(수신부 없는 빌드 구성): 요금제 버튼 대신 "결제 연동 준비 중" 안내 + 닫기만 뜼다
   N2c 스위치를 켜면(IAP_SUBSCRIPTION_ENABLED=True) 앱에서도 IAP 요금제 버튼만 뜬다
   N2b 네이티브 구독(무료 프로모 대상): 무료 시작 버튼은 유지, IAP 버튼은 없음
   N3  웹 충전: 토스 버튼이 그대로 있고 IAP 버튼은 없다 (회귀)
@@ -89,6 +90,25 @@ def _member(handle: str) -> int:
     return int(mid)
 
 
+@contextmanager
+def _switches(**values):
+    """이 블록 동안만 충전/구독/테스터충전 스위치를 바꾼다(끝나면 원복).
+
+    2026-09-27: 제출 구성(기본값)이 뒤집혀(IAP 켜짐·테스터 임시충전 꺼짐) 예전에
+    "기본값"을 검사하던 테스트들이 검증 대상을 잃게 됐다. 각 테스트가 자기가 보려는
+    구성을 명시적으로 세워야 그 값이 또 바뀌어도 검사가 의미를 유지한다."""
+    import wallet_ui
+
+    before = {name: getattr(wallet_ui, name) for name in values}
+    for name, value in values.items():
+        setattr(wallet_ui, name, value)
+    try:
+        yield
+    finally:
+        for name, value in before.items():
+            setattr(wallet_ui, name, value)
+
+
 def _render_probe(mode: str, member_id: int, *, native: bool, **extra_params) -> AppTest:
     at = AppTest.from_file(PROBE, default_timeout=TIMEOUT_SEC)
     at.query_params["probe"] = mode
@@ -134,10 +154,14 @@ def _spy_trigger():
 
 
 def test_N1_native_charge_offers_test_charge_not_dead_buttons():
-    """앱 충전 화면(기본값): IAP 수신부가 없는 빌드가 사용 중이라 구글플레이 버튼 대신
-    테스터용 'Mock 결제(테스트)' 1,000P 충전을 낸다 — 눌러도 반응 없는 버튼은 안 낸다
-    (사용자 지시: 테스터 활동 중이므로 지금은 충전이 가능해야 한다)."""
-    with _prod_like_env(), _db_isolation.isolated_db():
+    """테스터 빌드 구성(IAP 스위치를 되돌린 상태): 구글플레이 버튼 대신 테스터용
+    'Mock 결제(테스트)' 1,000P 충전을 낸다 — 눌러도 반응 없는 버튼은 안 낸다.
+
+    2026-09-27: 제출 구성에서는 테스터 임시충전이 기본으로 꺼져 있다 — 그 구성을 여기서
+    명시적으로 세워 테스터 빌드 경로를 계속 검증한다."""
+    with _prod_like_env(), _db_isolation.isolated_db(), _switches(
+        IAP_CHARGE_ENABLED=False, TEST_CHARGE_ENABLED=True
+    ):
         mid = _member("iap_n1")
         at = _render_probe("charge", mid, native=True)
         assert not at.exception, f"네이티브 충전 화면 렌더 예외: {at.exception}"
@@ -155,9 +179,50 @@ def test_N1_native_charge_offers_test_charge_not_dead_buttons():
         )
 
 
-def test_N1c_native_charge_shows_pending_notice_when_test_charge_off():
-    """테스터 임시 충전 스위치를 내리면(심사 제출 전 상태) 준비중 안내만 뜼다."""
+def test_N1e_shipping_default_is_the_review_configuration():
+    """제출 구성(기본값) 검사 — 스위치를 되돌리면 여기서 잡힌다.
+
+    앱에서 구글플레이 버튼만 뜨고, 테스터 임시충전('Mock 결제')과 토스 버튼은 없다.
+    이게 제출할 그대로의 상태이므로 기본값 자체를 검사한다(preflight R4b/R4c와 같은 취지)."""
     with _prod_like_env(), _db_isolation.isolated_db():
+        import wallet_ui
+
+        assert (wallet_ui.IAP_CHARGE_ENABLED, wallet_ui.IAP_SUBSCRIPTION_ENABLED) == (True, True), (
+            "제출 구성인데 IAP 스위치가 꺼져 있다(앱에서 결제 버튼이 사라진다)"
+        )
+        assert wallet_ui.TEST_CHARGE_ENABLED is False, (
+            "제출 구성인데 테스터 임시충전이 켜져 있다(심사자가 'Mock 결제'를 본다)"
+        )
+
+        mid = _member("iap_n1e")
+        at = _render_probe("charge", mid, native=True)
+        assert not at.exception, f"네이티브 충전 화면 렌더 예외: {at.exception}"
+        keys = _keys(at)
+        for key in IAP_BUY_KEYS:
+            assert key in keys, f"제출 구성인데 IAP 충전 버튼이 없다: {keys}"
+        assert "test_charge_btn" not in keys, f"제출 구성인데 테스터 충전 버튼이 있다: {keys}"
+        labels = [(b.label or "") for b in at.button]
+        assert not any("Mock 결제" in label for label in labels), (
+            f"제출 구성인데 Mock 결제 버튼이 그려진다: {labels}"
+        )
+        assert TOSS_KEY not in keys, f"앱인데 토스 결제 버튼이 그려졌다: {keys}"
+
+        # 무료 프로모를 쓴 회원(유료 구독 화면 대상)도 IAP 요금제 버튼이 뜼다
+        wdb.activate_free_advanced_sub(mid)
+        sub = _render_probe("sub", mid, native=True)
+        assert not sub.exception, f"네이티브 구독 화면 렌더 예외: {sub.exception}"
+        sub_keys = _keys(sub)
+        for key in IAP_SUB_KEYS:
+            assert key in sub_keys, f"제출 구성인데 IAP 요금제 버튼이 없다: {sub_keys}"
+        infos = "\n".join((m.value or "") for m in sub.info)
+        assert wallet_ui.CHARGE_PENDING_NOTICE not in infos, (
+            "제출 구성인데 구독 화면이 '준비 중' 안내로 대체됐다"
+        )
+
+
+def test_N1c_native_charge_shows_pending_notice_when_test_charge_off():
+    """테스터 임시 충전 스위치를 내리면(수신부 없는 빌드 구성) 준비중 안내만 뜼다."""
+    with _prod_like_env(), _db_isolation.isolated_db(), _switches(IAP_CHARGE_ENABLED=False):
         import wallet_ui
 
         mid = _member("iap_n1c")
@@ -204,7 +269,9 @@ def test_N1d_test_charge_btn_credits_1000_points_and_respects_the_limit():
 
     결제창(dialog) 안에서 누르는 경로는 AppTest가 위젯을 다시 만나지 못해 재현이 안 되므로
     (충전 화면 자체를 그리는 프로브로 누른다 — 같은 상품 코드·같은 회수 제한을 탄다)."""
-    with _prod_like_env(), _db_isolation.isolated_db():
+    with _prod_like_env(), _db_isolation.isolated_db(), _switches(
+        IAP_CHARGE_ENABLED=False, TEST_CHARGE_ENABLED=True
+    ):
         mid = _member("iap_n1d")
         before = int(wdb.get_balance(mid) or 0)
         at = _render_probe("charge", mid, native=True)
@@ -227,9 +294,9 @@ def test_N1d_test_charge_btn_credits_1000_points_and_respects_the_limit():
 
 
 def test_N2_native_subscription_shows_pending_notice_not_dead_buttons():
-    """앱 구독 화면(기본값): 구글플레이 요금제 버튼 대신 준비중 안내 + 닫기만 낸다
-    (충전과 같은 스위치·같은 이유 — 수신부 없는 빌드에서는 누를 것이 없다)."""
-    with _prod_like_env(), _db_isolation.isolated_db():
+    """수신부 없는 빌드 구성: 구글플레이 요금제 버튼 대신 준비중 안내 + 닫기만 낸다
+    (충전과 같은 스위치·같은 이유 — 그런 빌드에서는 누를 것이 없다)."""
+    with _prod_like_env(), _db_isolation.isolated_db(), _switches(IAP_SUBSCRIPTION_ENABLED=False):
         import wallet_ui
 
         mid = _member("iap_n2")

@@ -101,6 +101,16 @@ def init_wallet_tables() -> None:
             FOREIGN KEY (member_id) REFERENCES members(id)
         );
 
+        -- 2026-09-27(계정 삭제): 탈퇴한 계정의 식별자 해시만 남기는 표 — 같은 간편인증
+        -- 계정으로 재가입해도 가입 적립금을 지급하지 않기 위한 것이다(탈퇴→재가입 반복으로
+        -- 적립금을 계속 받아가는 것을 막는다: 이용약관 §7 부정가입 방지).
+        -- 계정·적립금·결제 내역과 연결되지 않으며, 목적은 재가입 적립금 차단 하나뿐이다
+        -- (개인정보 처리방침·탈퇴 안내에 고지).
+        CREATE TABLE IF NOT EXISTS signup_blocklist (
+            oauth_hash TEXT PRIMARY KEY,
+            blocked_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             member_id INTEGER NOT NULL,
@@ -360,6 +370,24 @@ def unlink_guest_from_member(guest_id: str) -> None:
     conn.close()
 
 
+def is_signup_bonus_blocked(oauth_hash_value: str) -> bool:
+    """이 식별자 해시로 가입했던 계정이 **탈퇴**한 적이 있는지 — 재가입 가입적립금 차단 판정.
+
+    2026-09-27: 탈퇴는 신원(oauth_hash)을 파기하므로, 이 표가 없으면 탈퇴→재가입을
+    반복해 가입 적립금(SIGNUP_BONUS)을 계속 받아갈 수 있었다(실제로 그런 구멍이 있었다).
+    판정의 기준점은 이 함수 하나이고, 실제 지급 여부는 auth_providers.login_member가
+    이 값을 보고 결정한다 — 지급 코드 쪽에 같은 판정을 복사해 두지 말 것."""
+    value = str(oauth_hash_value or "").strip()
+    if not value:
+        return False
+    conn = _connect()
+    row = conn.execute(
+        "SELECT 1 FROM signup_blocklist WHERE oauth_hash = ?", (value,)
+    ).fetchone()
+    conn.close()
+    return bool(row)
+
+
 def anonymize_member_account(member_id: int) -> dict:
     """계정 삭제(탈퇴) 시 회원의 **신원·연결·연락처**를 파기한다 — 반환: 처리 건수.
 
@@ -388,27 +416,39 @@ def anonymize_member_account(member_id: int) -> dict:
     cur = conn.execute("DELETE FROM guest_member_links WHERE member_id = ?", (mid,))
     counts["guest_member_links"] = int(cur.rowcount or 0)
 
-    # 2) 신원 익명화 — 다시 나오지 않는 해시로 교체하고 탈퇴 시각을 남긴다.
-    #    해시를 지우므로 같은 간편인증 계정으로 다시 로그인하면 **새 회원**이 된다
-    #    (이전 적립금·구독은 이어지지 않는다 — 약관·탈퇴 안내에 명시돼 있다).
+    # 2) 탈퇴자 지문 남기기 — 신원을 파기하기 **전에** 현재 해시를 별도 표에 1건 남긴다.
+    #    이게 없으면 탈퇴→재가입을 반복해 가입 적립금을 계속 받아갈 수 있다(이용약관 §7
+    #    부정가입 방지). 표에는 식별자 해시와 시각만 있고 계정·적립금·결제 내역과는
+    #    연결되지 않으며, 목적은 재가입 적립금 차단 하나뿐이다(탈퇴 안내에 고지).
+    row = conn.execute("SELECT oauth_hash FROM members WHERE id = ?", (mid,)).fetchone()
+    if row and row["oauth_hash"]:
+        conn.execute(
+            "INSERT OR IGNORE INTO signup_blocklist (oauth_hash, blocked_at) VALUES (?, ?)",
+            (str(row["oauth_hash"]), now),
+        )
+        counts["signup_blocklist"] = 1
+
+    # 3) 신원 익명화 — 다시 나오지 않는 해시로 교체하고 탈퇴 시각을 남긴다.
+    #    해시를 바꾸므로 같은 간편인증 계정으로 다시 로그인하면 **새 회원**이 된다
+    #    (이전 적립금·구독은 이어지지 않고 가입 적립금도 재지급되지 않는다 — 2)의 지문).
     cur = conn.execute(
         "UPDATE members SET provider = 'deleted', oauth_hash = ?, deleted_at = ? WHERE id = ?",
         (oauth_hash("deleted", f"{mid}:{uuid.uuid4().hex}"), now, mid),
     )
     counts["members"] = int(cur.rowcount or 0)
 
-    # 3) 지갑: 잔액 0 + 결제 고객 식별키 파기
+    # 4) 지갑: 잔액 0 + 결제 고객 식별키 파기
     cur = conn.execute(
         "UPDATE wallets SET balance = 0, toss_customer_key = NULL WHERE member_id = ?",
         (mid,),
     )
     counts["wallets"] = int(cur.rowcount or 0)
 
-    # 4) 주문 기록은 남기되 연락처는 파기
+    # 5) 주문 기록은 남기되 연락처는 파기
     cur = conn.execute("UPDATE auto_orders SET phone = '' WHERE member_id = ?", (mid,))
     counts["auto_orders"] = int(cur.rowcount or 0)
 
-    # 5) 미정산 대기행 제거 — 탈퇴한 계정으로 환불·승인이 이뤄지지 않게 한다.
+    # 6) 미정산 대기행 제거 — 탈퇴한 계정으로 환불·승인이 이뤄지지 않게 한다.
     #    이미 정산된 차감은 wallet_ledger에 남으므로 증빙은 유지된다.
     cur = conn.execute("DELETE FROM thunder_pending_charges WHERE member_id = ?", (mid,))
     counts["thunder_pending_charges"] = int(cur.rowcount or 0)
