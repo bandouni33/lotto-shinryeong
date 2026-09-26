@@ -41,6 +41,7 @@ from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
 from birthday_db import init_birthday_table
 from auth_providers import (
+    current_member_id,
     finalize_login_with_native_token,
     handle_oauth_callback,
     restore_member_from_guest,
@@ -114,6 +115,17 @@ if st.query_params.get("fresh_start") == "1":
 # (guest_id)가 이미 로그인한 적 있으면 인증 절차 없이 조용히 다시 로그인시킨다.
 # (fresh_start로 방금 연결을 끊은 경우엔 이 호출이 찾을 게 없어 그냥 통과한다.)
 restore_member_from_guest()
+
+# 2026-09-25(Google Play 인앱결제): toss_pg.handle_toss_payment_return()과 달리
+# 반드시 restore_member_from_guest() "이후"에 호출해야 한다 — 토스는 결제창을
+# 열기 전에 서버가 이미 (member_id, 금액)을 create_toss_pending_order()로
+# 기록해두지만, Google Play 구매는 앱 안에서 클라이언트+Google끼리 먼저 끝나고
+# 서버는 purchaseToken만 나중에 받으므로, "지금 로그인된 회원이 누구인지"가
+# 이 시점에 확정돼 있어야만 어느 회원에게 지급할지 알 수 있다.
+from google_play_pg import handle_google_play_purchase_return
+
+if handle_google_play_purchase_return(current_member_id()):
+    st.rerun()
 
 current_page = st.query_params.get("page", "main")
 

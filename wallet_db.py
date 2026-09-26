@@ -656,6 +656,102 @@ def activate_paid_advanced_sub(member_id: int, days: int) -> bool:
     return True
 
 
+def activate_paid_advanced_sub_once(member_id: int, days: int, ref_id: str) -> bool:
+    """유료 구독을 ref_id당 정확히 한 번만 활성화한다(멱등) — Google Play
+    인앱결제 구독 검증(google_play_pg._verify_and_credit_subscription) 전용.
+
+    왜 activate_paid_advanced_sub()를 그대로 쓰면 안 되는가: 그 함수는 호출될
+    때마다 "남은 만료일부터 days를 이어서 연장"만 한다(멱등성 없음). 인앱결제는
+    같은 purchaseToken이 반복 도착할 수 있고(검증 실패 후 클라이언트 재전송,
+    사용자가 결제 직후 화면을 새로고침·재접속, 네트워크 재시도), 그대로 쓰면
+    한 번 결제로 구독이 30일씩 두 번 연장된다 — 그래서 "이 토큰으로 이미
+    지급했는가"를 DB에 남기고 한 번만 반영하는 별도 함수가 필요하다.
+
+    멱등 마커는 pg_charges.pg_ref_id(UNIQUE)를 쓴다 — 토스·Mock 결제가 이미 쓰는
+    컬럼이라 스키마 변경이 필요 없다. amount는 0으로 기록한다(돈은 구글이 받았고
+    이 서버는 PG 충전을 한 게 아니라 "지급 완료" 표시만 남긴다). 기존 소비처는
+    전부 pg_ref_id 접두사로 걸러 읽으므로(check_real_toss_charges.py 'pg:toss:%',
+    count_recent_mock_charges 'pg:mock:%') 이 행은 그들 집계에 섞이지 않는다.
+
+    반환: True = 이번에 지급했거나 이 ref_id로 이미 지급됨(둘 다 성공 취급),
+          False = 지급되지 않음(회원 없음 등 — 마커도 남지 않아 재시도 가능).
+
+    2026-09-19(charge_points/deduct_points)와 같은 이유로 원자성이 필요하다:
+    마커 INSERT와 구독 INSERT를 _batch_execute 한 트랜잭션에 묶고, 구독 INSERT는
+    이번 트랜잭션에서 마커가 실제로 생겼을 때만(EXISTS) 실행한다. 같은 토큰이
+    동시에 두 번 들어오면 두 번째는 마커 UNIQUE에 걸려 IntegrityError로 배치
+    전체가 되돌려지므로(그래서 except에서 True), 구독이 두 번 연장되는 상태는
+    만들어지지 않는다."""
+    if days <= 0:
+        raise ValueError("days must be positive")
+    ref_id = str(ref_id).strip()
+    if not ref_id:
+        raise ValueError("ref_id must be non-empty")
+
+    conn = _connect()
+    try:
+        dup = conn.execute(
+            "SELECT 1 FROM pg_charges WHERE pg_ref_id = ?", (ref_id,)
+        ).fetchone()
+        if dup:
+            conn.close()
+            return True
+
+        now = datetime.now(KST)
+        now_iso = now.strftime("%Y-%m-%d %H:%M:%S.%f")
+        row = conn.execute(
+            """
+            SELECT expires_at FROM subscriptions
+            WHERE member_id = ? AND product = ? AND expires_at > ?
+            ORDER BY expires_at DESC LIMIT 1
+            """,
+            (member_id, ADVANCED_PRODUCT, now_iso),
+        ).fetchone()
+        base = now
+        if row and row[0]:
+            try:
+                current_expiry = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=KST)
+                if current_expiry > base:
+                    base = current_expiry
+            except ValueError:
+                pass
+        expires = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S.%f")
+
+        results = _batch_execute(
+            conn,
+            [
+                (
+                    """
+                    INSERT INTO pg_charges (member_id, amount, pg_ref_id, status, created_at)
+                    SELECT ?, 0, ?, 'completed', ?
+                    FROM members WHERE id = ?
+                    """,
+                    (member_id, ref_id, now_iso, member_id),
+                ),
+                (
+                    """
+                    INSERT INTO subscriptions (member_id, product, starts_at, expires_at, is_free_promo)
+                    SELECT ?, ?, ?, ?, 0
+                    WHERE EXISTS (SELECT 1 FROM pg_charges WHERE pg_ref_id = ?)
+                    """,
+                    (member_id, ADVANCED_PRODUCT, now_iso, expires, ref_id),
+                ),
+            ],
+        )
+        marker_inserted = results[0].rowcount if results else 0
+        conn.commit()
+        conn.close()
+        if not marker_inserted:
+            # 회원 행이 없음 — 마커도 구독도 안 생겼다(지급 실패).
+            return False
+        return True
+    except sqlite3.IntegrityError:
+        # 같은 ref_id가 동시·재차 들어옴 — 배치 전체가 되돌려졌으므로 이번
+        # 호출은 "이미 지급됨"으로 성공 처리한다(구독은 한 번만 연장됨).
+        conn.close()
+        return True
+
+
 THUNDER_COST_PER_GAME = 10
 HEDGE_COST_PER_COMBO = 10
 # 2026-09-08 정정: 100P/개는 착오였음 — 자동구매도 번개조합과 동일하게
