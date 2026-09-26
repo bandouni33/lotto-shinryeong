@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   BackHandler,
   Platform,
@@ -10,6 +11,17 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import {
+  fetchProducts,
+  initConnection,
+  isUserCancelledError,
+  purchaseErrorListener,
+  purchaseUpdatedListener,
+  requestPurchase,
+  type Product,
+  type ProductSubscription,
+  type Purchase,
+} from 'expo-iap';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { login as kakaoNativeLogin } from '@react-native-seoul/kakao-login';
@@ -27,6 +39,32 @@ type Props = {
   /** getStreamlitPageUrl에 그대로 실어보낼 추가 쿼리파라미터(예: QR 스캔 결과) */
   extraParams?: Record<string, string>;
 };
+
+// 2026-09-26(구글 인앱결제): Streamlit 쪽(wallet_ui.py)이 "이 상품을 결제해달라"를
+// 알리는 두 경로의 이름 — 카카오 네이티브 로그인(kakao_native_trigger)과 같은
+// 이중화 기법이다(브릿지가 없는 기기에서는 URL 쿼리로 폴백).
+const IAP_URL_PARAM = 'iap_buy';
+const IAP_PLAN_URL_PARAM = 'iap_plan';
+
+/** 서버가 보내는 결제 요청 — basePlanId가 있으면 정기결제(구독), 없으면 소모성 상품. */
+type IapRequest = { sku: string; basePlanId?: string };
+
+/** RN에는 브라우저와 달리 searchParams가 완전하지 않은 URL 구현체가 있어
+ * (react-native-url-polyfill 없이) 문자열로 직접 뽑는다. */
+function paramFromUrl(url: string | undefined, key: string): string | null {
+  if (!url) {
+    return null;
+  }
+  const match = new RegExp(`[?&]${key}=([^&#]*)`).exec(url);
+  if (!match) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
 
 export default function StreamlitWebView({ page, title, showBack = true, extraParams }: Props) {
   const insets = useSafeAreaInsets();
@@ -163,6 +201,150 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     [page, guestId, extraParams]
   );
 
+  // ── 2026-09-26 구글 인앱결제 ────────────────────────────────────────────
+  // 지급·승인은 서버(google_play_pg.py)가 전담한다 — 여기서는 (1) Streamlit이
+  // 요청한 상품으로 Google Play 결제창을 띄우고 (2) 결제가 끝나면 purchaseToken을
+  // 웹뷰 주소에 실어 서버로 넘긴다. finishTransaction은 절대 호출하지 않는다
+  // (서버가 검증 후 consume/acknowledge를 직접 한다 — 구글 권장 방식).
+  const [iapRequest, setIapRequest] = useState<IapRequest | null>(null);
+  const purchaseInFlightRef = useRef(false);
+
+  // 결제 후 서버로 토큰 전달 — 웹뷰를 새 주소로 다시 띄우면 user_page.py가
+  // handle_google_play_purchase_return()으로 검증·지급·승인까지 처리한다.
+  const deliverPurchaseToServer = useCallback(
+    (purchase: Purchase) => {
+      const token = purchase.purchaseToken ?? null;
+      if (!token) {
+        Alert.alert(
+          '결제 확인 실패',
+          '구매 정보를 받지 못했습니다. 잠시 후 다시 시도하시고, 계속 실패하면 고객센터에 문의해 주세요.'
+        );
+        return;
+      }
+      setIapRequest(null);
+      setWebViewUri(
+        buildUri({
+          iap_purchase_token: token,
+          iap_product_id: purchase.productId,
+          _cb: String(Date.now()),
+        })
+      );
+    },
+    [buildUri]
+  );
+
+  // 매 렌더마다 새 함수를 쓰면 리스너가 재등록되므로 ref로 최신 구현을 본다.
+  const deliverRef = useRef(deliverPurchaseToServer);
+  useEffect(() => {
+    deliverRef.current = deliverPurchaseToServer;
+  }, [deliverPurchaseToServer]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    let cancelled = false;
+    // 스토어 연결 — purchaseUpdatedListener로 미완료 구매(이전 실행에서 서버 전달이
+    // 실패한 건)까지 다시 올라오므로, 그걸 그대로 서버에 넘기는 것이 곧 재전송
+    // 안전장치가 된다(서버 멱등성이 중복 지급을 막는다).
+    void initConnection().catch(() => {
+      // 스토어 미연결 — 결제 시도 시점에 fetchProducts가 실패하며 안내된다.
+    });
+    const updated = purchaseUpdatedListener((purchase) => {
+      if (!cancelled) {
+        deliverRef.current(purchase);
+      }
+    });
+    const failed = purchaseErrorListener((error) => {
+      if (cancelled || isUserCancelledError(error) || error.code === 'user-cancelled') {
+        return; // 사용자 취소는 조용히 넘어간다(다시 누르면 된다).
+      }
+      Alert.alert('결제가 완료되지 않았습니다', error.message || '알 수 없는 오류');
+    });
+    return () => {
+      cancelled = true;
+      updated.remove();
+      failed.remove();
+    };
+  }, []);
+
+  // 결제 실행 — 상품 조회 → (구독이면 기본요금제에 맞는 offerToken 선택) → 결제창.
+  // 결과는 위 purchaseUpdatedListener로 온다(반환값 아님 — expo-iap 규약).
+  useEffect(() => {
+    if (!iapRequest || Platform.OS !== 'android' || purchaseInFlightRef.current) {
+      return;
+    }
+    let cancelled = false;
+    const request = iapRequest;
+    (async () => {
+      purchaseInFlightRef.current = true;
+      try {
+        const queryType = request.basePlanId ? ('subs' as const) : ('in-app' as const);
+        const fetched = await fetchProducts({ skus: [request.sku], type: queryType });
+        const list = (Array.isArray(fetched) ? fetched : []) as Array<Product | ProductSubscription>;
+        const product = list.find((item) => item.id === request.sku);
+        if (!product) {
+          throw new Error('상품 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        }
+        if (request.basePlanId) {
+          const offers =
+            (product as ProductSubscription).subscriptionOffers?.filter(
+              (offer) => !!offer.offerTokenAndroid
+            ) ?? [];
+          const offer =
+            offers.find((item) => item.basePlanIdAndroid === request.basePlanId) ?? null;
+          if (!offer?.offerTokenAndroid) {
+            throw new Error('선택하신 구독 요금제를 찾지 못했습니다.');
+          }
+          await requestPurchase({
+            request: {
+              google: {
+                skus: [request.sku],
+                subscriptionOffers: [{ sku: request.sku, offerToken: offer.offerTokenAndroid }],
+              },
+            },
+            type: 'subs',
+          });
+        } else {
+          await requestPurchase({
+            request: { google: { skus: [request.sku] } },
+            type: 'in-app',
+          });
+        }
+      } catch (e) {
+        if (!cancelled) {
+          Alert.alert(
+            '결제를 시작할 수 없습니다',
+            e instanceof Error ? e.message : '알 수 없는 오류'
+          );
+        }
+      } finally {
+        purchaseInFlightRef.current = false;
+        if (!cancelled) {
+          setIapRequest(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [iapRequest]);
+
+  const parseIapRequestFromUrl = useCallback((url?: string): IapRequest | null => {
+    const sku = paramFromUrl(url, IAP_URL_PARAM);
+    if (!sku) {
+      return null;
+    }
+    const basePlanId = paramFromUrl(url, IAP_PLAN_URL_PARAM) || undefined;
+    return { sku, basePlanId };
+  }, []);
+
+  // postMessage와 URL 폴백이 같은 순간에 둘 다 들어와도 한 번만 실행되게 한다
+  // (같은 요청이면 상태 객체를 유지 — 그래야 아래 effect가 두 번 돌지 않는다).
+  const triggerIapPurchaseOnce = useCallback((request: IapRequest) => {
+    setIapRequest((prev) => prev ?? request);
+  }, []);
+
   // 최초 1회: guestId가 준비되는 순간 첫 주소를 확정한다. 콜드스타트로
   // isFreshStart가 켜져 있었거나 마운트 직후 바로 idle 타임아웃이 감지된
   // 경우엔 fresh_start도 이 최초 주소에 함께 싣는다 — 캐시버스터(_cb)는
@@ -283,8 +465,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (navState.url && navState.url.includes('kakao_native_trigger=1')) {
         triggerKakaoNativeLoginOnce();
       }
+      const iapFromUrl = parseIapRequestFromUrl(navState.url);
+      if (iapFromUrl) {
+        triggerIapPurchaseOnce(iapFromUrl);
+      }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
   );
 
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
@@ -304,9 +490,14 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         triggerKakaoNativeLoginOnce();
         return false;
       }
+      const iapFromUrl = parseIapRequestFromUrl(request.url);
+      if (iapFromUrl) {
+        triggerIapPurchaseOnce(iapFromUrl);
+        return false;
+      }
       return true;
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
@@ -316,7 +507,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 이 메시지를 아예 안 보내고 URL 폴백만 쓰도록 이미 분기해뒀다.
   const onMessage = useCallback(
     (event: { nativeEvent: { data: string } }) => {
-      let payload: { type?: string; target?: string; open?: boolean } | null = null;
+      let payload: {
+        type?: string;
+        target?: string;
+        open?: boolean;
+        productId?: string;
+        basePlanId?: string;
+      } | null = null;
       try {
         payload = JSON.parse(event.nativeEvent.data);
       } catch {
@@ -326,13 +523,19 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         goToQrScan();
       } else if (payload?.type === 'kakaoNativeLogin') {
         triggerKakaoNativeLoginOnce();
+      } else if (payload?.type === 'iapPurchase' && typeof payload.productId === 'string') {
+        // wallet_ui.py _fire_iap_purchase_trigger()가 보내는 결제 요청.
+        triggerIapPurchaseOnce({
+          sku: payload.productId,
+          basePlanId: payload.basePlanId || undefined,
+        });
       } else if (payload?.type === 'dialogState') {
         // wallet_ui.inject_manual_dialog_back_bridge()가 보내는 신호 — st.dialog
         // (내정보·사용설명서 등 전부 공통)가 지금 열려 있는지.
         setDialogOpen(!!payload.open);
       }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, triggerIapPurchaseOnce]
   );
 
   const goToStreamlitHome = useCallback(() => {
