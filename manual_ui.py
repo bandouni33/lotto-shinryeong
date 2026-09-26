@@ -357,8 +357,35 @@ def manual_css() -> str:
     border: 1px solid rgba(42, 58, 96, 0.9) !important;
     border-radius: 999px !important;
 }
+/* 2026-09-26(사용자 지시): 다이얼로그 제목 바로 아래·차례(첫 항목 타로점) 위에 놓는
+   개인정보 비수집 고지. "도형 없이 텍스트만"이라 배경·테두리·아이콘을 두지 않고,
+   다이얼로그 본문이 흰 배경이라 글자색은 흰 배경에서 읽히는 진한 남색으로 둔다
+   (금색 #ffd479은 흰 배경에서 안 읽힌다 — 위 .ln-manual-hint 주석 참조). */
+.ln-manual-privacy {
+    color: #1f2650;
+    font-size: 13.5px;
+    font-weight: 900;
+    letter-spacing: -0.1px;
+    line-height: 1.6;
+    text-align: center;
+    margin: 2px 4px 12px 4px;
+}
 </style>
 """
+
+
+def manual_privacy_notice_html() -> str:
+    """제목("📖 사용설명서") 바로 아래·차례 위에 놓는 한 줄 고지(2026-09-26 사용자 지시).
+
+    "도형 없이 텍스트만" — 배경·테두리·아이콘을 두지 않는다. 색·굵기는
+    manual_css()의 .ln-manual-privacy 한 곳(흰 배경에서 읽히는 진한 남색)에서만
+    관리하고, 문구도 이 함수 한 곳에서만 관리한다.
+    """
+    return (
+        '<div class="ln-manual-privacy">'
+        "번호 생성, 보관 등 서비스 이용의 어떠한 개인정보도 수집하지 않습니다."
+        "</div>"
+    )
 
 
 def manual_hint_html() -> str:
@@ -438,6 +465,8 @@ def _render_manual_close_row(exp_key: str) -> None:
 def manual_dialog() -> None:
     """표지 → 목차 → 안내문구 → 7개 항목(접힘, 각각 우측상단 닫기) → 각주."""
     st.markdown(manual_css(), unsafe_allow_html=True)
+    # 제목 바로 밑·차례(첫 항목 타로점) 위 — 2026-09-26 사용자 지시 위치.
+    st.markdown(manual_privacy_notice_html(), unsafe_allow_html=True)
     st.markdown(manual_overview_html(), unsafe_allow_html=True)
     st.markdown(manual_hint_html(), unsafe_allow_html=True)
     for idx, section in enumerate(manual_sections()):
