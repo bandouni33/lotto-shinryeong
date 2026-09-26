@@ -206,6 +206,20 @@ def history_css(container_key: str = "") -> str:
         font-size: 13px;
         min-width: 16px;
     }
+    /* 2026-09-26(사용자 지시): 방금 저장한 조합을 눈으로 확인할 수 있게 최신 카드
+       1개만 잠깐 깜박인다(2~3회). 붙이는 클래스도 이 파일 한 곳. */
+    @keyframes historyJustSavedBlink {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(206, 147, 216, 0);
+        }
+        50% {
+            box-shadow: 0 0 0 5px rgba(206, 147, 216, 0.95), 0 0 22px rgba(186, 104, 200, 0.65);
+        }
+    }
+    .history-just-saved {
+        border-radius: 10px;
+        animation: historyJustSavedBlink 0.8s ease-in-out 3 !important;
+    }
     </style>
     """
 
@@ -247,7 +261,7 @@ def _combo_rows_html(batch: dict, row_class: str = "auto-banner-ball-row") -> st
     return rows
 
 
-def batch_card_html(batch: dict) -> str:
+def batch_card_html(batch: dict, highlight: bool = False) -> str:
     """구매내역(_purchase_banner_html)과 완전히 동일한 카드 형식 — 순수 숫자 볼 +
     당첨번호 일치 시 테두리 동그라미. 회차/소스 제목은 호출부(render_history_section)가
     회차별로 묶어 별도 줄(auto-history-round-head)로 그리므로 여기서는 조합 숫자만
@@ -257,7 +271,10 @@ def batch_card_html(batch: dict) -> str:
     삐뚤빼뚤해 보인다는 지적 — 당첨 여부는 번호에 동그라미(_ball_span의
     hit_cls)만으로 이미 표시되니, 배지 없이 숫자 줄만 가운데 정렬로 그린다."""
     combo_rows = _combo_rows_html(batch)
-    return f'<div class="auto-purchase-banner-plain"><div class="auto-banner-combos">{combo_rows}</div></div>'
+    _cls = "auto-purchase-banner-plain"
+    if highlight:
+        _cls += f" {JUST_SAVED_CLASS}"
+    return f'<div class="{_cls}"><div class="auto-banner-combos">{combo_rows}</div></div>'
 
 
 # 2026-08-29: 개별리셋·전체리셋처럼 조합시작 한 번에 두 소스가 같이 생성되는
@@ -285,6 +302,7 @@ def paired_batch_card_html(
     source_left: str,
     source_right: str,
     round_color: str = PAIR_ROUND_COLORS[0],
+    highlight: bool = False,
 ) -> str:
     """"조합시작" 한 번에 함께 생성된 두 소스(예: 전체리셋+개별리셋)를 회차 표시는
     한 번만, 번호는 좌우로 나란히 보여준다 — 같은 회차 안에 두 종류가 뒤섞여
@@ -298,7 +316,7 @@ def paired_batch_card_html(
     cls_right = _PAIR_BADGE_CLASS.get(source_right, "hedge-pair-badge-individual")
 
     return f"""
-    <div class="hedge-pair-card">
+    <div class="hedge-pair-card{' ' + JUST_SAVED_CLASS if highlight else ''}">
       <div class="hedge-pair-col hedge-pair-col-left">
         <div class="hedge-pair-head">
           <span class="hedge-pair-round" style="color:{round_color};">{round_label}</span>
@@ -320,6 +338,23 @@ def _history_panel_open_key(blink_flag_key: str) -> str:
     return f"{blink_flag_key}_panel_open"
 
 
+# 방금 저장한 카드에 붙이는 깜빡임 클래스(2~3회 깜빡) — CSS도 이 파일 history_css() 안에만 있다.
+JUST_SAVED_CLASS = "history-just-saved"
+
+
+def _just_saved_key(blink_flag_key: str) -> str:
+    return f"{blink_flag_key}_just_saved"
+
+
+def consume_just_saved(blink_flag_key: str) -> bool:
+    """방금 저장(blink) 직후인지 **1회 소비**해 알려준다.
+
+    자동조합(page_auto._render_auto_history_content)처럼 패널 내용을 자체
+    렌더러로 그리는 화면은 이 함수를 직접 불러 첫 카드에 JUST_SAVED_CLASS를
+    붙인다 — 연출과 CSS는 이 모듈 한 곳에서만 관리한다."""
+    return bool(st.session_state.pop(_just_saved_key(blink_flag_key), False))
+
+
 def _resolve_history_panel_state(blink_flag_key: str) -> str:
     """저장내역 패널 열림 상태를 공통 규칙으로 갱신하고 panel_open_key를 반환한다.
 
@@ -332,6 +367,10 @@ def _resolve_history_panel_state(blink_flag_key: str) -> str:
     panel_open_key = _history_panel_open_key(blink_flag_key)
     if bool(st.session_state.pop(blink_flag_key, False)):
         st.session_state[panel_open_key] = True
+        # 2026-09-26(사용자 지시): 방금 저장한 조합이 눈에 보이게 — 가장 최근 카드
+        # 1개만 잠깐 깜박인다. 어느 카드에 붙일지는 그리는 쪽이 이 값을 1회 소비해
+        # 정한다(자동조합처럼 content_renderer를 쓰는 화면은 consume_just_saved()).
+        st.session_state[_just_saved_key(blink_flag_key)] = True
     return panel_open_key
 
 
@@ -442,7 +481,11 @@ def render_history_panel(
         if not batches:
             st.caption(empty_caption)
         else:
-            _render_batches(batches, label_for_source)
+            # 2026-09-26: 방금 저장(blink) 직후면 목록의 첫 카드(=가장 최근 저장본)에만
+            # 깜빡임을 붙인다 — 플래그는 여기서 1회 소비된다.
+            _render_batches(
+                batches, label_for_source, highlight_first=consume_just_saved(blink_flag_key)
+            )
 
 
 def render_history_section(
@@ -474,22 +517,28 @@ def render_history_section(
 
 
 def _render_single_batch(
-    batch: dict, label_for_source: dict[str, str] | None, round_color: str | None = None
+    batch: dict,
+    label_for_source: dict[str, str] | None,
+    round_color: str | None = None,
+    highlight: bool = False,
 ) -> None:
     label_prefix = (label_for_source or {}).get(batch.get("_source"), "")
     draw_round = batch.get("draw_round", "")
     heading = f"{label_prefix} · {draw_round}회차" if label_prefix else f"{draw_round}회차"
     color_style = f' style="color:{round_color};"' if round_color else ""
     st.markdown(f'<div class="auto-history-round-head"{color_style}>{heading}</div>', unsafe_allow_html=True)
-    st.markdown(batch_card_html(batch), unsafe_allow_html=True)
+    st.markdown(batch_card_html(batch, highlight=highlight), unsafe_allow_html=True)
 
 
-def same_source_pair_card_html(batch_left: dict, batch_right: dict) -> str:
+def same_source_pair_card_html(batch_left: dict, batch_right: dict, highlight: bool = False) -> str:
     """번개조합처럼 소스가 하나뿐인 화면에서, 같은 회차에 저장된 배치가 2개
     이상이면 세로로 쌓지 않고 좌우 2열로 나란히 보여준다("같은 회차는 2줄
     나란히" 요청) — 배지는 없음(소스가 같으니 구분 표시가 필요 없다)."""
+    _cls = "hedge-pair-card"
+    if highlight:
+        _cls += f" {JUST_SAVED_CLASS}"
     return f"""
-    <div class="hedge-pair-card">
+    <div class="{_cls}">
       <div class="hedge-pair-col hedge-pair-col-left">
         {_combo_rows_html(batch_left, "auto-banner-ball-row")}
       </div>
@@ -500,7 +549,11 @@ def same_source_pair_card_html(batch_left: dict, batch_right: dict) -> str:
     """
 
 
-def _render_batches(batches: list[dict], label_for_source: dict[str, str] | None) -> None:
+def _render_batches(
+    batches: list[dict],
+    label_for_source: dict[str, str] | None,
+    highlight_first: bool = False,
+) -> None:
     """batches(이미 최신순 정렬)를 회차별로 묶어, 한 회차 안에 서로 다른 소스
     2개가 같이 있으면(개별리셋+전체리셋처럼 조합시작 한 번에 같이 생성된 경우)
     좌우 나란히 카드로, 아니면(자동구매·번개조합처럼 소스가 하나뿐이면) 기존
@@ -509,7 +562,17 @@ def _render_batches(batches: list[dict], label_for_source: dict[str, str] | None
     2026-08-29: "2종조합 사이에 구분선, 회차별 텍스트를 칼라로 쉽게 구분"
     요청 — 회차마다 다른 색을 배정해(PAIR_ROUND_COLORS) 인접한 회차를
     한눈에 구분할 수 있게 한다(짝지어 보여주는 카드에만 적용 — 소스가
-    하나뿐인 기존 카드는 항상 쓰던 고정색 그대로라 다른 화면엔 영향 없음)."""
+    하나뿐인 기존 카드는 항상 쓰던 고정색 그대로라 다른 화면엔 영향 없음).
+    2026-09-26(사용자 지시): highlight_first=True면 **맨 처음 그리는 카드 1개만**
+    JUST_SAVED_CLASS를 붙인다(방금 저장한 조합을 눈으로 확인할 수 있게)."""
+    _highlight_next = bool(highlight_first)
+
+    def _take_highlight() -> bool:
+        nonlocal _highlight_next
+        value = _highlight_next
+        _highlight_next = False
+        return value
+
     rounds_order: list = []
     by_round: dict[object, list[dict]] = {}
     for batch in batches:
@@ -544,14 +607,21 @@ def _render_batches(batches: list[dict], label_for_source: dict[str, str] | None
             for i in range(pair_count):
                 st.markdown(
                     paired_batch_card_html(
-                        list_left[i], list_right[i], src_left, src_right, round_color=round_color
+                        list_left[i],
+                        list_right[i],
+                        src_left,
+                        src_right,
+                        round_color=round_color,
+                        highlight=_take_highlight(),
                     ),
                     unsafe_allow_html=True,
                 )
             # 짝을 못 이룬 나머지(예: 한쪽만 재생성돼 개수가 안 맞는 경우)는
             # 기존 방식으로 그려서 데이터가 화면에서 누락되지 않게 한다.
             for b in list_left[pair_count:] + list_right[pair_count:]:
-                _render_single_batch(b, label_for_source, round_color=round_color)
+                _render_single_batch(
+                    b, label_for_source, round_color=round_color, highlight=_take_highlight()
+                )
         else:
             sources_in_group = {b.get("_source") for b in group}
             if len(sources_in_group) == 1:
@@ -568,11 +638,21 @@ def _render_batches(batches: list[dict], label_for_source: dict[str, str] | None
                 n = len(group)
                 while i < n:
                     if i + 1 < n:
-                        st.markdown(same_source_pair_card_html(group[i], group[i + 1]), unsafe_allow_html=True)
+                        st.markdown(
+                            same_source_pair_card_html(
+                                group[i], group[i + 1], highlight=_take_highlight()
+                            ),
+                            unsafe_allow_html=True,
+                        )
                         i += 2
                     else:
-                        st.markdown(batch_card_html(group[i]), unsafe_allow_html=True)
+                        st.markdown(
+                            batch_card_html(group[i], highlight=_take_highlight()),
+                            unsafe_allow_html=True,
+                        )
                         i += 1
             else:
                 for b in group:
-                    _render_single_batch(b, label_for_source, round_color=round_color)
+                    _render_single_batch(
+                        b, label_for_source, round_color=round_color, highlight=_take_highlight()
+                    )

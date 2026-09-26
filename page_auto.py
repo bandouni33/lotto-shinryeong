@@ -433,7 +433,11 @@ def _sms_schedule_label(purchase_method: str, sms_days: list[str] | str) -> str:
     return "문자 발송: 즉시 조합 (테스트 기간 — 화면 확인)"
 
 
-def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
+def _purchase_banner_html(data: dict, *, compact: bool = False, highlight: bool = False) -> str:
+    # 깜박임 클래스·CSS는 공용 combo_history_ui 한 곳에서만 관리한다.
+    from combo_history_ui import JUST_SAVED_CLASS
+
+    _hl_cls = f" {JUST_SAVED_CLASS}" if highlight else ""
     allocated = data.get("allocated") or []
     draw_round = data.get("draw_round", "")
     combo_count = data.get("combo_count", len(allocated))
@@ -477,7 +481,7 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
             balls = "".join(_ball_span(n) for n in combo)
             grid_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
         return (
-            '<div class="auto-purchase-banner-plain">'
+            f'<div class="auto-purchase-banner-plain{_hl_cls}">'
             f'<div class="auto-banner-combos">{grid_rows}</div>'
             "</div>"
         )
@@ -511,7 +515,7 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
     compact_cls = " auto-purchase-banner-compact" if compact else ""
 
     return (
-        f'<div class="auto-purchase-banner{compact_cls}">'
+        f'<div class="auto-purchase-banner{compact_cls}{_hl_cls}">'
         f'<div class="auto-banner-head">'
         f'<span class="auto-banner-badge">✓</span>'
         f"<div>"
@@ -556,9 +560,14 @@ def _history_grid_rows_html(item: dict) -> str:
     return rows
 
 
-def _history_pair_card_html(item_left: dict, item_right: dict) -> str:
+def _history_pair_card_html(item_left: dict, item_right: dict, highlight: bool = False) -> str:
+    _cls = "auto-history-pair-card"
+    if highlight:
+        from combo_history_ui import JUST_SAVED_CLASS
+
+        _cls += f" {JUST_SAVED_CLASS}"
     return f"""
-    <div class="auto-history-pair-card">
+    <div class="{_cls}">
       <div class="auto-history-pair-col auto-history-pair-col-left">
         {_history_grid_rows_html(item_left)}
       </div>
@@ -855,6 +864,11 @@ def _render_auto_history_content():
     grouped_history: dict = {}
     for item in history_items:
         grouped_history.setdefault(item.get("draw_round"), []).append(item)
+    # 2026-09-26(사용자 지시): 방금 구매한 조합이 눈에 보이게 — 목록 맨 첫 카드
+    # 1개만 잠깐 깜박인다. 클래스·CSS는 공용 combo_history_ui 한 곳(번개·안티와 동일).
+    from combo_history_ui import consume_just_saved
+
+    _highlight_next = consume_just_saved("auto_history_blink")
     for round_idx, (draw_round, items) in enumerate(grouped_history.items()):
         round_color = _AUTO_HISTORY_PAIR_ROUND_COLORS[round_idx % len(_AUTO_HISTORY_PAIR_ROUND_COLORS)]
         st.markdown(
@@ -865,10 +879,18 @@ def _render_auto_history_content():
         n = len(items)
         while i < n:
             if i + 1 < n:
-                st.markdown(_history_pair_card_html(items[i], items[i + 1]), unsafe_allow_html=True)
+                st.markdown(
+                    _history_pair_card_html(items[i], items[i + 1], highlight=_highlight_next),
+                    unsafe_allow_html=True,
+                )
+                _highlight_next = False
                 i += 2
             else:
-                st.markdown(_purchase_banner_html(items[i], compact=True), unsafe_allow_html=True)
+                st.markdown(
+                    _purchase_banner_html(items[i], compact=True, highlight=_highlight_next),
+                    unsafe_allow_html=True,
+                )
+                _highlight_next = False
                 i += 1
 
 
