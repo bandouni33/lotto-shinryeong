@@ -14,6 +14,11 @@
   N6  트리거 페이로드: postMessage 키·URL 파라미터명이 앱 코드(streamlit-webview.tsx)와 일치
   N7  화이트리스트 밖 상품 ID는 JS 주입 전에 거부된다
   N8  앱 코드는 서버 승인 방식을 지킨다(finishTransaction 미호출)
+  N9  가격: 앱이 보내준 스토어 가격이 화면에 그대로 뜨고, 파라미터가 없는 다음
+      렌더(내부이동을 흉내낸다)에서도 저장된 값으로 유지된다
+  N10 가격 파라미터 이름이 서버·앱에서 일치하고, 앱은 '현재 주소 + 파라미터'로
+      재로드한다(재빌드하면 보던 페이지를 잃는다)
+  N11 로그인 후 구독 안내창 재개(resume=af_show_subscribe)가 실제로 동작한다
 
 DB는 _db_isolation.isolated_db()로만 만진다(운영 Turso 접촉 0). 환경변수는 테스트가
 직접 세팅/복구한다 — 실제 운영 구성을 재현하려면 카카오 키가 있어야
@@ -81,11 +86,13 @@ def _member(handle: str) -> int:
     return int(mid)
 
 
-def _render_probe(mode: str, member_id: int, *, native: bool) -> AppTest:
+def _render_probe(mode: str, member_id: int, *, native: bool, **extra_params) -> AppTest:
     at = AppTest.from_file(PROBE, default_timeout=TIMEOUT_SEC)
     at.query_params["probe"] = mode
     if native:
         at.query_params["native"] = "1"
+    for key, value in extra_params.items():
+        at.query_params[key] = value
     at.session_state["member_id"] = member_id
     at.run()
     return at
@@ -279,6 +286,72 @@ def test_N8_app_code_does_not_finish_transactions():
     assert "iap_purchase_token" in tsx, "서버로 토큰을 넘기는 배선이 없다"
 
 
+def test_N9_store_price_is_shown_and_persists_across_navigation():
+    """앱이 스토어에서 읽어 보낸 가격이 화면에 뜨고, 내부이동(파라미터가 사라진
+    렌더)에서도 유지되나 — Play Console 가격 변경이 코드 수정 없이 반영되는 경로."""
+    with _prod_like_env(), _db_isolation.isolated_db():
+        mid = _member("iap_n9")
+        at = _render_probe("charge", mid, native=True, iap_price_points_1000="₩9,900")
+        assert not at.exception, f"가격 파라미터 렌더 예외: {at.exception}"
+        labels = {b.key: b.label for b in at.button}
+        assert "₩9,900" in labels[IAP_BUY_KEYS[0]], (
+            f"앱이 보낸 스토어 가격이 화면에 안 떴다: {labels[IAP_BUY_KEYS[0]]}"
+        )
+        assert "30,000원" in labels[IAP_BUY_KEYS[1]], (
+            f"안 보낸 상품은 기본값으로 떠야 한다: {labels[IAP_BUY_KEYS[1]]}"
+        )
+
+        # 다음 렌더: 파라미터가 없다(Streamlit 내부링크로 이동한 상태와 같다).
+        at2 = _render_probe("charge", mid, native=True)
+        labels2 = {b.key: b.label for b in at2.button}
+        assert "₩9,900" in labels2[IAP_BUY_KEYS[0]], (
+            f"저장해둔 가격이 다음 화면에서 사라졌다: {labels2[IAP_BUY_KEYS[0]]}"
+        )
+
+        # 기본요금제 가격도 같은 경로로 반영되는지.
+        wdb.activate_free_advanced_sub(mid)
+        at3 = _render_probe(
+            "sub", mid, native=True, iap_price_premium_quarterly="₩33,000"
+        )
+        labels3 = {b.key: b.label for b in at3.button}
+        assert "₩33,000" in labels3[IAP_SUB_KEYS[1]], (
+            f"구독 요금제 가격이 화면에 안 떴다: {labels3[IAP_SUB_KEYS[1]]}"
+        )
+
+
+def test_N10_price_params_and_reload_contract_match_app_code():
+    """파라미터 이름은 서버(wallet_ui)·앱(streamlit-webview.tsx) 한 쌍이고,
+    앱은 재빌드가 아니라 '현재 주소 + 파라미터'로 되돌아와야 한다."""
+    import wallet_ui
+
+    tsx = TSX.read_text(encoding="utf-8")
+    for param in wallet_ui.IAP_PRICE_PARAMS.values():
+        assert param in tsx, f"앱이 {param} 를 안 보낸다(서버가 가격을 못 받는다)"
+    assert "withParams(" in tsx, "현재 주소에 파라미터를 더하는 병합기가 없다"
+    assert "currentUrlRef" in tsx, "보고 있던 주소를 기억하지 않는다(로그인 후 처음 페이지로 튕긴다)"
+    assert "reloadWith({ native_kakao_token" in tsx, "로그인 후 복귀가 현재 주소 기준이 아니다"
+    assert "reloadWith({\n          iap_purchase_token" in tsx or "reloadWith({" in tsx, (
+        "결제 후 복귀가 현재 주소 기준이 아니다"
+    )
+
+
+def test_N11_resume_reopens_subscription_dialog_after_login():
+    """고급필터 '구독하기'는 로그인 배너를 거치는데, 로그인을 마친 렌더에서
+    구독 안내창이 다시 열려야 한다(모달은 세션 상태로 열려 주소 복원만으로는
+    되살아나지 않는다 — resume 마커로 되살린다)."""
+    with _prod_like_env(), _db_isolation.isolated_db():
+        mid = _member("iap_n11")
+        at = AppTest.from_file(PROBE, default_timeout=TIMEOUT_SEC)
+        at.query_params["probe"] = "resume"
+        at.query_params["resume"] = "af_show_subscribe"
+        at.session_state["member_id"] = mid
+        at.run()
+        assert not at.exception, f"resume 렌더 예외: {at.exception}"
+        assert at.session_state.get("probe_af_show_subscribe") is True, (
+            "로그인 후 구독 안내창 재개 플래그가 세워지지 않았다"
+        )
+
+
 def _main() -> int:
     tests = [
         test_N1_native_charge_shows_only_iap,
@@ -290,6 +363,9 @@ def _main() -> int:
         test_N6_trigger_payload_matches_app_code,
         test_N7_trigger_rejects_unknown_product,
         test_N8_app_code_does_not_finish_transactions,
+        test_N9_store_price_is_shown_and_persists_across_navigation,
+        test_N10_price_params_and_reload_contract_match_app_code,
+        test_N11_resume_reopens_subscription_dialog_after_login,
     ]
     failed = 0
     for t in tests:

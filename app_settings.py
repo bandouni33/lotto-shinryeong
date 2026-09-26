@@ -11,6 +11,7 @@ MAX_CONCURRENT_SESSIONS_KEY = "max_concurrent_sessions"
 AUTH_REQUIRE_UA_MATCH_KEY = "auth_require_ua_match"
 FILTER_RULES_STAGE1_KEY = "filter_rules_stage1_json"
 FILTER_RULES_STAGE2_KEY = "filter_rules_stage2_json"
+STORE_PRICES_KEY = "store_prices_json"
 
 
 def _connect():
@@ -148,6 +149,41 @@ def set_filter_rules_json(stage: int, raw_json: str) -> None:
     init_settings_table()
     key = FILTER_RULES_STAGE1_KEY if stage == 1 else FILTER_RULES_STAGE2_KEY
     set_setting(key, raw_json)
+
+
+def get_store_prices() -> dict:
+    """앱(Google Play)이 알려온 실제 스토어 가격 캐시 — {'points_1000': '₩10,000', ...}.
+
+    2026-09-26: 화면에 박아둔 상수 금액과 Play Console 실제 가격이 어긋나는 문제를
+    없애기 위해, 앱이 로그인·결제·실행 시점에 읽어온 스토어 가격을 서버가 받아
+    여기에 남긴다(가격을 바꾸면 다음 앱 실행에 자동 반영 — 코드 수정 불필요).
+    파싱 실패·미저장이면 빈 dict(호출부가 기본값으로 폴백)."""
+    import json
+
+    init_settings_table()
+    raw = get_setting(STORE_PRICES_KEY, "")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items() if str(v).strip()}
+
+
+def set_store_prices(values: dict) -> None:
+    import json
+
+    init_settings_table()
+    set_setting(
+        STORE_PRICES_KEY,
+        json.dumps(
+            {str(k): str(v) for k, v in values.items() if str(v).strip()},
+            ensure_ascii=False,
+        ),
+    )
 
 
 def save_blob_setting(key: str, raw_bytes: bytes) -> None:

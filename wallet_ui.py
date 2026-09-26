@@ -190,6 +190,12 @@ def _resume_after_auth() -> None:
         st.session_state["hedge_qr_request"] = True
     elif resume == "my_info_dialog":
         st.session_state["my_info_dialog_open"] = True
+    elif resume == "af_show_subscribe":
+        # 2026-09-26: 고급필터 화면의 "구독하기"는 로그인이 필요해 로그인 배너를
+        # 거치는데, 이 분기가 없어서 로그인을 마쳐도 구독 안내창이 다시 열리지
+        # 않았다(안내창은 세션 상태로 열리는 모달이라 페이지 주소만 복원해서는
+        # 되살아나지 않는다). admin_filter.py가 이 플래그를 소비해 안내창을 띄운다.
+        st.session_state["af_show_subscribe"] = True
 
 
 def _finish_auth_success() -> None:
@@ -723,6 +729,73 @@ IAP_SUBSCRIPTION_PLANS = (("monthly", "premium-monthly"), ("3month", "premium-qu
 IAP_ALLOWED_PRODUCT_IDS = IAP_POINTS_PRODUCT_IDS + (IAP_SUBSCRIPTION_PRODUCT,)
 IAP_ALLOWED_BASE_PLANS = tuple(plan for _key, plan in IAP_SUBSCRIPTION_PLANS)
 
+# 앱(streamlit-webview.tsx)이 스토어에서 읽은 실제 가격을 실어 보내는 파라미터 이름과,
+# 그 값이 아직 없을 때 쓸 기본값(2026-09-26). 실제 표시는 항상 앱이 보내온 값이
+# 우선하므로, Play Console에서 가격을 바꾸면 다음 앱 실행 때 화면에 자동 반영되고
+# 코드 수정이 필요 없다(스토어 가격은 나라·프로모션에 따라 달라질 수 있다).
+IAP_PRICE_PARAMS = {
+    "points_1000": "iap_price_points_1000",
+    "points_3000": "iap_price_points_3000",
+    "premium-monthly": "iap_price_premium_monthly",
+    "premium-quarterly": "iap_price_premium_quarterly",
+}
+IAP_PRICE_FALLBACK = {
+    "points_1000": "10,000원",
+    "points_3000": "30,000원",
+    "premium-monthly": "12,000원",
+    "premium-quarterly": "30,000원",
+}
+
+
+def iap_prices() -> dict:
+    """화면 표시용 가격 {키: 표시 문자열}.
+
+    우선순위: 이번 요청의 URL 파라미터(앱이 스토어에서 읽은 실제 가격) > 저장해둔 값
+    (app_settings) > 기본값(IAP_PRICE_FALLBACK).
+
+    왜 저장까지 하는가: 앱은 웹뷰 주소를 새로 만들 때(앱 실행·로그인 직후·결제 직후)만
+    파라미터를 실을 수 있는데, 그 뒤 화면 이동은 Streamlit 내부링크라(내부링크는
+    page/gid/native만 전달) 파라미터가 사라진다. 그래서 앱이 보내준 값을 DB에 남겨
+    이후 모든 렌더가 같은 값을 쓰게 한다 — 결제 화면 어느 진입로에서든 가격이
+    일관되고, Play Console 가격 변경이 다음 앱 실행에 자동 반영된다.
+    값이 달라졌을 때만 쓴다(렌더마다 원격 DB 쓰기를 피한다)."""
+    prices = dict(IAP_PRICE_FALLBACK)
+    saved = {}
+    try:
+        import app_settings
+
+        saved = app_settings.get_store_prices() or {}
+        for key, value in saved.items():
+            if key in prices:
+                prices[key] = value
+    except Exception:
+        saved = {}
+
+    fresh = {}
+    try:
+        for key, param in IAP_PRICE_PARAMS.items():
+            raw = st.query_params.get(param)
+            if isinstance(raw, (list, tuple)):
+                raw = raw[0] if raw else ""
+            raw = str(raw or "").strip()
+            if raw:
+                fresh[key] = raw
+    except Exception:
+        fresh = {}
+
+    if fresh:
+        prices.update(fresh)
+        if any(saved.get(key) != value for key, value in fresh.items()):
+            try:
+                import app_settings
+
+                merged = dict(saved)
+                merged.update(fresh)
+                app_settings.set_store_prices(merged)
+            except Exception:
+                pass
+    return prices
+
 
 def in_native_app() -> bool:
     """이 렌더가 네이티브 앱(안드로이드 웹뷰) 안에서 온 요청인지.
@@ -820,14 +893,16 @@ def _render_iap_charge_options() -> None:
     """네이티브 앱 전용 충전 화면 — Google Play 소모성 상품(1,000P/3,000P)만 노출한다.
     실제 지급은 서버가 purchaseToken을 검증한 뒤에만 일어난다(google_play_pg.py)."""
     products = _iap_points_products()
+    prices = iap_prices()
     st.caption("Google Play 계정으로 결제됩니다. 카드정보는 앱과 서버에 저장되지 않습니다.")
     for index, product_id in enumerate(IAP_POINTS_PRODUCT_IDS):
         points = products.get(product_id)
         if not points:
             continue
-        won_amount = int(points) * WON_PER_POINT
+        # 표시 가격은 앱이 읽어온 스토어 가격이 우선, 없으면 기본값으로 폴백한다.
+        label_price = prices.get(product_id) or f"{int(points) * WON_PER_POINT:,}원"
         if st.button(
-            f"{won_amount:,}원 · {points:,}P 충전",
+            f"{label_price} · {points:,}P 충전",
             type="primary" if index == 0 else "secondary",
             use_container_width=True,
             key=f"iap_buy_{product_id}",
@@ -1119,12 +1194,14 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
 
     costs = {"monthly": ADVANCED_MONTHLY_COST, "3month": ADVANCED_3MONTH_COST}
     labels = {"monthly": "1개월", "3month": "3개월"}
+    prices = iap_prices()
     st.markdown("**구독 기간**")
     for index, (plan_key, base_plan_id) in enumerate(IAP_SUBSCRIPTION_PLANS):
         days = FREE_SUB_DAYS if plan_key == "monthly" else ADVANCED_3MONTH_DAYS
-        won_amount = int(costs[plan_key]) * WON_PER_POINT
+        # 표시 가격은 앱이 읽어온 스토어 가격(기본요금제별)이 우선이다.
+        label_price = prices.get(base_plan_id) or f"{int(costs[plan_key]) * WON_PER_POINT:,}원"
         if st.button(
-            f"{labels[plan_key]} · {won_amount:,}원 ({days}일)",
+            f"{labels[plan_key]} · {label_price} ({days}일)",
             type="primary" if index == 0 else "secondary",
             use_container_width=True,
             key=f"iap_sub_{plan_key}",
