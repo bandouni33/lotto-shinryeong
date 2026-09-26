@@ -36,6 +36,7 @@ from wallet_db import (
     MOCK_CHARGE_MAX_PER_WINDOW,
     MOCK_CHARGE_WINDOW_HOURS,
     SIGNUP_BONUS,
+    WON_PER_POINT,
     activate_free_advanced_sub,
     activate_paid_advanced_sub,
     calc_auto_cost,
@@ -710,11 +711,142 @@ def render_auth_banner() -> None:
     _render_auth_banner_form()
 
 
+# ── 2026-09-26 구글 인앱결제(네이티브 앱 전용) ────────────────────────
+# 앱(안드로이드 웹뷰) 안에서는 디지털 재화(적립금·구독)를 Google Play 결제로만
+# 팔 수 있다 — 토스 카드결제나 포인트 차감으로 앱 안에서 사게 두는 것은 Play
+# 결제정책 위반 소지가 있다(2026-09-26 결정). 그래서 충전·구독 화면을 "네이티브면
+# IAP만, 웹이면 기존 그대로"로 가른다. 웹(PC·모바일 브라우저 직접 접속)은 이
+# 분기의 영향을 받지 않는다.
+IAP_POINTS_PRODUCT_IDS = ("points_1000", "points_3000")  # google_play_pg.POINTS_PRODUCTS와 같은 ID
+IAP_SUBSCRIPTION_PRODUCT = "premium"
+IAP_SUBSCRIPTION_PLANS = (("monthly", "premium-monthly"), ("3month", "premium-quarterly"))
+IAP_ALLOWED_PRODUCT_IDS = IAP_POINTS_PRODUCT_IDS + (IAP_SUBSCRIPTION_PRODUCT,)
+IAP_ALLOWED_BASE_PLANS = tuple(plan for _key, plan in IAP_SUBSCRIPTION_PLANS)
+
+
+def in_native_app() -> bool:
+    """이 렌더가 네이티브 앱(안드로이드 웹뷰) 안에서 온 요청인지.
+
+    판별 신호는 이미 있다 — LottoShinryeong/constants/streamlit.ts의
+    getStreamlitPageUrl()이 웹뷰 주소에 항상 native=1을 붙이고,
+    user_scope.internal_nav_href()가 내부이동 링크에도 그대로 실어 보낸다(로그인
+    배너가 같은 값으로 "앱 전용 카카오 버튼"과 "일반 웹 링크"를 가른다).
+    값이 리스트로 오는 Streamlit 버전도 있어 둘 다 처리한다."""
+    try:
+        value = st.query_params.get("native")
+    except Exception:
+        return False
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value or "") == "1"
+
+
+def _iap_points_products() -> dict:
+    """상품 ID → 지급 포인트. 정본은 서버(google_play_pg.POINTS_PRODUCTS)이며
+    여기서는 화면 표시(금액·포인트)에만 쓴다 — 서버가 모르는 상품은 결제가
+    성립하지 않으므로, 불러오기에 실패해도 화면이 죽지 않도록 폴백을 둔다."""
+    try:
+        from google_play_pg import POINTS_PRODUCTS
+
+        return dict(POINTS_PRODUCTS)
+    except Exception:
+        return {"points_1000": 1000, "points_3000": 3000}
+
+
+def _fire_iap_purchase_trigger(product_id: str, base_plan_id: str | None = None) -> None:
+    """네이티브 앱에 "이 상품을 결제해달라"를 알린다.
+
+    카카오 네이티브 로그인 트리거(_fire_kakao_native_login_trigger)와 완전히 같은
+    이중화 기법이다: components.html은 항상 iframe 안에서 실행돼 안드로이드 웹뷰가
+    심어주는 window.ReactNativeWebView 브릿지가 보이지 않으므로(최상위 프레임에만
+    존재) 최상위 문서에 <script>를 직접 심고, 브릿지가 있으면 postMessage로,
+    없으면 URL 쿼리(iap_buy/iap_plan) 폴백으로 알린다 — 실기기마다 어느 쪽이
+    걸리는지가 달라서 하나에만 의존하면 특정 기기에서 결제창이 아예 안 뜬다.
+
+    상품 ID·기본요금제는 화이트리스트로 검증한다 — 값이 JS 소스에 그대로
+    들어가므로 임의 문자열이 들어가면 스크립트가 깨진다(호출부는 상수만 넘긴다).
+
+    수신부는 앱 쪽(LottoShinryeong/components/streamlit-webview.tsx)이며
+    postMessage 페이로드 키(type/productId/basePlanId)와 URL 파라미터명
+    (iap_buy/iap_plan)은 그 파일과 한 쌍이다 — 한쪽만 바꾸면 결제가 안 뜬다."""
+    if product_id not in IAP_ALLOWED_PRODUCT_IDS:
+        raise ValueError(f"unknown iap product: {product_id}")
+    if base_plan_id is not None and base_plan_id not in IAP_ALLOWED_BASE_PLANS:
+        raise ValueError(f"unknown iap base plan: {base_plan_id}")
+    plan_js = f"'{base_plan_id}'" if base_plan_id else "null"
+    plan_url_js = (
+        f"u.searchParams.set('iap_plan', '{base_plan_id}');" if base_plan_id else ""
+    )
+    plan_url_js_fallback = (
+        f"u2.searchParams.set('iap_plan', '{base_plan_id}');" if base_plan_id else ""
+    )
+    components.html(
+        f"""<script>
+        (function () {{
+            var top = window.top;
+            try {{
+                var s = top.document.createElement('script');
+                s.textContent =
+                    "try{{" +
+                    "var rnwv = window.ReactNativeWebView;" +
+                    "if(rnwv && typeof rnwv.postMessage === 'function'){{" +
+                    "rnwv.postMessage(JSON.stringify({{type:'iapPurchase',productId:'{product_id}',basePlanId:{plan_js}}}));" +
+                    "}}else{{" +
+                    "var u = new URL(window.location.href);" +
+                    "u.searchParams.set('iap_buy', '{product_id}');" +
+                    "{plan_url_js}" +
+                    "window.location.href = u.toString();" +
+                    "}}" +
+                    "}}catch(e){{}}";
+                top.document.head.appendChild(s);
+                s.parentNode.removeChild(s);
+            }} catch (e) {{
+                // 최상위 문서에 스크립트를 못 심을 정도로 예외적인 상황이면
+                // 최소한 이 URL 폴백만이라도 시도한다.
+                try {{
+                    var u2 = new URL(top.location.href);
+                    u2.searchParams.set('iap_buy', '{product_id}');
+                    {plan_url_js_fallback}
+                    top.location.href = u2.toString();
+                }} catch (e2) {{}}
+            }}
+        }})();
+        </script>""",
+        height=0,
+    )
+
+
+def _render_iap_charge_options() -> None:
+    """네이티브 앱 전용 충전 화면 — Google Play 소모성 상품(1,000P/3,000P)만 노출한다.
+    실제 지급은 서버가 purchaseToken을 검증한 뒤에만 일어난다(google_play_pg.py)."""
+    products = _iap_points_products()
+    st.caption("Google Play 계정으로 결제됩니다. 카드정보는 앱과 서버에 저장되지 않습니다.")
+    for index, product_id in enumerate(IAP_POINTS_PRODUCT_IDS):
+        points = products.get(product_id)
+        if not points:
+            continue
+        won_amount = int(points) * WON_PER_POINT
+        if st.button(
+            f"{won_amount:,}원 · {points:,}P 충전",
+            type="primary" if index == 0 else "secondary",
+            use_container_width=True,
+            key=f"iap_buy_{product_id}",
+        ):
+            _fire_iap_purchase_trigger(product_id)
+
+
 def _render_charge_actions(member_id: int) -> None:
     """충전 버튼/안내 렌더링 — charge_dialog()와 insufficient_balance_dialog()가
     공유한다(2026-09-08 분리). 두 곳에 똑같은 로직을 복붙해두면 나중에 금액·문구를
     한쪽만 고치고 다른 쪽을 놓치는 사고로 이어지므로, 결제 관련 코드는 항상 여기
     한 곳만 고치면 두 다이얼로그 모두에 반영되게 한다."""
+    if in_native_app():
+        # 2026-09-26: 앱(안드로이드 웹뷰)에서는 Google Play 인앱결제만 노출한다 —
+        # 토스 결제창은 앱 안에서 아예 렌더하지 않는다(Play 결제정책). 이 판단을
+        # pg_configured() 분기보다 먼저 두는 게 핵심이다: 나중에 실키가 들어와도
+        # 앱에서는 이 분기를 지나 토스 버튼이 자동 복귀하지 않는다.
+        _render_iap_charge_options()
+        return
     if pg_configured():
         # 2026-09-19(Task #13): TOSS_CLIENT_KEY/TOSS_SECRET_KEY가 설정되는
         # 순간(pg_configured()=True) 이 분기로 자동 전환 — 실제 토스 결제창을
@@ -950,6 +1082,63 @@ def points_notice_dialog(
             st.rerun()
 
 
+def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
+    """네이티브 앱 전용 구독 화면 — Google Play 정기결제(월간/분기)만 노출한다.
+
+    포인트 차감 "구독하기"는 앱에서 렌더하지 않는다(2026-09-26 결정 — 포인트로
+    앱 안에서 구독을 사는 것도 결제 우회에 해당).
+    단, 첫 구독 무료 프로모(ADVANCED_FILTER_FIRST_SUB_FREE)는 결제가 아니라
+    무료 지급이라 정책과 무관하므로 기존 동작 그대로 유지한다 — 앱 사용자만
+    혜택에서 빠지면 안 된다.
+
+    서버는 구글 검증 응답의 basePlanId로만 기간을 정하고
+    (google_play_pg._verify_and_credit_subscription), 이 화면의 버튼이 보내는
+    기본요금제 ID는 "어느 상품을 결제할지"를 고르는 용도일 뿐이다."""
+    balance = get_balance(member_id)
+    free_ok = ADVANCED_FILTER_FIRST_SUB_FREE and eligible_free_advanced_sub(member_id)
+    if free_ok:
+        st.markdown(format_advanced_points_notice(has_free_sub=True, balance=balance))
+        st.caption(f"첫 구독은 무료 혜택으로 시작됩니다(결제 없음, {FREE_SUB_DAYS}일).")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("취소", use_container_width=True, key="iap_free_sub_cancel"):
+                on_close()
+                st.rerun()
+        with c2:
+            if st.button(
+                "무료로 시작하기",
+                type="primary",
+                use_container_width=True,
+                key="iap_free_sub_confirm",
+            ):
+                if not activate_free_advanced_sub(member_id):
+                    st.error("구독 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+                on_close()
+                st.rerun()
+        return
+
+    costs = {"monthly": ADVANCED_MONTHLY_COST, "3month": ADVANCED_3MONTH_COST}
+    labels = {"monthly": "1개월", "3month": "3개월"}
+    st.markdown("**구독 기간**")
+    for index, (plan_key, base_plan_id) in enumerate(IAP_SUBSCRIPTION_PLANS):
+        days = FREE_SUB_DAYS if plan_key == "monthly" else ADVANCED_3MONTH_DAYS
+        won_amount = int(costs[plan_key]) * WON_PER_POINT
+        if st.button(
+            f"{labels[plan_key]} · {won_amount:,}원 ({days}일)",
+            type="primary" if index == 0 else "secondary",
+            use_container_width=True,
+            key=f"iap_sub_{plan_key}",
+        ):
+            _fire_iap_purchase_trigger(IAP_SUBSCRIPTION_PRODUCT, base_plan_id)
+    st.caption(
+        "Google Play 계정으로 결제되고 매 기간 자동 갱신됩니다. "
+        "해지·환불은 Google Play 앱 → 결제 및 정기결제에서 하실 수 있습니다."
+    )
+    if st.button("취소", use_container_width=True, key="iap_sub_cancel"):
+        on_close()
+        st.rerun()
+
+
 @_dialog_decorator("고급필터 구독")
 def advanced_subscription_dialog(*, on_close) -> None:
     """구독 활성화까지 여기서 끝내고 on_close()를 호출한 뒤 st.rerun()한다 — 반환값을
@@ -971,6 +1160,12 @@ def advanced_subscription_dialog(*, on_close) -> None:
     if not member_id:
         on_close()
         st.rerun()
+        return
+
+    if in_native_app():
+        # 2026-09-26: 앱에서는 포인트 차감 구독 버튼을 렌더하지 않고 Google Play
+        # 정기결제만 노출한다(웹은 종전과 동일).
+        _render_iap_subscription_options(member_id, on_close=on_close)
         return
 
     balance = get_balance(member_id)
