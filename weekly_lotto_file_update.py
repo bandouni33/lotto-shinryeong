@@ -30,12 +30,14 @@
      한 번 — 밀린 회차 수만큼) 단순 openpyxl만으로는 불가능하고, 엑셀 COM 자동화
      (win32com)로 실제 엑셀을 백그라운드로 띄워서 재계산시킨다.
 
-  3. 파일 1(샘플)·2(200회검증용)은 "3차필터" 구조가 아니라 회차를 컬럼으로 나열하는
-     완전히 다른 구조이고, 그중 파일 1의 "AUTO" 수식은 컬럼 하나당 수천 자짜리
-     중첩 수식 + 컬럼별 스테이징 블록(1504~1516행)까지 필요해서, 새 컬럼을 추가하는
-     자동화는 이번에 넣지 않았다(수식 손상 위험이 너무 큼). 이 스크립트는 파일
-     1·2에는 "전체당첨내역" 갱신까지만 하고, 컬럼 확장은 손으로 하거나 별도로
-     요청해야 한다 — 실행 후 로그에 이 사실을 매번 남긴다.
+  3. 파일 1(샘플)의 "AUTO" 수식은 컬럼 하나당 수천 자짜리 중첩 수식 + 컬럼별
+     스테이징 블록(1504~1516행)까지 필요해서, 새 컬럼을 추가하는 자동화는
+     오래 "수식 손상 위험이 너무 큼"으로 제외돼 있었다. 2026-09-27(사용자 승인)
+     임시 복사본 불변식 테스트(scratch/sim_sample_column_advance.py)로 190개
+     불변식을 통과시켜 규칙을 실측으로 확정한 뒤 편입됐다 — 아래 "컴럼식 회차
+     시트 전진" 참고. 파일 2(200회검증용)는 같은 컬럼 구조지만 사용자 지시
+     범위가 아니라 아직 "전체당첨내역" 갱신까지만 한다(필요해지면
+     COLUMN_ROUND_FILES에 추가하면 된다).
 
 필요 사전 설치 (엑셀이 설치된 그 PC에서, 명령 프롬프트에서 한 번만):
     pip install openpyxl pywin32
@@ -59,9 +61,11 @@ import re
 import sys
 import time
 import urllib.request
+from copy import copy as _style_copy
 from pathlib import Path
 
 import openpyxl
+from openpyxl.utils import get_column_letter as _col_letter
 from openpyxl.worksheet.formula import ArrayFormula
 
 from env_loader import load_dotenv_file
@@ -301,6 +305,152 @@ def append_draw_result(ws_all, rec: dict) -> None:
     ws_all.cell(next_row, 8, rec["bonus"])
 
 
+# ── 컬럼식 회차 시트 전진 (2026-09-27, 사용자 승인) ─────────────────────────────
+# 왜 생겼나: 샘플 파일은 회차를 '행'이 아니라 '컬럼'으로 나열한다. 예전에는 "컬럼당
+# 수천 자 중첩 수식 + 컬럼별 스테이징 블록(1504~1516행)이라 손상 위험이 크다"며
+# 자동화에서 빼놨었다. 임시 복사본 시뮬레이터(scratch/sim_sample_column_advance.py)로
+# 190개 불변식을 통과시켜 규칙을 실측으로 확정한 뒤 편입했다:
+#   · 새 회차 열 = 옛 최신 열을 '원문 그대로' 복사 — 각 열의 수식은 자기 열만 참조하므로
+#     (N$4·N$1504~N$1516) 문자를 바꿀 필요가 없다.
+#   · 밀려나는 열은 자기 열 참조만 +1 번역(N$4→O$4). 시트명·문자열 리터럴은 그대로 둔다.
+#   · 가장 오래된 열은 내용을 비운다(열 개수 유지 = 창 크기 고정).
+#   · 서식(_style)·열 너비·병합·숨김 열도 함께 옮긴다.
+#   · openpyxl은 계산을 하지 않으므로 값은 저장 후 엑셀 재계산(recalc_and_save)이 채운다.
+COLUMN_ROUND_FILES = {"샘플"}
+COLUMN_ROUND_SHEETS = ("1차필터(7기본필터)", "2차필터(5이격수)")
+
+
+def _round_columns(ws) -> tuple[int, int, list[int]]:
+    """4행에 회차 숫자가 연속으로 놓인 '회차 열' 범위를 찾는다."""
+    cols = [(c, ws.cell(4, c).value) for c in range(1, ws.max_column + 1)
+            if isinstance(ws.cell(4, c).value, int)]
+    if not cols:
+        raise RuntimeError("회차 라벨(4행)을 찾지 못했습니다 — 시트 구조가 예상과 다릅니다")
+    return cols[0][0], cols[-1][0], [v for _, v in cols]
+
+
+def _cell_formula(cell):
+    """셀의 수식 문자열(배열수식 포함). 수식이 아니면 None."""
+    v = cell.value
+    if isinstance(v, ArrayFormula):
+        return v.text
+    return v if isinstance(v, str) and v.startswith("=") else None
+
+
+def _translate_col_refs(text: str, src: str, dst: str) -> str:
+    """자기 열 참조만 한 칸 옮긴다 — 'N$4'→'O$4', 'N$1504'→'O$1504'.
+    앞 글자가 영문/숫자/_/$/. 이면 다른 열 참조나 함수명이므로 건드리지 않는다."""
+    return re.sub(r"(?<![A-Za-z0-9_$.!])" + src + r"(\$?\d+)", dst + r"\1", text)
+
+
+def _translate_col_value(val, src: str, dst: str):
+    if isinstance(val, ArrayFormula):
+        return ArrayFormula(ref=_translate_col_refs(val.ref, src, dst),
+                            text=_translate_col_refs(val.text, src, dst))
+    if isinstance(val, str) and val.startswith("="):
+        return _translate_col_refs(val, src, dst)
+    return val
+
+
+def _merged_inner_cells(ws) -> set[tuple[int, int]]:
+    """병합 범위의 앵커가 아닌 셀 — openpyxl에서는 여기에 값을 쓸 수 없다."""
+    skip: set[tuple[int, int]] = set()
+    for rng in ws.merged_cells.ranges:
+        for r in range(rng.min_row, rng.max_row + 1):
+            for c in range(rng.min_col, rng.max_col + 1):
+                if (r, c) != (rng.min_row, rng.min_col):
+                    skip.add((r, c))
+    return skip
+
+
+def _write_cells(ws, col: int, items, max_row: int, skip: set[tuple[int, int]]) -> None:
+    for r in range(1, max_row + 1):
+        if (r, col) not in skip:
+            ws.cell(r, col).value = None
+    for r, val, style in items:
+        if (r, col) in skip:
+            raise RuntimeError(
+                f"컬럼 전진 목적지 {_col_letter(col)}{r}이 병합 영역 안쪽입니다 — 구조 확인 필요")
+        cell = ws.cell(r, col)
+        cell.value = val
+        cell._style = _style_copy(style)
+
+
+def shift_round_columns(ws, new_label: int) -> dict:
+    """회차 컬럼을 한 칸 오른쪽으로 밀고 맨 왼쪽에 새 회차 열을 만든다."""
+    first, last, labels = _round_columns(ws)
+    max_row = ws.max_row
+    merges_before = sorted(rng.coord for rng in ws.merged_cells.ranges)
+    skip = _merged_inner_cells(ws)
+    inner = [f"{_col_letter(c)}{r}" for (r, c) in skip if ws.cell(r, c).value is not None]
+    if inner:
+        raise RuntimeError(f"병합 영역 안쪽 셀에 값이 있습니다({inner[:3]}) — 전진 전 확인 필요")
+
+    widths = {c: (ws.column_dimensions[_col_letter(c)].width,
+                  ws.column_dimensions[_col_letter(c)].bestFit)
+              for c in range(first, last + 1)}
+    snaps: dict[int, list] = {}
+    for c in range(first, last + 1):
+        items = []
+        for r in range(1, max_row + 1):
+            cell = ws.cell(r, c)
+            if cell.value is not None:
+                items.append((r, cell.value, _style_copy(cell._style)))
+        snaps[c] = items
+
+    for c in range(last, first, -1):                 # 오른쪽부터(덮어쓰기 방지)
+        src_letter, dst_letter = _col_letter(c - 1), _col_letter(c)
+        items = [(r, _translate_col_value(v, src_letter, dst_letter), st)
+                 for r, v, st in snaps[c - 1]]
+        if c == last:
+            _write_cells(ws, c, [], max_row, skip)
+        _write_cells(ws, c, items, max_row, skip)
+        ws.column_dimensions[dst_letter].width = widths[c - 1][0]
+        ws.column_dimensions[dst_letter].bestFit = widths[c - 1][1]
+
+    _write_cells(ws, first, snaps[first], max_row, skip)   # 새 회차 열 = 옛 최신 열 원문
+    ws.column_dimensions[_col_letter(first)].width = widths[first][0]
+    ws.column_dimensions[_col_letter(first)].bestFit = widths[first][1]
+    ws.cell(4, first).value = new_label
+
+    if sorted(rng.coord for rng in ws.merged_cells.ranges) != merges_before:
+        raise RuntimeError("컬럼 전진 중 병합 범위가 바뀌었습니다")
+    return {"first": first, "last": last,
+            "labels_before": labels[0], "labels_after": new_label}
+
+
+def advance_round_columns(path: Path, label: str) -> dict[str, dict]:
+    """회차 컬럼 시트들을 전체당첨내역 최신 회차까지 민다(이미 최신이면 그대로).
+
+    호출 전에 전체당첨내역에 그 회차가 들어가 있어야 한다 — 새 열의 헬퍼행이
+    MATCH(N$4)/(N$4-1)로 그 회차 번호를 찾기 때문이다."""
+    wb = openpyxl.load_workbook(path, data_only=False)
+    try:
+        ws_all = wb["전체당첨내역"]
+        latest = max(int(ws_all.cell(r, 1).value) for r in range(2, ws_all.max_row + 1)
+                     if isinstance(ws_all.cell(r, 1).value, int))
+        out: dict[str, dict] = {}
+        for sn in COLUMN_ROUND_SHEETS:
+            if sn not in wb.sheetnames:
+                raise RuntimeError(f"{label}: 시트 '{sn}'을 찾지 못했습니다")
+            ws = wb[sn]
+            _, _, labels = _round_columns(ws)
+            base = labels[0]
+            shifts = latest - base
+            if shifts < 0:
+                raise RuntimeError(
+                    f"{label}/{sn}: 컬럼 라벨({base})이 전체당첨내역 최신({latest})보다 "
+                    f"앞서 있습니다 — 파일 상태 확인 필요")
+            for i in range(shifts):
+                shift_round_columns(ws, base + i + 1)
+            out[sn] = {"shifts": shifts, "labels_before": base, "labels_after": base + shifts}
+        if any(v["shifts"] for v in out.values()):
+            wb.save(path)
+        return out
+    finally:
+        wb.close()
+
+
 def advance_3cha_sheet(ws, sheet_name: str, forecast45: list[int], actual_rec: dict) -> tuple[int, int, int]:
     """7행(대기 중인 예측행)을 8행으로 확정(수식→값 고정 + 실제결과/적중수 채움)
     시키고, 맨 아래 행을 하나 지워서 창 크기를 유지하며, 새 7행(다음 회차 대기)을
@@ -354,8 +504,10 @@ def get_current_max_round(path: Path) -> int:
 
 
 def process_one_round_for_file(path: Path, label: str, rec: dict) -> None:
-    """파일 하나에 회차 하나(rec)를 반영. 3차필터 구조 파일이면 예측행도 같이 전진."""
+    """파일 하나에 회차 하나(rec)를 반영.
+    3차필터 구조 파일이면 예측행도, 컬럼식 파일이면 회차 컬럼도 같이 전진한다."""
     needs_3cha = label in ADVANCE_3CHA_FILES
+    needs_columns = label in COLUMN_ROUND_FILES
 
     if needs_3cha:
         wb_peek = openpyxl.load_workbook(path, data_only=False, read_only=True)
@@ -376,12 +528,24 @@ def process_one_round_for_file(path: Path, label: str, rec: dict) -> None:
             hit_top, hit_mid, hit_low = advance_3cha_sheet(wb[sn], sn, forecasts[sn], rec)
             log(f"    {sn}: {rec['round']}회차 확정 (상위{hit_top}/중위{hit_mid}/하위{hit_low}), "
                 f"다음 예측대상 -> {rec['round']+1}")
+    elif needs_columns:
+        log(f"  [{label}] {rec['round']}회차: 3차필터 구조가 아니므로 전체당첨내역 갱신 + "
+            f"회차 컬럼 전진(밀기)을 수행")
     else:
-        log(f"  [{label}] {rec['round']}회차: 3차필터 구조가 아니므로 전체당첨내역만 갱신"
-            f"(컬럼식 예측 구조 확장은 자동화 범위 밖 — 필요하면 별도로 요청할 것)")
+        log(f"  [{label}] {rec['round']}회차: 3차필터 구조가 아니므로 전체당첨내역만 갱신")
 
     append_draw_result(ws_all, rec)
     wb.save(path)
+
+    if needs_columns:
+        # 순서 주의: 컬럼 전진은 전체당첨내역에 이 회차가 들어간 '뒤'에 해야 한다 —
+        # 새 열의 헬퍼행이 MATCH(N$4)/(N$4-1)로 그 회차 번호를 찾기 때문이다.
+        col_stats = advance_round_columns(path, label)
+        for sn, st in col_stats.items():
+            log(f"    {sn}: 회차 컬럼 {st['shifts']}칸 전진 "
+                f"({st['labels_before']}→{st['labels_after']})")
+        if not any(st["shifts"] for st in col_stats.values()):
+            log("    (회차 컬럼은 이미 최신 — 전진 없음)")
 
     log(f"  [{label}] 저장 완료. 재계산 + 캐시값 굽기 중...")
     try:
