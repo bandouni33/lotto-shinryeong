@@ -6,10 +6,13 @@
 2026-09-13: 1240회차를 수동으로 고친 작업(엑셀 재계산 → 수식을 값으로 고정 →
 다음 예측행 생성)을 그대로 자동화한 것. 반드시 알아야 할 전제 3가지:
 
-  1. 데이터 출처는 "당번" 시트(xlsb)가 아니라 동행복권 공식 API다.
-     "당번" 시트/xlsb 경로는 2026-09-01에 이미 폐기됐고(draw_results_db.py 주석 참고),
-     그 이후로는 갱신된 적이 없다. 이 스크립트는 앱(draw_results_db.py)이 실제로
-     쓰는 것과 동일한 공식 API를 직접 두드린다.
+  1. 데이터 출처는 "당번" 시트(xlsb)도, 동행복권 API 직접 호출도 아니라 **DB(draw_results)**다.
+     2026-09-27 교체: 예전엔 common.do?method=getLottoNumber 를 직접 두드렸는데, 그 주소는
+     이제 회차와 무관하게 사이트 HTML(약 192KB)만 돌려준다(브라우저 User-Agent를 붙여도
+     동일 — 실측). 그 결과 1242·1243회차가 들어오지 못한 채 "이미 최신"로 조용히 성공
+     처리됐다. 앱이 쓰는 DB(draw_results)는 GitHub Actions가 토요일마다 갱신하고 회차
+     결번 없이 전 회차를 갖고 있으므로 그쪽을 단일 소스로 쓴다. DB 조회가 실패하면
+     "최신"으로 넘기지 않고 **비정상 종료(exit 1)** 해서 스케줄러가 실패를 드러내게 한다.
 
   2. "전체당첨내역" 시트에 새 회차를 추가하는 것만으로는 부족하다.
      파일 3(전체표본_윈도우비교)·4(최근500표본_윈도우비교)의 "3차필터(NN회_후보)"
@@ -52,6 +55,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -59,6 +63,10 @@ from pathlib import Path
 
 import openpyxl
 from openpyxl.worksheet.formula import ArrayFormula
+
+from env_loader import load_dotenv_file
+
+load_dotenv_file()  # 단독 실행(작업 스케줄러)에서도 TURSO_* 환경변수를 읽게 한다
 
 # ============================== CONFIG ======================================
 
@@ -82,41 +90,40 @@ ADVANCE_3CHA_FILES = {"전체표본", "최근500표본"}
 LOG_FILE = LOTTO_APP_DIR / "weekly_update_log.txt"
 
 # ============================== 데이터 소스 ===================================
-# 2026-09-01 이후 정식 소스: 동행복권 공식 API (draw_results_db.py와 동일)
-_DHLOTTERY_ROUND_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={round}"
-
-
-def fetch_round_from_dhlottery(round_no: int) -> dict | None:
-    """특정 회차의 당첨번호를 동행복권 공식 API에서 가져온다.
-    아직 추첨 전이거나 존재하지 않는 회차면 None을 반환한다(returnValue=="fail")."""
-    url = _DHLOTTERY_ROUND_URL.format(round=round_no)
-    try:
-        with urllib.request.urlopen(url, timeout=8) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except Exception as e:
-        log(f"  [경고] {round_no}회차 조회 실패(네트워크/응답 오류): {e}")
-        return None
-
-    if data.get("returnValue") != "success":
-        return None
-
-    nums = sorted(
-        int(data[f"drwtNo{i}"]) for i in range(1, 7)
-    )
-    return {"round": round_no, "nums": nums, "bonus": int(data["bnusNo"])}
+# 2026-09-27: 정식 소스는 DB(draw_results) — 아래 find_new_rounds 참고.
+# (죽은 엔드포인트 기록: https://www.dhlottery.co.kr/common.do?method=getLottoNumber —
+#  현재는 어떤 헤더로도 JSON이 아닌 사이트 HTML만 돌려준다.)
 
 
 def find_new_rounds(local_max_round: int, hard_limit: int = 10) -> list[dict]:
-    """local_max_round 다음 회차부터 순서대로 조회해서, 존재하는(=이미 추첨된)
-    회차를 모두 리스트로 반환한다. hard_limit: 한 번에 너무 많이 밀렸을 때(버그로
-    오래 안 돌았거나 한 경우) 무한루프 방지용 상한."""
-    out = []
-    r = local_max_round + 1
-    while len(out) < hard_limit:
-        rec = fetch_round_from_dhlottery(r)
+    """로컬 파일이 아직 모르는 회차를 **DB(draw_results)** 에서 오름차순으로 모아 반환.
+
+    hard_limit: 오래 안 돌아 밀렸을 때의 안전 상한(초과분은 다음 실행이 이어받는다).
+    DB에 구멍(예: 1244가 없는데 1245가 있음)이 있으면 그 자리에서 멈추지 않고 예외를
+    던진다 — 조용히 뒤처진 채 다음 주로 넘어가는 것을 막기 위함(호출부가 exit 1 처리).
+    """
+    import draw_results_db
+
+    rows = draw_results_db.get_all_draw_results()
+    by_round = {int(r["draw_round"]): r for r in rows}
+    if not by_round:
+        raise RuntimeError("draw_results에서 회차를 하나도 읽지 못했습니다(DB 접속 실패 또는 빈 테이블)")
+    latest = max(by_round)
+
+    out: list[dict] = []
+    r = int(local_max_round) + 1
+    while len(out) < hard_limit and r <= latest:
+        rec = by_round.get(r)
         if rec is None:
-            break
-        out.append(rec)
+            raise RuntimeError(
+                f"DB에 {r}회차가 없습니다(최신 {latest}회차) — 회차 구멍이 있으면 파일이 "
+                f"그 지점에서 조용히 멈추므로 자동 처리를 중단합니다"
+            )
+        out.append({
+            "round": r,
+            "nums": sorted(int(x) for x in rec["numbers"]),
+            "bonus": int(rec["bonus"]),
+        })
         r += 1
     return out
 
@@ -136,6 +143,81 @@ def log(msg: str) -> None:
 
 # ============================== 엑셀 재계산 (win32com) =========================
 
+_EXCEL_OPEN_ATTEMPTS = 3
+_EXCEL_OPEN_DELAY_SEC = 3
+
+
+def _open_workbook(excel, path: Path, read_only: bool = False):
+    """Excel COM Workbooks.Open — 실패 시 재시도(2026-09-27 실측 대응).
+
+    이 PC에서 하루 첫 두 번의 Excel 기동이 'Workbooks 클래스 중 Open 메서드에
+    오류가 있습니다'(-2147352567)로 실패하고 그 다음부터 정상 동작하는 것을 실측했다
+    (초기 모달/기동 준비 상태로 추정). 예전에는 그 한 번의 실패가 그 파일의 그 회차
+    처리를 통째로 중단시켰다 — 짧게 재시도해서 일시적 실패가 자동화를 멈추지 않게 한다."""
+    last = None
+    for attempt in range(1, _EXCEL_OPEN_ATTEMPTS + 1):
+        try:
+            return excel.Workbooks.Open(str(path.resolve()), ReadOnly=read_only)
+        except Exception as e:  # noqa: BLE001
+            last = e
+            log(f"  [주의] Excel이 파일을 열지 못했습니다(시도 {attempt}/{_EXCEL_OPEN_ATTEMPTS}): {e}")
+            time.sleep(_EXCEL_OPEN_DELAY_SEC)
+    raise RuntimeError(f"Excel로 파일을 열 수 없습니다(재시도 {_EXCEL_OPEN_ATTEMPTS}회 모두 실패): {last}")
+
+
+def _window_from_label(label, default=None):
+    """시트 라벨에서 빈도 창을 읽는다 — '기준빈도(전체)'→None(전체),
+    '기준빈도(최근500회)'/'최근100회 빈도'→500/100, '최근50회 빈도(고정)'→50."""
+    m = re.search(r"최근\s*(\d+)\s*회", str(label or ""))
+    return int(m.group(1)) if m else default
+
+
+def _python_pending_forecast(path: Path, sheet_names: list[str]) -> dict[str, list[int]]:
+    """엑셀이 계산해줄 예측행(L:BD = 격차순위 1~45위)을 **파이썬으로 직접 계산** —
+    엑셀 설치/COM 상태에 자동화가 매달리지 않게 하는 폴백(2026-09-27 신규).
+
+    워크북 3차필터 시트의 수식과 완전히 같은 정의:
+      2행 = 기준빈도(전체 또는 최근500회) // 3행 = 최근N회 빈도
+      오차 = rank(3행) - rank(2행)  (동점은 작은 번호 우선 = RANK+COUNTIFS와 동일)
+      예측 순위 = 오차 내림차순, 동점이면 번호 오름차순
+    이 계산은 scratch/verify_workbook_ranking.py로 워크북 24개 시트 전부와 일치함을,
+    그리고 배포 엔진(combo_filter_v2._gap_order_for_anchor)과도 완전히 같음을 확인했다.
+    """
+    nums = list(range(1, 46))
+
+    def counts(draws, window):
+        lo = draws[0][0] if (not window or window >= len(draws)) else draws[-1][0] - (window - 1)
+        return {n: sum(1 for r, ns in draws if r >= lo and n in ns) for n in nums}
+
+    def ranks(vals):
+        return {n: (1 + sum(1 for m in nums if vals[m] > vals[n])
+                    + sum(1 for m in nums if vals[m] == vals[n] and m < n)) for n in nums}
+
+    wb = openpyxl.load_workbook(path, data_only=False, read_only=True)
+    try:
+        draws = []
+        for row in wb["전체당첨내역"].iter_rows(min_row=2, values_only=True):
+            if row[0] is None:
+                continue
+            draws.append((int(row[0]), [int(x) for x in row[1:7]]))
+        draws.sort(key=lambda t: t[0])
+        if not draws:
+            raise RuntimeError("전체당첨내역에서 회차를 읽지 못했습니다")
+
+        out: dict[str, list[int]] = {}
+        for sn in sheet_names:
+            ws = wb[sn]
+            w2 = _window_from_label(ws.cell(2, 11).value)
+            w3 = _window_from_label(ws.cell(3, 11).value)
+            r2, r3 = ranks(counts(draws, w2)), ranks(counts(draws, w3))
+            gap = {n: r3[n] - r2[n] for n in nums}
+            out[sn] = sorted(nums, key=lambda n: (-gap[n], n))
+            log(f"      {sn}: 2행창={w2 or '전체'}, 3행창={w3 or '전체'}, 최신={draws[-1][0]}회차 (파이썬 계산)")
+        return out
+    finally:
+        wb.close()
+
+
 def recalc_and_read_pending_row(path: Path, sheet_names: list[str]) -> dict[str, list[int]]:
     """실제 엑셀을 백그라운드로 띄워 해당 파일을 열고, 강제 전체 재계산 후
     각 시트의 7행(현재 대기 중인 예측행) L~BD열(45개 후보 순위값)을 읽어서 반환한다.
@@ -147,7 +229,7 @@ def recalc_and_read_pending_row(path: Path, sheet_names: list[str]) -> dict[str,
     excel.Visible = False
     excel.DisplayAlerts = False
     try:
-        wb = excel.Workbooks.Open(str(path.resolve()), ReadOnly=True)
+        wb = _open_workbook(excel, path, read_only=True)
         try:
             excel.CalculateFullRebuild()
             for sn in sheet_names:
@@ -178,7 +260,7 @@ def recalc_and_save(path: Path) -> None:
     excel.Visible = False
     excel.DisplayAlerts = False
     try:
-        wb = excel.Workbooks.Open(str(path.resolve()))
+        wb = _open_workbook(excel, path)
         try:
             excel.CalculateFullRebuild()
             wb.Save()
@@ -280,7 +362,11 @@ def process_one_round_for_file(path: Path, label: str, rec: dict) -> None:
         sheet_names = [sn for sn in wb_peek.sheetnames if sn.startswith("3차필터")]
         wb_peek.close()
         log(f"  [{label}] {rec['round']}회차 처리 전 재계산으로 예측행(L:BD) 확보 중...")
-        forecasts = recalc_and_read_pending_row(path, sheet_names)
+        try:
+            forecasts = recalc_and_read_pending_row(path, sheet_names)
+        except Exception as e:  # noqa: BLE001
+            log(f"  [경고] Excel 재계산 실패 → 파이썬 계산으로 대체합니다: {e}")
+            forecasts = _python_pending_forecast(path, sheet_names)
 
     wb = openpyxl.load_workbook(path, data_only=False)
     ws_all = wb["전체당첨내역"]
@@ -298,7 +384,13 @@ def process_one_round_for_file(path: Path, label: str, rec: dict) -> None:
     wb.save(path)
 
     log(f"  [{label}] 저장 완료. 재계산 + 캐시값 굽기 중...")
-    recalc_and_save(path)
+    try:
+        recalc_and_save(path)
+    except Exception as e:  # noqa: BLE001
+        # 구조 편집(위 wb.save)은 이미 끝났다 — 여기서 죽는 건 "캐시값 굽기"뿐이라
+        # 그 회차를 통째로 중단시킬 이유가 없다(엑셀로 열면 자동 재계산된다).
+        log(f"  [경고] 엑셀 재계산(캐시값 굽기)을 건너뜁니다: {e}")
+        log("         파일 내용은 정상입니다 — 엑셀로 열면 자동 재계산됩니다.")
 
 
 def main() -> int:
@@ -320,7 +412,16 @@ def main() -> int:
             any_error = True
             continue
 
-        new_rounds = find_new_rounds(local_max)
+        # 2026-09-27: 조회 실패와 "정말 최신"을 구분한다. 예전엔 조회가 실패하면
+        # find_new_rounds가 빈 리스트를 돌려주고 아래 "이미 최신"으로 빠져 exit 0이
+        # 됐다 — 스케줄러 재시도가 전부 성공으로 남아 아무도 모르게 밀렸다.
+        try:
+            new_rounds = find_new_rounds(local_max)
+        except Exception as e:
+            log(f"[오류] {label}: 회차 조회 실패 -> {e}")
+            log("       조회 실패는 '최신'이 아닙니다 — 이번 실행을 실패로 끝냅니다(스케줄러가 재시도).")
+            any_error = True
+            continue
         if not new_rounds:
             log(f"[{label}] 이미 최신 상태입니다 (전체당첨내역 최신회차={local_max}). 건너뜀.")
             continue
@@ -354,4 +455,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # 2026-09-27: 회차 조회를 DB(draw_results)로 바꾸면서 db_turso의 non-daemon 스레드가
+    # 프로세스 종료를 붙잡게 됐다 — 마지막 줄을 다 찍고도 프로세스가 안 끝나서(실측)
+    # 스케줄러가 종료코드를 못 받고, 뒤이어 돌릴 작업이 시작조차 못 한다.
+    # hourly_draw_sync.py가 같은 이유로 os._exit()를 쓰고 있으니 그 방식을 따른다.
+    import os as _os
+
+    _os._exit(main())

@@ -19,6 +19,14 @@ freeze·전진" 같은 복잡한 절차가 필요 없다:
 처리함 — 2026-09-15에 22,950건 교차검증 + 1회차/2회차 백필 시뮬레이션으로
 검증 완료.)
 
+다만 2026-09-27에 하나 더 발견됐다: 이 파일의 "3차필터(500회_후보)" 시트는
+회차·당첨번호 열이 `=MAX(전체당첨내역)` 수식이라 새 회차가 들어올 때마다 블록 행이
+한 칸씩 밀리는데, 예측순위(L:BD)와 적중수(I:K)는 **고정값**이었다 — 그래서 1242·1243을
+넣자 49행 중 46행이 "다른 회차의 예측 vs 이 회차의 당첨번호"를 찍어 적중수를 거짓으로
+보여줬다(실측). 이 스크립트가 이제 매 실행마다 그런 블록을 회차별로 재계산해 넣는다
+(같은 파일의 기준N회_후보 시트들은 L:BD가 MATCH 수식이라 자동으로 맞으므로 건드리지
+않는다 — 판단은 시트 이름이 아니라 "블록의 L열이 값인지 수식인지"로 한다).
+
 필요 사전 설치 (엑셀/WPS가 설치된 PC에서, 명령 프롬프트에서 한 번만):
     pip install openpyxl pywin32
 
@@ -36,12 +44,18 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
 import openpyxl
 from openpyxl.utils import get_column_letter
+
+from env_loader import load_dotenv_file
+
+load_dotenv_file()  # 단독 실행(작업 스케줄러)에서도 TURSO_* 환경변수를 읽게 한다
 
 # ============================== CONFIG ======================================
 
@@ -57,54 +71,39 @@ ANCHOR_SHEET = "_calc_라운드기준"
 SAMPLE_CHECK_SHEET = "기준100회_후보"  # 사후 검증용 표본 시트 1개
 
 # ============================== 데이터 소스 ===================================
-# weekly_lotto_file_update.py와 동일한 동행복권 공식 API(회차별 조회).
-_DHLOTTERY_ROUND_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={round}"
-
-
-def fetch_round_from_dhlottery(round_no: int) -> dict | None:
-    """2026-09-15: urllib 기본 User-Agent("Python-urllib/x.x")로 요청하면
-    동행복권 서버가 JSON이 아닌 응답(차단/안내 페이지로 추정)을 돌려줘서
-    json.loads가 실패하는 사례가 실제로 확인됨. 브라우저처럼 보이는
-    User-Agent를 붙여서 요청하도록 수정."""
-    url = _DHLOTTERY_ROUND_URL.format(round=round_no)
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/128.0.0.0 Safari/537.36"
-            ),
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        log(f"  [경고] {round_no}회차 조회 실패(JSON 아닌 응답): {e} "
-            f"-> 응답 앞부분: {raw[:200]!r}")
-        return None
-    except Exception as e:
-        log(f"  [경고] {round_no}회차 조회 실패(네트워크/응답 오류): {e}")
-        return None
-
-    if data.get("returnValue") != "success":
-        return None
-
-    nums = sorted(int(data[f"drwtNo{i}"]) for i in range(1, 7))
-    return {"round": round_no, "nums": nums, "bonus": int(data["bnusNo"])}
+# 2026-09-27: 동행복권 common.do?method=getLottoNumber 직접 호출은 폐기 — 이제 어떤
+# 헤더로도 JSON이 아닌 사이트 HTML만 돌려준다(실측). 앱과 같은 DB(draw_results)를 쓴다.
 
 
 def find_new_rounds(local_max_round: int, hard_limit: int = 10) -> list[dict]:
-    out = []
-    r = local_max_round + 1
-    while len(out) < hard_limit:
-        rec = fetch_round_from_dhlottery(r)
+    """로컬 파일이 아직 모르는 회차를 **DB(draw_results)** 에서 오름차순으로 모아 반환.
+
+    2026-09-15의 User-Agent 우회 수정도 함께 폐기한다 — 그 수정을 넣은 뒤에도 응답은
+    계속 HTML이었고(같은 로그에 남아 있음), 주소 자체가 죽었기 때문이다.
+    회차 구멍이 있으면 예외를 던져 호출부가 실패로 끝내게 한다(조용한 밀림 방지).
+    """
+    import draw_results_db
+
+    rows = draw_results_db.get_all_draw_results()
+    by_round = {int(r["draw_round"]): r for r in rows}
+    if not by_round:
+        raise RuntimeError("draw_results에서 회차를 하나도 읽지 못했습니다(DB 접속 실패 또는 빈 테이블)")
+    latest = max(by_round)
+
+    out: list[dict] = []
+    r = int(local_max_round) + 1
+    while len(out) < hard_limit and r <= latest:
+        rec = by_round.get(r)
         if rec is None:
-            break
-        out.append(rec)
+            raise RuntimeError(
+                f"DB에 {r}회차가 없습니다(최신 {latest}회차) — 회차 구멍이 있으면 파일이 "
+                f"그 지점에서 조용히 멈추므로 자동 처리를 중단합니다"
+            )
+        out.append({
+            "round": r,
+            "nums": sorted(int(x) for x in rec["numbers"]),
+            "bonus": int(rec["bonus"]),
+        })
         r += 1
     return out
 
@@ -124,6 +123,21 @@ def log(msg: str) -> None:
 
 # ============================== 엑셀 재계산 (win32com) =========================
 
+def _open_tracker_workbook(excel, path: Path, attempts: int = 3, delay: float = 3.0):
+    """Excel COM Workbooks.Open 재시도 — 이 PC에서 하루 첫 두 번의 Excel 기동이
+    'Workbooks 클래스 중 Open 메서드에 오류가 있습니다'(-2147352567)로 실패하는 것을
+    실측(2026-09-27). 한 번의 실패로 파일 업데이트가 멈추지 않게 재시도한다."""
+    last = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return excel.Workbooks.Open(str(path.resolve()))
+        except Exception as e:  # noqa: BLE001
+            last = e
+            log(f"  [주의] Excel이 파일을 열지 못했습니다(시도 {attempt}/{attempts}): {e}")
+            time.sleep(delay)
+    raise RuntimeError(f"Excel로 파일을 열 수 없습니다(재시도 {attempts}회 모두 실패): {last}")
+
+
 def recalc_and_save(path: Path) -> None:
     """구조 편집이 끝난 파일을 열어 강제 전체 재계산 후 그대로 저장 — 캐시된 값을
     최신으로 구워넣어서, 나중에 파일을 열었을 때 재계산 전에도 바로 올바른 값이
@@ -134,7 +148,7 @@ def recalc_and_save(path: Path) -> None:
     excel.Visible = False
     excel.DisplayAlerts = False
     try:
-        wb = excel.Workbooks.Open(str(path.resolve()))
+        wb = _open_tracker_workbook(excel, path)
         try:
             excel.CalculateFullRebuild()
             wb.Save()
@@ -169,7 +183,11 @@ def verify_after_update(path: Path, expected_max_round: int) -> None:
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
 
     anchor = wb[ANCHOR_SHEET].cell(2, 1).value
-    if anchor != expected_max_round + 1:
+    if anchor is None:
+        # 2026-09-27: 엑셀 재계산이 안 돼 캐시값이 비어 있을 수 있다(파일은 정상이며
+        # 엑셀로 열면 자동 계산된다) — 캐시 없음은 실패로 처리하지 않고 경고만 남긴다.
+        log(f"  [경고] {ANCHOR_SHEET}!A2 캐시값이 없습니다(엑셀 재계산 미반영) — 이 항목은 건너뜁니다.")
+    elif anchor != expected_max_round + 1:
         raise RuntimeError(
             f"검증 실패: {ANCHOR_SHEET}!A2(다음 예측 회차)={anchor}, "
             f"기대값={expected_max_round + 1}. 재계산이 반영 안 된 것으로 보임."
@@ -184,6 +202,186 @@ def verify_after_update(path: Path, expected_max_round: int) -> None:
         )
 
     wb.close()
+
+    mismatched = _block_mismatch_rows(path)
+    if mismatched:
+        raise RuntimeError(
+            f"검증 실패: 3차필터 블록에서 예측순위와 적중수가 어긋난 행 {mismatched}개 "
+            f"(회차·당첨번호는 밀리는데 예측·적중이 고정된 상태)"
+        )
+    log("  블록 정합성 확인(예측순위↔적중수 일치).")
+
+
+# ============================== 3차필터 블록 정합화 ============================
+# 2026-09-27 (발견 B): 위 docstring 참고. 블록의 회차·당첨번호가 =MAX() 수식으로 밀리는데
+# 예측순위(L:BD)·적중수(I:K)가 고정값인 시트를, 그 회차 직전까지의 이력으로 다시 계산한다.
+# (weekly_lotto_file_update.py의 _python_pending_forecast와 같은 정의의 계산 — 두 스크립트는
+#  서로를 import하지 않는 독립 실행 파일이라 각자 갖고 있고, 양쪽 모두 워크북/검증기로
+#  같은 값을 내는지 확인한다.)
+_NUMS = list(range(1, 46))
+
+
+def _window_from_label(label, default=None):
+    m = re.search(r"최근\s*(\d+)\s*회", str(label or ""))
+    return int(m.group(1)) if m else default
+
+
+def _counts(draws, window):
+    lo = draws[0][0] if (not window or window >= len(draws)) else draws[-1][0] - (window - 1)
+    return {n: sum(1 for r, ns in draws if r >= lo and n in ns) for n in _NUMS}
+
+
+def _ranks(vals):
+    return {n: (1 + sum(1 for m in _NUMS if vals[m] > vals[n])
+                + sum(1 for m in _NUMS if vals[m] == vals[n] and m < n)) for n in _NUMS}
+
+
+def _prediction_for(draws, target_round, w2, w3):
+    """target_round 직전까지의 이력만으로 만든 격차순위 1~45위(= 그 회차의 예측)."""
+    hist = [(r, ns) for r, ns in draws if r < target_round]
+    if not hist:
+        return None
+    r2, r3 = _ranks(_counts(hist, w2)), _ranks(_counts(hist, w3))
+    gap = {n: r3[n] - r2[n] for n in _NUMS}
+    return sorted(_NUMS, key=lambda n: (-gap[n], n))
+
+
+def _hits(ranking, drawn) -> tuple[int, int, int]:
+    return tuple(sum(1 for d in drawn if d in set(ranking[i * 15:(i + 1) * 15])) for i in range(3))
+
+
+def _draws_from_sheet(ws_all) -> list[tuple[int, list[int]]]:
+    draws = []
+    for row in ws_all.iter_rows(min_row=2, values_only=True):
+        if row[0] is None:
+            continue
+        draws.append((int(row[0]), [int(x) for x in row[1:7]]))
+    draws.sort(key=lambda t: t[0])
+    return draws
+
+
+def _block_start(ws):
+    """블록 첫 행 = 회차 열이 '수식(=MAX(...))'이고 L열이 1~45 정수인 첫 행.
+
+    즉 "회차·당첨번호는 수식으로 밀리는데 예측순위는 고정값"인 시트만 정합화 대상이다.
+    (a) 회차 열이 값으로 고정된 시트는 대상이 아니다 — 손으로 관리하는 표나 계산 시트를
+        건드리지 않기 위해 일부러 좁게 잡는다. (넓게 잡았다가 고정시트까지 재작성되는 걸
+        테스트가 잡아냈고, 그대로 두면 실물 파일의 _calc_* 계산 시트를 덮어쓸 수 있었다.)
+    (b) 기준N회_후보 시트들은 L열이 MATCH 수식이라 걸리지 않는다 → 건드리지 않는다.
+    """
+    for r in range(2, min(ws.max_row, 20) + 1):
+        a, l = ws.cell(r, 1).value, ws.cell(r, 12).value
+        if isinstance(a, str) and a.startswith("=") and isinstance(l, int) and 1 <= l <= 45:
+            return r
+    return None
+
+
+def _block_offset(ws, start: int) -> int:
+    """블록 첫 행이 '대기행(MAX+1)'이면 1, '최신회차행(MAX)'이면 0."""
+    return 1 if "+1" in str(ws.cell(start, 1).value) else 0
+
+
+def realign_sliding_blocks(wb, draws) -> list[str]:
+    """밀리는 블록의 예측순위(L:BD)·적중수(I:K)를 각 회차 기준으로 재계산해 넣는다."""
+    latest = draws[-1][0]
+    fixed = []
+    for sn in wb.sheetnames:
+        ws = wb[sn]
+        start = _block_start(ws)
+        if start is None:
+            continue
+        off = _block_offset(ws, start)
+        w2 = _window_from_label(ws.cell(2, 11).value)
+        w3 = _window_from_label(ws.cell(3, 11).value)
+        rows = 0
+        for r in range(start, ws.max_row + 1):
+            a = ws.cell(r, 1).value
+            # 회차는 A셀 값이 회차번호면 그걸, 수식이면(캐시는 안 믿고) 위치로 유도한다.
+            rnd = a if (isinstance(a, int) and a >= 1000) else latest + off - (r - start)
+            ranking = _prediction_for(draws, rnd, w2, w3)
+            if ranking is None:
+                continue
+            for i, n in enumerate(ranking):
+                ws.cell(r, 12 + i, n)
+            drawn = next((ns for rr, ns in draws if rr == rnd), None)
+            if drawn is None:            # 아직 추첨 전(대기행) → 적중수는 비워 둔다
+                for c in (9, 10, 11):
+                    ws.cell(r, c, None)
+                continue
+            for c, h in zip((9, 10, 11), _hits(ranking, drawn)):
+                ws.cell(r, c, h)
+            rows += 1
+        if rows:
+            fixed.append(f"{sn}({rows}행)")
+    return fixed
+
+
+def _block_mismatch_rows(path: Path) -> int:
+    """블록이 어긋나 있는지(읽기 전용) 검산 — 판단 불가한 행은 건너뜀.
+
+    구조(어느 행이 블록인가·회차 열이 수식인가)는 **수식 읽기**로, 숫자는 **값 읽기**로
+    본다. 한 가지 읽기로 몰아 하던 예전 판은 (a) 값 읽기에서는 A열이 캐시 숫자로 나와
+    블록을 못 찾았고(정합화가 한 번 건너뜀), (b) 수식 읽기에서는 엑셀이 아직 재계산하지
+    않은 파일의 값을 못 봤다 — 두 번 다 실측으로 걸렸다.
+    회차번호는 A셀에 캐시값이 있으면 그걸, 없으면 블록 위치로 유도한다(유도 규칙은
+    realign_sliding_blocks와 동일).
+    """
+    wf = openpyxl.load_workbook(path, data_only=False, read_only=True)
+    wv = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    bad = 0
+    try:
+        latest = None
+        if ALL_SHEET in wv.sheetnames:
+            ints = [row[0] for row in wv[ALL_SHEET].iter_rows(min_row=2, max_col=1, values_only=True)
+                    if isinstance(row[0], int)]
+            latest = max(ints) if ints else None
+
+        for sn in wf.sheetnames:
+            if sn not in wv.sheetnames:
+                continue
+            wsf, wsv = wf[sn], wv[sn]
+            start = _block_start(wsf)
+            if start is None:
+                continue
+            off = _block_offset(wsf, start)
+            for idx, row in enumerate(wsv.iter_rows(min_row=start, max_col=56, values_only=True),
+                                      start=start):
+                a, drawn = row[0], list(row[1:7])
+                ranking, got = list(row[11:56]), [row[8], row[9], row[10]]
+                rnd = a if (isinstance(a, int) and a >= 1000) else (
+                    latest + off - (idx - start) if latest is not None else None)
+                if (rnd is None or any(v is None for v in drawn)
+                        or any(not isinstance(v, int) for v in ranking) or len(set(ranking)) != 45):
+                    continue
+                exp = list(_hits(ranking, drawn))
+                if exp != got or sum(exp) != 6:
+                    bad += 1
+    finally:
+        wf.close()
+        wv.close()
+    return bad
+
+
+def heal_if_inconsistent(path: Path, latest_round: int) -> None:
+    """새 회차가 없어도 블록이 어긋나 있으면 고친다(매 실행 자기치유).
+
+    정상이면 파일을 열지도 않는다 — 어긋난 행이 있을 때만 저장·재계산한다."""
+    bad = _block_mismatch_rows(path)
+    if not bad:
+        return
+    log(f"  [정합화] 3차필터 블록에서 어긋난 행 {bad}개 발견 → 재계산합니다")
+    wb = openpyxl.load_workbook(path, data_only=False)
+    try:
+        fixed = realign_sliding_blocks(wb, _draws_from_sheet(wb[ALL_SHEET]))
+        wb.save(path)
+    finally:
+        wb.close()
+    log(f"  [정합화] 완료: {', '.join(fixed) if fixed else '(대상 없음)'}")
+    try:
+        recalc_and_save(path)
+    except Exception as e:  # noqa: BLE001
+        log(f"  [경고] 엑셀 재계산(캐시값 굽기)을 건너뜁니다: {e}")
+    verify_after_update(path, expected_max_round=latest_round)
 
 
 # ============================== 구조 편집 (openpyxl) ===========================
@@ -239,9 +437,17 @@ def process_new_rounds(path: Path, new_rounds: list[dict]) -> None:
             )
         last_round = rec["round"]
 
+    fixed = realign_sliding_blocks(wb, _draws_from_sheet(ws_all))
+    if fixed:
+        log(f"  3차필터 블록 정합화(예측순위·적중수 재계산): {', '.join(fixed)}")
+
     wb.save(path)
     log(f"  저장 완료({len(new_rounds)}개 회차 반영). 재계산 + 캐시값 굽는 중...")
-    recalc_and_save(path)
+    try:
+        recalc_and_save(path)
+    except Exception as e:  # noqa: BLE001
+        log(f"  [경고] 엑셀 재계산(캐시값 굽기)을 건너뜁니다: {e}")
+        log("         행 추가는 이미 저장됐습니다 — 엑셀로 열면 자동 재계산됩니다.")
 
     verify_after_update(path, expected_max_round=last_round)
     log("  재계산 후 검증 통과(다음 예측 회차 자동 갱신 확인, 후보숫자 순위표 정상).")
@@ -263,8 +469,21 @@ def main() -> int:
         log(f"[오류] 현재 최신 회차 확인 실패 -> {e}")
         return 1
 
-    new_rounds = find_new_rounds(local_max)
+    # 2026-09-27: 조회 실패와 "정말 최신"을 구분 — 실패를 최신으로 넘기면 스케줄러가
+    # 전부 성공으로 보고 조용히 밀린다(실제로 9/15 이후 그렇게 밀려 있었다).
+    try:
+        new_rounds = find_new_rounds(local_max)
+    except Exception as e:
+        log(f"[오류] 회차 조회 실패 -> {e}")
+        log("      조회 실패는 '최신'이 아닙니다 — 이번 실행을 실패로 끝냅니다(스케줄러가 재시도).")
+        log("=" * 70)
+        return 1
     if not new_rounds:
+        # 2026-09-27: 새 회차가 없어도(또는 전에 밀린 상태가 남아 있으면) 블록을 점검해 고친다.
+        try:
+            heal_if_inconsistent(TARGET_FILE, local_max)
+        except Exception as e:  # noqa: BLE001
+            log(f"  [경고] 블록 정합화 점검/보정 실패: {e}")
         log(f"이미 최신 상태입니다(전체당첨내역 최신회차={local_max}). 종료.")
         log("=" * 70)
         return 0
@@ -296,4 +515,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # 2026-09-27: DB(draw_results) 조회를 쓰게 되면서 db_turso의 non-daemon 스레드가
+    # 프로세스 종료를 붙잡는다 — 스케줄러가 종료코드를 못 받고 프로세스가 계속 남는다.
+    # hourly_draw_sync.py와 동일하게 os._exit()로 즉시 종료한다.
+    import os as _os
+
+    _os._exit(main())
