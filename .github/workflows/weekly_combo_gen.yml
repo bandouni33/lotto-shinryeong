@@ -39,11 +39,28 @@ jobs:
         # 전체를 설치해 실제 import 체인과 항상 일치시킨다(시간별 동기화 워크플로와 동일).
         run: pip install -r requirements.txt
 
-      - name: 다음회차 조합 생성 (combo_gen_worker.py)
+      - name: 다음회차 조합 생성 (combo_gen_worker.py) — 최대 3회 재시도
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: python combo_gen_worker.py
+        run: |
+          # hourly_draw_sync.yml과 같은 3회 재시도 패턴. 워커가 "이미 그 회차 풀이 있으면
+          # 계산도 시작하지 않고 스킵"하는 멱등 구조라 재시도가 안전하다(중복 삽입 방지).
+          #
+          # 경계(알고 있어야 할 것): 삽입이 '중간에' 실패해 일부 행만 들어간 상태에서는
+          # 다음 시도가 그 회차를 "이미 있음"으로 보고 스킵한다 — 즉 재시도는 '아무것도
+          # 못 넣었을 때'만 실질적으로 복구한다. 일부만 들어간 게 의심되면 그 회차 행을
+          # 지우고 다시 돌리는 것이 복구 절차다(풀이 작으면 배정 로직이 먼저 바닥난다).
+          for attempt in 1 2 3; do
+            echo "── 시도 $attempt/3 ──"
+            if python combo_gen_worker.py; then
+              exit 0
+            fi
+            echo "시도 $attempt 실패 — 30초 후 재시도"
+            sleep 30
+          done
+          echo "3회 모두 실패"
+          exit 1
 
       - name: 결과 상태 출력 (로그용)
         if: always()

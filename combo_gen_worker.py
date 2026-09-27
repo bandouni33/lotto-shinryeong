@@ -41,6 +41,12 @@ STATUS_FILE = os.path.join(os.path.dirname(__file__), "combo_gen_job.status")
 EXTRACT_RATE = 0.05
 PATTERN_COUNT_DISPLAY = 431 * 15
 
+# 2026-09-27 신규: 무거운 계산(약 150초) 전에 확인할 규칙 개수 기준(1차 고정 378 + AUTO 3,
+# 2차 48). 위 주석의 "1차 381 + 2차 48 + 4차 조건 2 = 431"과 같은 값을 가리킨다.
+# 의도적으로 규칙을 바꿀 때는 이 값도 함께 갱신할 것. 다르면 **경고만** 하고 생성을 계속한다
+# (규칙 변경 자체를 막으면 그 주 생성이 멈춘다) — 비어 있을 때만 실패로 끝낸다.
+EXPECTED_RULE_COUNTS = (378, 3, 48)
+
 
 def write_status(state: str, **extra) -> None:
     payload = {"state": state, **extra}
@@ -186,6 +192,23 @@ def main() -> int:
 
         draw_results_db.init_draw_results_table()
         app_settings.init_settings_table()
+
+        # 2026-09-27 신규: 필터 규칙이 실제로 읽히는지 먼저 확인한다. 규칙은 DB(Turso)에만
+        # 있고 로컬 JSON은 .gitignore라 Cloud·Actions 체크아웃에 없다 — 즉 규칙이 DB에서
+        # 사라지면 _load_rules()가 예외로 죽는다. 150초짜리 계산을 다 돌린 뒤가 아니라 여기서
+        # 바로 원인을 status에 남기고 끝내야 한다(Actions 로그가 곰 대상을 알려준다).
+        static_rules, auto_rules, stage2_rules = combo_filter_v2._load_rules()
+        counts = (len(static_rules), len(auto_rules), len(stage2_rules))
+        if not static_rules or not stage2_rules or not auto_rules:
+            write_status(
+                "error",
+                message=(f"필터 규칙을 읽지 못했습니다(1차 고정 {counts[0]}·AUTO {counts[1]}·2차 {counts[2]}) "
+                         f"— DB(app_settings.filter_rules_stage1_json / stage2_json) 확인 필요"),
+            )
+            return 1
+        if counts != EXPECTED_RULE_COUNTS:
+            print(f"[경고] 규칙 개수가 문서상 기준{EXPECTED_RULE_COUNTS}과 다름: {counts} "
+                  f"— 의도적인 규칙 변경이면 EXPECTED_RULE_COUNTS도 함께 갱신할 것")
 
         history = draw_results_db.get_all_draw_results()
 

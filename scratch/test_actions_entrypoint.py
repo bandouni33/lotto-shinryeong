@@ -78,6 +78,14 @@ STATS = {
     "top5_numbers": TOP5,
 }
 
+# 규칙도 스텁으로 고정한다(2026-09-27). 사전점검이 규칙을 읽는 순간 실제 DB 호출이 생기고,
+# 그게 db_turso의 비데몬 스레드를 만들어 테스트 프로세스가 종료되지 않았다(실측: exit 124).
+# 실제 DB에서 규칙을 읽는 경로는 test_filter_rules_source.py가 따로 검증한다.
+FAKE_STAGE1 = ([{"name": "기본", "targets": [1], "min": 1, "max": 1, "is_auto": False}] * 378
+               + [{"name": name, "targets": [1], "min": 0, "max": 6, "is_auto": True}
+                  for name in ("전 출현번호", "이웃수", "후보패턴 이웃수")])
+FAKE_STAGE2 = [{"name": "이격", "targets": [1], "min": 0, "max": 5}] * 48
+
 
 class WorkerEntrypointTests(unittest.TestCase):
     def setUp(self):
@@ -99,6 +107,8 @@ class WorkerEntrypointTests(unittest.TestCase):
             (draw_results_db, "init_draw_results_table", lambda: None),
             (app_settings, "init_settings_table", lambda: None),
             (app_settings, "set_setting", lambda *a, **k: None),
+            (app_settings, "get_filter_rules_json",
+             lambda stage: json.dumps(FAKE_STAGE1 if stage == 1 else FAKE_STAGE2)),
             (draw_results_db, "get_all_draw_results",
              lambda: [{"draw_round": 1243, "numbers": [9, 18, 24, 38, 43, 44], "bonus": 35}]),
             (combo_filter_v2, "peek_target_round", lambda history: 1244),
@@ -151,6 +161,51 @@ class WorkerEntrypointTests(unittest.TestCase):
         self.assertEqual(st["inserted"], 10)
         self.assertEqual(st["sample_size"], 10)
 
+    def test_empty_rules_fail_before_heavy_compute(self):
+        """2026-09-27 신규: 규칙이 비었으면 150초 계산을 시작하지 않고 status error + exit 1.
+
+        (규칙은 DB에만 있다 — 로컬 JSON은 .gitignore라 Cloud·Actions에 없다. 그래서 '규칙 없음'은
+         실제로 일어날 수 있는 실패이고, 계산을 다 돌린 뒤가 아니라 즉시 알려야 한다.)"""
+        def boom(*a, **k):
+            raise AssertionError("규칙이 비었는데 무거운 계산을 시작했다")
+
+        with _Patcher(self._base_patches(count=0) + [
+            (combo_filter_v2, "_load_rules", lambda: ([], [], [])),
+            (combo_filter_v2, "generate_next_round_combos", boom),
+        ]):
+            self.assertEqual(worker.main(), 1, "규칙을 못 읽으면 exit 1이어야 한다")
+        st = self._read_status()
+        self.assertEqual(st["state"], "error")
+        self.assertIn("규칙", st["message"])
+
+    def test_documented_rule_counts_gate_but_do_not_block(self):
+        """개수가 문서 기준(378+3/48)과 다르면 경고만 하고 생성을 계속한다(규칙 변경을 막지 않는다)."""
+        combos = _tiered_combos(40)
+        inserted = {}
+
+        def fake_insert(round_no, sample, **kw):
+            inserted.update(count=len(sample))
+            return len(sample)
+
+        with _Patcher(self._base_patches(count=0) + [
+            (combo_filter_v2, "_load_rules", lambda: ([{}] * 10, [{}], [{}] * 5)),
+            (combo_filter_v2, "generate_next_round_combos", lambda h: (1244, combos, STATS)),
+            (marketing_db, "bulk_insert_lotto_combinations", fake_insert),
+            (marketing_db, "record_draw_pattern_count", lambda *a: None),
+            (marketing_db, "record_draw_generation_stats", lambda *a: None),
+            (marketing_db, "cleanup_old_lotto_combinations", lambda keep_rounds=2: 0),
+            (marketing_db, "cleanup_old_guest_generated_combos", lambda keep_rounds=2: 0),
+            (marketing_db, "cleanup_old_guest_auto_orders", lambda keep_rounds=2: 0),
+            (wallet_db, "cleanup_old_auto_orders", lambda keep_rounds=2: 0),
+            (combo_filter_v2, "compute_reference_stats", lambda h, r: None),
+            (worker, "save_local_verification_copy", lambda r, s: "(테스트: 생략)"),
+            (worker, "save_full_stage4_pool", lambda r, c: "(테스트: 생략)"),
+            (worker, "cleanup_old_full_stage4_pools", lambda r: []),
+        ]):
+            self.assertEqual(worker.main(), 0)
+        self.assertEqual(self._read_status()["state"], "done")
+        self.assertEqual(inserted["count"], 10)
+
     def test_db_failure_reports_error_and_nonzero_exit(self):
         def explode():
             raise TimeoutError("Turso 무응답")
@@ -191,4 +246,11 @@ class WorkerEntrypointTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    # 테스트 결과를 출력한 뒤 프로세스가 종료되지 않아 실행 도구가 강제 종료했다(exit 124 실측) —
+    # db_turso가 만드는 non-daemon 스레드가 인터프리터 종료를 붙잡는 이 앱의 알려진 문제이고,
+    # hourly_draw_sync.py가 os._exit()로 대응한 선례를 따른다(입력은 스텁으로 막았지만
+    # 앞으로 추가되는 테스트가 DB를 건드려도 같은 일이 생기지 않게 한다).
+    import os as _os
+
+    program = unittest.main(verbosity=2, exit=False)
+    _os._exit(0 if program.result.wasSuccessful() else 1)

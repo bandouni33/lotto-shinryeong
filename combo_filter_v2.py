@@ -36,10 +36,27 @@ def _load_stage_json(stage: int, local_file: str):
         import app_settings
 
         raw = app_settings.get_filter_rules_json(stage)
-    except Exception:
+    except Exception as e:  # noqa: BLE001
         raw = ""
+        db_error = f"{type(e).__name__}: {e}"
+    else:
+        db_error = None
     if raw:
         return json.loads(raw)
+
+    # 2026-09-27: DB에 값이 없거나(또는 조회가 실패했거나) 폴백할 로컬 파일마저 없는 경우를
+    # 구분해서 알려준다. 로컬 JSON은 .gitignore라 **Streamlit Cloud 배포본과 GitHub Actions
+    # 체크아웃에는 없다** — 그래서 이 상황은 드문 예외가 아니라, 규칙이 DB에서 사라지면 바로
+    # 발생하는 실패 모드다. 예전엔 날것의 FileNotFoundError(경로만 보임)로 죽어서 원인 파악이
+    # 어려웠다(실측: scratch/check_filter_rules_source.py).
+    if not os.path.exists(local_file):
+        key = "filter_rules_stage1_json" if stage == 1 else "filter_rules_stage2_json"
+        raise RuntimeError(
+            f"{stage}차 필터 규칙을 읽지 못했습니다: DB(app_settings.{key})가 비어 있고 "
+            f"로컬 파일({os.path.basename(local_file)})도 없습니다"
+            + (f" · DB 조회 오류: {db_error}" if db_error else "")
+            + " — 규칙 사본이 있는 PC에서 migrate_filter_rules_to_db.py를 다시 실행해 DB를 복구하세요."
+        )
     with open(local_file, encoding="utf-8") as f:
         return json.load(f)
 
