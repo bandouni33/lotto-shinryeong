@@ -84,6 +84,13 @@ Desktop.ini
 
 # Logs & test artifacts
 *.log
+# 2026-09-27: 자동화(주간 엑셀 업데이트) 로그는 확장자가 .txt라 위 *.log 규칙에 걸리지 않는다.
+# 스케줄러가 돌 때마다 내용이 늘어 계속 dirty로 남아 커밋에 섮이므로 추적에서 뺔다
+# (git rm --cached. 로컬 파일 자체는 그대로 있고, 필요할 때 직접 열어 보면 된다).
+★조합생성_후보숫자_추적표/candidate_tracker_update_log.txt
+# 2026-09-27: 같은 이유로 주간 4개 파일 스크립트(weekly_lotto_file_update.py)의 로그도 뺐다.
+# 이쪽은 추적된 적이 없어 untracked 로 계속 status에 떠 있었다(규칙만 추가하면 끝).
+weekly_update_log.txt
 .pytest_cache/
 .coverage
 htmlcov/
