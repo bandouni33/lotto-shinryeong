@@ -1725,6 +1725,62 @@ elif st.session_state.admin_view == "ops_manage":
         with _dist_col2:
             st.metric("등록된 조합 개수", f"{_ops_latest_dist['total_count']:,} 개")
 
+    # 2026-09-27(사용자 지시): 최근 5회차 생성 현황을 표로 — 새 스키마 불필요,
+    # 기존 get_draw_extraction_stats/get_draw_generation_stats/
+    # get_pattern_recorded_at 세 함수만 조합해서 화면에 그린다. "생성경로"
+    # (Actions 자동/앱방문 예비) 칸은 사용자 지시로 이번엔 뺀다.
+    st.markdown("<h5 style='margin-top:20px;'>최근 5회차 생성 현황</h5>", unsafe_allow_html=True)
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _ops_recent_generation_rows_cached():
+        from datetime import datetime, timedelta
+
+        from marketing_db import (
+            get_draw_extraction_stats,
+            get_draw_generation_stats,
+            get_pattern_recorded_at,
+        )
+
+        def _fmt_kst(iso_str):
+            # recorded_at은 Actions(UTC)/Streamlit Cloud(UTC) 정상 운영
+            # 기준으로 UTC 저장 — 화면 표시만 KST(+9h)로 변환한다. 과거
+            # PC(KST)에서 직접 실행해 남은 옛 기록이 섞여있을 수 있다는 건
+            # 알려진 제약이라 소급 수정하지 않는다(get_pattern_recorded_at
+            # 주석 참고).
+            if not iso_str:
+                return "기록없음"
+            try:
+                dt = datetime.fromisoformat(iso_str)
+                return (dt + timedelta(hours=9)).strftime("%m/%d %H:%M")
+            except Exception:
+                return "기록없음"
+
+        rows = []
+        for s in get_draw_extraction_stats(limit=5):
+            gen = get_draw_generation_stats(s["draw_round"])
+            rows.append(
+                {
+                    "배포 회차": f"{s['draw_round']}회차",
+                    "생성시간": _fmt_kst(get_pattern_recorded_at(s["draw_round"])),
+                    "총 조합 개수": f"{gen['stage4_count']:,} 개" if gen else "기록없음",
+                    "조합 개수": f"{s['total_count']:,} 개",
+                }
+            )
+        return rows
+
+    try:
+        _ops_recent_rows = _ops_recent_generation_rows_cached()
+    except Exception as e:
+        _ops_recent_rows = []
+        st.warning(f"최근 생성 현황 조회 실패: {e}")
+
+    if _ops_recent_rows:
+        st.dataframe(
+            pd.DataFrame(_ops_recent_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📣 업데이트 안내 배너</h4>", unsafe_allow_html=True)
     st.markdown('<div class="admin-update-banner-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
     with st.expander("배너 설정 (사용자 화면 상단에 노출)"):
