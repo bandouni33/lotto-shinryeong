@@ -305,8 +305,13 @@ def check_filter_rules() -> None:
 
     auto_names = sorted(r["name"] for r in auto_rules)
     print(f"    AUTO 규칙: {auto_names}")
-    if sorted(auto_names) != sorted(["전 출현번호", "이웃수", "후보패턴 이웃수"]):
-        finding("WARN", "필터규칙", f"AUTO 규칙 3개(전 출현번호/이웃수/후보패턴 이웃수) 구성이 다르다: {auto_names}")
+    # 2026-09-27(사용자 결정): 파일(행 484)의 '후보패턴 이웃수(200회)'를 앱에도 추가했으므로
+    # 기대 집합이 4개가 됐다.
+    expected_auto = sorted(["전 출현번호", "이웃수", "후보패턴 이웃수", "후보패턴 이웃수(200회)"])
+    if auto_names != expected_auto:
+        finding("WARN", "필터규칙",
+                f"AUTO 규칙 4개(전 출현번호/이웃수/후보패턴 이웃수/후보패턴 이웃수(200회)) "
+                f"구성이 다르다: {auto_names}")
 
     for name in ("combo_filter_rules_stage1.json", "combo_filter_rules_stage2.json"):
         p = ROOT / name

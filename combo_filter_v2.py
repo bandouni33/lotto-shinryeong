@@ -4,8 +4,9 @@
 시 로컬 파일이 사라지는 환경이라(이미 겪은 문제), 캐시에 의존하면 같은 함정에
 다시 빠진다.
 
-전출현번호/이웃수/후보패턴이웃수(AUTO) 3개 규칙만 매 회차 직전회차 데이터로
-다시 계산한다. 4차 조건(상중하 각 1~4개, 상위1~5위 중 최소1개 포함 — 2026-09-13
+전출현번호/이웃수/후보패턴이웃수 +후보패턴이웃수(200회)(AUTO) 4개 규칙만 매 회차
+직전회차 데이터로 다시 계산한다(2026-09-27 사용자 결정으로 200회 창 규칙을 파일과
+같게 추가). 4차 조건(상중하 각 1~4개, 상위1~5위 중 최소1개 포함 — 2026-09-13
 사용자 지시로 기존 "상중하 0~4개, 상위1~3위 중 최소1개"에서 변경, 같은 날 중
 top6로 한 번 검토 후 배포단위(5개묶음)와 맞춰 top5로 최종 확정, 1242회차부터
 적용)도 같은 격차순위(gap_order)를 그대로 재사용한다.
@@ -120,9 +121,12 @@ def compute_static_gap_mask(combo_oh: np.ndarray, static_rules, gap_rules, combo
     return static_pass & gap_pass
 
 
-def _gap_order_for_anchor(history_asc: list[dict], anchor_round: int) -> list[int]:
+def _gap_order_for_anchor(history_asc: list[dict], anchor_round: int,
+                         window: int = RECENT_WINDOW) -> list[int]:
     """history_asc: draw_round 오름차순 정렬된 [{'draw_round','nums':[6개],'bonus'}...].
-    anchor_round까지의 데이터로 역대/최근100회 출현빈도 순위 격차를 계산."""
+    anchor_round까지의 데이터로 역대/최근 `window`회 출현빈도 순위 격차를 계산.
+    window 기본값은 RECENT_WINDOW(100) — 2026-09-27: 파일의 '후보패턴 이웃수(200회)'
+    규칙을 앱에 사실대로 추가하면서 창을 인자로 뺏다(창 계산이 두 벌이 되지 않게)."""
     rounds = [h["draw_round"] for h in history_asc]
     idx = rounds.index(anchor_round)
     freq_all = np.zeros(46, dtype=np.int64)
@@ -130,7 +134,7 @@ def _gap_order_for_anchor(history_asc: list[dict], anchor_round: int) -> list[in
         for x in h["nums"]:
             freq_all[x] += 1
     freq_recent = np.zeros(46, dtype=np.int64)
-    for h in history_asc[max(0, idx + 1 - RECENT_WINDOW) : idx + 1]:
+    for h in history_asc[max(0, idx + 1 - window) : idx + 1]:
         for x in h["nums"]:
             freq_recent[x] += 1
     alltime_rank = {
@@ -173,6 +177,26 @@ def tier_counts(combo_oh: np.ndarray, actual: list[int], bonus: int) -> dict:
     )
 
 
+def _cand_neighbor_of(order: list[int], anchors7: list[int]) -> set[int]:
+    """격차순위 `order`에서 anchor 7개 각각의 앞뒤 이웃 — '후보패턴 이웃수'의 대상집합.
+    2026-09-27: 100회·200회 창이 같은 로직을 쓰도록 한 곳으로 뽑았다."""
+    out: set[int] = set()
+    for w in anchors7:
+        gi = order.index(w)
+        if gi > 0:
+            out.add(order[gi - 1])
+        if gi < 44:
+            out.add(order[gi + 1])
+    return out
+
+
+# 2026-09-27(사용자 결정): 샘플 추적표의 행 484 '후보패턴 이웃수(200회)' 규칙을 앱에도
+# 사실대로 추가한다 — 이 규칙만 200회 창의 격차순위를 쓰고, 나머지 AUTO는 100회 창이다.
+# (추가 전에는 앱 2차 통과수가 파일보다 약 5% 많았다 — 실측.)
+CAND_NEIGHBOR_200_RULE = "후보패턴 이웃수(200회)"
+CAND_NEIGHBOR_WINDOW = 200
+
+
 def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
     """anchor_round까지의 데이터만으로 1차+2차+4차 통과 마스크를 계산.
     반환: (combos, combo_oh, stage4_mask, static_gap_count, stage2_count)."""
@@ -197,13 +221,11 @@ def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
             target_neighbor.add(n - 1)
         if n < 45:
             target_neighbor.add(n + 1)
-    target_cand_neighbor = set()
-    for w in anchors7:
-        gi = gap_order.index(w)
-        if gi > 0:
-            target_cand_neighbor.add(gap_order[gi - 1])
-        if gi < 44:
-            target_cand_neighbor.add(gap_order[gi + 1])
+    target_cand_neighbor = _cand_neighbor_of(gap_order, anchors7)
+    target_cand_neighbor_200: set[int] | None = None
+    if any(ar["name"] == CAND_NEIGHBOR_200_RULE for ar in auto_rules):
+        order200 = _gap_order_for_anchor(history_asc, anchor_round, CAND_NEIGHBOR_WINDOW)
+        target_cand_neighbor_200 = _cand_neighbor_of(order200, anchors7)
 
     auto_pass = np.ones(combos.shape[0], dtype=bool)
     for ar in auto_rules:
@@ -213,6 +235,8 @@ def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
             tv = _targets_to_vec(target_neighbor)
         elif ar["name"] == "후보패턴 이웃수":
             tv = _targets_to_vec(target_cand_neighbor)
+        elif ar["name"] == CAND_NEIGHBOR_200_RULE:
+            tv = _targets_to_vec(target_cand_neighbor_200 or set())
         else:
             continue
         cnt = combo_oh @ tv

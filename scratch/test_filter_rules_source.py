@@ -57,8 +57,9 @@ class CloudLikeEnvironmentTests(unittest.TestCase):
         self.assertTrue(app_settings.get_filter_rules_json(2), "2차 규칙이 DB에 없다")
         with local_json_hidden():
             static, auto, stage2 = cf._load_rules()
-        self.assertEqual((len(static), len(auto), len(stage2)), (378, 3, 48),
-                         "DB만으로는 1차 378+3 / 2차 48이 나오지 않는다")
+        self.assertEqual((len(static), len(auto), len(stage2)), (378, 4, 48),
+                         "DB만으로는 1차 378+4 / 2차 48이 나오지 않는다"
+                         "(2026-09-27: '후보패턴 이웃수(200회)'를 파일과 같게 추가해 AUTO가 3→4)")
 
 
 class MissingRuleFailureTests(unittest.TestCase):
@@ -98,7 +99,7 @@ class MissingRuleFailureTests(unittest.TestCase):
             static, auto, stage2 = cf._load_rules()   # 숨기지 않음 = 파일 존재
         finally:
             app_settings.get_filter_rules_json = orig
-        self.assertEqual((len(static), len(auto), len(stage2)), (378, 3, 48))
+        self.assertEqual((len(static), len(auto), len(stage2)), (378, 4, 48))
 
     def test_db_read_error_does_not_silently_succeed(self):
         """DB 조회가 예외여도 규칙 없이 진행하지 않는다(파일 폴백 시도 후 실패)."""
