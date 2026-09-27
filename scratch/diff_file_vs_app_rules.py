@@ -98,9 +98,13 @@ for row, f, a in auto_diff:
     w(f"  row{row}: 파일 {f} / 앱 {a}")
 
 w("\n== 요약 ==")
-w(f"  · 고정 규칙: 파일 {len(file_rules)} vs 앱 {len(static)} — 같은 행번호 기준 내용 불일치 {len(diffs)}개, "
-  f"행 자체가 한쪽에만 있는 것 {len(only_file) + len(only_app)}개")
-w("  · 이 차이가 1차+이격 통과수 5.4%(2,461,980 vs 2,594,759)의 원인이다")
+w(f"  · 고정 규칙: 파일 {len(file_rules)} vs 앱 {len(static)} — 내용 불일치 {len(diffs)}개, "
+  f"한쪽에만 있는 행 {len(only_file) + len(only_app)}개, AUTO 차이 {len(auto_diff)}개")
+if diffs or only_file or only_app or auto_diff:
+    w("  · 남은 차이가 있으면 그 차이가 1차+이격 통과수 차이의 원인이다")
+else:
+    w("  · 규칙 완전 일치: 파일 규칙표와 앱 규칙(DB)이 고정 378 · AUTO 4 · 이격수 48 모두 동일")
+    w("    (2026-09-27 row19 max 3→2 수정으로 통일 완료)")
 
 OUT.write_text("\n".join(R), encoding="utf-8")
 print(f"written {OUT}")
