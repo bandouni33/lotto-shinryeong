@@ -423,6 +423,20 @@ def main() -> int:
             any_error = True
             continue
         if not new_rounds:
+            # 2026-09-27 신규: 신규 회차가 없어도 오류값 스캔은 한다. 이 경로로 들어오는
+            # 파일이 바로 컬럼식 구조인 샘플·200회검증용이다(3차필터 전진 대상이 아니라
+            # 예전엔 여기서 continue해 오류값 점검이 한 번도 돌지 않았다 — 그래서 두 파일만
+            # 서식오류가 생겨도 아무도 모르게 남았다). scan_errors는 읽기 전용이다.
+            try:
+                errs_now = scan_errors(path)
+                if errs_now:
+                    log(f"[경고] {label}: 오류값 {len(errs_now)}개 발견 -> {errs_now[:5]}")
+                    any_error = True
+                else:
+                    log(f"[{label}] 오류값 없음 확인(신규 회차 없음).")
+            except Exception as e:  # noqa: BLE001
+                log(f"[경고] {label}: 오류값 스캔 실패 -> {e}")
+                any_error = True
             log(f"[{label}] 이미 최신 상태입니다 (전체당첨내역 최신회차={local_max}). 건너뜀.")
             continue
 
