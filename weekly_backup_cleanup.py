@@ -14,6 +14,9 @@
   G2 엑셀 자동업데이트 두 작업의 '마지막 실행'이 오늘이고 결과코드 0
   G3 GitHub Actions 주간 조합생성(weekly_combo_gen.yml)의 최근 실행이 '오늘(KST)' success
   G4 백업 폴더 안에 보류 메모(_SKIPPED_*)가 없다
+  G5 대상 회차 조합 풀이 실제로 생성됐다 — 개수 ≥ 1 **그리고** 그 회차 생성기록이 최근
+     FRESH_HOURS 이내 (2026-09-27 사용자 승인, P2·P3). Actions가 success여도 워커가
+     "이미 있음"으로 스킵하고 exit 0 했을 수 있어(combo_gen_worker.py) 성공만으로는 부족하다.
 
 안전장치:
   · 기본은 미리보기 — 실제 삭제는 --apply 를 붙였을 때만.
@@ -50,6 +53,9 @@ LOG_FILE = ROOT / "backup_cleanup_log.txt"
 SKIP_MARKER_PREFIX = "_SKIPPED_"
 
 EXCEL_TASKS = ("로또신령_주간엑셀업데이트", "로또신령_후보숫자추적표_자동업데이트")
+# G5: 대상 회차 풀이가 이 시간 안에 생성됐어야 한다. 48시간인 이유는 pool_gate() 설명 참고
+# (Actions 러너=UTC, 이 PC=KST로 생성기록이 남아 같은 실행이 9시간 차이로 보인다).
+FRESH_HOURS = 48
 ACTIONS_WORKFLOW = "weekly_combo_gen.yml"
 GITHUB_REPO = "bandouni33/lotto-shinryeong"
 
@@ -127,20 +133,58 @@ def actions_gate(today: str) -> tuple[bool, str]:
     return ok, f"최근실행={run_day} {run_time}(KST) 결론={conclusion} (id={latest.get('id')})"
 
 
-def pool_evidence() -> str:
-    """참고 근거(게이트 아님): 이번 주 대상 회차 풀이 DB에 실제로 있는가."""
+def pool_gate() -> tuple[bool, str]:
+    """G5: 대상 회차(=최신 추첨+1) 조합 풀이 **이번 생성 흐름에서** 만들어졌는가.
+
+    2026-09-27 사용자 승인(P2·P3)으로 "참고근거"에서 **게이트로 승격**했다.
+      왜 필요한가: combo_gen_worker.py는 대상 회차에 이미 조합이 있으면 status="skipped"로
+      **exit 0(성공)** 한다. 그래서 G3("Actions가 오늘 success")만 보면 "워크플로는 성공으로
+      기록됐는데 그 주 조합은 안 만들어졌다"를 통과시킨다:
+        · 대상 회차 풀이 0개 (P3)
+        · 최신 추첨 동기화가 밀려 워커가 **한 회차 전**을 대상으로 계산 → "이미 있음" → 스킵
+          → 성공. 그 회차에 남아 있는 건 지난주 풀 (P2)
+      그래서 (a) 풀 개수 ≥ 1, (b) 그 회차 생성기록(draw_pattern_counts.recorded_at)이 최근
+      FRESH_HOURS 이내 — 둘을 함께 본다.
+      (b)를 경과 시간으로 보는 이유: recorded_at은 실행한 기계의 로컬시각이라 Actions 러너는
+      UTC, 이 PC는 KST로 쓰인다 — 같은 실행도 9시간 차이가 나서 날짜 일치로 비교하면 정상
+      실행을 실패로 오판한다. 반면 지난주 잔여물은 7일 전이라 48시간 창으로 확실히 걸린다.
+      대상 회차 규칙은 워커와 **같은 함수**(combo_filter_v2.peek_target_round)를 쓴다 — 규칙
+      사본을 만들면 워커가 만든 회차와 게이트가 보는 회차가 어긋난다.
+    조회 실패·기록 없음·형식 오류는 모두 실패로 닫는다(백업을 남기는 쪽이 안전하다).
+    """
     try:
         import env_loader
 
         env_loader.load_dotenv_file()
+        import combo_filter_v2
         import draw_results_db
         import marketing_db
 
-        latest = draw_results_db.get_latest_draw_round()
-        target = (latest or 0) + 1
-        return f"대상 {target}회차 풀={marketing_db.get_combination_count_by_draw(target):,}개"
+        target = combo_filter_v2.peek_target_round(draw_results_db.get_all_draw_results())
+        count = marketing_db.get_combination_count_by_draw(target)
+        recorded = marketing_db.get_pattern_recorded_at(target)
     except Exception as e:  # noqa: BLE001
-        return f"풀 조회 실패({type(e).__name__})"
+        return False, f"조회 실패({type(e).__name__}: {e}) — 풀 생성 여부를 확인할 수 없다"
+
+    if count <= 0:
+        return False, f"대상 {target}회차 풀=0개(이번 주 조합이 생성되지 않았다)"
+
+    if not recorded:
+        return False, (f"대상 {target}회차 풀={count:,}개지만 생성기록이 없다"
+                       f"(지난주 잔여물일 수 있어 통과시키지 않는다)")
+
+    try:
+        recorded_dt = datetime.fromisoformat(str(recorded))
+    except ValueError:
+        return False, f"대상 {target}회차 생성기록을 읽을 수 없다({recorded!r})"
+
+    if recorded_dt.tzinfo is not None:            # tz가 붙은 값이면 로컬 naive로 맞춰 비교한다
+        recorded_dt = recorded_dt.astimezone().replace(tzinfo=None)
+    age = datetime.now() - recorded_dt
+    age_hours = age.total_seconds() / 3600
+    detail = (f"대상 {target}회차 풀={count:,}개 · 생성기록="
+              f"{recorded_dt.isoformat(timespec='seconds')}({age_hours:+.1f}시간 전)")
+    return abs(age) <= timedelta(hours=FRESH_HOURS), detail
 
 
 def marker_files() -> list[Path]:
@@ -200,14 +244,15 @@ def main(argv: list[str] | None = None) -> int:
 
     excel_ok, excel_detail = excel_gate(today)                # G2
     actions_ok, actions_detail = actions_gate(today)          # G3
-    pool = pool_evidence()
+    pool_ok, pool_detail = pool_gate()                        # G5
     log(f"G2 엑셀업데이트: {'통과' if excel_ok else '실패'} · {excel_detail}")
     log(f"G3 조합생성(Actions): {'통과' if actions_ok else '실패'} · {actions_detail}")
-    log(f"참고근거(게이트 아님): {pool}")
+    log(f"G5 대상회차 풀이: {'통과' if pool_ok else '실패'} · {pool_detail}")
 
-    if not (excel_ok and actions_ok):
-        reason = f"게이트 실패 — 엑셀 {'OK' if excel_ok else 'FAIL'} / Actions {'OK' if actions_ok else 'FAIL'}"
-        evidence = f"{excel_detail} · {actions_detail} · {pool}"
+    if not (excel_ok and actions_ok and pool_ok):
+        reason = (f"게이트 실패 — 엑셀 {'OK' if excel_ok else 'FAIL'} / "
+                  f"Actions {'OK' if actions_ok else 'FAIL'} / 풀 {'OK' if pool_ok else 'FAIL'}")
+        evidence = f"{excel_detail} · {actions_detail} · {pool_detail}"
         # 2026-09-27 수정: 보류 메모는 **--apply(실제 삭제를 시도한 실행)에서만** 남긴다.
         # 미리보기가 메모를 남기면 (a) 미리보기가 상태를 바꾸게 되고 (b) 그 메모가 G4에 걸려
         # 정작 다음 주 정상 완료 때의 자동 삭제를 막아버린다 — 진단용 드라이런을 돌렸더니
@@ -220,7 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     evidence = (f"엑셀 두 작업 오늘 결과코드 0({excel_detail}) · "
-                f"Actions {ACTIONS_WORKFLOW} 오늘 success({actions_detail}) · {pool}")
+                f"Actions {ACTIONS_WORKFLOW} 오늘 success({actions_detail}) · "
+                f"대상회차 풀이({pool_detail})")
 
     if not apply:
         log(f"[미리보기] 게이트 전부 통과 → 지금 --apply 였다면 삭제할 대상: {[str(d) for d in targets]}")
@@ -240,4 +286,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    os._exit(main())  # db_turso의 non-daemon 스레드가 종료를 붙잡는 문제 회피(선례: hourly_draw_sync.py)
+    # 2026-09-27 실측: os._exit는 버퍼를 흘려보내지 않는다. 콘솔이 아닌 stdout(파이프·리다이렉트,
+    # 예: `weekly_backup_cleanup.py > out.txt`)은 블록 버퍼라 진행 줄이 통째로 사라졌다 — 같은
+    # 실행에서 로그 파일에는 줄이 남았는데 화면에는 0줄이었다(그래서 원인 진단이 안 된다).
+    _code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_code)  # db_turso의 non-daemon 스레드가 종료를 붙잡는 문제 회피(선례: hourly_draw_sync.py)

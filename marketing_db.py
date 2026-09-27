@@ -1582,6 +1582,26 @@ def get_pattern_count_for_draw(draw_round: int) -> int | None:
     return int(row[0]) if row else None
 
 
+def get_pattern_recorded_at(draw_round: int) -> str | None:
+    """이 회차 조합을 실제로 추출(저장)한 시각 — draw_pattern_counts.recorded_at.
+
+    2026-09-27 신규: 주간 백업 정리의 G5(대상 회차 풀이가 이번 생성 흐름에서 만들어졌는지)가
+    쓴다. "그 회차 풀이 있는가"만 보면 지난주 잔여물과 이번 주 생성을 구분할 수 없다.
+
+    주의(반드시 알아야 함): 이 값은 **기록한 기계의 로컬시각**이다 — record_draw_pattern_count가
+    datetime.now().isoformat()으로 쓰기 때문에 Actions 러너는 UTC, 이 PC는 KST로 남는다.
+    같은 실행도 최대 9시간 차이가 나므로 **날짜 일치로 비교하면 정상 실행을 실패로 오판한다.**
+    소비하는 쪽은 경과 시간(예: 48시간 창)으로 판단할 것(weekly_backup_cleanup.pool_gate 참고).
+    """
+    conn = _connect()
+    row = conn.execute(
+        "SELECT recorded_at FROM draw_pattern_counts WHERE draw_round = ?",
+        (int(draw_round),),
+    ).fetchone()
+    conn.close()
+    return str(row[0]) if row and row[0] else None
+
+
 def record_draw_generation_stats(
     draw_round: int,
     stage2_count: int,
@@ -1991,6 +2011,7 @@ __all__ = [
     "bulk_insert_lotto_combinations",
     "record_draw_pattern_count",
     "get_pattern_count_for_draw",
+    "get_pattern_recorded_at",
     "build_number_frequency_map",
     "combo_priority_score",
     "allocate_lotto_combinations",

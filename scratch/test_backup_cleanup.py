@@ -13,6 +13,9 @@
   5) 삭제 근거 로그가 rmtree보다 **먼저** 남는다
   6) 대상이 없으면 조용히 exit 0 (멱등 — 두 번 돌려도 안전)
   7) Actions 게이트는 '오늘(KST)' 실행만 성공으로 인정한다 (어제 성공을 오늘로 오인하지 않음)
+  8) 대상회차 풀 게이트(G5, 2026-09-27 승인)는 "풀이 없다"와 "풀이 지난주 잔여물이다"를
+     모두 실패로 닫는다 — Actions가 success(스킵하고 exit 0)여도 그 주 조합이 안 만들어졌을
+     수 있어서다. 조회 실패·기록 없음·형식 오류도 전부 실패로 닫는다(fail-closed)
 
 실행: venv312\\Scripts\\python.exe scratch\\test_backup_cleanup.py
 """
@@ -25,7 +28,7 @@ import shutil
 import sys
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +42,7 @@ REAL_BACKUP_DIRS = cleanup.BACKUP_DIRS
 REAL_TRACKER_DIR = cleanup.TRACKER_DIR
 REAL_EXCEL_GATE = cleanup.excel_gate
 REAL_ACTIONS_GATE = cleanup.actions_gate
+REAL_POOL_GATE = cleanup.pool_gate
 SUNDAY = datetime(2026, 10, 4, 16, 10, tzinfo=cleanup.KST)
 MONDAY = datetime(2026, 10, 5, 16, 10, tzinfo=cleanup.KST)
 
@@ -72,7 +76,7 @@ class CleanupBase(unittest.TestCase):
         self._patch(cleanup, "TRACKER_DIR", self.tracker)
         self._patch(cleanup, "BACKUP_DIRS", (self.b1, self.b2))
         self._patch(cleanup, "LOG_FILE", self.tmp / "backup_cleanup_log.txt")
-        self._patch(cleanup, "pool_evidence", lambda: "(테스트: 풀 근거 생략)")
+        self._patch(cleanup, "pool_gate", lambda: (True, "테스트: 대상회차 풀 OK"))
         self._patch(cleanup, "log", lambda m: self.logs.append(m))
         self._patch(cleanup.shutil, "rmtree", self._fake_rmtree)
         self._patch(cleanup, "now_kst", lambda: SUNDAY)
@@ -261,6 +265,123 @@ class IdempotenceTests(CleanupBase):
         self.assertEqual(len(first), 2)
         self.assertEqual(cleanup.main(["--apply"]), 0)
         self.assertEqual(self.rmtree_calls, first, "이미 지운 대상을 또 지우려 했다")
+
+
+class PoolGateTests(CleanupBase):
+    """8) G5 — 대상 회차 풀이가 실제로 생성됐는가 (2026-09-27 P2·P3 승인 반영).
+
+    운영 Turso는 절대 건드리지 않는다: 게이트 안에서 import되는 DB 함수들을 전부 스텁한다.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import combo_filter_v2
+        import draw_results_db
+        import marketing_db
+
+        self.cfv, self.drdb, self.mdb = combo_filter_v2, draw_results_db, marketing_db
+        self._patch(self.drdb, "get_all_draw_results", lambda: [{"draw_round": 1243}])
+        self._patch(self.cfv, "peek_target_round", lambda history: 1244)
+        self.asked: list[int] = []
+        self.counts = {1244: 100}
+        self.recorded: dict[int, object] = {1244: datetime.now().isoformat()}
+        self._patch(self.mdb, "get_combination_count_by_draw",
+                    lambda r: self.asked.append(r) or self.counts.get(r, 0))
+        self._patch(self.mdb, "get_pattern_recorded_at", lambda r: self.recorded.get(r))
+        self._patch(cleanup, "pool_gate", REAL_POOL_GATE)   # 진짜 게이트 로직을 검증한다
+
+    def _gate(self):
+        # 주의: setUp이 게이트를 진짜 함수로 되돌리지 않으면 스텁을 검증하게 돼 거짓 통과한다
+        # (GateLogicTests가 같은 함정을 겪고 주석을 남겼다).
+        self.assertIs(cleanup.pool_gate, REAL_POOL_GATE)
+        return cleanup.pool_gate()
+
+    def test_gate_checks_the_same_round_as_the_worker(self):
+        """대상 회차 규칙은 워커와 같은 함수여야 한다(규칙 사본 금지)."""
+        self._gate()
+        self.assertEqual(self.asked, [1244])
+
+    def test_zero_pool_is_failure(self):
+        for count in (0, 1, 97_393):
+            with self.subTest(count=count):
+                self.counts[1244] = count
+                ok, detail = self._gate()
+                self.assertEqual(ok, count > 0, f"풀 {count}개 판정이 틀렸다: {detail}")
+
+    def test_stale_pool_from_last_week_is_failure(self):
+        """P2 핵심 — 워커가 스킵해도 풀은 남아 있다. 그 잔여물을 성공으로 보면 안 된다."""
+        self.recorded[1244] = (datetime.now() - timedelta(days=7)).isoformat()
+        ok, detail = self._gate()
+        self.assertFalse(ok, f"지난주 풀을 이번 주 생성으로 오인했다: {detail}")
+
+    def test_fresh_pool_passes_within_window(self):
+        for hours in (0.0, 1.0, 9.0, 24.0, 47.0):
+            with self.subTest(hours=hours):
+                self.recorded[1244] = (datetime.now() - timedelta(hours=hours)).isoformat()
+                ok, detail = self._gate()
+                self.assertTrue(ok, f"{hours}시간 전 생성인데 실패로 판정: {detail}")
+
+    def test_window_edge_is_failure(self):
+        self.recorded[1244] = (datetime.now() - timedelta(hours=49)).isoformat()
+        ok, _ = self._gate()
+        self.assertFalse(ok, "창(48시간)을 넘긴 기록을 통과시켰다")
+
+    def test_utc_written_record_on_kst_clock_is_tolerated(self):
+        """Actions 러너(UTC)가 쓴 값은 KST PC에서 9시간 과거로 보인다 — 오판하면 안 된다."""
+        self.recorded[1244] = (datetime.now() - timedelta(hours=9)).isoformat()
+        ok, _ = self._gate()
+        self.assertTrue(ok, "UTC로 쓰인 정상 기록을 실패로 오판했다")
+        self.recorded[1244] = (datetime.now() + timedelta(hours=9)).isoformat()
+        ok, _ = self._gate()
+        self.assertTrue(ok, "기계 시계 차이로 미래로 보이는 기록을 실패로 오판했다")
+
+    def test_tz_aware_record_is_accepted(self):
+        self.recorded[1244] = (datetime.now(cleanup.KST) - timedelta(hours=2)).isoformat()
+        ok, detail = self._gate()
+        self.assertTrue(ok, f"tz 붙은 정상 기록을 처리하지 못했다: {detail}")
+
+    def test_missing_or_broken_record_fails_closed(self):
+        for value in (None, "", "이상한값", "2026-13-45T99:99:99"):
+            with self.subTest(value=value):
+                self.recorded[1244] = value
+                ok, _ = self._gate()
+                self.assertFalse(ok, f"기록 {value!r}을 통과시켰다")
+
+    def test_query_error_fails_closed(self):
+        def boom(*a, **k):
+            raise RuntimeError("DB 연결 없음")
+
+        self._patch(self.mdb, "get_combination_count_by_draw", boom)
+        ok, detail = self._gate()
+        self.assertFalse(ok, "조회 실패를 통과로 처리했다")
+        self.assertIn("조회 실패", detail)
+
+    def test_pool_failure_keeps_backups_and_marks(self):
+        self._patch(cleanup, "pool_gate", lambda: (False, "대상 1244회차 풀=0개"))
+        cleanup.main(["--apply"])
+        self.assertEqual(self.rmtree_calls, [], "풀이 없는데 백업을 지웠다")
+        self.assertTrue(self.b1.exists() and self.b2.exists())
+        for d in (self.b1, self.b2):
+            self.assertTrue(list(d.glob("_SKIPPED_*")), f"{d.name}: 보류 메모가 없다")
+        self.assertTrue(any("풀 FAIL" in m for m in self.logs),
+                        "어느 게이트가 막았는지 로그에 남지 않았다")
+        self.assertTrue(any("G5 대상회차 풀이: 실패" in m for m in self.logs))
+
+    def test_pool_failure_in_preview_changes_nothing(self):
+        self._patch(cleanup, "pool_gate", lambda: (False, "대상 1244회차 풀=0개"))
+        before = sorted(p.name for p in self.b1.iterdir())
+        cleanup.main([])
+        self.assertEqual(self.rmtree_calls, [])
+        self.assertFalse(list(self.b1.glob("_SKIPPED_*")))
+        self.assertEqual(sorted(p.name for p in self.b1.iterdir()), before)
+
+    def test_all_five_gates_pass_then_apply_deletes(self):
+        """게이트가 전부 통과했을 때의 조립 동작(미리보기 무삭제 → --apply 삭제)이 유지되는가."""
+        self.assertEqual(cleanup.main([]), 0)
+        self.assertEqual(self.rmtree_calls, [], "미리보기인데 삭제했다")
+        self.assertTrue(any("G5 대상회차 풀이: 통과" in m for m in self.logs))
+        self.assertEqual(cleanup.main(["--apply"]), 0)
+        self.assertEqual(sorted(self.rmtree_calls), sorted([self.b1, self.b2]))
 
 
 if __name__ == "__main__":
