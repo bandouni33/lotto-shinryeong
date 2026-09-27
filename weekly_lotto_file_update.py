@@ -573,10 +573,8 @@ def row_advance_values(wb, label: str) -> dict[int, dict]:
 
     if label not in ROW_ROUND_FILES:
         raise RuntimeError(f"{label}: 행 전진 대상 파일이 아닙니다")
-    base = _tracking_base()
     draws = _draws_asc_from_sheet(wb["전체당첨내역"])
     by_round = {h["draw_round"]: h for h in draws}
-    combo_oh = base["combo_oh"]
 
     windows: dict[str, int] = {}
     for sn in ROW_ROUND_SHEETS:
@@ -603,6 +601,12 @@ def row_advance_values(wb, label: str) -> dict[int, dict]:
             f"통째로 갈아치우는 상황이라 자동 처리를 중단합니다. 파일 상태를 확인해 주세요."
         )
 
+    # 2026-09-27: 회차 무관 마스크(전체 조합·1차 고정 378·2차 이격수 48)는 **실제로 밀
+    # 회차가 있을 때만** 만든다. 예전엔 이 함수 맨 앞에서 만들어서, 이미 최신인 주에도
+    # 대상이 없는데 130초를 쓰고 끝났다(실측: 진입점 1회 253초의 절반 이상).
+    base = _tracking_base()
+    combo_oh = base["combo_oh"]
+
     out: dict[int, dict] = {}
     for rnd in targets:
         masks = cf.compute_stage_masks(draws, rnd - 1, base)
@@ -628,14 +632,12 @@ def row_advance_values(wb, label: str) -> dict[int, dict]:
 
 def advance_row_sheets(wb, label: str, values: dict[int, dict]) -> dict[str, dict]:
     """행식 회차 시트들을 새 회차까지 전진시킨다(이미 앞서 있으면 그대로)."""
-    base = _tracking_base()
-    total_combos = int(base["combos"].shape[0])
     draws = {h["draw_round"]: h for h in _draws_asc_from_sheet(wb["전체당첨내역"])}
     for sn in ROW_ROUND_SHEETS:
         if sn not in wb.sheetnames:
             raise RuntimeError(f"{label}: 시트 '{sn}'을 찾지 못했습니다(행 전진 대상)")
 
-    out: dict[str, dict] = {}
+    plans: dict[str, dict] = {}
     for sn in ROW_ROUND_SHEETS:
         ws = wb[sn]
         have = [ws.cell(r, 1).value for r in range(ROW_FIRST, ROW_LAST + 1)]
@@ -645,9 +647,21 @@ def advance_row_sheets(wb, label: str, values: dict[int, dict]) -> dict[str, dic
         # 전체당첨내역에 실제로 들어 있는 회차만 민다(없는 회차를 밀어넣으면 그 행의
         # 당첨번호를 쓸 수 없어 KeyError가 난다 — 값이 뭘 담고 있든 창은 여기서 지킨다).
         targets = sorted(r for r in values if r > max(have) and r in draws)
-        out[sn] = {"advanced": [], "labels_before": max(have), "labels_after": max(have)}
-        if not targets:
-            continue
+        plans[sn] = {"ws": ws, "newest": max(have), "targets": targets}
+
+    if not any(p["targets"] for p in plans.values()):
+        # 2026-09-27: 밀 회차가 하나도 없으면 회차 무관 마스크를 만들지 않는다 —
+        # 진입점이 '이미 최신'인 주에 대상도 없이 수십 초를 태우던 원인(실측 130초).
+        return {sn: {"advanced": [], "labels_before": p["newest"], "labels_after": p["newest"]}
+                for sn, p in plans.items()}
+
+    base = _tracking_base()
+    total_combos = int(base["combos"].shape[0])
+    out: dict[str, dict] = {}
+    for sn, p in plans.items():
+        ws = p["ws"]
+        targets = p["targets"]
+        have_max = p["newest"]
         for rnd in targets:
             ws.insert_rows(ROW_FIRST, amount=1)
             row = ROW_FIRST
@@ -679,8 +693,8 @@ def advance_row_sheets(wb, label: str, values: dict[int, dict]) -> dict[str, dic
             if isinstance(ws.cell(r, 1).value, int):
                 ws.cell(r, 10).value = f"=SUM(K{r}:M{r})"
         ws.delete_rows(ROW_LAST + 1, amount=len(targets))   # 창 크기 유지
-        out[sn] = {"advanced": targets, "labels_before": max(have),
-                   "labels_after": max(have) + len(targets)}
+        out[sn] = {"advanced": targets, "labels_before": have_max,
+                   "labels_after": have_max + len(targets)}
     return out
 
 
