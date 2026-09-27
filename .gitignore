@@ -91,6 +91,12 @@ Desktop.ini
 # 2026-09-27: 같은 이유로 주간 4개 파일 스크립트(weekly_lotto_file_update.py)의 로그도 뺐다.
 # 이쪽은 추적된 적이 없어 untracked 로 계속 status에 떠 있었다(규칙만 추가하면 끝).
 weekly_update_log.txt
+# 2026-09-27: 롤백용 워크북·수식 백업 폴더. 임시 수동 백업이라 git에 올릴 이유가 없다
+# (자동 삭제는 weekly_backup_cleanup.py가 두 자동화 체인 정상 완료를 확인한 경우에만 한다).
+★조합생성_후보숫자_추적표/_backup_20260927/
+★조합생성_후보숫자_추적표/_backup_20260927_formulas/
+# 조건부 정리 스크립트가 남기는 로그(로그 파일과 같은 이유로 추적 제외)
+backup_cleanup_log.txt
 .pytest_cache/
 .coverage
 htmlcov/
