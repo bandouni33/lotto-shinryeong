@@ -9,9 +9,10 @@
 즉 이 파일은 "자동화가 매주 그 함수를 실제로 부르는가"를 값싸고 결정적으로 확인한다.
 
 핵심 계약:
-  C1 샘플(컬럼 파일)은 append → save → advance_round_columns 순서로 부른다
-     (전진이 전체당첨내역 추가보다 먼저면 헬퍼행 MATCH가 빈 값을 잡는다).
-  C2 컬럼 전진 대상이 아닌 파일(200회검증용)은 advance_round_columns를 부르지 않는다.
+  C1 샘플(컬럼+행 파일)은 append → 행 전진 → 대조 → save → advance_round_columns 순서로 부른다
+     (행 전진은 전체당첨내역에 그 회차가 들어간 뒤 저장 전에, 컬럼 전진은 저장 뒤에 —
+     컬럼 전진이 먼저면 헬퍼행 MATCH가 빈 값을 잡는다).
+  C2 컬럼/행 전진 대상이 아닌 파일(200회검증용)은 그 함수들을 부르지 않는다.
   C3 엑셀 재계산이 실패해도 회차 처리는 예외 없이 끝난다(경고만 남긴다).
 
 실행: venv312\\Scripts\\python.exe scratch\\test_weekly_column_wiring.py
@@ -80,6 +81,8 @@ def run_case(label: str, recalc_raises: bool = False) -> list[str]:
 
     real_openpyxl = wk.openpyxl
     real_append, real_advance, real_recalc = wk.append_draw_result, wk.advance_round_columns, wk.recalc_and_save
+    real_values, real_rows, real_daejo = (wk.row_advance_values, wk.advance_row_sheets,
+                                          wk.write_daejo_sheet)
     wk.openpyxl = _FakeOpenpyxl(wb)                                    # type: ignore[assignment]
 
     def fake_append(ws_all, r):
@@ -92,6 +95,23 @@ def run_case(label: str, recalc_raises: bool = False) -> list[str]:
         return {sn: {"shifts": 1, "labels_before": 1243, "labels_after": 1244}
                 for sn in wk.COLUMN_ROUND_SHEETS}
 
+    def fake_values(wb_arg, lb):
+        calls.append("row_values")
+        assert lb == label, f"행 전진 대상 라벨이 다르다: {lb} != {label}"
+        return {1244: {"stage1": 1, "stage2": 1, "stage4": 1, "K": 1, "L": 1, "M": 4,
+                       "tiers1": {}, "tiers2": {}, "tiers4": {}, "S": ""}}
+
+    def fake_rows(wb_arg, lb, values):
+        calls.append("row_advance")
+        assert lb == label and values, "행 전진에 값이 전달되지 않았다"
+        return {sn: {"advanced": [1244], "labels_before": 1241, "labels_after": 1244}
+                for sn in wk.ROW_ROUND_SHEETS}
+
+    def fake_daejo(wb_arg, lb, values):
+        calls.append("daejo")
+        assert lb == label and values
+        return []
+
     def fake_recalc(path):
         calls.append("recalc_and_save")
         if recalc_raises:
@@ -99,30 +119,37 @@ def run_case(label: str, recalc_raises: bool = False) -> list[str]:
 
     wk.append_draw_result, wk.advance_round_columns, wk.recalc_and_save = (
         fake_append, fake_advance, fake_recalc)
+    wk.row_advance_values, wk.advance_row_sheets, wk.write_daejo_sheet = (
+        fake_values, fake_rows, fake_daejo)
     try:
         wk.process_one_round_for_file(Path("가짜_경로.xlsx"), label, dict(REC))
     finally:
         wk.openpyxl = real_openpyxl                                      # type: ignore[assignment]
         wk.append_draw_result, wk.advance_round_columns, wk.recalc_and_save = (
             real_append, real_advance, real_recalc)
+        wk.row_advance_values, wk.advance_row_sheets, wk.write_daejo_sheet = (
+            real_values, real_rows, real_daejo)
     return calls
 
 
-w("== C1: 샘플(컬럼 파일) 호출 순서 ==")
+w("== C1: 샘플(컬럼+행 파일) 호출 순서 ==")
 calls = run_case("샘플")
 w(f"  호출 순서: {calls}")
-ok(calls == ["append", "save", "advance_round_columns", "recalc_and_save"],
-   "전체당첨내역 추가 + 저장이 컬럼 전진보다 먼저 일어난다")
+ok(calls == ["append", "row_values", "row_advance", "daejo", "save",
+             "advance_round_columns", "recalc_and_save"],
+   "당첨내역 추가 → 행 전진 → 대조 → 저장 → 컬럼 전진 → 재계산 순서")
 ok("advance_round_columns" in calls and "recalc_and_save" in calls,
    "컬럼 전진과 엑셀 재계산이 모두 호출된다")
-ok(calls.index("advance_round_columns") < calls.index("recalc_and_save"),
-   "전진이 재계산보다 먼저 호출된다(전진 뒤에 값 굽기)")
+ok(calls.index("row_advance") < calls.index("save") < calls.index("advance_round_columns"),
+   "행 전진·대조가 저장 전에, 컬럼 전진이 저장 뒤에 일어난다")
 
 w("\n== C2: 컬럼 전진 대상이 아닌 파일 ==")
 calls2 = run_case("200회검증용")
 w(f"  호출 순서: {calls2}")
 ok("advance_round_columns" not in calls2,
    "200회검증용은 컬럼 전진을 부르지 않는다(승인 범위 밖)")
+ok(all(x not in calls2 for x in ("row_values", "row_advance", "daejo")),
+   "200회검증용은 행 전진/대조도 부르지 않는다")
 ok(calls2 == ["append", "save", "recalc_and_save"], "전체당첨내역 갱신은 그대로 한다")
 
 w("\n== C3: 엑셀 재계산 실패는 치명적이지 않다 ==")

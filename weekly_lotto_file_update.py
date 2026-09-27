@@ -39,6 +39,15 @@
      범위가 아니라 아직 "전체당첨내역" 갱신까지만 한다(필요해지면
      COLUMN_ROUND_FILES에 추가하면 된다).
 
+  4. 파일 1(샘플)의 "1차추적결과"·"2차추적결과"·"4차필터"는 회차를 '행'으로 나열한다
+     (3~104행 = 102회차 창). 이 행들도 2026-09-27(사용자 승인)부터 매주 자동으로 밀린다:
+     새 회차가 3행에 들어가고 맨 아래 행을 버려 창 크기를 유지한다. 값은 앱 배포
+     파이프라인과 같은 정의(combo_filter_v2.compute_stage_masks)로 계산하고, 같은
+     파일의 "앱자동화_대조" 시트에 회차별 "파일 계산값 vs 앱 DB 기록
+     (draw_generation_stats)"과 일치 판정을 함께 적는다. 1244회차 이하는 규칙 변경 전
+     배포분이라 달라도 "이력(규칙 불일치)"으로만 표시하고, 1245회차부터는 다르면 실패로
+     처리한다(RULE_VINTAGE_ROUND — 규칙을 또 바꾸면 그 상수를 올려야 한다).
+
 필요 사전 설치 (엑셀이 설치된 그 PC에서, 명령 프롬프트에서 한 번만):
     pip install openpyxl pywin32
 
@@ -134,9 +143,21 @@ def find_new_rounds(local_max_round: int, hard_limit: int = 10) -> list[dict]:
 
 # ============================== 로깅 =========================================
 
+def _safe_print(line: str) -> None:
+    """콘솔 인코딩(한국어 Windows 기본 cp949)에 없는 글자(em-dash 등) 때문에 print가
+    UnicodeEncodeError로 죽는 것을 막는다 — 로그 한 줄 때문에 자동화 전체가 멈추면 안 된다
+    (2026-09-27 실측: 시험 실행에서 이 오류로 회차 처리가 중단됐다). 파일 로그(UTF-8)는
+    그대로 두고 콘솔 출력만 인코딩 가능한 형태로 바꾼다."""
+    try:
+        print(line, flush=True)
+    except UnicodeEncodeError:
+        enc = sys.stdout.encoding or "utf-8"
+        print(line.encode(enc, errors="replace").decode(enc, errors="replace"), flush=True)
+
+
 def log(msg: str) -> None:
     line = f"[{datetime.datetime.now().isoformat(timespec='seconds')}] {msg}"
-    print(line)
+    _safe_print(line)
     try:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -451,6 +472,312 @@ def advance_round_columns(path: Path, label: str) -> dict[str, dict]:
         wb.close()
 
 
+# ── 행식 회차 시트 전진 + 앱 기록 대조 (2026-09-27, 사용자 승인) ────────────────
+# 왜 생겼나: 샘플 파일은 회차를 컬럼(1차필터·2차필터)과 행(추적결과 시트) 양쪽으로
+# 나열한다. 컬럼은 위에서 전진하게 했지만, 행 시트(1차추적결과·2차추적결과·4차필터)는
+# 1241회차에서 멈춰 있었다. 임시 복사본 시뮬레이터(scratch/sim_sample_row_advance.py)로
+# 21개 불변식을 통과시켜 규칙을 실측으로 확정한 뒤 편입했다:
+#   · 새 회차는 3행(맨 위)에 들어가고 맨 아래 행을 버려 창 크기(102행)를 유지한다.
+#   · 밀린 회차는 오래된 것부터 차례로 3행에 쌓는다(최신이 맨 위).
+#   · J열(=SUM(K:M))은 자기 행 번호를 쓰므로 밀린 행 전부 다시 쓴다.
+#   · H열은 그 단계의 '입력' 조합수 사슬(1차입력=전체 → 2차입력=1차 → 4차입력=2차).
+# 값 정의는 앱 배포 파이프라인과 같은 곳(combo_filter_v2.compute_stage_masks)을 쓴다 —
+# 그래야 아래 대조 시트가 "파일 계산값 vs 앱 실제 배포 기록"을 비교하는 표가 된다.
+ROW_ROUND_FILES = {"샘플"}
+ROW_ROUND_SHEETS = ("1차추적결과", "2차추적결과", "4차필터")
+ROW_FIRST, ROW_LAST = 3, 104           # 3~104행 = 102회차 창
+ROW_WINDOW = ROW_LAST - ROW_FIRST + 1
+
+# 대조 시트 — 회차별로 '파일 계산값'과 '앱 DB 기록(draw_generation_stats)'을 나란히 적고
+# 일치 여부를 판정한다. 샘플 파일 안에만 만든다(다른 시트는 건드리지 않는다).
+DAEJO_SHEET = "앱자동화_대조"
+DAEJO_HEADERS = ("회차", "파일_1차통과", "파일_2차통과", "파일_4차통과",
+                 "앱_stage2", "앱_stage4", "앱_top5", "2차_판정", "4차_판정", "비고")
+
+# 규칙 빈티지 경계 — 이 회차 **이상**부터는 파일 계산값과 앱 기록이 같아야 한다(다르면 실패).
+# 1244회차 이하는 규칙 변경 전 배포분이라 달라도 이력일 뿐이다. 규칙을 또 바꾸면(예: 새 필터
+# 규칙을 1250회차부터 적용) 이 값을 그 첫 배포 회차로 올려야 한다 — 그러지 않으면 바뀌기 전에
+# 생성된 회차들이 '불일치(실패)'로 잘못 잡힌다.
+RULE_VINTAGE_ROUND = 1245
+DAEJO_VINTAGE_NOTE = (f"{RULE_VINTAGE_ROUND - 1}회차 이하 = 규칙 변경 전 배포분(차이 나도 정상)")
+
+_TRACKING_BASE: dict | None = None
+
+
+def _tracking_base() -> dict:
+    """회차 무관 마스크(전체 조합·고정 378·이격수 48)를 프로세스당 한 번만 만든다 —
+    여러 회차를 처리할 때 회차마다 수십 초를 다시 쓰지 않게(실측)."""
+    global _TRACKING_BASE
+    if _TRACKING_BASE is None:
+        import combo_filter_v2 as cf
+
+        log("  [추적계산] 회차 무관 마스크(전체 조합·1차 고정 378·2차 이격수 48) 계산 중...")
+        _TRACKING_BASE = cf.build_base_masks()
+    return _TRACKING_BASE
+
+
+def _draws_asc_from_sheet(ws_all) -> list[dict]:
+    """전체당첨내역 → [{'draw_round','nums','bonus'}...] 오름차순.
+
+    회차·번호는 이 시트에서 값으로 읽는다(수식이 아니어야 한다) — 수식이 섞여 있으면
+    조용히 건너뛰지 않고 여기서 멈춘다(그러지 않으면 계산 기준 회차가 조용히 어긋난다).
+    """
+    out: list[dict] = []
+    for r in range(2, ws_all.max_row + 1):
+        rr = ws_all.cell(r, 1).value
+        if not isinstance(rr, int):
+            continue
+        vals = [ws_all.cell(r, c).value for c in range(2, 9)]
+        if any(not isinstance(v, int) for v in vals):
+            raise RuntimeError(
+                f"전체당첨내역 {r}행({rr}회차)의 번호칸에 수식/빈칸이 있습니다: {vals} "
+                f"— 값으로 읽을 수 있어야 행 전진 기준을 세울 수 있습니다"
+            )
+        out.append({"draw_round": rr, "nums": sorted(int(v) for v in vals[:6]),
+                    "bonus": int(vals[6])})
+    out.sort(key=lambda h: h["draw_round"])
+    if not out:
+        raise RuntimeError("전체당첨내역에서 회차를 하나도 읽지 못했습니다")
+    return out
+
+
+def _rule_violations(nums, static_rules) -> str:
+    """당첨 조합이 1차 고정 규칙에서 벗어난 항목 — 추적표 S열 표기 형식 그대로
+    (예: '3(row37)3개/허용0~2; 10단 기본(row28)4개/허용0~3')."""
+    parts = []
+    for rule in static_rules:
+        tgt = set(int(t) for t in rule["targets"])
+        c = sum(1 for n in nums if n in tgt)
+        if c < rule["min"] or c > rule["max"]:
+            nm = f"{rule['name']}" if rule.get("name") else ""
+            parts.append(f"{nm}(row{rule['row']}){c}개/허용{rule['min']}~{rule['max']}")
+    return "; ".join(parts)
+
+
+def row_advance_values(wb, label: str) -> dict[int, dict]:
+    """행 전진에 쓸 회차별 계산값 — **대상 회차는 파일 상태에서 스스로 찾는다**
+    (추적결과 창의 최신 라벨보다 뒤에 추첨된 회차 = 아직 행이 없는 회차).
+
+    회차를 인자로 받지 않는 이유: 밀린 회차가 둘 이상이면 그 사이에 구멍이 남지 않게
+    전부 채워야 하기 때문이다(창 최신 1241 · 전체당첨내역 1243이면 1242·1243을 함께 채운다).
+
+    회차 R의 값은 R-1(직전 회차)까지의 이력으로 만든 그 회차의 배포 풀에서 나온다:
+      1차 통과 = 고정 378 + AUTO 4            ← 1차추적결과 I열
+      2차 통과 = 1차 + 이격수 48               ← 2차추적결과 I열 · 앱 DB stage2_count와 같아야 함
+      4차 통과 = 2차 + 상중하·top5             ← 4차필터 I열    · 앱 DB stage4_count와 같아야 함
+      K/L/M   = 당첨 6개가 격차순위 상위/중위/하위(각 15개)에 든 개수
+      N~R     = 그 단계 통과 풀에서 실제 당첨번호와 1~5등으로 맞은 조합 수
+      S       = 당첨 조합이 위반한 1차 고정 규칙 목록
+    """
+    import combo_filter_v2 as cf
+
+    if label not in ROW_ROUND_FILES:
+        raise RuntimeError(f"{label}: 행 전진 대상 파일이 아닙니다")
+    base = _tracking_base()
+    draws = _draws_asc_from_sheet(wb["전체당첨내역"])
+    by_round = {h["draw_round"]: h for h in draws}
+    combo_oh = base["combo_oh"]
+
+    windows: dict[str, int] = {}
+    for sn in ROW_ROUND_SHEETS:
+        if sn not in wb.sheetnames:
+            raise RuntimeError(f"{label}: 시트 '{sn}'을 찾지 못했습니다(행 전진 대상)")
+        have = [wb[sn].cell(r, 1).value for r in range(ROW_FIRST, ROW_LAST + 1)]
+        have = [x for x in have if isinstance(x, int)]
+        if not have:
+            raise RuntimeError(f"{label}/{sn}: 회차 라벨(1열)을 찾지 못했습니다")
+        windows[sn] = max(have)
+    if len(set(windows.values())) != 1:
+        raise RuntimeError(f"{label}: 추적결과 시트 창 최신이 서로 다릅니다 {windows} — 확인 필요")
+
+    newest = list(windows.values())[0]
+    targets = [h["draw_round"] for h in draws if h["draw_round"] > newest]
+    if not targets:
+        log(f"    (행 전진 대상 없음 — 추적결과 창 최신 {newest}회차가 전체당첨내역 최신입니다)")
+        return {}
+    if targets != list(range(newest + 1, newest + 1 + len(targets))):
+        raise RuntimeError(f"{label}: 전진 대상 회차에 구멍이 있습니다 {targets} — 중단")
+    if len(targets) > ROW_WINDOW:
+        raise RuntimeError(
+            f"{label}: 밀린 회차가 {len(targets)}개(창 {ROW_WINDOW}행)입니다 — 한 번에 창을 "
+            f"통째로 갈아치우는 상황이라 자동 처리를 중단합니다. 파일 상태를 확인해 주세요."
+        )
+
+    out: dict[int, dict] = {}
+    for rnd in targets:
+        masks = cf.compute_stage_masks(draws, rnd - 1, base)
+        m1, m2, m4 = masks["stage1_mask"], masks["stage2_mask"], masks["stage4_mask"]
+        order = masks["gap_order"]
+        drawn = by_round[rnd]
+        nums, bonus = drawn["nums"], drawn["bonus"]
+        got = set(nums)
+        out[rnd] = {
+            "stage1": int(m1.sum()), "stage2": int(m2.sum()), "stage4": int(m4.sum()),
+            "K": len(got & set(order[:15])), "L": len(got & set(order[15:30])),
+            "M": len(got & set(order[30:45])),
+            "tiers1": cf.tier_counts(combo_oh[m1], nums, bonus),
+            "tiers2": cf.tier_counts(combo_oh[m2], nums, bonus),
+            "tiers4": cf.tier_counts(combo_oh[m4], nums, bonus),
+            "S": _rule_violations(nums, base["static_rules"]),
+        }
+        log(f"    {rnd}회차 계산: 1차={out[rnd]['stage1']:,} 2차={out[rnd]['stage2']:,} "
+            f"4차={out[rnd]['stage4']:,} "
+            f"상중하={out[rnd]['K']}/{out[rnd]['L']}/{out[rnd]['M']}")
+    return out
+
+
+def advance_row_sheets(wb, label: str, values: dict[int, dict]) -> dict[str, dict]:
+    """행식 회차 시트들을 새 회차까지 전진시킨다(이미 앞서 있으면 그대로)."""
+    base = _tracking_base()
+    total_combos = int(base["combos"].shape[0])
+    draws = {h["draw_round"]: h for h in _draws_asc_from_sheet(wb["전체당첨내역"])}
+    for sn in ROW_ROUND_SHEETS:
+        if sn not in wb.sheetnames:
+            raise RuntimeError(f"{label}: 시트 '{sn}'을 찾지 못했습니다(행 전진 대상)")
+
+    out: dict[str, dict] = {}
+    for sn in ROW_ROUND_SHEETS:
+        ws = wb[sn]
+        have = [ws.cell(r, 1).value for r in range(ROW_FIRST, ROW_LAST + 1)]
+        have = [x for x in have if isinstance(x, int)]
+        if not have:
+            raise RuntimeError(f"{label}/{sn}: 회차 라벨(1열)을 찾지 못했습니다")
+        # 전체당첨내역에 실제로 들어 있는 회차만 민다(없는 회차를 밀어넣으면 그 행의
+        # 당첨번호를 쓸 수 없어 KeyError가 난다 — 값이 뭘 담고 있든 창은 여기서 지킨다).
+        targets = sorted(r for r in values if r > max(have) and r in draws)
+        out[sn] = {"advanced": [], "labels_before": max(have), "labels_after": max(have)}
+        if not targets:
+            continue
+        for rnd in targets:
+            ws.insert_rows(ROW_FIRST, amount=1)
+            row = ROW_FIRST
+            v = values[rnd]
+            ws.cell(row, 1).value = rnd
+            for i, n in enumerate(draws[rnd]["nums"][:6]):
+                ws.cell(row, 2 + i).value = n
+            if sn == "1차추적결과":
+                ws.cell(row, 8).value = total_combos
+                ws.cell(row, 9).value = v["stage1"]
+                tiers = v["tiers1"]
+            elif sn == "2차추적결과":
+                ws.cell(row, 8).value = v["stage1"]
+                ws.cell(row, 9).value = v["stage2"]
+                tiers = v["tiers2"]
+            else:
+                ws.cell(row, 8).value = v["stage2"]
+                ws.cell(row, 9).value = v["stage4"]
+                tiers = v["tiers4"]
+            ws.cell(row, 10).value = f"=SUM(K{row}:M{row})"
+            ws.cell(row, 11).value = v["K"]
+            ws.cell(row, 12).value = v["L"]
+            ws.cell(row, 13).value = v["M"]
+            for i, key in enumerate(("t1", "t2", "t3", "t4", "t5")):
+                ws.cell(row, 14 + i).value = tiers[key]
+            if sn != "4차필터":
+                ws.cell(row, 19).value = v["S"]
+        for r in range(ROW_FIRST, ROW_LAST + 1):        # J는 자기 행 번호를 쓴다
+            if isinstance(ws.cell(r, 1).value, int):
+                ws.cell(r, 10).value = f"=SUM(K{r}:M{r})"
+        ws.delete_rows(ROW_LAST + 1, amount=len(targets))   # 창 크기 유지
+        out[sn] = {"advanced": targets, "labels_before": max(have),
+                   "labels_after": max(have) + len(targets)}
+    return out
+
+
+def _daejo_app_record(rnd: int) -> dict | None:
+    """앱 자동화 기록(DB draw_generation_stats) — 읽기 전용. 없으면 None."""
+    import marketing_db
+
+    return marketing_db.get_draw_generation_stats(rnd)
+
+
+def daejo_verdict(rnd: int, file_val, app_val) -> str:
+    """파일 계산값 vs 앱 DB 기록 판정.
+
+    · 같으면 "일치"
+    · 앱 기록이 없으면 "앱_미기록"(그 회차 풀이 자동 생성되지 않았다는 뜻)
+    · 다르면 — RULE_VINTAGE_ROUND 미만은 "이력(규칙 불일치)"(그 회차 배포 당시의 규칙이
+      지금과 달라 생기는 정상적인 차이. 실패 아님),
+      RULE_VINTAGE_ROUND 이상은 "불일치"(기대값과 다름 → 실패로 본다).
+    """
+    if app_val is None:
+        return "앱_미기록"
+    if int(file_val) == int(app_val):
+        return "일치"
+    return "이력(규칙 불일치)" if rnd < RULE_VINTAGE_ROUND else "불일치"
+
+
+def write_daejo_sheet(wb, label: str, values: dict[int, dict]) -> list[str]:
+    """대조 시트를 갱신하고 '실패로 볼 문제' 목록을 돌려준다(비어 있으면 정상).
+
+    같은 회차가 이미 있으면 그 행을 갱신한다(재실행 멱등). 행 수는 추적표와 같은
+    102행(ROW_WINDOW)으로 묶어 최신이 위로 오게 유지한다.
+    """
+    ws = wb[DAEJO_SHEET] if DAEJO_SHEET in wb.sheetnames else wb.create_sheet(DAEJO_SHEET)
+    for i, h in enumerate(DAEJO_HEADERS, start=1):
+        ws.cell(1, i).value = h
+    known: dict[int, list] = {}
+    for r in range(2, ws.max_row + 1):
+        rnd = ws.cell(r, 1).value
+        if isinstance(rnd, int):
+            known[rnd] = [ws.cell(r, c).value for c in range(1, len(DAEJO_HEADERS) + 1)]
+
+    problems: list[str] = []
+    for rnd in sorted(values):
+        v = values[rnd]
+        app = _daejo_app_record(rnd)
+        a2 = app["stage2_count"] if app else None
+        a4 = app["stage4_count"] if app else None
+        verdict2, verdict4 = daejo_verdict(rnd, v["stage2"], a2), daejo_verdict(rnd, v["stage4"], a4)
+        if app is None:
+            top5 = "미기록"
+        elif app.get("top5_numbers"):
+            top5 = " ".join(str(x) for x in app["top5_numbers"])
+        else:
+            top5 = "(top3까지만 기록)"
+        known[rnd] = [rnd, v["stage1"], v["stage2"], v["stage4"],
+                      a2 if app else "미기록", a4 if app else "미기록", top5,
+                      verdict2, verdict4,
+                      DAEJO_VINTAGE_NOTE if rnd < RULE_VINTAGE_ROUND else ""]
+        for what, verdict, fv, av in (("2차", verdict2, v["stage2"], a2),
+                                      ("4차", verdict4, v["stage4"], a4)):
+            if verdict == "불일치":
+                problems.append(f"{label} {rnd}회차 {what} 불일치: 파일={fv:,} 앱={av:,}")
+        if app is None:
+            problems.append(f"{label} {rnd}회차: 앱 자동화 기록(draw_generation_stats)이 없습니다")
+
+    ordered = sorted(known, reverse=True)[:ROW_WINDOW]
+    for r in range(2, max(ws.max_row, len(ordered) + 1) + 1):
+        for c in range(1, len(DAEJO_HEADERS) + 1):
+            ws.cell(r, c).value = None
+    for i, rnd in enumerate(ordered):
+        for c, val in enumerate(known[rnd], start=1):
+            ws.cell(2 + i, c).value = val
+    log(f"    {DAEJO_SHEET}: {len(ordered)}행 기록(최신 {ordered[0] if ordered else '-'}회차, "
+        f"기대일치 = {RULE_VINTAGE_ROUND}회차부터)")
+    return problems
+
+
+def _advance_rows_in_wb(wb, label: str) -> tuple[dict[str, dict], list[str]]:
+    """(이미 열린 워크북에 대해) 행 전진 + 대조 시트 갱신.
+    반환: (시트별 전진 결과, 대조가 찾은 문제). 이미 최신이면 ({}, []) — 아무것도 건드리지 않는다.
+
+    신규 회차가 있는 경로(process_one_round_for_file)와 없는 경로(main의 '이미 최신'
+    분기)가 같은 함수를 쓴다 — 회차가 하나도 안 들어오는 주에 창이 밀린 채 방치되면
+    다음 주에 회차가 들어올 때까지 파일이 어긋난 채로 남기 때문이다."""
+    values = row_advance_values(wb, label)
+    if not values:
+        return {}, []
+    stats = advance_row_sheets(wb, label, values)
+    for sn, st in stats.items():
+        log(f"    {sn}: 회차 행 전진 {st['advanced']} "
+            f"({st['labels_before']}→{st['labels_after']})")
+    problems = write_daejo_sheet(wb, label, values)
+    for p in problems:
+        log(f"    [대조] {p}")
+    return stats, problems
+
+
 def advance_3cha_sheet(ws, sheet_name: str, forecast45: list[int], actual_rec: dict) -> tuple[int, int, int]:
     """7행(대기 중인 예측행)을 8행으로 확정(수식→값 고정 + 실제결과/적중수 채움)
     시키고, 맨 아래 행을 하나 지워서 창 크기를 유지하며, 새 7행(다음 회차 대기)을
@@ -503,11 +830,15 @@ def get_current_max_round(path: Path) -> int:
     return int(val)
 
 
-def process_one_round_for_file(path: Path, label: str, rec: dict) -> None:
+def process_one_round_for_file(path: Path, label: str, rec: dict) -> list[str]:
     """파일 하나에 회차 하나(rec)를 반영.
-    3차필터 구조 파일이면 예측행도, 컬럼식 파일이면 회차 컬럼도 같이 전진한다."""
+    3차필터 구조 파일이면 예측행도, 컬럼식 파일이면 회차 컬럼도, 행식 추적결과 시트가
+    있으면 그 행들도 같이 전진한다.
+
+    반환: 대조 시트가 찾아낸 '실패로 볼 문제' 목록(비어 있으면 정상)."""
     needs_3cha = label in ADVANCE_3CHA_FILES
     needs_columns = label in COLUMN_ROUND_FILES
+    needs_rows = label in ROW_ROUND_FILES
 
     if needs_3cha:
         wb_peek = openpyxl.load_workbook(path, data_only=False, read_only=True)
@@ -535,6 +866,14 @@ def process_one_round_for_file(path: Path, label: str, rec: dict) -> None:
         log(f"  [{label}] {rec['round']}회차: 3차필터 구조가 아니므로 전체당첨내역만 갱신")
 
     append_draw_result(ws_all, rec)
+
+    row_problems: list[str] = []
+    if needs_rows:
+        # 행 전진과 대조 시트는 전체당첨내역에 이 회차가 들어간 '뒤', 저장 '전'에 같은
+        # 워크북에서 처리한다(로드/저장이 한 번에 끝난다). 여기서 예외가 나면 아직 저장
+        # 전이므로 이 회차는 파일에 아무것도 반영되지 않는다 — 다시 시도하면 된다.
+        _, row_problems = _advance_rows_in_wb(wb, label)
+
     wb.save(path)
 
     if needs_columns:
@@ -555,6 +894,7 @@ def process_one_round_for_file(path: Path, label: str, rec: dict) -> None:
         # 그 회차를 통째로 중단시킬 이유가 없다(엑셀로 열면 자동 재계산된다).
         log(f"  [경고] 엑셀 재계산(캐시값 굽기)을 건너뜁니다: {e}")
         log("         파일 내용은 정상입니다 — 엑셀로 열면 자동 재계산됩니다.")
+    return row_problems
 
 
 def main() -> int:
@@ -601,6 +941,31 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001
                 log(f"[경고] {label}: 오류값 스캔 실패 -> {e}")
                 any_error = True
+            if label in ROW_ROUND_FILES:
+                # 2026-09-27: 신규 회차가 없어도 추적결과 창이 뒤처져 있으면 채운다. 이 경로로
+                # 들어오는 파일(샘플)은 3차필터 전진 대상이 아니라 예전엔 여기서 "이미 최신"으로
+                # 끝나, 창이 밀린 채로 남았다(실측: 창 최신 1241 · 전체당첨내역 1243).
+                try:
+                    wb_rows = openpyxl.load_workbook(path, data_only=False)
+                    try:
+                        stats, problems = _advance_rows_in_wb(wb_rows, label)
+                        if stats:
+                            wb_rows.save(path)
+                            for sn, st in stats.items():
+                                log(f"[{label}] {sn}: 추적결과 창을 {st['labels_after']}회차까지 "
+                                    f"채움(전진 {st['advanced']})")
+                            try:
+                                recalc_and_save(path)
+                            except Exception as e:  # noqa: BLE001
+                                log(f"  [경고] 엑셀 재계산(캐시값 굽기)을 건너뜁니다: {e}")
+                    finally:
+                        wb_rows.close()
+                    for p in problems:
+                        log(f"[경고] {p}")
+                        any_error = True
+                except Exception as e:  # noqa: BLE001
+                    log(f"[오류] {label}: 추적결과 행 전진 실패 -> {e}")
+                    any_error = True
             log(f"[{label}] 이미 최신 상태입니다 (전체당첨내역 최신회차={local_max}). 건너뜀.")
             continue
 
@@ -609,7 +974,9 @@ def main() -> int:
 
         for rec in new_rounds:
             try:
-                process_one_round_for_file(path, label, rec)
+                for p in (process_one_round_for_file(path, label, rec) or []):
+                    log(f"[경고] {p}")
+                    any_error = True
             except Exception as e:
                 log(f"[오류] {label} {rec['round']}회차 처리 중 예외 발생: {e}")
                 log(f"       이 파일은 {rec['round']}회차 이후 회차를 이어서 처리하지 않고 중단합니다"

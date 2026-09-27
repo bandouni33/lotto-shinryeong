@@ -95,8 +95,12 @@ def _band(x, mn, mx):
     return (x >= mn) & (x <= mx)
 
 
-def compute_static_gap_mask(combo_oh: np.ndarray, static_rules, gap_rules, combos: np.ndarray):
-    """1차 고정형 378개 + 2차 이격수 48개 — 회차와 무관, 매번 동일한 결과."""
+def split_static_gap_masks(combo_oh: np.ndarray, static_rules, gap_rules,
+                           combos: np.ndarray):
+    """1차 고정형 378개와 2차 이격수 48개를 **따로** 돌려준다 — 추적표 행 전진은
+    "1차(고정+AUTO)"와 "2차(+이격수)" 통과수를 각각 다른 열에 적어야 해서 둘을 나눠
+    받을 필요가 있다. 값 정의는 compute_static_gap_mask가 하던 것과 100% 같다
+    (그 함수도 이 함수를 쓴다 — 마스크 정의가 두 벌이 되지 않게)."""
     n = combo_oh.shape[0]
     static_pass = np.ones(n, dtype=bool)
     batch = 30
@@ -118,6 +122,12 @@ def compute_static_gap_mask(combo_oh: np.ndarray, static_rules, gap_rules, combo
         cnt = lut[gaps].sum(axis=1)
         gap_pass &= (cnt >= r["min"]) & (cnt <= r["max"])
 
+    return static_pass, gap_pass
+
+
+def compute_static_gap_mask(combo_oh: np.ndarray, static_rules, gap_rules, combos: np.ndarray):
+    """1차 고정형 378개 + 2차 이격수 48개 — 회차와 무관, 매번 동일한 결과."""
+    static_pass, gap_pass = split_static_gap_masks(combo_oh, static_rules, gap_rules, combos)
     return static_pass & gap_pass
 
 
@@ -197,19 +207,42 @@ CAND_NEIGHBOR_200_RULE = "후보패턴 이웃수(200회)"
 CAND_NEIGHBOR_WINDOW = 200
 
 
-def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
-    """anchor_round까지의 데이터만으로 1차+2차+4차 통과 마스크를 계산.
-    반환: (combos, combo_oh, stage4_mask, static_gap_count, stage2_count)."""
+def build_base_masks() -> dict:
+    """회차와 무관한 재료(전체 조합·원핫·1차 고정 마스크·2차 이격수 마스크·규칙표)를
+    한 번 만든다. 한 실행에서 여러 회차를 계산할 때(추적표 행 전진) 이걸 재사용하면
+    8백만 조합과 378개 규칙을 회차마다 다시 만들지 않아도 된다
+    (실측: 이 재료를 매번 새로 만들면 회차당 수십 초가 더 든다)."""
+    static_rules, auto_rules, gap_rules = _load_rules()
+    combos = _all_combos()
+    combo_oh = _onehot(combos)
+    static_mask, gap_mask = split_static_gap_masks(combo_oh, static_rules, gap_rules, combos)
+    return {
+        "combos": combos,
+        "combo_oh": combo_oh,
+        "static_mask": static_mask,
+        "gap_mask": gap_mask,
+        "static_rules": static_rules,
+        "auto_rules": auto_rules,
+    }
+
+
+def compute_stage_masks(history_asc: list[dict], anchor_round: int,
+                        base: dict | None = None) -> dict:
+    """anchor_round까지의 데이터만으로 1차/2차/4차 통과 마스크를 계산한다.
+
+    1차 = 고정 378 + AUTO 4, 2차 = 1차 + 이격수 48, 4차 = 2차 + 상중하·top5 조건.
+    추적표(1차추적결과·2차추적결과·4차필터)가 이 셋을 각각 다른 열에 적어야 해서
+    마스크를 통째로 돌려준다 — 생성 파이프라인 _compute_pool_for_anchor도 이 함수를
+    쓰므로 정의가 두 벌이 되지 않는다.
+    base를 주면 그 재료를 재사용한다(build_base_masks 참고)."""
+    base = base if base is not None else build_base_masks()
+    combos, combo_oh = base["combos"], base["combo_oh"]
+    auto_rules = base["auto_rules"]
+
     rounds = [h["draw_round"] for h in history_asc]
     idx = rounds.index(anchor_round)
     anchor = history_asc[idx]
     anchors7 = anchor["nums"] + [anchor["bonus"]]
-
-    static_rules, auto_rules, gap_rules = _load_rules()
-    combos = _all_combos()
-    combo_oh = _onehot(combos)
-
-    base_mask = compute_static_gap_mask(combo_oh, static_rules, gap_rules, combos)
 
     gap_order = _gap_order_for_anchor(history_asc, anchor_round)
 
@@ -242,7 +275,8 @@ def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
         cnt = combo_oh @ tv
         auto_pass &= _band(cnt, ar["min"], ar["max"])
 
-    stage2_mask = base_mask & auto_pass
+    stage1_mask = base["static_mask"] & auto_pass
+    stage2_mask = stage1_mask & base["gap_mask"]
 
     sang = _targets_to_vec(gap_order[:15])
     jung = _targets_to_vec(gap_order[15:30])
@@ -270,7 +304,25 @@ def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
 
     stage4_mask = stage2_mask & cond1 & cond2
 
-    return combos, combo_oh, stage4_mask, int(base_mask.sum()), int(stage2_mask.sum()), gap_order
+    return {
+        "combos": combos,
+        "combo_oh": combo_oh,
+        "stage1_mask": stage1_mask,
+        "stage2_mask": stage2_mask,
+        "stage4_mask": stage4_mask,
+        "static_gap_mask": base["static_mask"] & base["gap_mask"],
+        "gap_order": gap_order,
+    }
+
+
+def _compute_pool_for_anchor(history_asc: list[dict], anchor_round: int):
+    """anchor_round까지의 데이터만으로 1차+2차+4차 통과 마스크를 계산.
+    반환: (combos, combo_oh, stage4_mask, static_gap_count, stage2_count).
+    (2026-09-27: 마스크 계산은 compute_stage_masks 한 곳으로 모았다 — 추적표 행 전진이
+     같은 정의를 써야 해서. 반환값과 순서는 그대로다.)"""
+    m = compute_stage_masks(history_asc, anchor_round)
+    return (m["combos"], m["combo_oh"], m["stage4_mask"],
+            int(m["static_gap_mask"].sum()), int(m["stage2_mask"].sum()), m["gap_order"])
 
 
 def peek_target_round(history_desc: list[dict]) -> int:

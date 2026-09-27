@@ -138,8 +138,23 @@ class DryRunScopeTests(unittest.TestCase):
         self.assertEqual(calls, [], "peek_target_round가 규칙을 읽는다면 이 테스트의 전제를 갱신해야 한다")
 
     def test_real_generation_path_reads_rules(self):
-        src = inspect.getsource(cf._compute_pool_for_anchor)
-        self.assertIn("_load_rules()", src, "실제 생성 경로가 규칙을 읽지 않으면 확인 대상이 바뀐 것")
+        """실제 생성 경로가 규칙을 **실제로** 읽는가 — 규칙을 못 읽게 만들면 생성 경로가
+        무거운 계산(8백만 조합)을 시작하기 전에 멈춰서 여야 한다(규칙 없이 조용히 돌면 안 된다).
+
+        2026-09-27: 마스크 계산이 compute_stage_masks로 모이면서 경로가
+        _compute_pool_for_anchor → compute_stage_masks → build_base_masks → _load_rules로
+        이어지게 됐다 — 그래서 특정 함수의 소스 문구가 아니라 '멈추는가'로 확인한다."""
+        def boom():
+            raise RuntimeError("규칙을 읽지 못함(시험용)")
+
+        orig = cf._load_rules
+        cf._load_rules = boom
+        try:
+            with self.assertRaises(RuntimeError):
+                cf.compute_stage_masks([{"draw_round": 1, "nums": [1, 2, 3, 4, 5, 6],
+                                         "bonus": 7}], 1)
+        finally:
+            cf._load_rules = orig
 
     def test_rules_have_expected_shape(self):
         with local_json_hidden():
