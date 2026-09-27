@@ -109,6 +109,35 @@ if tabs:
         ok(r["생성시간"] == "09/20 14:03",
            f"1243 생성시간 = {r['생성시간']} (DB 2026-09-20T05:03:27 UTC → KST)")
 
+        # ② 연속 5회차 강제 — 최신부터 1씩 감소, 건너뛴 회차가 없어야 한다
+        labels = list(df["배포 회차"])
+        latest = int(labels[0].replace("회차", ""))
+        ok(labels == [f"{latest - i}회차" for i in range(5)],
+           f"표 회차가 최신 {latest}부터 연속 5개: {labels}")
+        ok("1236회차" not in labels
+           and all(int(l.replace("회차", "")) >= latest - 4 for l in labels),
+           "건너뛴 옛 회차(1236 등)가 표에 없다")
+
+        # ③ 표 값 == DB 값 (기록 없는 회차는 '기록없음')
+        import marketing_db as mdb
+
+        bad = []
+        for lab in labels:
+            rnd = int(lab.replace("회차", ""))
+            row = df[df["배포 회차"] == lab].iloc[0].to_dict()
+            g = mdb.get_draw_generation_stats(rnd)
+            c = mdb.get_combination_count_by_draw(rnd)
+            at = mdb.get_pattern_recorded_at(rnd)
+            if row["총 조합 개수"] != (f"{g['stage4_count']:,} 개" if g else "기록없음"):
+                bad.append(f"{rnd} 총 조합 개수 {row['총 조합 개수']} != DB {g and g['stage4_count']}")
+            if row["조합 개수"] != (f"{c:,} 개" if c else "기록없음"):
+                bad.append(f"{rnd} 조합 개수 {row['조합 개수']} != DB {c}")
+            if (at is None) != (row["생성시간"] == "기록없음"):
+                bad.append(f"{rnd} 생성시간 {row['생성시간']} / DB {at}")
+        ok(not bad, f"렌더된 표 값 == DB 값(교차 확인) — 불일치 {len(bad)} {bad[:3]}")
+        none_rows = [r["배포 회차"] for _, r in df.iterrows() if r["조합 개수"] == "기록없음"]
+        w(f"       '기록없음'으로 표시되는 회차: {none_rows}")
+
 w(f"\n단언 실패 {len(FAILS)}건" + ("" if not FAILS else ": " + " | ".join(FAILS[:5])))
 w(f"총 경과 {time.time() - t0:.0f}s")
 OUT.write_text("\n".join(R), encoding="utf-8")

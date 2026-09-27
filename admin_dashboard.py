@@ -1727,8 +1727,11 @@ elif st.session_state.admin_view == "ops_manage":
 
     # 2026-09-27(사용자 지시): 최근 5회차 생성 현황을 표로 — 새 스키마 불필요,
     # 기존 get_draw_extraction_stats/get_draw_generation_stats/
-    # get_pattern_recorded_at 세 함수만 조합해서 화면에 그린다. "생성경로"
-    # (Actions 자동/앱방문 예비) 칸은 사용자 지시로 이번엔 뺀다.
+    # get_pattern_recorded_at/get_combination_count_by_draw 함수만 조합해서
+    # 화면에 그린다. "생성경로"(Actions 자동/앱방문 예비) 칸은 사용자 지시로
+    # 이번엔 뺀다. 회차는 반드시 연속 5개(latest~latest-4)로 강제한다 —
+    # get_draw_extraction_stats(limit=5)는 lotto_combinations에 행이 있는
+    # 회차만 반환해 연속을 보장하지 않으므로 직접 쓰지 않는다.
     st.markdown("<h5 style='margin-top:20px;'>최근 5회차 생성 현황</h5>", unsafe_allow_html=True)
 
     @st.cache_data(ttl=60, show_spinner=False)
@@ -1736,17 +1739,13 @@ elif st.session_state.admin_view == "ops_manage":
         from datetime import datetime, timedelta
 
         from marketing_db import (
+            get_combination_count_by_draw,
             get_draw_extraction_stats,
             get_draw_generation_stats,
             get_pattern_recorded_at,
         )
 
         def _fmt_kst(iso_str):
-            # recorded_at은 Actions(UTC)/Streamlit Cloud(UTC) 정상 운영
-            # 기준으로 UTC 저장 — 화면 표시만 KST(+9h)로 변환한다. 과거
-            # PC(KST)에서 직접 실행해 남은 옛 기록이 섞여있을 수 있다는 건
-            # 알려진 제약이라 소급 수정하지 않는다(get_pattern_recorded_at
-            # 주석 참고).
             if not iso_str:
                 return "기록없음"
             try:
@@ -1755,15 +1754,21 @@ elif st.session_state.admin_view == "ops_manage":
             except Exception:
                 return "기록없음"
 
+        latest_stats = get_draw_extraction_stats(limit=1)
+        if not latest_stats:
+            return []
+        latest_round = latest_stats[0]["draw_round"]
+
         rows = []
-        for s in get_draw_extraction_stats(limit=5):
-            gen = get_draw_generation_stats(s["draw_round"])
+        for draw_round in range(latest_round, latest_round - 5, -1):
+            gen = get_draw_generation_stats(draw_round)
+            total_count = get_combination_count_by_draw(draw_round)
             rows.append(
                 {
-                    "배포 회차": f"{s['draw_round']}회차",
-                    "생성시간": _fmt_kst(get_pattern_recorded_at(s["draw_round"])),
+                    "배포 회차": f"{draw_round}회차",
+                    "생성시간": _fmt_kst(get_pattern_recorded_at(draw_round)),
                     "총 조합 개수": f"{gen['stage4_count']:,} 개" if gen else "기록없음",
-                    "조합 개수": f"{s['total_count']:,} 개",
+                    "조합 개수": f"{total_count:,} 개" if total_count else "기록없음",
                 }
             )
         return rows
