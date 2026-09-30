@@ -46,7 +46,24 @@ from auth_providers import (
     handle_oauth_callback,
     restore_member_from_guest,
 )
-from db_turso import db_trace_begin_run, db_trace_end_run
+# 2026-09-30(실사고 대응): 이 두 줄을 화면 스크립트 최상단에서 그냥 import하게
+# 뒀더니, 배포 직후(실행 중이던 옛 프로세스가 새 user_page.py를 디스크에서 다시
+# 읽는 상태 — 이 저장소가 이미 겪은 sys.modules 지연 반영, _reload_if_stale
+# 독스트링 참고)에 db_turso는 옛 배포본이 캐시된 채라 새 심볼이 없고, 여기서
+# ImportError가 나서 app.py의 공용 예외 화면("일시적으로 서비스 점검 중입니다")만
+# 떴다. 계측이 사용자 화면을 죽이면 안 되므로, 없으면 조용히 꺼지는 형태로 둔다
+# (계측이 꺼지면 db_trace_end_run이 한 줄도 안 찍고 앱은 정상 동작한다).
+try:
+    from db_turso import db_trace_begin_run, db_trace_end_run
+except ImportError:  # 배포 직후 옛 db_turso가 캐시된 상태(새 심볼 없음)
+
+    def db_trace_begin_run(*_args, **_kwargs):
+        return None
+
+    def db_trace_end_run(*_args, **_kwargs):
+        return None
+
+
 from user_scope import init_guest_scope, internal_nav_href, local_storage_gid_recovery_html
 
 # 2026-09-09: 모바일에서 Streamlit 웹소켓이 끊겼다 재연결되면(알려진 Streamlit

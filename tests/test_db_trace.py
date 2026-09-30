@@ -243,6 +243,52 @@ def test_t5_real_entry_prints_the_summary_line() -> None:
                 os.environ[name] = saved
 
 
+# ── T7: 계측이 사용자 화면을 죽이지 않는다(배포 직후 "점검 중" 사고) ───────────
+class _StaleModule:
+    """배포 직후 실제로 벌어지는 상태를 흉내낸다: 프로세스는 살아 있는데
+    db_turso는 **이전 배포본이 sys.modules에 캐시된 채**라 새로 추가한 심볼이 없다.
+    화면 스크립트(user_page.py)는 디스크에서 새로 읽히므로 이 상황에서
+    `from db_turso import db_trace_begin_run`은 ImportError가 된다."""
+
+
+def test_t7_entry_survives_a_stale_db_turso_without_the_trace_symbols() -> None:
+    """T7(조립) — 계측 심볼이 없는 옛 db_turso가 캐시돼 있어도 진입점은 살아서 그려진다.
+
+    2026-09-30 실사고: 이 심볼을 화면 스크립트 최상단에서 `from db_turso import`로
+    가져오게 만든 뒤, 배포 직후 실행 중이던 옛 프로세스가 새 user_page.py를 읽어
+    ImportError를 냈고 app.py의 공용 예외 화면("일시적으로 서비스 점검 중입니다")만
+    떴다 — 사용자 화면이 계측 때문에 죽었다. 계측은 어떤 경우에도 화면을 죽이면 안 된다."""
+    import db_turso
+
+    saved = (db_turso.db_trace_begin_run, db_turso.db_trace_end_run)
+    before_key = os.environ.get("KAKAO_REST_API_KEY")
+    before_mock = os.environ.get("LOTTO_DEV_MOCK_AUTH")
+    os.environ["KAKAO_REST_API_KEY"] = "test-rest-key"
+    os.environ["LOTTO_DEV_MOCK_AUTH"] = "0"
+    try:
+        del db_turso.db_trace_begin_run
+        del db_turso.db_trace_end_run
+        with _db_isolation.isolated_db():
+            at = AppTest.from_file(ENTRY, default_timeout=TIMEOUT_SEC)
+            at.query_params["page"] = "main"
+            at.query_params["gid"] = "gidstale1"
+            at.run()
+            body = "\n".join((m.value or "") for m in at.markdown)
+            assert "\uc810\uac80 \uc911" not in body, (
+                "옛 db_turso가 캐시된 상태에서 진입점이 예외 화면('점검 중')으로 바뀌었다 "
+                f"/ 계측 때문에 사용자 화면이 죽었다: {at.exception}"
+            )
+            assert len(at.exception) == 0, f"진입점이 예외로 죽었다: {at.exception}"
+            assert [b.key for b in at.button], "화면이 그려지지 않았다"
+    finally:
+        db_turso.db_trace_begin_run, db_turso.db_trace_end_run = saved
+        for name, value in (("KAKAO_REST_API_KEY", before_key), ("LOTTO_DEV_MOCK_AUTH", before_mock)):
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def _main() -> int:
     tests = [
         test_t1_one_line_reports_calls_time_and_share,
@@ -251,6 +297,7 @@ def _main() -> int:
         test_t4_real_query_path_is_counted_and_still_works,
         test_t5_real_entry_prints_the_summary_line,
         test_t6_note_is_free_when_not_started,
+        test_t7_entry_survives_a_stale_db_turso_without_the_trace_symbols,
     ]
     failed = 0
     for t in tests:
