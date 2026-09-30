@@ -468,6 +468,16 @@ def _fire_kakao_native_login_trigger() -> None:
         </script>""",
         height=0,
     )
+    # 2026-09-27(테스터 전원 로그인 불가 진단): 이 한 줄이 "앱에 로그인 신호를 보냈다"는
+    # 서버 쪽 증거다. 이 기록 뒤에 auth_providers의 kakao_native_login_ok/fail이 없으면
+    # 앱이 응답하지 않은 것(빌드에 수신부 없음·앱키/키해시 불일치·사용자 취소)이고,
+    # fail이 있으면 토큰 검증에서 끊긴 것이다 — 대시보드에서 두 이벤트 순서만 보면 갈린다.
+    try:
+        import security_log
+
+        security_log.log_event("kakao_native_trigger", "banner=native")
+    except Exception:
+        pass
 
 
 def _log_login_branch_once(is_native_app: bool) -> None:

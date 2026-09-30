@@ -283,9 +283,12 @@ class _ConnectionWrapper:
         # 부분 적용 위험이 있어 재시도하지 않는다(기존 동작 유지).
         is_read = sql.lstrip()[:6].upper() == "SELECT"
         attempts = 4 if is_read else 1
+        started = time.perf_counter()
         for i in range(attempts):
             try:
                 rs = self._guarded(self._client.execute, sql, list(params) if params else [])
+                if _TRACE.on:
+                    db_trace_note(sql, (time.perf_counter() - started) * 1000.0)
                 return _CursorWrapper(rs)
             except libsql_client.LibsqlError as e:
                 msg = str(e)
@@ -302,8 +305,11 @@ class _ConnectionWrapper:
         stmts = [(sql, list(p)) for p in params_list]
         if not stmts:
             return
+        started = time.perf_counter()
         try:
             self._guarded(self._client.batch, stmts)
+            if _TRACE.on:
+                db_trace_note(sql, (time.perf_counter() - started) * 1000.0)
         except libsql_client.LibsqlError as e:
             msg = str(e)
             if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
@@ -330,8 +336,12 @@ class _ConnectionWrapper:
         stmts = [(sql, list(params) if params else []) for sql, params in statements]
         if not stmts:
             return []
+        started = time.perf_counter()
         try:
             result_sets = self._guarded(self._client.batch, stmts)
+            if _TRACE.on:
+                # 배치는 한 번의 왕복이라 1건으로 센다(서버에서 원자적으로 실행된다).
+                db_trace_note(stmts[0][0], (time.perf_counter() - started) * 1000.0)
         except libsql_client.LibsqlError as e:
             msg = str(e)
             if "UNIQUE" in msg or "CONSTRAINT" in msg.upper():
@@ -341,7 +351,10 @@ class _ConnectionWrapper:
 
     def executescript(self, script):
         stmts = [s.strip() for s in re.split(r";\s*\n|;\s*$", script, flags=re.M) if s.strip()]
+        started = time.perf_counter()
         self._guarded(self._client.batch, stmts)
+        if _TRACE.on:
+            db_trace_note(script, (time.perf_counter() - started) * 1000.0)
 
     def commit(self):
         pass
@@ -393,3 +406,152 @@ def connect() -> _ConnectionWrapper:
     pool = _client_pool()
     slot, client = pool.acquire()
     return _ConnectionWrapper(client, pool, slot)
+
+
+# ─────────────────────────────────────────────────────────────
+# 2026-09-27(임시 계측): 렌더 1회당 원격 왕복 실측
+#
+# 왜: "화면 이동이 너무 느리다"의 원인이 (a) 화면 이동이 전체 새로고침이라는 구조인지
+# (b) 그 새로고침마다 DB를 수십 번 순차 왕복하는 것인지를 코드만 보고 정할 수 없다.
+# 어느 화면이 몇 번·몇 ms를 쓰는지 먼저 재고, 가장 무거운 화면부터 손대려는 것이다.
+#
+# 어떻게: 앱의 모든 DB 호출이 지나가는 이 한 모듈(execute/executemany/batch_execute/
+# executescript)에서 횟수와 소요만 세고, 화면 스크립트가 끝나는 지점
+# (user_page.py 마지막 줄의 db_trace_end_run)에서 한 줄로 찍는다 — 호출부 수십
+# 곳에 타이머를 심지 않는다(§1 기준점 원칙).
+#
+# 스레드 로컬인 이유: Streamlit은 세션마다 스크립트 스레드를 하나 두고 그 안에서
+# rerun을 반복한다(스레드 하나 = 세션 하나). 전역 변수 하나로 세면 동시 접속 중인
+# 다른 사용자의 호출이 이 세션의 숫자에 섞여 실측값이 무의미해진다.
+#
+# 켜고 끄기: 기본(미설정)은 세션당 첫 2회 렌더만 기록한다 — 화면 하나를 여는
+# 시간은 새 세션의 첫 렌더라 그 두 줄이면 충분하고, 로그가 쌓이지 않는다.
+#   LOTTO_DB_TRACE=all → 모든 렌더 / =0·off·false·no → 끔
+# 계측이 페이지를 죽이면 안 되므로 모든 경로를 try/except로 감싼다(실패하면 계측만
+# 조용히 꺼지고 쿼리는 정상 동작한다).
+# ─────────────────────────────────────────────────────────────
+_TRACE_HEAD_RUNS = 2
+
+
+class _TraceState(threading.local):
+    """스레드(세션)마다 따로 갖는 계측 상태 — threading.local 하위 클래스라
+    새 스레드에서 처음 접근할 때 이 __init__이 다시 돌아 초기화된다."""
+
+    def __init__(self):
+        self.on = False
+        self.runs = 0
+        self.t0 = 0.0
+        self.calls = 0
+        self.db_ms = 0.0
+        self.sql = {}
+        self.page = ""
+
+
+_TRACE = _TraceState()
+_TRACE_MODE_CACHE: str | None = None
+
+
+def _resolve_trace_mode() -> str:
+    """환경변수 → st.secrets 순으로 읽는다(wallet_db._toss_secret·auth_providers._env_or_secret과
+    같은 패턴). 모르는 값은 기본값(head)으로 떨어뜨린다 — 오타로 계측이 켜졌다고
+    앱이 죽으면 안 된다."""
+    raw = os.getenv("LOTTO_DB_TRACE", "")
+    if not raw:
+        try:
+            raw = str(st.secrets.get("LOTTO_DB_TRACE", "") or "")
+        except Exception:
+            raw = ""
+    value = str(raw or "").strip().lower()
+    if value in ("0", "off", "false", "no"):
+        return "off"
+    if value == "all":
+        return "all"
+    return "head"
+
+
+def _trace_mode() -> str:
+    """프로세스당 1회만 판단해 캐시한다(env·secrets는 실행 중에 바뀌지 않고,
+    매 쿼리마다 파일을 읽으면 공짜여야 할 계측이 비싸진다). 테스트는
+    _TRACE_MODE_CACHE를 직접 바꾼다."""
+    global _TRACE_MODE_CACHE
+    if _TRACE_MODE_CACHE is None:
+        try:
+            _TRACE_MODE_CACHE = _resolve_trace_mode()
+        except Exception:
+            _TRACE_MODE_CACHE = "head"
+    return _TRACE_MODE_CACHE
+
+
+def _sql_head(sql) -> str:
+    """"SELECT wallets"처럼 종류+표 이름만 남긴 짧은 라벨 — 로그 한 줄에 묶어 보려는 것이라
+    전문을 남기지 않는다(파라미터 값·개인정보도 자연히 안 남는다)."""
+    text = " ".join(str(sql).split())
+    if not text:
+        return "?"
+    kind = text.split(" ", 1)[0].upper()
+    match = re.search(r"\b(?:FROM|INTO|UPDATE|TABLE|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.I)
+    return f"{kind} {match.group(1).lower()}" if match else kind
+
+
+def db_trace_begin_run(page: str = "") -> None:
+    """화면 스크립트 맨 앞에서 1회 호출(user_page.py 한 곳에만 있다) — 이번 렌더
+    계측을 시작한다. 앞선 렌더가 st.rerun()으로 끊겨 요약을 못 찍었어도 여기서
+    카운터를 새로 시작하므로 다음 숫자는 오염되지 않는다."""
+    try:
+        mode = _trace_mode()
+        if mode == "off":
+            _TRACE.on = False
+            return
+        _TRACE.runs += 1
+        _TRACE.on = mode == "all" or _TRACE.runs <= _TRACE_HEAD_RUNS
+        _TRACE.t0 = time.perf_counter()
+        _TRACE.calls = 0
+        _TRACE.db_ms = 0.0
+        _TRACE.sql = {}
+        _TRACE.page = str(page or "")
+    except Exception:
+        try:
+            _TRACE.on = False
+        except Exception:
+            pass
+
+
+def db_trace_note(sql, ms: float) -> None:
+    """DB 호출 1건을 센다 — 계측이 꺼져 있으면 스레드 로컬 bool 하나만 보고 즉시
+    돌아온다(운영 기본 경로 비용이 사실상 0이다)."""
+    if not _TRACE.on:
+        return
+    try:
+        head = _sql_head(sql)
+        elapsed = float(ms)
+        _TRACE.calls += 1
+        _TRACE.db_ms += elapsed
+        entry = _TRACE.sql.get(head)
+        if entry is None:
+            _TRACE.sql[head] = [1, elapsed]
+        else:
+            entry[0] += 1
+            entry[1] += elapsed
+    except Exception:
+        pass
+
+
+def db_trace_end_run() -> None:
+    """화면 스크립트 마지막 줄에서 1회 호출 — 이번 렌더가 원격 DB에 몇 번·몇 ms를
+    썼고 그게 화면 전체 시간의 몇 %인지 한 줄로 찍는다. 로그는 전부 ASCII로만
+    쓴다(호출부의 _safe_log가 인코딩 실패에 로그를 통째로 잃지 않게)."""
+    try:
+        if not _TRACE.on:
+            return
+        _TRACE.on = False
+        script_ms = (time.perf_counter() - _TRACE.t0) * 1000.0 if _TRACE.t0 else 0.0
+        top = sorted(_TRACE.sql.items(), key=lambda kv: (-kv[1][0], -kv[1][1]))[:5]
+        top_txt = ",".join(f"{head}x{cnt}({ms:.0f}ms)" for head, (cnt, ms) in top) or "-"
+        share = (_TRACE.db_ms / script_ms * 100.0) if script_ms > 0 else 0.0
+        _safe_log(
+            f"[dbtrace] page={_TRACE.page or '?'} calls={_TRACE.calls} "
+            f"db_ms={_TRACE.db_ms:.0f} script_ms={script_ms:.0f} "
+            f"db_share={share:.0f}% top={top_txt}"
+        )
+    except Exception:
+        pass

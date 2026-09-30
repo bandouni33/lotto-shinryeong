@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
@@ -636,16 +637,55 @@ def _exchange_kakao_code(code: str) -> tuple[str | None, str | None]:
     return _fetch_kakao_uid_with_token(token)
 
 
+def _record_native_login(result: str, detail: str = "") -> None:
+    """앱(네이티브) 토큰 로그인 경로의 도착·결과를 남긴다 — 이 경로만은 실패해도
+    서버에 아무 흔적이 안 남아서, 2026-09-27 테스터 전원 로그인 불가 신고 때
+    "앱이 신호를 못 받은 것"과 "서버가 토큰을 거절한 것"을 사후에 구분할 수 없었다.
+    이제 세 단계(배너에서 앱에 신호 전송 → 토큰 도착·검증 성공/실패)가 전부 이름을
+    가진 이벤트로 남아, 운영자 대시보드에서 어디서 끊겼는지 바로 보인다.
+
+    계측 이벤트라 security_log._NON_ALERTING_EVENT_TYPES에 등록돼 있다(정상적인
+    로그인 실패로 '침입 시도 의심' 배지가 켜지면 안 된다). 이 이름들은 security_log의
+    EVENT_LABELS에도 있어야 한다(tests/test_kakao_native_login_diag.py가 검사한다).
+    실패해도 로그인 자체를 막지 않는다.
+
+    detail에는 토큰 원문이 들어가지 않는다(호출부가 카카오 응답·예외만 넘긴다)."""
+    try:
+        import security_log
+
+        security_log.log_event(
+            "kakao_native_login_ok" if result == "ok" else "kakao_native_login_fail",
+            str(detail or "")[:200],
+        )
+    except Exception:
+        pass
+
+
 def finalize_login_with_native_token(access_token: str) -> tuple[int, bool, bool] | None:
     """네이티브 앱(@react-native-seoul/kakao-login)이 카카오톡 앱/Custom Tab을
     통해 이미 발급받은 access_token으로 로그인을 완료한다. REST API 코드교환
     (kauth.kakao.com 리다이렉트) 자체를 안 거치므로 웹뷰 관련 문제가 애초에
     발생할 수 없다 — 앱이 보낸 토큰은 신뢰하지 않고 카카오 서버에 직접
-    검증한다(_fetch_kakao_uid_with_token)."""
+    검증한다(_fetch_kakao_uid_with_token).
+
+    2026-09-27(테스터 전원 로그인 불가): 실패를 조용히 삼키면 화면엔 아무 일도
+    안 일어난 것처럼 보이고 서버 로그에도 이유가 없다 — 실패 이유를
+    [kakao_native_login_fail]로 남기고(Cloud 로그 + 운영자 대시보드 계측),
+    로그인 처리 중 예외까지 삼켜 None으로 돌려준다(예전엔 예외가 그대로 올라가
+    페이지 전체가 죽었다). 성공 흐름은 이전과 동일하다."""
     uid, error = _fetch_kakao_uid_with_token(access_token)
     if not uid:
+        logging.warning("[kakao_native_login_fail] %s", error)
+        _record_native_login("fail", error or "이유 없음")
         return None
-    return finalize_login("kakao", uid)
+    try:
+        result = finalize_login("kakao", uid)
+    except Exception as exc:
+        logging.exception("[kakao_native_login_fail] 로그인 처리 중 예외")
+        _record_native_login("fail", f"예외 {type(exc).__name__}: {exc}")
+        return None
+    _record_native_login("ok")
+    return result
 
 
 def _exchange_pass_code(code: str) -> str | None:

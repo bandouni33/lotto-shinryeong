@@ -24,6 +24,9 @@ EVENT_LABELS = {
     "mock_charge_rate_limited": "Mock 결제(테스트 충전) 횟수 제한 도달",
     "toss_amount_mismatch": "토스 결제 콜백 금액 위·변조 의심(승인 거부)",
     "kakao_login_branch": "카카오 로그인 배너 분기(계측)",
+    "kakao_native_trigger": "카카오 앱 로그인 신호 전송(계측)",
+    "kakao_native_login_ok": "카카오 앱 로그인 완료(계측)",
+    "kakao_native_login_fail": "카카오 앱 로그인 실패(계측)",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용
@@ -34,7 +37,18 @@ EVENT_LABELS = {
 # 2026-09-21: kakao_login_branch도 같은 이유(순수 계측)로 뺀다 — 로그인 배너가
 # 네이티브 분기/웹 분기 중 어디로 그려졌는지 세션당 1회 기록하는 진단용 이벤트라,
 # 정상 트래픽만으로 "🚨 침입 시도 의심" 배지가 켜지면 안 된다.
-_NON_ALERTING_EVENT_TYPES = frozenset({"cookie_reachable", "kakao_login_branch"})
+# 2026-09-27: 카카오 앱(네이티브) 로그인 경로의 세 단계 계측(신호 전송·성공·실패)도
+# 순수 계측이다 — 테스터가 로그인을 실패하는 것은 '침입 시도'가 아니므로, 실패
+# 이벤트가 배지에 섞이면 정상적인 테스트 기간 내내 빨간불이 된다.
+_NON_ALERTING_EVENT_TYPES = frozenset(
+    {
+        "cookie_reachable",
+        "kakao_login_branch",
+        "kakao_native_trigger",
+        "kakao_native_login_ok",
+        "kakao_native_login_fail",
+    }
+)
 
 
 def _connect():

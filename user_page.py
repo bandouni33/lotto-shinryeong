@@ -46,6 +46,7 @@ from auth_providers import (
     handle_oauth_callback,
     restore_member_from_guest,
 )
+from db_turso import db_trace_begin_run, db_trace_end_run
 from user_scope import init_guest_scope, internal_nav_href, local_storage_gid_recovery_html
 
 # 2026-09-09: 모바일에서 Streamlit 웹소켓이 끊겼다 재연결되면(알려진 Streamlit
@@ -55,6 +56,17 @@ from user_scope import init_guest_scope, internal_nav_href, local_storage_gid_re
 # 쿠키는 이 환경에서 서버가 못 읽는 걸 이미 확인했으므로, 다른 로직이 돌기 전에
 # 가장 먼저 localStorage에서 gid를 복구해 URL에 붙이고 새로고침한다.
 components.html(local_storage_gid_recovery_html(), height=0)
+
+# 2026-09-27(임시 계측, "화면 이동 간 딜레이" 실측): "내부 이동이 전체 새로고침이라
+# 느리다"와 "그 새로고침마다 DB를 수십 번 순차 왕복한다"는 둘 다 추정이다 — 어느
+# 쪽이 얼마나 먹는지는 재봐야 안다. 모든 화면이 이 한 파일을 지나므로 타이머 시작은
+# 여기 한 곳에만 둔다(§1 기준점 원칙 — 화면별로 심지 말 것). 세는 일은 db_turso가
+# 하고, 화면 스크립트 마지막 줄(db_trace_end_run)에서 한 줄로 찍힌다.
+# 로그 예: [dbtrace] page=main calls=23 db_ms=3820 script_ms=4210 db_share=91% top=SELECT walletsx9(1200ms),...
+# 되돌리는 지점: 이 두 줄 + db_turso의 계측 블록(파일 끝).
+# 기본은 세션당 첫 2회 렌더만 찍는다(화면 하나 여는 시간 = 새 세션의 첫 렌더라 그걸로
+# 충분하고 로그가 쌓이지 않는다). LOTTO_DB_TRACE=all이면 전부, =0이면 끔.
+db_trace_begin_run(st.query_params.get("page", "main"))
 
 init_wallet_tables()
 init_zero_phone_tables()
@@ -73,11 +85,24 @@ init_guest_scope()
 # 2026-09-06: 카카오 네이티브 SDK(streamlit-webview.tsx의 handleKakaoNativeLogin)가
 # 로그인을 이미 끝내고 발급받은 access_token을 여기로 실어 보낸다 — code/state
 # 리다이렉트를 아예 안 거치므로 handle_oauth_callback과는 완전히 별개 경로다.
+#
+# 2026-09-27(테스터 전원 로그인 불가 신고): 이 경로는 실패해도 아무 흔적이 없었다 —
+# 토큰이 왔는데 서버가 거절하면 화면은 조용했고, 토큰이 아예 안 오면(앱 쪽 취소·SDK
+# 오류·앱키 불일치) 서버는 그 사실조차 몰랐다. 실패 이유는 이제 auth_providers가
+# [kakao_native_login_fail]로 남기고(Cloud 로그 + 운영자 대시보드 계측: 어디서
+# 끊겼는지가 남는다), 사용자에게는 앱 전체 공통 규격인 토스트로 알린다.
 _native_kakao_token = st.query_params.get("native_kakao_token")
 if _native_kakao_token:
     del st.query_params["native_kakao_token"]
     if finalize_login_with_native_token(_native_kakao_token):
         st.rerun()
+    else:
+        # 문구·try/except는 handle_oauth_callback(카카오 리다이렉트 경로)이 쓰는 것과
+        # 같다 — 로그인 실패 안내가 경로마다 달라지지 않게 여기서 새 문구를 만들지 말 것.
+        try:
+            st.toast("로그인이 완료되지 않았어요. 다시 시도해 주세요.", icon="⚠️")
+        except Exception:
+            pass
 
 # 2026-09-17(간편인증 A안 부작용 정리): wallet_ui.py의 카카오 로그인 트리거가
 # postMessage 브릿지를 못 쓰는 기기에서 URL 폴백으로 이 파라미터를 실어보내는데
@@ -2065,5 +2090,11 @@ if current_page == "main":
             "※ 현재 **운영자만** 메인 하단에서 확인하는 준비 화면입니다. "
             "회원 공개·간편인증·적립금 연동은 다음 단계에서 적용합니다."
         )
+
+
+# 2026-09-27(임시 계측): 화면 스크립트의 마지막 줄이라 모든 화면에 공통으로 걸린다 —
+# 이번 렌더가 DB 왕복에 몇 번·몇 ms를 썼는지 한 줄로 로그에 남긴다. 위
+# db_trace_begin_run()과 짝이다(계측이 꺼져 있으면 아무 것도 찍지 않는다).
+db_trace_end_run()
 
 
