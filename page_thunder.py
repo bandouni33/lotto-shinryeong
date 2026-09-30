@@ -1492,11 +1492,16 @@ def render():
             // resultArea가 점점 커지는 지금 방식은, 유저가 "밑에 더 있나" 궁금해서
             // 스크롤·터치하게 만드는 유인이었다. 생성 시작 시점에 목표 게임 수만큼
             // 빈 자리(placeholder)를 먼저 채워 최종 레이아웃 높이를 즉시 확보하고,
-            // 게임이 하나 나올 때마다 빈 자리 하나를 실제 결과로 "교체"한다 —
+            // 게임이 하나 나올 때마다 맨 위 빈 자리를 실제 결과로 "교체"한다 —
             // 전체 자식 개수가 항상 count로 고정돼 있어 화면 크기가 도중에
-            // 변하지 않는다(v1/v2/v3 리빌 애니메이션 함수는 그대로 두고, 그 함수가
-            // 새로 append하기 직전에 빈 자리를 하나 제거하는 방식이라 애니메이션
-            // 코드 자체는 안 건드림).
+            // 변하지 않는다. 교체는 아래 insertResultRow 한 곳에서만 한다.
+            //
+            // 2026-09-30(사용자 신고 — "생성이 다 끝날 때까지 화면이 빈 칸"):
+            // 예전엔 위쪽 빈 자리를 remove하고 새 결과를 맨 아래에 append해서, 빈 자리는
+            // 항상 목록 위쪽에 남고 실제 결과는 아래에서부터 쌓였다 — 위에서 몇 줄만
+            // 보이는 화면에서는 결과가 다 나올 때까지(예: 10개 중 5줄 보임 → 6번째부터)
+            // 빈 칸으로 보였다. 바로 위에 적힌 원래 의도("빈 자리를 실제 결과로 교체")를
+            // 구현이 따라가지 못한 것이므로 자리에서 교체하도록 바로잡는다.
             function createPlaceholderRow() {{
                 const row = document.createElement('div');
                 row.className = 'result-row result-row-placeholder';
@@ -1507,9 +1512,17 @@ def render():
                 }}
                 return row;
             }}
-            function fillOnePlaceholder(resultArea) {{
+            // 새 결과 줄을 "맨 위 빈 자리"에 그대로 꺼워 넣는다(자리에서 교체).
+            // 빈 자리가 없으면(과거 진행기록 복원처럼 결과가 먼저 그려지는 경우) 예전처럼
+            // 맨 끝에 붙인다. replaceChild로 같은 노드를 그 자리에 넣을 뿐이라
+            // v1/v2/v3 릴 애니메이션 코드는 전혀 건드리지 않는다(이후 애니메이션 동일).
+            function insertResultRow(resultArea, row) {{
                 const ph = resultArea.querySelector('.result-row-placeholder');
-                if (ph) ph.remove();
+                if (ph) {{
+                    resultArea.replaceChild(row, ph);
+                }} else {{
+                    resultArea.appendChild(row);
+                }}
             }}
 
             function generateCombination() {{
@@ -1554,7 +1567,6 @@ def render():
                         const poolMatch = tryPoolMatch();
                         const game = poolMatch || buildOneGame(available).game;
                         currentResults.push(game);
-                        fillOnePlaceholder(resultArea);
                         renderGame(game);
                         persistGenProgress(currentResults, count);
                         updateGenProgressBanner(currentResults.length, count);
@@ -1615,7 +1627,7 @@ def render():
                     return b;
                 }});
 
-                document.getElementById('resultArea').appendChild(row);
+                insertResultRow(document.getElementById('resultArea'), row);
                 scrollToResultsIfFirst();
 
                 aura.animate([
@@ -1671,7 +1683,7 @@ def render():
                     return b;
                 }});
 
-                document.getElementById('resultArea').appendChild(row);
+                insertResultRow(document.getElementById('resultArea'), row);
                 scrollToResultsIfFirst();
 
                 rift.animate([
@@ -1750,7 +1762,7 @@ def render():
                     ball.innerText = n;
                     row.appendChild(ball);
                 }});
-                document.getElementById('resultArea').appendChild(row);
+                insertResultRow(document.getElementById('resultArea'), row);
                 scrollToResultsIfFirst();
             }}
 
@@ -1794,7 +1806,6 @@ def render():
                         const poolMatch = tryPoolMatch();
                         const game = poolMatch || buildOneGame(available).game;
                         currentResults.push(game);
-                        fillOnePlaceholder(resultArea);
                         renderGame(game);
                         persistGenProgress(currentResults, p.expected);
                         updateGenProgressBanner(currentResults.length, p.expected);
