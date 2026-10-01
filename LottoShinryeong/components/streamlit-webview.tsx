@@ -59,6 +59,23 @@ const IAP_SUBSCRIPTION_SKU = 'premium';
 /** 상품 가격 조회를 이만큼만 기다리고 첫 화면을 띄운다(스토어가 느려도 앱은 뜨게). */
 const PRICE_WAIT_MS = 2500;
 
+// 2026-10-01(진단): kakaoNativeLogin()이 응답 없이 멈추면(카카오톡 전환 후
+// 복귀 실패 등) 아래 락이 영원히 안 풀려서, 그 뒤로 몇 번을 다시 눌러도
+// 조용히 무시됐다(오늘 실사용 로그로 확인 — 실패 두 건 모두 완료/실패
+// 이벤트가 하나도 없이 신호전송만 반복됨). 일정 시간 안에 응답이 없으면
+// 타임아웃으로 간주해 락을 풀어준다 — 그래야 사용자가 재시도할 수 있다.
+const KAKAO_NATIVE_LOGIN_TIMEOUT_MS = 20000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('kakao_native_login_timeout')), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 /** URL의 기존 쿼리를 그대로 두고 넘긴 키만 바꾼 주소를 만든다(2026-09-26).
  * 로그인·결제 후 "지금 보고 있던 그 주소"로 되돌아가기 위한 것이라
  * page/gid/native/가격 파라미터가 전부 보존된다(재빌드하면 처음 페이지로 튕긴다). */
@@ -537,7 +554,9 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     // Alert 진단으로 이미 확인 완료 — 매번 뜨는 팝업이 오히려 뒤 화면(서버
     // 진단 결과)을 가려서 제거한다. 이제 서버 쪽 결과만 화면에서 직접 확인한다.
     try {
-      const token = await kakaoNativeLogin();
+      // 2026-10-01(진단): 응답이 없으면 20초에서 끊는다 — 위
+      // KAKAO_NATIVE_LOGIN_TIMEOUT_MS 설명 참고(락이 영원히 안 풀리던 문제).
+      const token = await withTimeout(kakaoNativeLogin(), KAKAO_NATIVE_LOGIN_TIMEOUT_MS);
       // 2026-09-17: 로그인 성공 시 딱 한 번만 새 주소로 이동시킨다 — 위
       // webViewUri 설명 참고.
       // 2026-09-26: 재빌드(buildUri) 대신 "지금 보고 있던 주소 + 토큰"으로 바꿨다 —
@@ -545,8 +564,9 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       // 파라미터·열린 화면 표시)를 잃고 처음 페이지로 튕긴다.
       setWebViewUri(reloadWith({ native_kakao_token: token.accessToken, _cb: String(Date.now()) }));
     } catch {
-      // 사용자가 취소했거나 카카오 로그인 자체가 실패 — 로그인 배너에서
-      // 다시 시도할 수 있으니 조용히 무시한다.
+      // 사용자가 취소했거나 카카오 로그인 자체가 실패했거나(타임아웃 포함) —
+      // 로그인 배너에서 다시 시도할 수 있으니 조용히 무시한다. 타임아웃이어도
+      // triggerKakaoNativeLoginOnce의 .finally()가 락을 반드시 풀어준다.
     }
   }, [reloadWith]);
 
