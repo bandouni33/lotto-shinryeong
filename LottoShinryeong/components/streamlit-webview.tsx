@@ -66,9 +66,9 @@ const PRICE_WAIT_MS = 2500;
 // 타임아웃으로 간주해 락을 풀어준다 — 그래야 사용자가 재시도할 수 있다.
 const KAKAO_NATIVE_LOGIN_TIMEOUT_MS = 20000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string = 'kakao_native_login_timeout'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('kakao_native_login_timeout')), ms);
+    const timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
     promise.then(
       (value) => { clearTimeout(timer); resolve(value); },
       (err) => { clearTimeout(timer); reject(err); },
@@ -422,7 +422,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         const queryType = request.basePlanId ? ('subs' as const) : ('in-app' as const);
         const fetched = await withTimeout(
           fetchProducts({ skus: [request.sku], type: queryType }),
-          IAP_DISPATCH_TIMEOUT_MS
+          IAP_DISPATCH_TIMEOUT_MS,
+          'iap_dispatch_timeout'
         );
         const list = (Array.isArray(fetched) ? fetched : []) as Array<Product | ProductSubscription>;
         const product = list.find((item) => item.id === request.sku);
@@ -449,7 +450,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
               },
               type: 'subs',
             }),
-            IAP_DISPATCH_TIMEOUT_MS
+            IAP_DISPATCH_TIMEOUT_MS,
+            'iap_dispatch_timeout'
           );
         } else {
           await withTimeout(
@@ -457,7 +459,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
               request: { google: { skus: [request.sku] } },
               type: 'in-app',
             }),
-            IAP_DISPATCH_TIMEOUT_MS
+            IAP_DISPATCH_TIMEOUT_MS,
+            'iap_dispatch_timeout'
           );
         }
       } catch (e) {
