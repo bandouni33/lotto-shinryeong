@@ -342,6 +342,14 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const [iapRequest, setIapRequest] = useState<IapRequest | null>(null);
   const purchaseInFlightRef = useRef(false);
 
+  // 2026-10-01: 카카오 로그인 락(§6)과 같은 패턴 — fetchProducts/requestPurchase가
+  // 응답 없이 멈추면 purchaseInFlightRef가 영원히 true로 남아(아래 가드) 이후
+  // 결제 요청이 전부 조용히 무시된다. requestPurchase는 결제 완료가 아니라
+  // "요청 전달 확인"만 돌려주고 실제 결과는 purchaseUpdatedListener로 오므로
+  // (openiap 공식 문서 확인, 2026-10-01) 타임아웃을 걸어도 사용자가 결제창에서
+  // 입력 중인 걸 끊지 않는다.
+  const IAP_DISPATCH_TIMEOUT_MS = 20000;
+
   // 결제 후 서버로 토큰 전달 — 웹뷰를 새 주소로 다시 띄우면 user_page.py가
   // handle_google_play_purchase_return()으로 검증·지급·승인까지 처리한다.
   const deliverPurchaseToServer = useCallback(
@@ -412,7 +420,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       purchaseInFlightRef.current = true;
       try {
         const queryType = request.basePlanId ? ('subs' as const) : ('in-app' as const);
-        const fetched = await fetchProducts({ skus: [request.sku], type: queryType });
+        const fetched = await withTimeout(
+          fetchProducts({ skus: [request.sku], type: queryType }),
+          IAP_DISPATCH_TIMEOUT_MS
+        );
         const list = (Array.isArray(fetched) ? fetched : []) as Array<Product | ProductSubscription>;
         const product = list.find((item) => item.id === request.sku);
         if (!product) {
@@ -428,20 +439,26 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           if (!offer?.offerTokenAndroid) {
             throw new Error('선택하신 구독 요금제를 찾지 못했습니다.');
           }
-          await requestPurchase({
-            request: {
-              google: {
-                skus: [request.sku],
-                subscriptionOffers: [{ sku: request.sku, offerToken: offer.offerTokenAndroid }],
+          await withTimeout(
+            requestPurchase({
+              request: {
+                google: {
+                  skus: [request.sku],
+                  subscriptionOffers: [{ sku: request.sku, offerToken: offer.offerTokenAndroid }],
+                },
               },
-            },
-            type: 'subs',
-          });
+              type: 'subs',
+            }),
+            IAP_DISPATCH_TIMEOUT_MS
+          );
         } else {
-          await requestPurchase({
-            request: { google: { skus: [request.sku] } },
-            type: 'in-app',
-          });
+          await withTimeout(
+            requestPurchase({
+              request: { google: { skus: [request.sku] } },
+              type: 'in-app',
+            }),
+            IAP_DISPATCH_TIMEOUT_MS
+          );
         }
       } catch (e) {
         if (!cancelled) {
