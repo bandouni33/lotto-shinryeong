@@ -137,7 +137,7 @@ def get_or_create_user(user_id: str) -> tuple[dict, bool]:
 
 
 def login_test_user(user_id: str = TEST_USER_ID) -> tuple[dict, bool]:
-    """테스트 로그인 — 신규면 5,000점 자동 지급."""
+    """테스트 로그인 - 신규면 SIGNUP_BONUS(500점) 자동 지급."""
     return get_or_create_user(user_id)
 
 

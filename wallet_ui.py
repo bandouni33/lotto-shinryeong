@@ -1507,7 +1507,7 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
             st.session_state.zp_point_balance = user["point_balance"]
             st.session_state.zp_is_premium = user["is_premium"]
             if is_new:
-                st.session_state.wallet_toast = "가입 완료! 5,000P 지급"
+                st.session_state.wallet_toast = f"가입 완료! {SIGNUP_BONUS:,}P 지급"
             st.rerun()
         # 2026-09-05: 정식 출시 — "앱을 처음 열 때부터 로그인을 강제하진 않지만,
         # 구매·구매내역·적립금내역(=내정보)을 보려고 하면 그 시점에 간편인증을
