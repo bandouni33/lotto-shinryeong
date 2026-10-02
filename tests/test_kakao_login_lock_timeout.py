@@ -329,7 +329,7 @@ def test_K6_timers_are_always_cleared() -> None:
     assert elapsed < 3.0, (
         f"끝난 약속의 타임아웃 타이머가 안 정리돼 node가 붙잡혔다(5초 타이머 프로브 포함): {elapsed:.2f}s"
     )
-    print(f"  (K6 타이머 정리: 하네스 전체 실행 {elapsed:.2f}s — 5초 타이머가 남지 않았다)")
+    print(f"  (K6 타이머 정리: 하네스 전체 실행 {elapsed:.2f}s - 5초 타이머가 남지 않았다)")
 
 
 # ── K7: 정적 배선·경계 ──────────────────────────────────────────────────────

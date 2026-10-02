@@ -363,7 +363,7 @@ def test_I3_hung_request_purchase_releases_the_lock() -> None:
     assert after["alerts"][0]["message"] == "iap_dispatch_timeout", (
         f"결제 타임아웃 문구가 다르다(카카오 문구 노출): {after['alerts']!r}"
     )
-    print("  (I3 멈춘 결제요청: 20초 상당 뒤 락 해제·알림 1건 — 문구 'iap_dispatch_timeout')")
+    print("  (I3 멈춘 결제요청: 20초 상당 뒤 락 해제·알림 1건 - 문구 'iap_dispatch_timeout')")
 
 
 def test_I4_dispatch_failure_alerts_and_releases_the_lock() -> None:
