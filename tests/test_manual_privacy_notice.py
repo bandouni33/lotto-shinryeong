@@ -24,8 +24,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import legal_notices  # noqa: E402
+
 TIMEOUT_SEC = 60
-NOTICE = "번호 생성, 보관 등 앱 이용의 어떠한 개인정보도 수집하지 않습니다."
+# 2026-10-02(사용자 지시): 문구가 실제 수집 항목과 어긋나 기준점을 legal_notices로
+# 옮겼다 — 테스트도 사본을 들고 있지 않고 그 기준점을 그대로 읽는다(사본을 들면
+# 문구가 바뀌어도 테스트가 옛 문구를 계속 지켜준다).
+NOTICE = legal_notices.MANUAL_PRIVACY_NOTICE
 BADGE = "ln-manual-privacy"
 
 # 실제 진입점(app.py)이 아니라 다이얼로그 자체를 여는 경로 — 이 다이얼로그는
@@ -143,12 +148,37 @@ def test_P5_entry_point_manual_button_shows_the_notice():
     print("  (진입점 메인 → 사용설명서 버튼 → 문구 확인)")
 
 
+def test_P6_notice_agrees_with_the_privacy_policy() -> None:
+    """고지 문구가 처리방침 본문과 같은 사실을 말하는가 (2026-10-02 추가).
+
+    사본을 두지 않는 것(위 NOTICE가 기준점 import)만으로는 부족하다 — 두 문서가
+    서로 다른 항목을 말하면 그대로 심사 반려 사유다. 보관하지 않는 항목과 최소
+    보관 항목을 키워드로 대조한다(처리방침 본문이 바뀌면 여기서 걸린다)."""
+    import manual_ui
+
+    notice = legal_notices.MANUAL_PRIVACY_NOTICE
+    html = manual_ui.manual_privacy_notice_html()
+    assert notice in html, f"화면에 렌더되는 문구가 기준점과 다르다: {html!r}"
+    assert "어떠한 개인정보도 수집하지 않습니다" not in html, (
+        "실제 보관 항목(식별자 해시·적립금 내역·SMS 로그·동의 기록)과 어긋나는 문구가 남아 있다"
+    )
+
+    policy = legal_notices.NOTICES["privacy"]["body"]
+    for keyword in ("실명", "주소", "연락처", "카드", "해시", "적립금", "SMS", "동의"):
+        assert keyword in policy, (
+            f"처리방침 본문에 '{keyword}'가 없다 - 기준점이 바뀌었으면 고지 문구도 같이 고칠 것"
+        )
+        assert keyword in notice, f"고지에 '{keyword}'가 없다 - 처리방침과 어긋난다: {notice!r}"
+    print("  (고지 문구가 처리방침과 같은 항목을 말함 - 보관 안 함 4개 + 최소 보관 4개)")
+
+
 def _main() -> int:
     tests = [
         test_P1_notice_is_actually_rendered_with_its_class,
         test_P2_notice_comes_before_the_toc,
         test_P3_P4_plain_text_readable_on_a_white_dialog,
         test_P5_entry_point_manual_button_shows_the_notice,
+        test_P6_notice_agrees_with_the_privacy_policy,
     ]
     failed = 0
     for test in tests:

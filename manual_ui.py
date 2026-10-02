@@ -31,7 +31,7 @@ import html
 
 import streamlit as st
 
-from legal_notices import PRICING
+from legal_notices import MANUAL_PRIVACY_NOTICE, PRICING
 
 DRAFT_LABEL = "초안 v1 · 2026-09-21"
 
@@ -379,15 +379,17 @@ def manual_privacy_notice_html() -> str:
 
     "도형 없이 텍스트만" — 배경·테두리·아이콘을 두지 않는다. 색·굵기는
     manual_css()의 .ln-manual-privacy 한 곳(흰 배경에서 읽히는 진한 남색)에서만
-    관리하고, 문구도 이 함수 한 곳에서만 관리한다.
+    관리한다.
+
+    문구 자체는 이 파일에 두지 않는다 — 2026-10-02: 예전 문구("어떠한 개인정보도
+    수집하지 않습니다")가 실제 보관 항목(로그인 식별자 해시·적립금 내역·SMS 발송
+    기록·약관 동의 기록)과 어긋나서, 기준점을 legal_notices.MANUAL_PRIVACY_NOTICE
+    한 곳으로 옮기고 여기서는 그 값을 렌더만 한다(AGENTS.md §1 — 같은 문구를 두 곳에
+    두면 한쪽만 고쳐져 조용히 어긋난다).
 
     2026-09-26(사용자 지시): 좁은 폭에서 두 줄로 넘어가서 "서비스"→"앱"으로 줄였다.
     """
-    return (
-        '<div class="ln-manual-privacy">'
-        "번호 생성, 보관 등 앱 이용의 어떠한 개인정보도 수집하지 않습니다."
-        "</div>"
-    )
+    return f'<div class="ln-manual-privacy">{MANUAL_PRIVACY_NOTICE}</div>'
 
 
 def manual_hint_html() -> str:
