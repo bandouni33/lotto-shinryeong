@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
+import itertools
 import json
 import sys
 import time
@@ -61,7 +62,9 @@ SOURCE = (ROOT / "scripts" / "load_test_concurrency.py").read_text(encoding="utf
 def _args(**over):
     base = dict(url=lts.DEFAULT_URL, steps=[10, 20], hold=1, reload_interval=1,
                 timeout_ms=30_000, wait_render=True, min_free_mb=2500,
-                abort_failures=5, self_test=False, out=None)
+                abort_failures=5, self_test=False, out=None,
+                abort_window=lts.DEFAULT_ABORT_WINDOW,
+                abort_failure_share=lts.DEFAULT_ABORT_FAILURE_SHARE)
     base.update(over)
     return argparse.Namespace(**base)
 
@@ -547,6 +550,95 @@ def test_P12f_the_runner_can_report_non_ascii_failures():
         f"있으면 UnicodeEncodeError로 러너가 죽어 실패를 보고하지 못한다")
 
 
+# ── P13 대규모에서도 걸리는 실패율 중단 ──────────────────────
+# 2026-10-03 실제 실패: 130세션 구간에서 세션이 무더기로 죽었는데도 "연속 실패 5건"
+# 규칙은 안 걸렸다 — 다른 세션의 성공이 카운터를 계속 0으로 되돌렸기 때문이다.
+# 그래서 최근 N건의 실패 '비중'으로도 중단한다.
+
+
+def _feed(stats, args, stop_event, abort, pattern, active=100):
+    """pattern: True=성공, False=실패 — 섮인 트래픽을 흡내낸다."""
+    for i, ok in enumerate(pattern):
+        if ok:
+            stats.record(active, "reload", 100.0)
+        else:
+            lts._note_failure(stats, active, i, "새로고침", TimeoutError("x"),
+                              args, stop_event, abort)
+        if stop_event.is_set():
+            return
+
+
+def test_P13_alternating_failures_abort_by_share_even_though_streak_never_builds():
+    # 실패 60% / 성공 40%를 교대로 섮는다 — 최대 연속 실패가 2건이라 기존 규칙은
+    # 절대 안 걸린다. 그런데도 중단돼야 한다(이게 대규모에서 안 걸리던 그 결함이다).
+    pattern = [False, True, False, False, True] * 10
+    longest = max(len(list(g)) for k, g in itertools.groupby(pattern) if k is False)
+    args = _args(abort_window=10, abort_failure_share=0.5, abort_failures=5)
+    assert longest < args.abort_failures, "이 패턴은 연속 규칙으로는 안 걸러야 한다"
+
+    stats = lts.Stats()
+    stop, abort = asyncio.Event(), {"reason": None, "at": 0}
+    _feed(stats, args, stop, abort, pattern)
+    assert stop.is_set(), "실패가 60%인데 중단하지 않았다"
+    assert abort["at"] == 100, f"중단 시점의 동시 수가 틀렸다: {abort['at']}"
+    assert "60%" in abort["reason"], abort["reason"]
+
+
+def test_P13b_a_low_failure_share_does_not_abort():
+    pattern = [False, True, True, True, True] * 10          # 실패 20%
+    stats = lts.Stats()
+    args = _args(abort_window=10, abort_failure_share=0.5, abort_failures=5)
+    stop, abort = asyncio.Event(), {"reason": None, "at": 0}
+    _feed(stats, args, stop, abort, pattern)
+    assert not stop.is_set(), f"실패 20%인데 중단했다: {abort['reason']}"
+
+
+def test_P13c_an_unfilled_window_does_not_abort():
+    # 창이 안 찼으면 판단하지 않는다 — 몇 건 실패로 멈추면 안 된다.
+    stats = lts.Stats()
+    args = _args(abort_window=50, abort_failure_share=0.5, abort_failures=10 ** 6)
+    stop, abort = asyncio.Event(), {"reason": None, "at": 0}
+    _feed(stats, args, stop, abort, [False] * 10)
+    assert not stop.is_set(), "창이 안 찼는데 중단했다"
+
+
+def test_P13d_failure_share_is_bounded_and_takes_the_tail():
+    stats = lts.Stats()
+    for ok in (True, False, False, True, False):
+        if ok:
+            stats.record(0, "reload", 1.0)
+        else:
+            stats.fail(0, 0, "reload", "x")
+    size, fails, share = stats.failure_share(3)     # 마지막 3건 = [실패, 성공, 실패]
+    assert (size, fails) == (3, 2), (size, fails)
+    assert abs(share - 2 / 3) < 1e-9, share
+    for window in (0, 1, 2, 5, 10 ** 6):
+        size, fails, share = stats.failure_share(window)
+        assert 0 <= fails <= size <= len(stats.recent), (window, size, fails)
+        assert 0.0 <= share <= 1.0, (window, share)
+
+
+def test_P13e_verdict_history_is_bounded():
+    # 긴 실행에서 판정 기록이 무한히 자라면 안 된다(창을 위해 담아두는 것뿐이다).
+    stats = lts.Stats()
+    for _ in range(5000):
+        stats.record(0, "reload", 1.0)
+    assert len(stats.recent) <= lts._MAX_RECENT_VERDICTS, len(stats.recent)
+    assert len(stats.recent) >= lts.DEFAULT_ABORT_WINDOW
+
+
+def test_P13f_cli_and_report_carry_the_share_rule():
+    default = lts.parse_args([])
+    assert default.abort_window == lts.DEFAULT_ABORT_WINDOW > 0
+    assert 0 < default.abort_failure_share <= 1
+    parsed = lts.parse_args(["--abort-window", "5", "--abort-failure-share", "0.25"])
+    assert parsed.abort_window == 5 and parsed.abort_failure_share == 0.25
+    # 보고서에 어느 규칙이 무장됐었는지 남아야 나중에 그 결과를 해석할 수 있다.
+    rep = lts.build_report(_args(), lts.Stats(), {"reason": None, "at": 0}, datetime.now())
+    assert rep["abort_window"] == default.abort_window
+    assert rep["abort_failure_share"] == default.abort_failure_share
+
+
 def _main() -> int:
     import os
 
@@ -582,6 +674,12 @@ def _main() -> int:
         test_P12d_never_raises_for_any_exception_type_or_count,
         test_P12e_no_unguarded_new_context_left_in_the_source,
         test_P12f_the_runner_can_report_non_ascii_failures,
+        test_P13_alternating_failures_abort_by_share_even_though_streak_never_builds,
+        test_P13b_a_low_failure_share_does_not_abort,
+        test_P13c_an_unfilled_window_does_not_abort,
+        test_P13d_failure_share_is_bounded_and_takes_the_tail,
+        test_P13e_verdict_history_is_bounded,
+        test_P13f_cli_and_report_carry_the_share_rule,
     ]
     failed = 0
     for test in tests:

@@ -94,8 +94,15 @@ DEFAULT_HOLD = 90            # 각 단계 유지·관찰 시간(초)
 DEFAULT_RELOAD = 25          # 실사용자 화면이동을 흉내내는 새로고침 주기(초)
 DEFAULT_TIMEOUT_MS = 30_000
 DEFAULT_MIN_FREE_MB = 2500   # 이 PC 여유 RAM이 이 아래로 가면 중단
-DEFAULT_ABORT_FAILURES = 5   # 연속 실패 이만큼이면 중단
+DEFAULT_ABORT_FAILURES = 5   # 연속 실패 이만큼이면 중단(세션이 적을 땐 이게 빨리 걸린다)
 WATCH_INTERVAL = 5           # 자원 관찰 주기(초)
+
+# 2026-10-03 실제 실패: 130세션 구간에서 세션이 무더기로 죽었는데도 "연속 실패 5건"
+# 규칙은 안 걸렸다 — 다른 세션의 성공이 카운터를 계속 0으로 되돌렸기 때문이다.
+# 그래서 최근 N건의 실패 '비중'으로도 중단한다(성공이 섮여도 드러난다).
+DEFAULT_ABORT_WINDOW = 20           # 최근 몇 건을 보는가
+DEFAULT_ABORT_FAILURE_SHARE = 0.5   # 그 안에서 실패 비중이 이 이상이면 중단
+_MAX_RECENT_VERDICTS = 200          # 판정 기록을 담아두는 상한(메모리가 안 자라게)
 
 # 입장 제한 장치가 신규 세션을 막을 때 뜨는 화면의 CSS 클래스
 # (admission_control._render_overload_screen의 .admission-overload-wrap).
@@ -192,13 +199,29 @@ class Stats:
     failures: list[tuple[int, int, str, str]] = field(default_factory=list)  # (active, idx, kind, msg)
     gate_hits: int = 0
     success_streak: int = 0
+    # 최근 판정("ok"/"fail") — 대규모에서 '연속 실패'가 안 쌓이는 문제를 잡는 창.
+    recent: list[str] = field(default_factory=list)
 
     def record(self, active: int, kind: str, ms: float) -> None:
         self.records.append((active, kind, ms))
         self.success_streak = 0
+        self._add_verdict(True)
 
     def fail(self, active: int, idx: int, kind: str, msg: str) -> None:
         self.failures.append((active, idx, kind, msg))
+        self._add_verdict(False)
+
+    def _add_verdict(self, ok: bool) -> None:
+        self.recent.append("ok" if ok else "fail")
+        if len(self.recent) > _MAX_RECENT_VERDICTS:
+            del self.recent[: len(self.recent) - _MAX_RECENT_VERDICTS]
+
+    def failure_share(self, window: int) -> tuple[int, int, float]:
+        """(창 크기, 그 안의 실패 수, 비중) — 최근 window건만 본다.
+        window가 0 이하면 빈 창을 준다(`list[-0:]`가 전체를 주는 함정을 피한다)."""
+        tail = self.recent[-window:] if window > 0 else []
+        fails = sum(1 for v in tail if v == "fail")
+        return len(tail), fails, (fails / len(tail) if tail else 0.0)
 
     def by_step(self) -> dict[int, dict[str, list[float]]]:
         out: dict[int, dict[str, list[float]]] = {}
@@ -278,6 +301,18 @@ def _note_failure(stats: Stats, active: int, idx: int, kind: str, exc: Exception
         abort["reason"] = (
             f"연속 실패 {args.abort_failures}건 — 동시 {active}명 지점에서 서버가 응답을 "
             f"못 준 것으로 보인다"
+        )
+        abort["at"] = active
+        stop_event.set()
+        return
+
+    # 연속으로는 안 쌓여도 비중으로는 드러나는 경우를 잡는다(대규모에서 이게 본선이다).
+    size, fails, share = stats.failure_share(args.abort_window)
+    if size >= args.abort_window and share >= args.abort_failure_share:
+        abort["reason"] = (
+            f"최근 {size}건 중 {fails}건 실패({share:.0%}) — 동시 {active}명 지점에서 "
+            f"서버가 응답을 못 준 것으로 보인다(대규모에서는 연속 실패가 쌓이지 않아 "
+            f"비중으로 판정한다)"
         )
         abort["at"] = active
         stop_event.set()
@@ -544,6 +579,8 @@ def build_report(args, stats: Stats, abort: dict, started: datetime) -> dict:
         "aborted": abort["reason"] is not None,
         "abort_reason": abort["reason"],
         "abort_at_concurrent": abort["at"],
+        "abort_window": args.abort_window,
+        "abort_failure_share": args.abort_failure_share,
         "rows": rows,
     }
 
@@ -591,7 +628,9 @@ def self_test() -> int:
     st_ = Stats()
     for ms in [100, 120, 130, 140, 900]:
         st_.record(10, "reload", ms)
-    rows = build_report(argparse.Namespace(url="x", steps=[10], hold=1, reload_interval=1),
+    rows = build_report(argparse.Namespace(url="x", steps=[10], hold=1, reload_interval=1,
+                                            abort_window=DEFAULT_ABORT_WINDOW,
+                                            abort_failure_share=DEFAULT_ABORT_FAILURE_SHARE),
                         st_, {"reason": None, "at": 0}, datetime.now())["rows"]
     check(rows[0]["reload_n"] == 5, "표본 수 집계")
     check(rows[0]["reload_p50"] == 130, "p50 = 중간값")
@@ -601,7 +640,9 @@ def self_test() -> int:
     st2.record(10, "reload", 100)
     st2.record(20, "reload", 5000)
     st2.fail(20, 1, "새로고침", "TimeoutError")
-    rep2 = build_report(argparse.Namespace(url="x", steps=[10, 20], hold=1, reload_interval=1),
+    rep2 = build_report(argparse.Namespace(url="x", steps=[10, 20], hold=1, reload_interval=1,
+                                            abort_window=DEFAULT_ABORT_WINDOW,
+                                            abort_failure_share=DEFAULT_ABORT_FAILURE_SHARE),
                         st2, {"reason": None, "at": 0}, datetime.now())
     check([r["concurrent"] for r in rep2["rows"]] == [10, 20], "단계별 분리 집계")
     check(rep2["rows"][1]["failures"] == 1, "실패 건이 그 단계에 붙는다")
@@ -637,7 +678,13 @@ def parse_args(argv=None):
     ap.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS)
     ap.add_argument("--min-free-mb", type=float, default=DEFAULT_MIN_FREE_MB,
                     help="이 PC 여유 RAM이 이 아래로 가면 중단")
-    ap.add_argument("--abort-failures", type=int, default=DEFAULT_ABORT_FAILURES)
+    ap.add_argument("--abort-failures", type=int, default=DEFAULT_ABORT_FAILURES,
+                    help="연속 실패 이만큼이면 중단")
+    ap.add_argument("--abort-window", type=int, default=DEFAULT_ABORT_WINDOW,
+                    help="최근 몇 건의 판정을 보고 실패율로 중단할지 (기본: %(default)s)")
+    ap.add_argument("--abort-failure-share", type=float,
+                    default=DEFAULT_ABORT_FAILURE_SHARE,
+                    help="그 창 안의 실패 비중이 이 이상이면 중단 (기본: %(default)s)")
     ap.add_argument("--out", default=None, help="결과 JSON 경로")
     ap.add_argument("--no-wait-render", dest="wait_render", action="store_false",
                     help="스크립트 실행 완료를 기다리지 않고 정적 껍데기 시간만 잰다")
