@@ -392,12 +392,22 @@ def _force_kakao_link_same_tab() -> None:
     스크립트가 실제 <a> 태그보다 먼저 실행돼(components.html이 st.link_button
     보다 빨리 마운트되는 타이밍 경쟁) target이 그대로 남는 경우가 실측
     확인됐다 — MutationObserver로 해당 링크가 나타날 때까지 기다렸다가
-    지운다."""
+    지운다.
+
+    2026-10-03(배포본 실측으로 확정): 지우려는 링크가 있는 문서는 최상위가
+    아니라 부모다. 실사용자 주소에서는 앱이 Streamlit Cloud 껍데기 문서 안
+    iframe(/~/+)에서 돌고, 이 components.html은 그 앱 문서 안에 한 겹 더
+    중첩된 iframe이다 — 그래서 최상위 문서에는 배너 DOM이 없어 이 함수가
+    셀렉터 0건으로 조용히 무동작했다. 개발 중에는 앱이 곧 최상위라 top과
+    parent가 같은 문서여서 정상으로 보였다. window.parent는 앱이 최상위든
+    껍데기 안이든 항상 앱 문서를 가리킨다.
+    근거·재현: scratch/probe_iframe_top_document.py"""
     components.html(
         """<script>
         (function() {
             try {
-                var doc = window.top.document;
+                // window.top이 아니라 window.parent (독스트링 참고)
+                var doc = window.parent.document;
                 function strip() {
                     var links = doc.querySelectorAll('.st-key-auth_banner_kakao a[target]');
                     if (links.length) {
@@ -410,7 +420,14 @@ def _force_kakao_link_same_tab() -> None:
                 var obs = new MutationObserver(function() { if (strip()) obs.disconnect(); });
                 obs.observe(doc.body, {childList: true, subtree: true});
                 setTimeout(function() { obs.disconnect(); }, 5000);
-            } catch (e) {}
+            } catch (e) {
+                // 예전엔 catch(e){} 로 완전히 삼켰다 — 실패해도 흔적이 안 남아
+                // 이 버그가 오래 숨었다. 실패는 콘솔에 남긴다.
+                try {
+                    console.error('[kakao_link] 다음 탭 열기 방지 실패: ' +
+                                  ((e && e.message) || e));
+                } catch (e2) {}
+            }
         })();
         </script>""",
         height=0,

@@ -85,6 +85,37 @@ def _executable_only(name: str, func_source: str) -> str:
 
 CLEANUP_CODE = _executable_only(CLEANUP_NAME, CLEANUP)
 
+KAKAO_NAME = "_force_kakao_link_same_tab"
+KAKAO = _function_source(KAKAO_NAME)
+KAKAO_CODE = _executable_only(KAKAO_NAME, KAKAO)
+KAKAO_KEY = "auth_banner_kakao"
+
+
+def _module_without_docstrings(text: str) -> str:
+    """모듈 전체에서 독스트링 본문을 뺀다(F1의 파일 단위 검사용).
+
+    파일 단위로 보면 독스트링 산문에도 window.top이 나온다 — 그건 실행되는
+    코드가 아니므로 판정에서 빼야 한다. JS 페이로드는 문자열 리터럴이라
+    건드리지 않는다(그게 이 함수에서 검사할 대상이다).
+    """
+    docs = []
+    for node in ast.walk(ast.parse(text)):
+        if not isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef)):
+            continue
+        body = getattr(node, "body", None)
+        if body and isinstance(body[0], ast.Expr):
+            value = getattr(body[0], "value", None)
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                docs.append(value.value)
+    out = text
+    for doc in docs:
+        out = out.replace(doc, "")
+    return out
+
+
+CODE_SOURCE = _module_without_docstrings(SOURCE)
+
 
 def _selector_argument(func_source: str) -> str:
     """`querySelectorAll(<여기>)`의 인자를 JS 문자열 결합 규칙대로 이어붙인다.
@@ -199,6 +230,92 @@ def test_T6_injection_mechanism_is_unchanged():
     assert "<script>" in CLEANUP and "</script>" in CLEANUP
 
 
+def test_K1_kakao_link_targets_the_parent_document_not_the_top():
+    assert "window.parent.document" in KAKAO_CODE, (
+        "카카오 링크 함수가 부모 문서를 조회하지 않는다 — 배너 DOM은 부모 문서에만 있다"
+    )
+    assert "window.top" not in KAKAO_CODE, (
+        "카카오 링크 함수의 실행 코드에 window.top이 남아 있다 — 앱이 껍데기 안 "
+        "iframe에서 돌면 최상위 문서에는 배너 링크가 없어 조용히 무동작한다"
+    )
+
+
+def test_K2_strip_selector_and_its_container_still_line_up():
+    assert ".st-key-auth_banner_kakao a[target]" in KAKAO_CODE, (
+        "target을 지우는 셀렉터가 바뀌었다 — 같은 탭 열기 효과가 사라진다"
+    )
+    assert f'st.container(key="{KAKAO_KEY}")' in SOURCE, (
+        f'{KAKAO_KEY} 컨테이너가 렌더 코드에 없다 — 셀렉터가 헛돈다'
+    )
+    assert "removeAttribute('target')" in KAKAO_CODE
+
+
+def test_K3_kakao_link_reports_failure_instead_of_swallowing_it():
+    assert "catch (e) {}" not in KAKAO_CODE, (
+        "catch가 여전히 빈 블록이다 — 실패가 조용히 삼켜진다"
+    )
+    assert "console.error" in KAKAO_CODE, "실패를 아무 데도 남기지 않는다"
+    tail = KAKAO_CODE.split("} catch (e) {", 1)
+    assert len(tail) == 2, "catch (e) 블록 형태가 바뀌었다"
+    assert "console.error" in tail[1], "catch 블록 밖에서만 로그를 남긴다"
+    assert "try {" in tail[1], "console.error를 감싸지 않아 로그 실패가 예외로 샌다"
+
+
+def test_K4_observer_watches_the_same_document_it_strips():
+    # 문서를 부모로 바꾸면서 관찰 대상만 iframe 자신의 body로 남기면
+    # MutationObserver가 영원히 아무것도 못 보고 조용히 무동작한다.
+    assert "obs.observe(doc.body" in KAKAO_CODE, (
+        "MutationObserver가 조회 대상(doc)이 아닌 다른 문서의 body를 관찰한다"
+    )
+    assert "MutationObserver" in KAKAO_CODE, (
+        "타이밍 경쟁 대응이 사라졌다 — <a>가 나중에 붙으면 target이 그대로 남는다"
+    )
+    assert "obs.disconnect()" in KAKAO_CODE, "관찰 해제가 없다(5초 뒤에도 계속 돈다)"
+    assert "5000" in KAKAO_CODE, "관찰 제한 시간이 사라졌다"
+    assert "if (strip()) return;" in KAKAO_CODE, (
+        "이미 있으면 바로 끝내는 빠른 경로가 사라졌다"
+    )
+
+
+def test_K5_injection_mechanism_is_unchanged():
+    assert "components.html(" in KAKAO_CODE, "components.html 주입이 아니다"
+    assert "height=0" in KAKAO_CODE, "높이 0이 아니면 배너 자리에 빈 iframe이 남는다"
+    assert "<script>" in KAKAO_CODE and "</script>" in KAKAO_CODE
+
+
+# ── F1 이 결함 계열 전체 (파일 단위) ─────────────────────
+def test_F1_window_top_is_never_used_to_query_the_app_dom():
+    # ①·②의 공통 원인을 파일 단위로 일반화한다: 최상위 문서에는 (실사용자
+    # 주소에서) 앱 DOM이 없으므로, 앱 DOM을 조회하는 데 window.top을 쓰면
+    # 언제나 조용히 무동작한다. window.top이 남아도 되는 곳은 "최상위
+    # 컨텍스트에서 스크립트를 심어야 하는" 용도뿐이다.
+    offenders: list[str] = []
+    injected = 0
+    for line in CODE_SOURCE.splitlines():
+        if "window.top" not in line:
+            continue
+        stripped = line.strip()
+        if stripped.startswith("//"):
+            continue  # JS 주석 — 실행되지 않는다
+        if "querySelector" in stripped:
+            offenders.append(stripped)
+        elif ("createElement" in stripped or "appendChild" in stripped
+              or stripped == "var top = window.top;"):
+            injected += 1
+        else:
+            offenders.append(stripped)
+    assert not offenders, (
+        "window.top을 앱 DOM 조회에 쓰거나 용도를 알 수 없는 형태로 쓴다 — "
+        "실사용자 주소의 최상위 문서에는 앱 DOM이 없다: " + " | ".join(offenders)
+    )
+    # 거짓 통과 방지: 독스트링 제거가 과해서 파일이 통째로 비지 않았는지 본다.
+    assert injected >= 3, (
+        f"최상위 문서 주입 용도가 {injected}곳이다 — 제거가 과했거나 의도된 "
+        "최상위 주입(ReactNativeWebView 브릿지·스크롤)이 사라졌다"
+    )
+    assert "components.html" in CODE_SOURCE, "제거가 과해 주입 코드까지 지워졌다"
+
+
 def _main() -> int:
     import os
 
@@ -210,6 +327,12 @@ def _main() -> int:
         test_T4_cleanup_reports_failure_instead_of_swallowing_it,
         test_T5_call_site_is_still_only_the_deferred_guard,
         test_T6_injection_mechanism_is_unchanged,
+        test_K1_kakao_link_targets_the_parent_document_not_the_top,
+        test_K2_strip_selector_and_its_container_still_line_up,
+        test_K3_kakao_link_reports_failure_instead_of_swallowing_it,
+        test_K4_observer_watches_the_same_document_it_strips,
+        test_K5_injection_mechanism_is_unchanged,
+        test_F1_window_top_is_never_used_to_query_the_app_dom,
     ]
     failed = 0
     for test in tests:
