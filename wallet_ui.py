@@ -884,6 +884,34 @@ def in_native_app() -> bool:
     return str(value or "") == "1"
 
 
+def native_platform() -> str:
+    """이 렌더가 어느 네이티브 플랫폼에서 왔는지 — "ios" / "android" / ""(모름).
+
+    앱(streamlit-webview.tsx)이 buildUri·reloadWith 양쪽에서
+    native_platform=Platform.OS 를 실어 보낸다(2026-10-03). 이 값이 필요한 이유:
+    iOS 는 자체 결제수단을 쓸 수 없어(App Store 심사) 결제 버튼을 아예 띄우면 안
+    되는데, native=1 만으로는 플랫폼을 알 수 없어 안드로이드와 같은 분기를 타게 된다.
+
+    구버전 빌드(이 파라미터를 안 보내는 앱)에서는 ""가 돌아온다 — 그때는 플랫폼을
+    알 수 없으므로 기존(안드로이드) 동작을 그대로 유지해야 한다. 그래서 이 함수는
+    "ios"만 특별 취급하고 나머지는 전부 기존 경로로 흘려보낸다."""
+    try:
+        value = st.query_params.get("native_platform")
+    except Exception:
+        return ""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value or "").strip().lower()
+
+
+def in_ios_native_app() -> bool:
+    """iOS 네이티브 앱인가 — 결제 버튼을 띄우면 안 되는 유일한 조건.
+
+    안드로이드 스위치(IAP_CHARGE_ENABLED·IAP_SUBSCRIPTION_ENABLED·TEST_CHARGE_ENABLED)
+    와 무관하게 동작하게 하려는 것이다(스위치는 안드로이드 전용으로 계속 쓴다)."""
+    return in_native_app() and native_platform() == "ios"
+
+
 def _iap_points_products() -> dict:
     """상품 ID → 지급 포인트. 기준점은 products.py다(여기서 새로 만들지 말 것)."""
     return dict(products.POINTS_PRODUCTS)
@@ -986,6 +1014,16 @@ def _render_charge_actions(member_id: int) -> None:
         # 2026-09-26(사용자 지시 2안): 아직 IAP 수신부가 없는 빌드가 사용 중이라
         # 구글플레이 버튼 대신 준비 중 안내를 낸다(죽은 버튼을 보여주지 않는다).
         # 되살리는 지점은 위 IAP_CHARGE_ENABLED 한 곳이다.
+        #
+        # 2026-10-03(iOS 게시 준비): iOS 는 구글플레이·토스·테스터 Mock 을 전부 숨기고
+        # 준비중 안내만 낸다 — App Store 심사에서 디지털 재화를 앱 내 다른 결제수단으로
+        # 파는 것이 반려 사유다(구글플레이와 같은 이유). 두 스위치 값과 무관하게 항상
+        # 여기서 끝내므로, 안드로이드 스위치를 건드리지 않고도 iOS 만 안전해진다.
+        # native_platform 파라미터가 없는 구버전 빌드는 ""이라 이 분기를 안 탄다 —
+        # 기존 안드로이드 동작이 그대로 유지된다.
+        if in_ios_native_app():
+            st.info(CHARGE_PENDING_NOTICE)
+            return
         if IAP_CHARGE_ENABLED:
             _render_iap_charge_options()
             return
@@ -1269,10 +1307,14 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
                 st.rerun()
         return
 
-    if not IAP_SUBSCRIPTION_ENABLED:
+    if in_ios_native_app() or not IAP_SUBSCRIPTION_ENABLED:
         # 2026-09-26(사용자 지시): 충전과 같은 이유·같은 방식 — 수신부 없는 빌드에서
         # 구글플레이 요금제 버튼이 먹통이라 준비중 안내만 낸다(죽은 버튼을 안 보여준다).
-        # 되삼리는 지점은 위 IAP_SUBSCRIPTION_ENABLED 한 곳이다.
+        # 2026-10-03: iOS 도 같은 처리다(조건에 in_ios_native_app() 추가) — App Store
+        # 심사에서 앱 내 다른 결제수단으로 디지털 재화를 파는 것이 반려 사유라,
+        # 스위치 값과 무관하게 준비중 안내만 낸다. 무료 프로모는 위에서 이미 return
+        # 했으므로 iOS 사용자도 혜택은 그대로 받는다(무료 지급은 결제가 아니다).
+        # 안드로이드는 기존대로 이 스위치 한 곳이 정본이다.
         st.info(CHARGE_PENDING_NOTICE)
         if st.button("닫기", use_container_width=True, key="iap_sub_pending_close"):
             on_close()
