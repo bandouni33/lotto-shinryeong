@@ -294,7 +294,20 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_wrap {
        맞춘다. */
     position: sticky !important;
     top: 0 !important;
-    z-index: 100 !important;
+    /* 2026-10-03(운영 URL 실측으로 확정): 100이면 폰 폭에서 닫기(×)가 아예 눌리지 않는다.
+       메인 화면의 "📖 사용설명서" 버튼은 manual_ui.render_manual_trigger_button()이
+       .st-key-manual_trigger_wrap 으로 position:fixed; top:56px; z-index:999 에
+       고정해 둔 것이라, 좁은 폭(360~430px)에서는 그 버튼이 배너의 × 와 같은 좌표
+       (사용설명서 300~418 × 56~88, × 368~390 × 57~79)에 겹친다. 999 > 100 이라
+       사용설명서가 이겨서, × 자리를 누르면 클릭이 사용설명서로 가고 배너는 닫히지
+       않았다(430px 실측: 클릭 후 배너 1개 그대로, 대신 다이얼로그가 열렸다).
+       1280px에서는 두 요소가 겹치지 않아 증상이 없었다 — 폰에서만 나오던 이유다.
+       1000으로 올리면 그 픽셀을 × 가 가져간다(999에서는 아직 사용설명서가 가져감 — 실측).
+       배너 위치·크기는 100·999·1000에서 모두 동일했다(53,54~378,146) — 레이아웃은 안 변한다.
+       로그인 안내를 닫지 못하는 것이 플로팅 단축버튼에 가려지는 것보다 나쁘므로 배너를 위에 둔다.
+       manual_ui의 그 값을 999 아래로 내리면 이 전제가 바뀌므로, 함께 고칠 것.
+       (tests/test_auth_banner_close_clickable.py가 이 관계를 잠근다.) */
+    z-index: 1000 !important;
     max-width: 325px !important; /* 2026-09-12(사용자 지시): 3줄이 각각 한 줄로
        보이도록 실측(가장 긴 줄 실제 필요폭 약 294px + 좌우 패딩 20px + 여유)
        기준으로 확보 */
