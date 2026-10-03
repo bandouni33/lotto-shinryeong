@@ -255,6 +255,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     (overrides?: Record<string, string>) =>
       getStreamlitPageUrl(page, guestId, {
         ...(extraParams || {}),
+        // 2026-10-03: 서버(wallet_ui)가 iOS/안드로이드 네이티브를 구분할 수 있는 유일한
+        // 신호. native=1("앱에서 왔는가")은 constants/streamlit.ts가 붙이지만,
+        // 그 값만으로는 플랫폼을 알 수 없어 "iOS에는 결제 버튼을 안 띄운다" 같은
+        // 분기를 서버에 만들 수 없다. 값은 상수 문자열이 아니라 Platform.OS를
+        // 그대로 쓴다(ios/android가 그대로 내려간다).
+        native_platform: Platform.OS,
         ...priceParamsRef.current,
         ...(overrides || {}),
       }),
@@ -272,9 +278,18 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const currentUrlRef = useRef<string | null>(null);
 
   /** 현재 주소에 파라미터만 더한 주소. 저장된 주소가 아직 없으면(첫 로드 전)
-   * buildUri()로 만든 기본 주소를 쓴다. */
+   * buildUri()로 만든 기본 주소를 쓴다.
+   *
+   * 2026-10-03: native_platform 도 항상 다시 실어 보낸다. currentUrlRef 에 이미
+   * 들어 있어도 withParams 가 Map 기반이라 같은 키를 덮어쓸 뿐 중복 파라미터가
+   * 생기지 않는다. 로그인·결제 후 복귀 주소가 플랫폼 정보를 잃으면 그 화면에서만
+   * iOS 분기(결제 버튼 숨김)가 풀려 버린다. */
   const reloadWith = useCallback(
-    (params: Record<string, string>) => withParams(currentUrlRef.current ?? buildUri(), params),
+    (params: Record<string, string>) =>
+      withParams(currentUrlRef.current ?? buildUri(), {
+        native_platform: Platform.OS,
+        ...params,
+      }),
     [buildUri]
   );
 
