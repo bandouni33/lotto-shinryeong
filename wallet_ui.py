@@ -619,7 +619,23 @@ def _render_auth_banner_form() -> None:
                     use_container_width=True,
                     type="primary",
                 )
-                _force_kakao_link_same_tab()
+                # 2026-10-03(긴급 완화 — 사용자 승인): 여기서 _force_kakao_link_same_tab()을
+                # 부르지 않는다. target 을 지우면 카카오 인증 페이지가 최상위 새 탭이 아니라
+                # **이 앱 문서 안에서** 열린다. 실사용자 주소에서 앱 문서는 Streamlit Cloud
+                # 껍데기 안 iframe 이고 그 iframe 의 sandbox 에는 allow-top-navigation 이 없다
+                # (실측: allow-forms allow-modals allow-popups
+                #  allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads).
+                # 그래서 카카오 로그인이 sandbox 안 중첩 iframe 에 갇힌다 — 2026-10-03 신고·실측:
+                # 클릭 후 accounts.kakao.com/login 이 is_top=False 로 로드되고 새 탭은 0개였다.
+                # target="_blank" 를 남기면 allow-popups-to-escape-sandbox 덕분에 sandbox 를
+                # 벗어난 정상 최상위 탭에서 열린다(② 이전의 동작).
+                #
+                # 함수 정의(_force_kakao_link_same_tab)는 지우지 않고 남긴다 — 네이티브
+                # (native=1)처럼 앱 문서가 곧 최상위인 경우에는 target 을 지워도 무해하므로,
+                # 조건부로 다시 쓸 수 있다. 그 판단은 이 긴급 완화와 분리한다.
+                #
+                # 별도 건(지금 처방하지 않음): "새 탭에서 로그인이 끝나면 원래 탭은 그 사실을
+                # 모른 채 배너가 남는다" — ②가 겨냥했던 문제는 그대로 남아 있다.
     elif _dev_mock_enabled():
         with st.container(key="auth_banner_kakao"):
             if st.button(
