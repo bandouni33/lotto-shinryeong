@@ -29,6 +29,7 @@ import asyncio
 import importlib.util
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -365,6 +366,90 @@ def test_P10b_force_live_output_survives_streams_it_cannot_reconfigure():
         "force_live_output()이 모듈 최상단에서 호출되지 않는다")
 
 
+# ── P11 티어다운 상한 ─────────────────────────────────────────────────────
+# 2026-10-03 실제 사고: 브라우저가 죽은 뒤 browser.close()가 영원히 안 돌아와 1372초를
+# 매달렸고, 보고서는 맨 마지막에 쓰이므로 측정 결과를 통째로 잃었다(JSON이 안 남음).
+# 정리는 부산물이므로 상한을 넘기면 포기하고 결과를 남겨야 한다.
+
+
+class _FakeCtx:
+    def __init__(self, hang=False, raise_on_close=False):
+        self.closed = 0
+        self._hang = hang
+        self._raise = raise_on_close
+
+    async def close(self):
+        self.closed += 1
+        if self._hang:
+            await asyncio.sleep(3600)
+        if self._raise:
+            raise RuntimeError("close 실패")
+
+
+class _FakeBrowser(_FakeCtx):
+    pass
+
+
+async def _never_ending():
+    await asyncio.sleep(3600)
+
+
+async def _boom():
+    raise RuntimeError("task 폭발")
+
+
+def _run_teardown(*, ctx=None, browser=None, tasks=(), timeout=0.2):
+    """상한을 인자로 주어 실제 시계를 기다리지 않게 한다(검증 대상 로직은 그대로)."""
+    started = time.perf_counter()
+    ok = asyncio.run(lts.teardown(
+        list(tasks), [ctx] if ctx else [],
+        browser if browser is not None else _FakeBrowser(), timeout=timeout))
+    return ok, time.perf_counter() - started
+
+
+def test_P11_normal_teardown_closes_everything_once():
+    ctx, browser = _FakeCtx(), _FakeBrowser()
+    ok, _elapsed = _run_teardown(ctx=ctx, browser=browser)
+    assert ok is True, "정상 정리인데 실패로 보고했다"
+    assert ctx.closed == 1, f"컨텍스트를 {ctx.closed}번 닫았다(1번이어야 함)"
+    assert browser.closed == 1, f"브라우저를 {browser.closed}번 닫았다(1번이어야 함)"
+
+
+def test_P11b_a_hanging_browser_still_returns_within_the_cap():
+    # 영원히 안 끝나는 close()가 정리 전체를 인질로 잡으면 안 된다.
+    ok, elapsed = _run_teardown(browser=_FakeBrowser(hang=True), timeout=0.2)
+    assert ok is False, "매달렸는데 끝났다고 보고했다"
+    assert elapsed < 2.0, f"상한 0.2초인데 {elapsed:.1f}초 걸렸다 — 상한이 안 먹었다"
+
+
+def test_P11c_teardown_never_raises_so_the_report_survives():
+    # 이 함수가 불리는 곳이 finally다 — 거기서 예외가 새면 build_report와 파일 쓰기에
+    # 도달하지 못해 정리 실패가 측정 실패로 번진다.
+    ok, _elapsed = _run_teardown(ctx=_FakeCtx(raise_on_close=True),
+                                 browser=_FakeBrowser(raise_on_close=True))
+    assert ok is True, "정리 중 예외를 측정 실패로 처리했다"
+    ok2, _ = _run_teardown(ctx=_FakeCtx(), browser=_FakeBrowser(), tasks=[_boom()])
+    assert ok2 is True, "태스크 예외가 정리 실패로 번졌다"
+
+
+def test_P11d_a_task_that_never_finishes_does_not_block_the_report():
+    ok, elapsed = _run_teardown(ctx=_FakeCtx(), browser=_FakeBrowser(),
+                                tasks=[_never_ending()], timeout=0.2)
+    assert ok is False, "끝나지 않는 태스크가 있는데 정리가 끝났다고 했다"
+    assert elapsed < 2.0, f"상한을 안 지켰다: {elapsed:.1f}초"
+
+
+def test_P11e_the_cap_is_sane_and_wired_before_the_report():
+    cap = lts.TEARDOWN_TIMEOUT_SECONDS
+    assert isinstance(cap, (int, float)) and 5 <= cap <= 300, (
+        f"정리 상한이 {cap}초 — 너무 짧으면 멀쩡한 정리를 자르고 너무 길면 매달림을 못 막는다")
+    assert "closed = await teardown(tasks, contexts, browser)" in SOURCE, (
+        "teardown 헬퍼가 실제 종료 경로에 연결되어 있지 않다")
+    # 보고서 생성이 정리보다 뒤에 있어야 한다(정리에 갇혀 JSON을 놓친 게 이번 사고였다).
+    assert SOURCE.index("await teardown(") < SOURCE.index("return build_report("), (
+        "보고서 생성이 정리보다 앞에 있다 — 정리에 갇혀 결과를 잃을 수 있다")
+
+
 def _main() -> int:
     import os
 
@@ -389,6 +474,11 @@ def _main() -> int:
         test_P9f_script_self_test_still_passes,
         test_P10_importing_makes_output_line_buffered,
         test_P10b_force_live_output_survives_streams_it_cannot_reconfigure,
+        test_P11_normal_teardown_closes_everything_once,
+        test_P11b_a_hanging_browser_still_returns_within_the_cap,
+        test_P11c_teardown_never_raises_so_the_report_survives,
+        test_P11d_a_task_that_never_finishes_does_not_block_the_report,
+        test_P11e_the_cap_is_sane_and_wired_before_the_report,
     ]
     failed = 0
     for test in tests:

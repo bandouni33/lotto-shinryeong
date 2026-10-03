@@ -368,6 +368,47 @@ async def hold_and_watch(step: int, args, stop_event: asyncio.Event, state: dict
         await asyncio.sleep(WATCH_INTERVAL)
 
 
+# 정리(teardown)에 둘 상한(초). 넘기면 정리를 포기하고 결과를 남긴다.
+TEARDOWN_TIMEOUT_SECONDS = 60
+
+
+async def teardown(tasks, contexts, browser, timeout: float | None = None) -> bool:
+    """세션 태스크·컨텍스트·브라우저를 정리한다. 상한 안에 끝났으면 True.
+
+    2026-10-03 실제 사고: 로컬 브라우저가 죽은 뒤 `browser.close()`가 영원히 안
+    돌아와 **1372초를 매달렸고**, 보고서는 맨 마지막에 파일로 쓰이므로 측정 결과를
+    통째로 잃었다(JSON이 남지 않았다). 정리는 부산물이다 — 못 끝내면 포기하고
+    결과를 남기는 쪽이 맞다.
+
+    어떤 경우에도 예외를 밖으로 민지지 않는다. 이 함수가 불리는 곳이 `finally`라,
+    거기서 예외가 새면 뒤따르는 `build_report(...)`와 파일 쓰기에 도달하지 못해
+    정리 실패가 측정 실패로 번진다.
+    """
+    if timeout is None:
+        timeout = TEARDOWN_TIMEOUT_SECONDS
+
+    async def _close_all() -> None:
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for ctx in contexts:
+            try:
+                await ctx.close()
+            except Exception:
+                pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+    try:
+        await asyncio.wait_for(_close_all(), timeout=timeout)
+        return True
+    except (asyncio.TimeoutError, TimeoutError):
+        return False
+    except Exception:
+        # 정리 도중의 예외는 측정 실패가 아니다.
+        return True
+
+
 # ─────────────────────────────────────────────────────────────
 # 본 실험
 # ─────────────────────────────────────────────────────────────
@@ -429,13 +470,16 @@ async def run_load_test(args) -> dict:
                 await hold_and_watch(step, args, stop_event, state)
         finally:
             stop_event.set()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            for ctx in contexts:
-                try:
-                    await ctx.close()
-                except Exception:
-                    pass
-            await browser.close()
+            closed = await teardown(tasks, contexts, browser)
+            if not closed:
+                # 정리를 포기해도 보고서는 쓴다 — 이게 상한을 둔 이유다.
+                print(f"[정리] {TEARDOWN_TIMEOUT_SECONDS}초 안에 정리를 못 끝냈다(브라우저가 "
+                      f"죽었을 가능성) — 정리를 포기하고 결과는 그대로 쓴다", flush=True)
+                if state["abort"]["reason"] is None:
+                    state["abort"]["reason"] = (
+                        f"정리 단계가 {TEARDOWN_TIMEOUT_SECONDS}초를 넘겼다(브라우저 이상) — "
+                        f"측정값은 정리 전까지 받은 것만 유효하다"
+                    )
 
     return build_report(args, stats, state["abort"], started)
 
