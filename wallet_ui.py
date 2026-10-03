@@ -668,17 +668,39 @@ def _cleanup_stale_auth_banner_dom() -> None:
     클래스의 문제를 다른 모양으로 재현시켰다)를 못 지우고 고아로 남기는
     경우가 있어, 남아있으면 JS로 강제 제거한다. AUTH_BANNER_JUST_DISMISSED로
     "닫은 직후 1번"에만 실행되게 가드해서, 이후 모든 렌더마다 불필요한
-    iframe이 반복 주입되지 않게 한다."""
+    iframe이 반복 주입되지 않게 한다.
+
+    2026-10-03(배포본 실측으로 확정): 지우려는 대상이 있는 문서는 최상위가 아니라
+    부모다. 실사용자 주소(lotto-shinryeong.streamlit.app)에서는 앱이 Streamlit
+    Cloud 껍데기 문서 안의 iframe(/~/+)에서 돌고, 이 components.html은 그 앱
+    문서 안에 한 겹 더 중첩된 iframe이다 — 그래서 window.top.document에는 앱
+    DOM(.st-key-*)이 아예 없고, 이 함수가 셀렉터 0건으로 조용히 무동작했다.
+    개발 중에는 앱이 곧 최상위라 top과 parent가 같은 문서여서 정상으로 보였다.
+    window.parent는 앱이 최상위든 껍데기 안이든 항상 앱 문서를 가리킨다.
+    근거·재현: scratch/probe_iframe_top_document.py"""
     components.html(
         """
         <script>
         (function() {
             try {
-                var doc = window.top.document;
-                doc.querySelectorAll('.st-key-auth_banner_wrap').forEach(function(el) {
-                    el.remove();
-                });
-            } catch (e) {}
+                // window.top이 아니라 window.parent (위 독스트링 참고)
+                var doc = window.parent.document;
+                // 래퍼만 지우는 것으로는 부족했다 — 중첩 컨테이너의 "닫힘"을
+                // 프런트엔드가 못 받으면 ×만 남거나 약관 박스만 남는 두 형태로
+                // 고아가 되므로(둘 다 실측 재현됨), 세 컨테이너를 모두 지운다.
+                // 이미 detach된 노드에 remove()를 불러도 무해하다.
+                doc.querySelectorAll('.st-key-auth_banner_wrap,' +
+                                     ' .st-key-auth_banner_box,' +
+                                     ' .st-key-auth_banner_close_x'
+                ).forEach(function(el) { el.remove(); });
+            } catch (e) {
+                // 예전엔 catch(e){} 로 완전히 삼켰다 — 실패해도 아무 흔적이
+                // 남지 않아 이 버그가 오래 숨었다. 실패는 콘솔에 남긴다.
+                try {
+                    console.error('[auth_banner] 잔재 DOM 정리 실패: ' +
+                                  ((e && e.message) || e));
+                } catch (e2) {}
+            }
         })();
         </script>
         """,
