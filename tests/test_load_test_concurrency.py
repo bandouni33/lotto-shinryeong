@@ -33,6 +33,15 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# 이 러너는 실패 사유를 콘솔로 출력한다. 사유에 em-dash(—)나 가운뎃점 같은 문자가
+# 있으면 cp949에서 UnicodeEncodeError가 나고 **러너가 죽어 실패를 보고하지 못한다**
+# (2026-10-03 실제 발생: P12e 실패가 트레이스백에 묻혀 몇 개가 통과했는지도 못 봤다).
+# 러너가 자기 실패를 못 찍으면 테스트가 있어도 소용이 없으므로 출력 인코딩을 고정한다.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 TESTS_DIR = Path(__file__).resolve().parent
 ROOT = TESTS_DIR.parent
 if str(ROOT) not in sys.path:
@@ -450,6 +459,94 @@ def test_P11e_the_cap_is_sane_and_wired_before_the_report():
         "보고서 생성이 정리보다 앞에 있다 — 정리에 갇혀 결과를 잃을 수 있다")
 
 
+# ── P12 new_context() 실패 처리 ────────────────────────────────────────
+# 2026-10-03 실제 사고: 브라우저가 죽은 뒤 browser.new_context()가 예외를 던졌고, 그
+# 예외가 램프 루프 밖으로 새면서 정리·보고서 작성에 도달하지 못해 측정을 통째로 잃었다.
+
+
+class _OkBrowser:
+    def __init__(self):
+        self.made = 0
+
+    async def new_context(self):
+        self.made += 1
+        return f"ctx{self.made}"
+
+
+class _CrashyBrowser:
+    """succeed_first번까지는 성공하고 그 뒤로는 죽은 브라우저를 흡내낸다."""
+
+    def __init__(self, succeed_first=0, exc=RuntimeError):
+        self.made = 0
+        self.succeed_first = succeed_first
+        self.exc = exc
+
+    async def new_context(self):
+        if self.made >= self.succeed_first:
+            raise self.exc("browser crash")
+        self.made += 1
+        return f"ctx{self.made}"
+
+
+def test_P12_healthy_browser_makes_exactly_what_was_asked():
+    for count in (0, 1, 5, 20):
+        made, failed = asyncio.run(lts.open_contexts(_OkBrowser(), count))
+        assert failed == 0, f"count={count}: 실패로 보고했다"
+        assert len(made) == count, f"count={count}: {len(made)}개만 만들었다"
+        assert len(set(made)) == count, "만든 컨텍스트가 중복됐다"
+
+
+def test_P12b_a_dead_browser_returns_instead_of_raising():
+    made, failed = asyncio.run(lts.open_contexts(_CrashyBrowser(succeed_first=0), 20))
+    assert made == [], f"하나도 못 만들었는데 {made!r}를 돌려줬다"
+    assert failed >= 1, "실패를 보고하지 않았다"
+
+
+def test_P12c_partial_results_are_kept_and_the_loop_stops_early():
+    # 중간에 죽으면 그전까지 만든 것은 살려야 한다 — 부분 측정도 값이다.
+    browser = _CrashyBrowser(succeed_first=2)
+    made, failed = asyncio.run(lts.open_contexts(browser, 5))
+    assert len(made) == 2, f"만든 2개를 버렸다: {made!r}"
+    assert failed >= 1, "실패를 보고하지 않았다"
+    # 남은 3개를 계속 시도하지 않았다(같은 실패에 시간을 쓰지 않는다).
+    assert browser.made == 2, f"실패 뒤에도 계속 시도했다: {browser.made}회"
+
+
+def test_P12d_never_raises_for_any_exception_type_or_count():
+    for exc in (RuntimeError, TimeoutError, ValueError, OSError):
+        made, failed = asyncio.run(lts.open_contexts(_CrashyBrowser(0, exc), 3))
+        assert made == [] and failed >= 1, f"{exc.__name__}: {made!r}/{failed}"
+    for count in (0, -1, -100):
+        made, failed = asyncio.run(lts.open_contexts(_OkBrowser(), count))
+        assert made == [] and failed == 0, f"count={count}: {made!r}/{failed}"
+
+
+def test_P12e_no_unguarded_new_context_left_in_the_source():
+    # 예전의 맨몸 호출이 램프·워밍업에 하나라도 남아 있으면 그 한 줄이 전체를 죽일 수 있다.
+    # 가드된 open_contexts 안의 호출 1곳만 남아 있어야 한다.
+    occurrences = SOURCE.count("await browser.new_context()")
+    assert occurrences == 1, (
+        f"browser.new_context() 호출이 {occurrences}곳이다 — 가드된 open_contexts 안의 "
+        f"1곳만 있어야 한다")
+    helper_start = SOURCE.index("async def open_contexts(")
+    helper_end = SOURCE.index("async def run_load_test(")
+    assert helper_start < SOURCE.index("await browser.new_context()") < helper_end, (
+        "가드되지 않은 위치에서 new_context()를 부른다")
+    assert "made, failed = await open_contexts(" in SOURCE, "open_contexts가 램프에 연결되여 있지 않다"
+    assert "warm_ctxs, warm_failed = await open_contexts(" in SOURCE, (
+        "워밍업 경로가 가드 없이 남아 있다")
+
+
+def test_P12f_the_runner_can_report_non_ascii_failures():
+    # 실패 사유에 em-dash 같은 문자가 있어도 러너가 죽지 않고 보고해야 한다
+    # (2026-10-03: 그것 때문에 P12e 실패가 트레이스백에 묻혔다).
+    enc = (sys.stdout.encoding or "").lower()
+    ok = "utf" in enc or sys.stdout.errors in ("replace", "backslashreplace", "ignore")
+    assert ok, (
+        f"stdout이 {sys.stdout.encoding}/{sys.stdout.errors} — 실패 사유에 em-dash 같은 문자가 "
+        f"있으면 UnicodeEncodeError로 러너가 죽어 실패를 보고하지 못한다")
+
+
 def _main() -> int:
     import os
 
@@ -479,6 +576,12 @@ def _main() -> int:
         test_P11c_teardown_never_raises_so_the_report_survives,
         test_P11d_a_task_that_never_finishes_does_not_block_the_report,
         test_P11e_the_cap_is_sane_and_wired_before_the_report,
+        test_P12_healthy_browser_makes_exactly_what_was_asked,
+        test_P12b_a_dead_browser_returns_instead_of_raising,
+        test_P12c_partial_results_are_kept_and_the_loop_stops_early,
+        test_P12d_never_raises_for_any_exception_type_or_count,
+        test_P12e_no_unguarded_new_context_left_in_the_source,
+        test_P12f_the_runner_can_report_non_ascii_failures,
     ]
     failed = 0
     for test in tests:

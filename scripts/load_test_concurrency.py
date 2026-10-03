@@ -409,6 +409,27 @@ async def teardown(tasks, contexts, browser, timeout: float | None = None) -> bo
         return True
 
 
+async def open_contexts(browser, count: int) -> tuple[list, int]:
+    """컨텍스트를 count개 만들고 (만든 것, 실패 여부)를 돌려준다.
+
+    2026-10-03 실제 사고: 브라우저가 죽은 뒤 `browser.new_context()`가 예외를
+    던졌고, 그 예외가 램프 루프 밖으로 새면서 정리·보고서 작성에 도달하지 못해
+    측정을 통째로 잃었다. 컨텍스트 하나를 못 만든 것이 측정 실패가 되면 안 되므로
+    여기서 삼키고 세기만 한다.
+
+    실패하면 남은 개수를 계속 시도하지 않는다 — 브라우저가 못 만드는 상태라면
+    더 시도해도 같은 결과에 시간만 쓴다. 이미 만든 것은 버리지 않는다(부분 측정도
+    값이다).
+    """
+    made: list = []
+    for _ in range(max(0, int(count))):
+        try:
+            made.append(await browser.new_context())
+        except Exception:
+            return made, 1
+    return made, 0
+
+
 # ─────────────────────────────────────────────────────────────
 # 본 실험
 # ─────────────────────────────────────────────────────────────
@@ -426,7 +447,11 @@ async def run_load_test(args) -> dict:
         try:
             # Streamlit Cloud는 유휴 시 잠들어 있어 첫 요청만 30~60초 걸린다.
             # 그 한 번을 ramp에 섞으면 1단계가 통째로 거짓이 되므로 미리 깨운다.
-            warm_ctx = await browser.new_context()
+            warm_ctxs, warm_failed = await open_contexts(browser, 1)
+            if warm_failed or not warm_ctxs:
+                print("[워밍업] 컨텍스트를 만들지 못했다 — 브라우저가 죽은 상태다. 중단한다.")
+                return {"aborted": True, "reason": "워밍업 컨텍스트 생성 실패", "steps": []}
+            warm_ctx = warm_ctxs[0]
             warm_page = await warm_ctx.new_page()
             print("[워밍업] 운영 앱을 깨우는 중(유휴 상태면 30~60초 걸린다)...")
             t0 = time.perf_counter()
@@ -459,13 +484,23 @@ async def run_load_test(args) -> dict:
                     continue
                 print(f"\n=== 단계: 동시 {step}명 (신규 +{add}) ===")
                 state["active"] = step
-                for i in range(add):
-                    ctx = await browser.new_context()
+                made, failed = await open_contexts(browser, add)
+                for ctx in made:
                     contexts.append(ctx)
                     state["total"] += 1
                     tasks.append(asyncio.create_task(
                         run_one_session(ctx, state["total"] - 1, args, stop_event, stats, state)
                     ))
+                if failed:
+                    # 만든 것은 살리고, 여기서부티 측정을 멈춘다.
+                    state["abort"]["reason"] = (
+                        f"브라우저가 컨텍스트를 더 만들지 못했다 — 살아있는 세션 "
+                        f"{state['total']}개에서 중단(이 PC 한계다. 이 시점 이후 지연은 "
+                        f"서버가 아니라 이 PC의 것이다)"
+                    )
+                    state["abort"]["at"] = state["total"]
+                    stop_event.set()
+                    break
                 print("  (지금 운영자 대시보드의 동시접속 숫자와 Cloud 로그의 [dbtrace]를 확인하세요)")
                 await hold_and_watch(step, args, stop_event, state)
         finally:
