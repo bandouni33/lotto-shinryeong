@@ -247,6 +247,29 @@ class WinEventBannerTests(unittest.TestCase):
         self.assertIn("2등 1개 · 3등 18개", doc)
         self.assertNotIn("1,025,190", doc)
 
+    def test_B8_iframe_reports_its_own_height(self):
+        """창이 필요 이상으로 커지지 않게 — 내용 높이를 부모에 알려 프레임을 줄인다.
+
+        2026-10-04 신고(배너창이 너무 크고 빈 공간이 많다) 대응: 고정 200px를 쓰지 않고
+        신령 이미지 블록과 같은 방식(streamlit:setFrameHeight)으로 높이를 보고한다.
+        """
+        info = {"draw_round": HIT_ROUND, "rank_1": 0, "rank_2": 1, "rank_3": 18,
+                "rank_4": 0, "rank_5": 0, "stage4_count": None}
+        doc = web.card_iframe_html(info)
+        self.assertIn("streamlit:setFrameHeight", doc)
+        self.assertIn("document.body.scrollHeight", doc)
+        self.assertLessEqual(web.CARD_IFRAME_HEIGHT, 130, "초기값(폴백)도 작게")
+        src = (ROOT / "win_event_banner.py").read_text(encoding="utf-8")
+        self.assertNotIn("height=200", src, "고정 200px로 되돌아가지 않았는지")
+
+    def test_B8_card_stays_compact(self):
+        """빈 공간을 만들던 값들(큰 패딩·여백)이 다시 커지지 않게 숫자로 못 박는다."""
+        css = web.style_css(web.CHOSEN_STYLE)
+        self.assertIn("padding: 12px 14px 10px;", css, "카드 안쪽 여백은 최소")
+        self.assertIn("padding: 2px;", css, "테두리 링도 얇게")
+        self.assertIn("font-size: 17px;", css)
+        self.assertIn("margin-bottom: 6px;", css)
+
     def test_B9_every_style_is_distinct(self):
         css = [web.style_css(style_id) for style_id in web.STYLES]
         for style_id in web.STYLES:

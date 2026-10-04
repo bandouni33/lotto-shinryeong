@@ -174,8 +174,8 @@ def style_css(style_id: int) -> str:
 {shine}
 .wev-wrap {{
   position: relative;
-  padding: 3px;
-  border-radius: 20px;
+  padding: 2px;
+  border-radius: 16px;
   background: {style['border']};
   box-shadow: {style['glow']};
   animation: wevIn .38s cubic-bezier(.2,.8,.3,1.15) both;
@@ -183,8 +183,8 @@ def style_css(style_id: int) -> str:
 }}
 .wev-card {{
   position: relative;
-  border-radius: 18px;
-  padding: 20px 18px 16px;
+  border-radius: 14px;
+  padding: 12px 14px 10px;
   background: {style['bg']};
   text-align: center;
   color: #f2f2f6;
@@ -214,15 +214,15 @@ def style_css(style_id: int) -> str:
 }}
 .wev-badges, .wev-badge {{ /* 등수 뱃지는 2026-10-04 확정으로 제거(등수는 문구 한 줄로만) */ display: none !important; }}
 .wev-title {{
-  font-size: 19px; font-weight: 900; letter-spacing: -0.6px;
+  font-size: 17px; font-weight: 900; letter-spacing: -0.6px;
   color: {style['title_color']};
-  margin: 2px 0 8px;
+  margin: 0 0 5px;
 }}
-.wev-head {{ font-size: 13px; color: #c8c8d2; margin-bottom: 10px; }}
+.wev-head {{ font-size: 12px; color: #c8c8d2; margin-bottom: 6px; }}
 .wev-head b {{ color: #ffffff; }}
 .wev-ranks {{
-  font-size: 15px; font-weight: 800; letter-spacing: -0.4px;
-  color: #ffffff; line-height: 1.5;
+  font-size: 14.5px; font-weight: 800; letter-spacing: -0.4px;
+  color: #ffffff; line-height: 1.35;
 }}
 .wev-note {{ margin-top: 10px; font-size: 11.5px; color: #9a9aa6; line-height: 1.5; }}
 .wev-sample {{
@@ -273,7 +273,7 @@ def _banner_dialog(info: dict) -> None:
             _close_banner(int(info["draw_round"]))
 
 
-CARD_IFRAME_HEIGHT = 200
+CARD_IFRAME_HEIGHT = 120  # 초기값(폴백) — 실제 높이는 아래 리포트 스크립트가 내용에 맞춰 줄인다
 
 
 def card_iframe_html(info: dict, style_id: int | None = None) -> str:
@@ -283,6 +283,10 @@ def card_iframe_html(info: dict, style_id: int | None = None) -> str:
     HTML로 그려지지 않고 태그가 글자로 보였다. Streamlit markdown의 HTML 처리에
     의존하지 않고 iframe 안에서 그리면 CSS·애니메이션이 그대로 동작한다.
     배경은 투명(transparent) — 창 배경을 해치지 않게.
+
+    높이는 고정하지 않는다(2026-10-04 신고: 창이 너무 크고 빈 공간이 많다) —
+    이 저장소의 신령 이미지 블록과 같은 방식으로 내용 높이를 부모에게 알려
+    프레임을 내용에 맞춰 줄인다.
     """
     body = card_html(info, style_id)
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -290,7 +294,19 @@ def card_iframe_html(info: dict, style_id: int | None = None) -> str:
   html, body {{ margin: 0; padding: 0; background: transparent; }}
   body {{ font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }}
 </style></head>
-<body>{body}</body></html>"""
+<body>{body}
+<script>
+(function () {{
+  function report() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) + 1;
+    window.parent.postMessage({{type: "streamlit:setFrameHeight", height: h}}, "*");
+  }}
+  report();
+  window.addEventListener("load", report);
+  if (window.ResizeObserver) {{ new ResizeObserver(report).observe(document.body); }}
+}})();
+</script>
+</body></html>"""
 
 
 def _close_banner(draw_round: int) -> None:
