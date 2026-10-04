@@ -291,6 +291,14 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
         render_manual_trigger_button()
         maybe_open_manual()
 
+    # 2026-10-04(사용자 확정): 1·2등 배출 이벤트 배너 — 메인화면에서만, 조건이 맞으면
+    # 회차당 1회 뜬다(닫을 때 기록). 트리거·기록·문구는 전부 win_event_banner.py 한 곳에
+    # 있고, 여기는 "main에서 부른다"만 담당한다(업데이트 안내 배너와 같은 방식).
+    if current_page == "main":
+        from win_event_banner import maybe_show_win_event_banner
+
+        maybe_show_win_event_banner()
+
     import html as _html
 
     # 2026-09-12 수정: get_update_notice()(원격 DB 3회 왕복 — 지금은 1회로

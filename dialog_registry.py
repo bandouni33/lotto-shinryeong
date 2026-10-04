@@ -115,6 +115,17 @@ DIALOGS: dict[str, DialogSpec] = {
             "열리므로(이미 로그인 상태) 재개 요청 없음이 정상."
         ),
     ),
+    "win_event_banner": DialogSpec(
+        name="win_event_banner",
+        flag="win_event_banner",
+        consumer="win_event_banner.py",
+        note=(
+            "2026-10-04 신규: 1·2등 배출 이벤트 배너(메인화면). 로그인 게이트와 무관하게 "
+            "스스로 뜨는 축하 모달이라 재개 요청은 없다. 이 플래그는 '이번 세션에서 이미 "
+            "닫았다' 표시이고, 회차별 영구 기록은 marketing_db가 guest_update_notice의 "
+            "'win_event:{회차}' 키로 맡는다(닫을 때 기록)."
+        ),
+    ),
 }
 
 

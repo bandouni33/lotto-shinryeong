@@ -45,7 +45,7 @@
 
 `open_thunder_dialog`, `open_hedge_dialog`, `open_hedge_qr_scan`, `auto_show_points`,
 `af_show_subscribe`, `my_info_dialog`, `wallet_show_charge`, `open_tarot_dialog`,
-`delete_account_dialog`
+`delete_account_dialog`, `win_event_banner`
 
 - 새 창을 추가할 때: `dialog_registry.DIALOGS`에 항목 추가 → 화면에서는
   `dialog_registry.flag_key(이름)`과 `DIALOGS[이름].name`만 사용(문자열을 새로 쓰지 않는다).

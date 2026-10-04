@@ -16,6 +16,11 @@ _MARKETING_POOL_DIR = _APP_ROOT / "data" / "marketing_pools"
 # 첫 시드 회차(1234) 미만은 테스트/스트레이 데이터로 간주 — 통계 조회에서 제외한다.
 MIN_DISPLAY_DRAW_ROUND = min(MARKETING_POOL_SEED_DRAWS)
 
+# 1·2등 배출 이벤트 배너의 시작 회차 (2026-10-04 사용자 확정).
+# 1244회차는 처음엔 건너뛰기로 했었는데, 같은 날 재확정으로 1244부터 노출한다.
+# 이 값 미만 회차는 배너 대상이 아니다(1244는 실제 2등 히트 회차).
+WIN_EVENT_BANNER_MIN_ROUND = 1244  # 2026-10-04 재확정: 1244회차부터 노출(1244는 실제 2등 히트)
+
 PURCHASE_TYPES = frozenset({"정기구독", "일반구매"})
 SEND_STATUSES = frozenset({"WAIT", "SENT", "TEST_SKIP", "BANNER_ONLY"})
 
@@ -2134,6 +2139,93 @@ def reset_round_stats_snapshot(draw_round: int) -> int:
     return deleted
 
 
+def _win_event_banner_key(draw_round: int) -> str:
+    """guest_update_notice.version 자리에 넣는 배너 키 — 회차마다 1회 노출을 위한 키.
+
+    업데이트 안내 배너와 **같은 테이블·같은 방식**(guest_id + 키)을 그대로 쓴다 —
+    이 앱은 화면마다 웹뷰가 새로 생성되어 클라이언트 쿠키/localStorage가 유실되는
+    이력이 있어(marketing_db의 guest_update_notice 주석 참고) 서버 기록이 정본이다.
+    """
+    return f"win_event:{int(draw_round)}"
+
+
+def get_latest_win_event_round() -> dict | None:
+    """1·2등 배출 이벤트 배너의 대상 회차(없으면 None) — 2026-10-04 사용자 확정 규칙.
+
+    조건(전부 만족해야 배너를 띄운다):
+      · 확정된 회차일 것(finalized_at IS NOT NULL) — 미확정이면 등수가 아직 아님
+      · rank_1 > 0 또는 rank_2 > 0 (둘 다 필요 없음)
+      · WIN_EVENT_BANNER_MIN_ROUND 이상(**1244회차부터 노출** — 2026-10-04 재확정. 그 미만은 제외)
+      · **그 회차가 가장 최근에 확정된 회차일 것** — 더 최신 확정 회차가 히트가 아니면
+        아무 것도 돌려주지 않는다(지난 주 히트가 뒤늦게 뜨는 것을 막음)
+
+    등수가 NULL인 미확정 행이 섞여도 COALESCE로 0 취급해 안전하다.
+    stage4_count(4차 통과 조합 수)는 배너 문구(수치 근거형)에 쓰는 값이라 함께 준다.
+    """
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT s.draw_round, s.rank_1, s.rank_2, s.rank_3, s.rank_4, s.rank_5,
+               s.pattern_count, s.finalized_at, g.stage4_count
+        FROM combo_round_stats s
+        LEFT JOIN draw_generation_stats g ON g.draw_round = s.draw_round
+        WHERE s.finalized_at IS NOT NULL AND s.draw_round >= ?
+        ORDER BY s.draw_round DESC
+        LIMIT 1
+        """,
+        (WIN_EVENT_BANNER_MIN_ROUND,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    rank_1 = int(row["rank_1"] or 0)
+    rank_2 = int(row["rank_2"] or 0)
+    if rank_1 <= 0 and rank_2 <= 0:
+        return None
+    return {
+        "draw_round": int(row["draw_round"]),
+        "rank_1": rank_1,
+        "rank_2": rank_2,
+        "rank_3": int(row["rank_3"] or 0),
+        "rank_4": int(row["rank_4"] or 0),
+        "rank_5": int(row["rank_5"] or 0),
+        "pattern_count": int(row["pattern_count"]) if row["pattern_count"] is not None else None,
+        "stage4_count": int(row["stage4_count"]) if row["stage4_count"] is not None else None,
+    }
+
+
+def was_win_event_banner_closed(guest_id: str, draw_round: int) -> bool:
+    """이 게스트가 그 회차 배너를 이미 닫았는가(닫을 때 기록하는 방식 — 2026-10-04 확정)."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT 1 FROM guest_update_notice WHERE guest_id = ? AND version = ?",
+        (str(guest_id), _win_event_banner_key(draw_round)),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def mark_win_event_banner_closed(guest_id: str, draw_round: int) -> None:
+    """배너를 닫았음을 기록한다(확인·다시 보지 않기·X 닫기 모두 같은 처리).
+
+    ON CONFLICT DO UPDATE라 여러 번 호출돼도 멱등이다(행 1개 유지).
+    """
+    from datetime import datetime
+
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO guest_update_notice (guest_id, version, last_shown_date)
+        VALUES (?, ?, ?)
+        ON CONFLICT(guest_id, version) DO UPDATE SET last_shown_date = excluded.last_shown_date
+        """,
+        (str(guest_id), _win_event_banner_key(draw_round), datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_draw_purchase_conversion_stats(limit: int = 20) -> list[dict]:
     """회차별 추출 조합 대비 실제 구매(배정)로 이어진 개수 — 관리자 대시보드용.
 
@@ -2229,6 +2321,10 @@ __all__ = [
     "finalize_pending_round_stats",
     "get_round_stats_snapshot",
     "reset_round_stats_snapshot",
+    "WIN_EVENT_BANNER_MIN_ROUND",
+    "get_latest_win_event_round",
+    "was_win_event_banner_closed",
+    "mark_win_event_banner_closed",
     "get_draw_purchase_conversion_stats",
     "get_mock_draw_extraction_stats",
     "ensure_marketing_pool_seeds",
