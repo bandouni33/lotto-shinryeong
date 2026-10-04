@@ -169,6 +169,16 @@ async def run(args) -> dict:
         for k, v in o["frames"].items():
             frames[k] = frames.get(k, 0) + v
     report["frames"] = frames
+    # 2026-10-04: 세션 상세를 통째로 버려서 "오류 1건"의 **원인 문구**를 나중에 볼 수 없었다
+    # (30분 관측에서 실제로 겪음). 개수는 세션별로, 원인 문구는 중복 없이 최대 5종만 남긴다.
+    report["errors_by_session"] = [len(o["errors"]) for o in report["session_out"]]
+    report["timeouts_by_session"] = [len(o["timeouts"]) for o in report["session_out"]]
+    seen: list[str] = []
+    for o in report["session_out"]:
+        for err in o["errors"]:
+            if err not in seen:
+                seen.append(err)
+    report["error_samples"] = seen[:5]
     report.pop("session_out", None)
     return report
 
