@@ -1,0 +1,588 @@
+"""저장내역 2열 배치를 "5개 조각(chunk) 단위"로 바꾼 것의 불변식 (2026-10-04 사용자 지시).
+
+바뀐 것:
+  · combo_history_ui: 같은 회차·같은 소스의 조합을 **저장 묶음(batch) 경계와 무관하게**
+    5개씩 끊어(CHUNK_SIZE) 순서대로 좌/우로 짝짓는다.
+  · page_auto: `allocated[:5]` 로 잘라 앞 5개만 그리던 것을 없앴다 — 5개 초과분이 화면에서
+    통째로 사라지던 데이터 누락의 원인이었다(배치 문제가 아니라 렌더 절단).
+
+이 테스트가 고정하는 것:
+  C1 조각 규칙(모든 입력): 임의 개수 n에 대해 순서 보존·전부 1회씩·조각 크기 ≤5·
+     왼쪽 조각은 비지 않음·오른쪽이 비는 건 그 쌍이 홀수 조각일 때뿐.
+  C2 강조 규칙: 가장 최근 저장분에서만 나온 조각만 True(섞인 조각·옛 조각은 False).
+  C3 5개씩 따로 2번 저장(회귀): 조각이 배치와 그대로 맞아 **예전과 같은 모양**이고,
+     강조는 새로 저장된 배치의 조각에만 붙는다.
+  C4 15개 한 번에: 5+5+5 세 조각이 전부 나오고(데이터 누락 없음) 셋 다 강조된다.
+  C5 7+3처럼 섞인 경우: 두 번째 조각은 강조하지 않는다(일부만 새것인 카드 방지).
+  C6 page_auto 렌더 절단 제거: 15개를 넘겨도 15줄이 나온다(카드·페어카드 양쪽).
+  C7 조립(번개조합): 실제 저장 데이터로 패널을 띄워 15개가 **화면 마크다운에 전부** 있고
+     강조 조각 수가 기대와 같은지.
+  C8 조립(자동조합): 위와 같은 성질을 page_auto 저장내역에서.
+  C9 안티/액땜(2소스) 분기는 그대로: 배지(전체/개별)가 붙은 짝 카드 경로가 살아 있다
+     (이번 변경이 그쪽 페어링을 건드리지 않았음을 잠근다).
+  C10 진입점(app.py)을 사용자가 열듯 띄워 15개가 전부 보이는지.
+  C11 조각이 원본 배치의 회차(draw_round)를 물려받아 **당첨번호·보너스 동그라미**가
+     살아남는지(조각이 메타를 잃으면 동그라미가 조용히 사라진다).
+  C12 조각의 `combo_count`(= "N개 배정" 라벨값)가 **실제 조각 크기**와 같은지.
+
+DB는 _db_isolation.isolated_db()로만 만진다. 실행:
+  venv312\\Scripts\\python.exe -X utf8 tests\\test_history_chunk_pairing.py
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import time
+import unittest
+import uuid
+from pathlib import Path
+
+from streamlit.testing.v1 import AppTest
+
+TESTS_DIR = Path(__file__).resolve().parent
+ROOT = TESTS_DIR.parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+import _db_isolation  # noqa: E402
+import combo_history_ui as chu  # noqa: E402
+
+TIMEOUT_SEC = 60
+BLINK_FLAG = "thunder_history_blink"
+NEEDLE = 'history-just-saved"'
+
+_PANEL_APP = r"""
+import streamlit as st
+import combo_history_ui as chu
+
+gid = st.query_params.get("gid")
+if isinstance(gid, (list, tuple)):
+    gid = gid[0] if gid else ""
+chu.render_history_section(
+    container_key="hh_zone_6n36s5",
+    blink_flag_key="thunder_history_blink",
+    guest_id=gid,
+    sources=["thunder"],
+)
+"""
+
+_HEDGE_PANEL_APP = r"""
+import streamlit as st
+import combo_history_ui as chu
+
+gid = st.query_params.get("gid")
+if isinstance(gid, (list, tuple)):
+    gid = gid[0] if gid else ""
+chu.render_history_section(
+    container_key="hh_zone_6n36s5",
+    blink_flag_key="thunder_history_blink",
+    guest_id=gid,
+    sources=["aekddaem", "anti"],
+)
+"""
+
+
+def _combo(first: int) -> list[int]:
+    """첫 번호로 구분되는 6개 조합 — 화면에 그 번호가 나오는지로 확인한다."""
+    return [first, 11, 22, 33, 44, 45]
+
+
+def _marked(at: AppTest) -> list[str]:
+    return [(m.value or "") for m in at.markdown if NEEDLE in (m.value or "")]
+
+
+def _all_markup(at: AppTest) -> str:
+    return "\n".join((m.value or "") for m in at.markdown)
+
+
+class ChunkMathTests(unittest.TestCase):
+    """C1·C2·C3·C4·C5 — 순수 조각 규칙(모든 입력에 대해)."""
+
+    def test_C1_chunk_pairs_never_loses_or_reorders_items(self):
+        for n in range(1, 42):
+            items = list(range(n))
+            pairs = chu.chunk_pairs(items)
+            flat = [x for left, right in pairs for x in (left + right)]
+            self.assertEqual(flat, items, f"n={n}: 순서가 바뀌거나 빠졌다")
+            for left, right in pairs:
+                self.assertTrue(left, f"n={n}: 빈 왼쪽 조각")
+                self.assertLessEqual(len(left), chu.CHUNK_SIZE, f"n={n}: 왼쪽 조각 초과")
+                self.assertLessEqual(len(right), chu.CHUNK_SIZE, f"n={n}: 오른쪽 조각 초과")
+            chunks = [c for left, right in pairs for c in ((left,) if not right else (left, right))]
+            self.assertEqual(len(chunks), (n + chu.CHUNK_SIZE - 1) // chu.CHUNK_SIZE,
+                             f"n={n}: 조각 개수가 개수/5 와 다르다")
+
+    def test_C2_highlight_only_for_chunks_entirely_from_the_newest_save(self):
+        newest_only = [("a", 0), ("b", 0)]
+        older_only = [("c", 1), ("d", 1)]
+        mixed = [("e", 0), ("f", 1)]
+        self.assertTrue(chu.chunk_is_from_newest(newest_only))
+        self.assertFalse(chu.chunk_is_from_newest(older_only))
+        self.assertFalse(chu.chunk_is_from_newest(mixed), "일부만 새것인 조각을 강조했다")
+        self.assertFalse(chu.chunk_is_from_newest([]))
+
+    def test_C3_two_saves_of_five_still_line_up_with_the_batches(self):
+        # 회귀: 5개씩 따로 2번 저장 → 조각이 배치와 정확히 일치(예전과 같은 모양),
+        # 강조는 새로 저장된 배치(index 0)의 조각에만.
+        flat = [(_combo(i + 1), 0) for i in range(5)] + [(_combo(i + 11), 1) for i in range(5)]
+        pairs = chu.chunk_pairs(flat)
+        self.assertEqual(len(pairs), 1, f"5+5는 한 쌍이어야 한다: {len(pairs)}")
+        left, right = pairs[0]
+        self.assertTrue(chu.chunk_is_from_newest(left), "새 배치 조각이 강조되지 않았다")
+        self.assertFalse(chu.chunk_is_from_newest(right), "옛 배치 조각이 강조됐다")
+
+    def test_C4_fifteen_at_once_shows_three_chunks_all_highlighted(self):
+        flat = [(_combo(i + 1), 0) for i in range(15)]
+        pairs = chu.chunk_pairs(flat)
+        self.assertEqual([len(left) + len(right) for left, right in pairs], [10, 5],
+                         "15개는 5+5 / 5 로 나뉘어야 한다")
+        chunks = [left for left, _right in pairs] + [pairs[-1][1]]
+        self.assertEqual([len(c) for c in chunks], [5, 5, 5])
+        self.assertTrue(all(chu.chunk_is_from_newest(c) for c in chunks),
+                        "한 번에 저장한 15개 조각이 강조되지 않았다")
+
+    def test_C5_mixed_chunk_is_not_highlighted(self):
+        # 7개 + 3개 저장 → 두 번째 조각은 2 + 3 으로 섞인다.
+        flat = [(_combo(i + 1), 0) for i in range(7)] + [(_combo(i + 11), 1) for i in range(3)]
+        pairs = chu.chunk_pairs(flat)
+        self.assertEqual(len(pairs), 1)
+        left, right = pairs[0]
+        self.assertTrue(chu.chunk_is_from_newest(left))
+        self.assertFalse(chu.chunk_is_from_newest(right), "섞인 조각을 강조했다")
+
+
+class RenderLevelTests(unittest.TestCase):
+    """C6·C7·C8·C9 — 실제 렌더 함수/조립된 화면."""
+
+    def test_C6_page_auto_no_longer_truncates_to_five(self):
+        import page_auto
+
+        allocated = [{"combo": _combo(i + 1)} for i in range(15)]
+        item = {"draw_round": 1245, "combo_count": 15, "cost": 150,
+                "allocated": allocated, "purchase_method": "즉시", "order_id": 7}
+
+        rows = page_auto._history_grid_rows_html(item)
+        self.assertEqual(rows.count("auto-banner-ball-row"), 15,
+                         f"페어카드 줄이 15개가 아니다: {rows.count('auto-banner-ball-row')}")
+
+        banner = page_auto._purchase_banner_html(item, compact=True)
+        self.assertEqual(banner.count("auto-banner-ball-row"), 15,
+                         f"단일 카드 줄이 15개가 아니다: {banner.count('auto-banner-ball-row')}")
+
+        for i in range(15):
+            self.assertIn(f">{i + 1:02d}<", banner, f"{i + 1}번 조합이 카드에 없다")
+
+    def test_C7_thunder_panel_shows_fifteen_and_highlights_three_chunks(self):
+        import marketing_db as mdb
+
+        with _db_isolation.isolated_db():
+            gid = "ch" + uuid.uuid4().hex[:8]
+            mdb.init_marketing_tables()
+            mdb.save_guest_generated_combos(
+                gid, "thunder", 1245, [_combo(i + 1) for i in range(15)])
+            at = AppTest.from_string(_PANEL_APP, default_timeout=TIMEOUT_SEC)
+            at.query_params["gid"] = gid
+            at.session_state["member_id"] = 424242
+            at.session_state[BLINK_FLAG] = True
+            at.run()
+            self.assertFalse(at.exception, f"렌더 예외: {at.exception}")
+            markup = _all_markup(at)
+            missing = [i + 1 for i in range(15) if f">{i + 1:02d}<" not in markup]
+            self.assertEqual(missing, [], f"화면에 안 나온 조합: {missing}")
+            marked = _marked(at)
+            self.assertEqual(len(marked), 3,
+                             f"한 번에 저장한 15개 = 3조각 모두 강조여야 한다: {len(marked)}")
+
+            at.run()  # 새로고침 — 강조는 1회성
+            self.assertEqual(_marked(at), [],
+                             "강조가 1회성이 아니다(새로고침마다 깜빡인다)")
+
+    def test_C8_auto_history_shows_all_and_highlights_newest_chunk_only(self):
+        # 5개씩 2번 구매한 상태(회귀): 10개 전부 보이고 강조는 최신 1조각만.
+        app = r"""
+import streamlit as st
+import combo_history_ui as chu
+import page_auto
+
+items = [
+    {"draw_round": 1245, "combo_count": 5, "cost": 50, "purchase_method": "즉시",
+     "order_id": 7, "allocated": [{"combo": [1, 11, 22, 33, 44, 45]},
+                                  {"combo": [2, 11, 22, 33, 44, 45]},
+                                  {"combo": [3, 11, 22, 33, 44, 45]},
+                                  {"combo": [4, 11, 22, 33, 44, 45]},
+                                  {"combo": [5, 11, 22, 33, 44, 45]}]},
+    {"draw_round": 1245, "combo_count": 5, "cost": 50, "purchase_method": "즉시",
+     "order_id": 6, "allocated": [{"combo": [6, 11, 22, 33, 44, 45]},
+                                  {"combo": [7, 11, 22, 33, 44, 45]},
+                                  {"combo": [8, 11, 22, 33, 44, 45]},
+                                  {"combo": [9, 11, 22, 33, 44, 45]},
+                                  {"combo": [10, 11, 22, 33, 44, 45]}]},
+]
+page_auto._collect_purchase_history_items = lambda mid: (items, False)
+st.session_state["auto_history_blink"] = True
+chu.render_history_button(
+    container_key="auto_purchase_history_zone_6n36s5", blink_flag_key="auto_history_blink"
+)
+page_auto._render_auto_history_content()
+"""
+        at = AppTest.from_string(app, default_timeout=TIMEOUT_SEC)
+        at.session_state["member_id"] = 424242
+        at.run()
+        self.assertFalse(at.exception, f"렌더 예외: {at.exception}")
+        markup = _all_markup(at)
+        missing = [i + 1 for i in range(10) if f">{i + 1:02d}<" not in markup]
+        self.assertEqual(missing, [], f"화면에 안 나온 조합: {missing}")
+        self.assertEqual(len(_marked(at)), 1,
+                         f"최신 구매의 조각 1개만 강조여야 한다: {len(_marked(at))}")
+
+    def test_C9_hedge_two_source_pairing_is_untouched(self):
+        import marketing_db as mdb
+
+        with _db_isolation.isolated_db():
+            gid = "hd" + uuid.uuid4().hex[:8]
+            mdb.init_marketing_tables()
+            mdb.save_guest_generated_combos(gid, "aekddaem", 1245,
+                                            [_combo(i + 1) for i in range(5)])
+            time.sleep(0.02)
+            mdb.save_guest_generated_combos(gid, "anti", 1245,
+                                            [_combo(i + 11) for i in range(5)])
+            at = AppTest.from_string(_HEDGE_PANEL_APP, default_timeout=TIMEOUT_SEC)
+            at.query_params["gid"] = gid
+            at.session_state["member_id"] = 424242
+            at.run()
+            self.assertFalse(at.exception, f"렌더 예외: {at.exception}")
+            markup = _all_markup(at)
+            self.assertIn("전체", markup, "전체(액땜) 배지가 사라졌다 — 2소스 짝짓기가 깨졌다")
+            self.assertIn("개별", markup, "개별(안티) 배지가 사라졌다")
+            self.assertIn("hedge-pair-card", markup, "2소스 짝 카드가 안 그려졌다")
+
+
+_AUTO_APP_FOR_COUNT = r"""
+import streamlit as st
+import combo_history_ui as chu
+import page_auto
+
+count = __N__
+items = [
+    {"draw_round": 1245, "combo_count": count, "cost": 10 * count,
+     "purchase_method": "즉시", "order_id": 7,
+     "allocated": [{"combo": [i + 1, 11, 22, 33, 44, 45]} for i in range(count)]},
+]
+page_auto._collect_purchase_history_items = lambda mid: (items, False)
+st.session_state["auto_history_blink"] = True
+chu.render_history_button(
+    container_key="auto_purchase_history_zone_6n36s5", blink_flag_key="auto_history_blink"
+)
+page_auto._render_auto_history_content()
+"""
+
+
+def _expected_chunks(count: int) -> int:
+    return (count + chu.CHUNK_SIZE - 1) // chu.CHUNK_SIZE
+
+
+class CountCasesTests(unittest.TestCase):
+    """사용자 지시의 5/10/15개를 각각, 두 화면(번개조합·자동구매)에서."""
+
+    def _assert_all_shown(self, markup: str, count: int, where: str):
+        missing = [i + 1 for i in range(count) if f">{i + 1:02d}<" not in markup]
+        self.assertEqual(missing, [], f"{where}: 화면에 안 나온 조합 {missing}")
+
+    def test_thunder_5_10_15_at_once(self):
+        import marketing_db as mdb
+
+        for count in (5, 10, 15):
+            with _db_isolation.isolated_db():
+                gid = "cn" + uuid.uuid4().hex[:8]
+                mdb.init_marketing_tables()
+                mdb.save_guest_generated_combos(
+                    gid, "thunder", 1245, [_combo(i + 1) for i in range(count)])
+                at = AppTest.from_string(_PANEL_APP, default_timeout=TIMEOUT_SEC)
+                at.query_params["gid"] = gid
+                at.session_state["member_id"] = 424242
+                at.session_state[BLINK_FLAG] = True
+                at.run()
+                self.assertFalse(at.exception, f"{count}개 렌더 예외: {at.exception}")
+                self._assert_all_shown(_all_markup(at), count, f"번개조합 {count}개")
+                self.assertEqual(len(_marked(at)), _expected_chunks(count),
+                                 f"번개조합 {count}개: 강조 조각 수가 {_expected_chunks(count)}가 아니다")
+
+    def test_auto_5_10_15_at_once(self):
+        for count in (5, 10, 15):
+            at = AppTest.from_string(_AUTO_APP_FOR_COUNT.replace("__N__", str(count)),
+                                     default_timeout=TIMEOUT_SEC)
+            at.session_state["member_id"] = 424242
+            at.run()
+            self.assertFalse(at.exception, f"{count}개 렌더 예외: {at.exception}")
+            self._assert_all_shown(_all_markup(at), count, f"자동구매 {count}개")
+            self.assertEqual(len(_marked(at)), _expected_chunks(count),
+                             f"자동구매 {count}개: 강조 조각 수가 {_expected_chunks(count)}가 아니다")
+
+
+REPORT_NAME = "저장내역_5개조각_배치_2026-10-04.txt"
+
+
+def _report_text() -> str:
+    path = ROOT / REPORT_NAME
+    assert path.exists(), f"보고서가 없다: {path}"
+    return path.read_text(encoding="utf-8")
+
+
+class ChangeContractTests(unittest.TestCase):
+    """이번 변경의 계약 — 보고서가 주장한 것을 코드에서 직접 확인한다.
+
+    보고서는 "기준점은 CHUNK_SIZE=5", "page_auto 절단 제거", "안티/액땜 분기는 그대로",
+    "공용 CSS 클래스가 늘지 않았다"고 적고 있다. 문서 주장이 코드와 어긋나는 것은
+    이 저장소에서 실제로 반복된 사고라 글로만 두지 않고 코드로 잠근다.
+    """
+
+    def test_report_exists_and_states_the_change(self):
+        text = _report_text()
+        for needle in ("CHUNK_SIZE", "5개", "절단", "안티/액땜"):
+            self.assertIn(needle, text, f"보고서에 {needle} 설명이 없다")
+
+    def test_chunk_size_is_the_single_reference_point(self):
+        self.assertEqual(chu.CHUNK_SIZE, 5)
+        # 두 화면이 같은 값을 쓰는가 — 한쪽에 5를 따로 박으면 조각이 어긋난다.
+        ui_src = (ROOT / "combo_history_ui.py").read_text(encoding="utf-8")
+        auto_src = (ROOT / "page_auto.py").read_text(encoding="utf-8")
+        self.assertIn("chunk_pairs", ui_src)
+        self.assertIn("from combo_history_ui import chunk_is_from_newest, chunk_pairs", auto_src)
+        self.assertNotIn("range(0, len(items), 10)", auto_src,
+                         "page_auto 가 조각 크기를 따로 계산한다(기준점이 둘로 갈라진다)")
+
+    def test_page_auto_never_truncates_the_allocated_list_again(self):
+        auto_src = (ROOT / "page_auto.py").read_text(encoding="utf-8")
+        self.assertNotIn("allocated[:5]", auto_src, "allocated[:5] 절단이 다시 들어왔다")
+        for func in ("_history_grid_rows_html", "_purchase_banner_html"):
+            body = auto_src.split(f"def {func}")[1].split("\ndef ")[0]
+            self.assertNotIn("[:5]", body,
+                             f"{func} 안에 5개 절단이 남아 있다 — 데이터가 다시 사라진다")
+
+    def test_hedge_two_source_branch_still_pairs_by_batch(self):
+        ui_src = (ROOT / "combo_history_ui.py").read_text(encoding="utf-8")
+        self.assertIn("paired_batch_card_html(", ui_src,
+                      "안티/액땜 2소스 짝짓기가 사라졌다")
+        # 예전 "배치 2개를 통째로 짝짓기" 호출 패턴이 되살아나면 잡는다.
+        self.assertNotIn("same_source_pair_card_html(\n                                group[i], group[i + 1]",
+                         ui_src)
+
+    def test_shared_css_classes_did_not_grow(self):
+        ui_src = (ROOT / "combo_history_ui.py").read_text(encoding="utf-8")
+        auto_src = (ROOT / "page_auto.py").read_text(encoding="utf-8")
+        self.assertIn("hedge-pair-card", ui_src, "헤지 카드 클래스가 사라졌다")
+        self.assertIn("auto-history-pair-card", auto_src)
+        # 새 짝 카드 클래스를 만들지 않았는가(공용 클래스가 늘면 화면 간 간섭 위험).
+        import re
+
+        found = set()
+        for src in (ui_src, auto_src):
+            found |= set(re.findall(r"[a-z-]*pair-card", src))
+        self.assertEqual(found, {"hedge-pair-card", "auto-history-pair-card"},
+                         f"짝 카드 클래스가 늘었다: {sorted(found)}")
+
+
+class EntryPointTests(unittest.TestCase):
+    """조립 검증 — 진입점(app.py)을 사용자가 열듯 띄워서 15개가 다 보이는지.
+
+    앞의 테스트들은 렌더 함수를 직접 부르거나 데이터를 스텁으로 바꿔 확인했다.
+    여기서는 **실제 구매 데이터**(auto_orders + lotto_combinations 배정)를 심고
+    app.py?page=auto 를 띄운다 — 조각 배치가 실패하면 5개 초과분이 화면에서
+    사라지는데, 그건 렌더 함수 단위 테스트로는 안 잡히는 종류의 고장이다.
+    """
+
+    def test_C10_entry_point_shows_all_fifteen_of_one_purchase(self):
+        import marketing_db as mdb
+        import wallet_db as wdb
+
+        with _db_isolation.isolated_db():
+            wdb.init_wallet_tables()
+            mdb.init_marketing_tables()
+            mid, _new = wdb.get_or_create_member("kakao", "chunk_entry")
+            mid = int(mid)
+            combos = [_combo(i + 1) for i in range(15)]
+            mdb.bulk_insert_lotto_combinations(1245, combos)
+            order_id = wdb.create_auto_order(mid, 15, "즉시", "", "", "test:chunk:entry")
+            claimed = mdb.allocate_lotto_combinations(1245, 15, order_id)
+            self.assertEqual(len(claimed or []), 15, "15개 배정 준비가 안 됐다")
+            wdb.complete_auto_order(order_id, 0, 1245, 15)
+
+            at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=TIMEOUT_SEC)
+            at.query_params["page"] = "auto"
+            at.query_params["gid"] = "chunkentry15"
+            at.query_params["native"] = "1"
+            at.session_state["member_id"] = mid
+            at.session_state["_guest_id"] = "chunkentry15"
+            at.session_state["auto_history_blink"] = True
+            at.run()
+            self.assertFalse(at.exception, f"진입점 렌더 예외: {at.exception}")
+            self.assertTrue(at.session_state.get("auto_history_blink_panel_open"),
+                            "방금 구매했는데 저장내역 패널이 안 펼쳐졌다")
+
+            markup = _all_markup(at)
+            missing = [i + 1 for i in range(15) if f">{i + 1:02d}<" not in markup]
+            self.assertEqual(missing, [], f"화면에 안 나온 조합: {missing}")
+            rows = markup.count("auto-banner-ball-row")
+            self.assertEqual(rows, 15, f"번호 줄이 15개가 아니다: {rows}(예전엔 5에서 잘렸다)")
+            self.assertGreaterEqual(len(_marked(at)), 1,
+                                    "방금 구매한 15개가 강조되지 않았다")
+
+
+_LABEL_PROBE_APP = r"""
+import streamlit as st
+import combo_history_ui as chu
+import page_auto
+
+count = __N__
+seen = []
+_orig_pair = page_auto._history_pair_card_html
+_orig_banner = page_auto._purchase_banner_html
+
+
+def _pair(left, right, highlight=False):
+    seen.append((left, right))
+    return _orig_pair(left, right, highlight=highlight)
+
+
+def _banner(item, **kwargs):
+    seen.append((item, None))
+    return _orig_banner(item, **kwargs)
+
+
+page_auto._history_pair_card_html = _pair
+page_auto._purchase_banner_html = _banner
+items = [
+    {"draw_round": 1245, "combo_count": count, "cost": 10 * count,
+     "purchase_method": "즉시", "order_id": 7,
+     "allocated": [{"combo": [i + 1, 11, 22, 33, 44, 45]} for i in range(count)]},
+]
+page_auto._collect_purchase_history_items = lambda mid: (items, False)
+st.session_state["auto_history_blink"] = True
+page_auto._render_auto_history_content()
+st.session_state["_label_probe"] = [
+    tuple(
+        (None if item is None else (item.get("combo_count"), len(item.get("allocated") or [])))
+        for item in pair
+    )
+    for pair in seen
+]
+"""
+
+
+class ChunkMetadataTests(unittest.TestCase):
+    """C11 — 조각이 원본 배치의 메타를 물려받는가.
+
+    `_chunk_batch`는 조각을 기존 카드 함수가 먹는 모양으로 감싼다. 그때 회차
+    (`draw_round`)를 안 넘기면 `_combo_rows_html`이 당첨번호를 못 찾아 동그라미가
+    조용히 사라진다(예외도 로그도 없이 숫자만 남는다) — 그래서 화면 마크다운에서
+    직접 센다.
+    """
+
+    def test_C11_chunk_keeps_draw_round_so_winner_circles_survive(self):
+        import draw_results_db as drdb
+        import lotto_stats
+        import marketing_db as mdb
+
+        with _db_isolation.isolated_db():
+            gid = "dr" + uuid.uuid4().hex[:8]
+            mdb.init_marketing_tables()
+            drdb.init_draw_results_table()
+            drdb.upsert_draw_result(1245, [1, 2, 3, 4, 5, 6], 11)
+            # 캐시 키가 (건수, 최신회차)라 다른 테스트와 겹칠 수 있다 — 방금 넣은
+            # 당첨번호가 반드시 보이도록 비운다.
+            lotto_stats._load_lotto_data_db_cached.clear()
+            # 1~6번 조합은 당첨번호를 1개씩(줄 6개), 나머지 9줄은 0개.
+            # 11은 보너스번호라 15줄 전부에 붙는다.
+            mdb.save_guest_generated_combos(gid, "thunder", 1245,
+                                            [_combo(i + 1) for i in range(15)])
+
+            at = AppTest.from_string(_PANEL_APP, default_timeout=TIMEOUT_SEC)
+            at.query_params["gid"] = gid
+            at.session_state["member_id"] = 424242
+            at.session_state[BLINK_FLAG] = True
+            at.run()
+            self.assertFalse(at.exception, f"렌더 예외: {at.exception}")
+            markup = _all_markup(at)
+            self.assertEqual(markup.count('<div class="auto-banner-ball-row">'), 15,
+                             "조각 렌더가 15줄이 아니다")
+            self.assertEqual(markup.count('class="auto-banner-ball auto-banner-ball-hit"'), 6,
+                             "당첨 동그라미가 6개가 아니다 — _chunk_batch가 회차를 잃었을 수 있다")
+            self.assertEqual(markup.count('class="auto-banner-ball auto-banner-ball-bonus"'), 15,
+                             "보너스 동그라미가 15개가 아니다 — 회차·보너스가 조각에 안 실렸다")
+
+
+class ChunkLabelTests(unittest.TestCase):
+    """C12 — 조각의 "N개 배정" 라벨값이 실제 조각 크기와 같은가.
+
+    조각을 만들 때 `combo_count`를 안 고치면 "15개 배정"이라 써 놓고 화면엔 5줄만
+    나오는 어긋남이 생긴다. 라벨이 그려지는 곳이든 아니든, 카드 함수가 받은 dict의
+    (combo_count, 실제 줄 수) 쌍을 그대로 가로채 확인한다.
+    """
+
+    def test_C12_chunk_label_matches_the_real_chunk_size(self):
+        cases = {5: [(5, 5)], 7: [(5, 5), (2, 2)], 15: [(5, 5), (5, 5), (5, 5)]}
+        for count, expected in cases.items():
+            at = AppTest.from_string(_LABEL_PROBE_APP.replace("__N__", str(count)),
+                                     default_timeout=TIMEOUT_SEC)
+            at.session_state["member_id"] = 424242
+            at.run()
+            self.assertFalse(at.exception, f"{count}개 렌더 예외: {at.exception}")
+            probe = at.session_state["_label_probe"]
+            flat = [item for pair in probe for item in pair if item is not None]
+            self.assertEqual(flat, expected,
+                             f"{count}개: 조각별 (라벨값, 실제 줄수)가 기대와 다르다")
+            self.assertEqual(sum(rows for _label, rows in flat), count,
+                             f"{count}개: 조각 줄 수 합이 구매 개수와 다르다")
+            for label, rows in flat:
+                self.assertEqual(label, rows, f"{count}개: 라벨값과 실제 줄 수가 어긋난다")
+            self.assertNotIn("개 배정", _all_markup(at),
+                             "저장내역 카드에 배정 개수 라벨이 생겼다 — 라벨 위치가 바뀌었으면 "
+                             "이 테스트도 함께 고쳐야 한다(지금은 구매 완료 배너에만 있다)")
+
+
+def _main() -> int:
+    tests = [
+        ChunkMathTests("test_C1_chunk_pairs_never_loses_or_reorders_items"),
+        ChunkMathTests("test_C2_highlight_only_for_chunks_entirely_from_the_newest_save"),
+        ChunkMathTests("test_C3_two_saves_of_five_still_line_up_with_the_batches"),
+        ChunkMathTests("test_C4_fifteen_at_once_shows_three_chunks_all_highlighted"),
+        ChunkMathTests("test_C5_mixed_chunk_is_not_highlighted"),
+        RenderLevelTests("test_C6_page_auto_no_longer_truncates_to_five"),
+        RenderLevelTests("test_C7_thunder_panel_shows_fifteen_and_highlights_three_chunks"),
+        RenderLevelTests("test_C8_auto_history_shows_all_and_highlights_newest_chunk_only"),
+        RenderLevelTests("test_C9_hedge_two_source_pairing_is_untouched"),
+        CountCasesTests("test_thunder_5_10_15_at_once"),
+        CountCasesTests("test_auto_5_10_15_at_once"),
+        ChangeContractTests("test_report_exists_and_states_the_change"),
+        ChangeContractTests("test_chunk_size_is_the_single_reference_point"),
+        ChangeContractTests("test_page_auto_never_truncates_the_allocated_list_again"),
+        ChangeContractTests("test_hedge_two_source_branch_still_pairs_by_batch"),
+        ChangeContractTests("test_shared_css_classes_did_not_grow"),
+        EntryPointTests("test_C10_entry_point_shows_all_fifteen_of_one_purchase"),
+        ChunkMetadataTests("test_C11_chunk_keeps_draw_round_so_winner_circles_survive"),
+        ChunkLabelTests("test_C12_chunk_label_matches_the_real_chunk_size"),
+    ]
+    failed = 0
+    for test in tests:
+        try:
+            test()
+        except AssertionError as exc:
+            failed += 1
+            print(f"FAIL {test._testMethodName}: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            print(f"ERROR {test._testMethodName}: {type(exc).__name__}: {exc}")
+        else:
+            print(f"PASS {test._testMethodName}")
+        sys.stdout.flush()
+    print(f"\n{len(tests) - failed}/{len(tests)} passed")
+    sys.stdout.flush()
+    # db_turso 등이 import 시점에 만드는 비데몬 스레드 때문에 프로세스가 스스로 끝나지
+    # 않는다(다른 테스트 파일과 같은 현상) — 결과를 다 낸 뒤 즉시 종료한다.
+    os._exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    _main()

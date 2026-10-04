@@ -486,8 +486,9 @@ def _purchase_banner_html(data: dict, *, compact: bool = False, highlight: bool 
         combo_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
 
     if compact:
+        # 위와 같은 이유로 절단하지 않는다 — 조각 단위 배치는 호출부가 한다.
         grid_rows = ""
-        for item in allocated[:5]:
+        for item in allocated:
             combo = (item.get("combo") or [])[:6]
             balls = "".join(_ball_span(n) for n in combo)
             grid_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
@@ -563,8 +564,11 @@ def _history_grid_rows_html(item: dict) -> str:
     번호 줄만, 카드 wrapper 없이 반환한다(좌우 2열로 합칠 때 재사용)."""
     draw_round = item.get("draw_round", "")
     win_set, bonus_number = _winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
+    # 2026-10-04(사용자 지시): 앞 5개만 그리던 절단을 없앨다 — 5개 초과분이 화면에서
+    # 통째로 사라지던 **데이터 누락**의 원인이었다(배치 문제가 아니라 렌더 절단).
+    # 5개씩 조각내는 배치는 호출부가 하고, 여기서는 받은 것을 전부 그린다.
     rows = ""
-    for it in (item.get("allocated") or [])[:5]:
+    for it in (item.get("allocated") or []):
         combo = (it.get("combo") or [])[:6]
         balls = "".join(_history_ball_span(n, win_set, bonus_number) for n in combo)
         rows += f'<div class="auto-banner-ball-row">{balls}</div>'
@@ -886,23 +890,36 @@ def _render_auto_history_content():
             f'<div class="auto-history-round-head" style="color:{round_color};">{draw_round}회차</div>',
             unsafe_allow_html=True,
         )
-        i = 0
-        n = len(items)
-        while i < n:
-            if i + 1 < n:
+        # 2026-10-04(사용자 지시): 회차 안의 조합을 **5개 조각 단위**로 끊어 좌/우로
+        # 짝짓는다. 구매 1건에 15개가 배정돼도 5+5+5가 전부 보인다.
+        from combo_history_ui import chunk_is_from_newest, chunk_pairs
+
+        flat: list[tuple[dict, int]] = []
+        for item_idx, item in enumerate(items):
+            for allocated in (item.get("allocated") or []):
+                flat.append((allocated, item_idx))
+        # '방금 구매' 강조는 **가장 최근 구매(items[0])에서만 나온 조각**에 붙는다.
+        newest_hl = _highlight_next
+        for left_part, right_part in chunk_pairs(flat):
+            src_item = items[left_part[0][1]]
+            left_item = dict(src_item)
+            left_item["allocated"] = [alloc for alloc, _idx in left_part]
+            left_item["combo_count"] = len(left_part)
+            highlight = newest_hl and chunk_is_from_newest(left_part)
+            if right_part:
+                right_item = dict(items[right_part[0][1]])
+                right_item["allocated"] = [alloc for alloc, _idx in right_part]
+                right_item["combo_count"] = len(right_part)
                 st.markdown(
-                    _history_pair_card_html(items[i], items[i + 1], highlight=_highlight_next),
+                    _history_pair_card_html(left_item, right_item, highlight=highlight),
                     unsafe_allow_html=True,
                 )
-                _highlight_next = False
-                i += 2
             else:
                 st.markdown(
-                    _purchase_banner_html(items[i], compact=True, highlight=_highlight_next),
+                    _purchase_banner_html(left_item, compact=True, highlight=highlight),
                     unsafe_allow_html=True,
                 )
-                _highlight_next = False
-                i += 1
+        _highlight_next = False
 
 
 def render():

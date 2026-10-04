@@ -317,6 +317,44 @@ _PAIR_BADGE_LABEL = {
 # 쉽게 구분").
 PAIR_ROUND_COLORS = ("#EAEAF2", "#ce93d8")
 
+# 2026-10-04(사용자 지시): 저장내역 2열 배치는 "저장 묶음(batch) 단위"가 아니라
+# **5개 조각(chunk) 단위**다 — 같은 회차의 조합을 저장 경계와 무관하게 5개씩 끊어
+# 순서 그대로 좌/우로 짝짓는다(예: 15개를 한 번에 저장해도 5+5+5가 전부 보인다).
+# 안티/액땜처럼 서로 다른 소스를 짝짓는 분기(paired_batch_card_html)는 이 규칙과
+# 무관하게 그대로 둔다 — 그쪽은 "두 소스를 나란히"가 목적이라 조각 규칙이 없다.
+CHUNK_SIZE = 5
+
+
+def chunk_pairs(items: list, size: int = CHUNK_SIZE) -> list[tuple[list, list]]:
+    """items를 size개씩 끊어 (왼쪽 조각, 오른쪽 조각) 쌍으로 묶는다.
+
+    모든 항목이 **순서 그대로 정확히 한 번씩** 들어가고, 조각이 홀수개면 마지막
+    쌍의 오른쪽이 빈 리스트다. 배치 경계는 보지 않는다(그게 이 함수의 목적이다).
+    """
+    width = max(1, int(size))
+    out: list[tuple[list, list]] = []
+    for i in range(0, len(items), width * 2):
+        out.append((items[i:i + width], items[i + width:i + width * 2]))
+    return out
+
+
+def chunk_is_from_newest(part: list, newest_index: int = 0) -> bool:
+    """조각이 **가장 최근 저장분에서만** 나왔는가 — '방금 저장' 강조 대상인지.
+
+    part는 (내용, 출처 인덱스) 쌍의 리스트다(출처 0 = 가장 최근 저장분).
+    옛 저장분과 섮인 조각(예: 7개 + 3개 저장의 두 번째 조각)은 강조하지 않는다 —
+    일부만 새것인 카드를 깜박이면 어느 줄이 방금 저장된 것인지 오히려 헷갈린다.
+    """
+    return bool(part) and all(idx == newest_index for _item, idx in part)
+
+
+def _chunk_batch(draw_round, part: list) -> dict:
+    """조각((내용, 출처) 쌍)을 **기존 카드 함수가 먹을 수 있는 batch 모양**으로 감싼다.
+
+    CSS·볼 렌더(당첨 동그라미 포함)를 새로 만들지 않고 기존 경로를 그대로 쓰기 위함이다.
+    """
+    return {"draw_round": draw_round, "combos": [combo for combo, _idx in part]}
+
 
 def paired_batch_card_html(
     batch_left: dict,
@@ -656,23 +694,36 @@ def _render_batches(
                     f'<div class="auto-history-round-head" style="color:{round_color};">{heading}</div>',
                     unsafe_allow_html=True,
                 )
-                i = 0
-                n = len(group)
-                while i < n:
-                    if i + 1 < n:
+                # 2026-10-04(사용자 지시): 묶음(batch) 단위가 아니라 **5개 조각(chunk) 단위**로
+                # 짝짓는다 — 저장 경계와 무관하게 5개씩 끊어 순서대로 좌/우에 배치한다.
+                # (예전엔 배치 2개를 통째로 짝지어서, 한 배치가 15개면 그 15개가
+                #  좌우 한 쌍으로만 보였고 배치 수가 홀수면 마지막이 한 열로 남았다.)
+                # 강조 대상은 **전체에서 가장 최근 저장분**(batches[0])이다 — 회차별 첫
+                # 배치를 강조하면 옵 회차 카드까지 깜박인다(2026-10-04 테스트가 잡았다).
+                newest_batch = batches[0] if highlight_first else None
+                flat: list[tuple[dict, int]] = []
+                for batch in group:
+                    is_newest = 0 if batch is newest_batch else 1
+                    for combo in (batch.get("combos") or []):
+                        flat.append((combo, is_newest))
+                newest_hl = newest_batch is not None
+                for left_part, right_part in chunk_pairs(flat):
+                    left_chunk = _chunk_batch(dr, left_part)
+                    highlight = newest_hl and chunk_is_from_newest(left_part)
+                    if right_part:
                         st.markdown(
                             same_source_pair_card_html(
-                                group[i], group[i + 1], highlight=_take_highlight()
+                                left_chunk,
+                                _chunk_batch(dr, right_part),
+                                highlight=highlight,
                             ),
                             unsafe_allow_html=True,
                         )
-                        i += 2
                     else:
                         st.markdown(
-                            batch_card_html(group[i], highlight=_take_highlight()),
+                            batch_card_html(left_chunk, highlight=highlight),
                             unsafe_allow_html=True,
                         )
-                        i += 1
             else:
                 for b in group:
                     _render_single_batch(
