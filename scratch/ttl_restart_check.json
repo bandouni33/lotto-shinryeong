@@ -1,0 +1,36 @@
+{
+  "url": "ws://127.0.0.1:8501/_stcore/stream",
+  "query": "page=main",
+  "started": "2026-10-04T19:38:32",
+  "hold_seconds": 2.0,
+  "rerun_interval": 1.0,
+  "rows": [
+    {
+      "concurrent": 1,
+      "sessions": 1,
+      "connected": 1,
+      "renders": 1,
+      "script_p50": 3702,
+      "script_p95": 3702,
+      "script_max": 3702,
+      "timeouts": 0,
+      "errors": 0
+    }
+  ],
+  "finished": "2026-10-04T19:38:37",
+  "frames": {
+    "new_session": 1,
+    "session_status_changed": 1,
+    "page_config_changed": 2,
+    "navigation": 1,
+    "delta": 5,
+    "script_finished": 1
+  },
+  "errors_by_session": [
+    0
+  ],
+  "timeouts_by_session": [
+    0
+  ],
+  "error_samples": []
+}
