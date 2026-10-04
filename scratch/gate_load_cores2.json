@@ -1,0 +1,4376 @@
+{
+  "url": "ws://127.0.0.1:8598/_stcore/stream",
+  "cap": 120,
+  "n": 128,
+  "excess": 8,
+  "started": "2026-10-04T20:39:42",
+  "render_timeout_s": 240.0,
+  "drain_wait_s": 65.0,
+  "notes": [
+    "script_ms 는 Turso 왕복을 포함하지 않는다(격리 sqlite 인스턴스).",
+    "이 도구는 DB에 쓰지 않는다 — 상한은 서버 쪽 인자로만 바뀐다.",
+    "새 세션의 첫 렌더는 앱이 스스로 rerun 하는 경우 페이지 내용(delta) 전에 script_finished 로 끝날 수 있다 → 그 건수는 p1.first_render_empty 에 남기고, 정상 여부는 다음 라운드(P2)의 실제 내용(delta)으로 확인한다."
+  ],
+  "warmup": {
+    "verdicts": [
+      "NORMAL",
+      "NORMAL"
+    ]
+  },
+  "p1": {
+    "seconds": 24.0,
+    "counts": {
+      "NORMAL": 120,
+      "GATE": 8,
+      "TIMEOUT": 0,
+      "ERROR": 0
+    },
+    "first_render_empty": 120,
+    "expected": {
+      "NORMAL": 120,
+      "GATE": 8
+    },
+    "normal_ms_p50": 23574,
+    "normal_ms_p95": 23774,
+    "gate_ms_p50": 23787,
+    "gate_ms_p95": 23790,
+    "normal_deltas_p50": 0,
+    "gate_deltas_p50": 1,
+    "normal_frames_p50": 3,
+    "gate_session_indexes": [
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127
+    ]
+  },
+  "p2": {
+    "rounds": 1,
+    "admitted_sessions": 120,
+    "blocked_sessions": 8,
+    "admitted_counts": {
+      "NORMAL": 120,
+      "GATE": 0,
+      "TIMEOUT": 0,
+      "ERROR": 0
+    },
+    "blocked_counts": {
+      "NORMAL": 0,
+      "GATE": 8,
+      "TIMEOUT": 0,
+      "ERROR": 0
+    },
+    "admitted_ms_p50": 2282,
+    "admitted_ms_p95": 2398,
+    "admitted_deltas_p50": 62
+  },
+  "p3": {
+    "fresh_verdict": "NORMAL",
+    "seconds": 0.2,
+    "ms": 169
+  },
+  "verdict": {
+    "boundary_exact": true,
+    "no_errors": true,
+    "normal_screen_has_content": true,
+    "admitted_not_reblocked": true,
+    "recovery_ok": true
+  },
+  "session_renders": [
+    {
+      "idx": -1,
+      "renders": [
+        {
+          "phase": "P0",
+          "verdict": "NORMAL",
+          "ms": 969,
+          "deltas": 5,
+          "frames": 11,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 5,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P0",
+          "verdict": "NORMAL",
+          "ms": 732,
+          "deltas": 63,
+          "frames": 71,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 2,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 63,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 0,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23333,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 15161,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 1,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23333,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2180,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 2,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23338,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2181,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 3,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23343,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2195,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 4,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23346,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2222,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 5,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23350,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2223,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 6,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23354,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2223,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 7,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23357,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2223,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 8,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23360,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2224,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 9,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23364,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2225,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 10,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23372,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2225,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 11,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23379,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2225,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 12,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23383,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2225,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 13,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23387,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2232,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 14,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23390,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2246,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 15,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23396,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2246,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 16,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23402,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2248,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 17,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23407,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2250,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 18,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23410,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2251,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 19,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23415,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2253,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 20,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23419,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2254,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 21,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23424,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2253,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 22,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23428,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2253,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 23,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23434,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2254,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 24,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23441,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2254,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 25,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23446,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2255,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 26,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23452,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2256,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 27,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23436,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2256,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 28,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23443,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2257,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 29,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23450,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2257,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 30,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23455,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2259,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 31,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23459,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2259,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 32,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23462,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2259,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 33,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23465,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2259,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 34,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23470,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2259,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 35,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23473,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2260,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 36,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23476,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2260,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 37,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23482,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2260,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 38,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23486,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2260,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 39,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23490,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2260,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 40,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23493,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2272,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 41,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23499,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2273,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 42,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23502,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2274,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 43,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23507,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2274,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 44,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23510,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2276,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 45,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23514,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2276,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 46,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23518,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2276,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 47,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23522,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2276,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 48,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23526,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2276,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 49,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23531,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2277,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 50,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23534,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2277,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 51,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23538,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2277,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 52,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23541,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2277,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 53,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23546,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2277,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 54,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23550,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2279,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 55,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23553,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2279,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 56,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23558,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2279,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 57,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23561,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2280,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 58,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23565,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2280,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 59,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23569,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2281,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 60,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23574,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2282,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 61,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23577,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2282,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 62,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23581,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2282,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 63,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23585,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2282,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 64,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23588,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2282,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 65,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23593,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2282,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 66,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23596,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2282,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 67,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23600,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2283,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 68,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23603,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2283,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 69,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23609,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2336,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 70,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23612,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2337,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 71,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23618,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2337,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 72,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23624,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2338,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 73,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23627,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2340,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 74,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23631,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2342,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 75,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23634,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2350,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 76,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23637,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2352,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 77,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23642,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2353,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 78,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23646,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2353,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 79,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23649,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2353,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 80,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23653,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2353,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 81,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23658,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2353,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 82,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23664,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 83,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23669,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 84,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23674,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 85,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23678,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 86,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23681,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 87,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23684,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 88,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23687,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 89,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23690,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2356,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 90,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23694,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2357,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 91,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23697,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2357,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 92,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23700,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2358,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 93,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23703,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2358,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 94,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23707,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2358,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 95,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23710,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2358,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 96,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23713,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2359,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 97,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23717,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2359,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 98,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23719,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2359,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 99,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23723,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2365,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 100,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23727,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2366,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 101,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23731,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2366,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 102,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23735,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2367,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 103,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23739,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2368,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 104,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23742,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2369,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 105,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23745,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2369,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 106,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23747,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2369,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 107,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23752,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2370,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 108,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23754,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2370,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 109,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23757,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2370,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 110,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23760,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2376,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 111,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23763,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2378,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 112,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23766,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2391,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 113,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23769,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2396,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 114,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23774,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2397,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 115,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23777,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2398,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 116,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23780,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2398,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 117,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23784,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2399,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 118,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23784,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2399,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 119,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "NORMAL",
+          "ms": 23787,
+          "deltas": 0,
+          "frames": 3,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "NORMAL",
+          "ms": 2400,
+          "deltas": 62,
+          "frames": 69,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 62,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 120,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23790,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15596,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 121,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23789,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15596,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 122,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23788,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15597,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 123,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23787,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15597,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 124,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23787,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15598,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 125,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23787,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15598,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 126,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23787,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15598,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": 127,
+      "renders": [
+        {
+          "phase": "P1",
+          "verdict": "GATE",
+          "ms": 23787,
+          "deltas": 1,
+          "frames": 5,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        },
+        {
+          "phase": "P2",
+          "verdict": "GATE",
+          "ms": 15598,
+          "deltas": 1,
+          "frames": 6,
+          "kinds": {
+            "session_status_changed": 2,
+            "new_session": 1,
+            "page_config_changed": 1,
+            "delta": 1,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "idx": -2,
+      "renders": [
+        {
+          "phase": "P3",
+          "verdict": "NORMAL",
+          "ms": 169,
+          "deltas": 5,
+          "frames": 11,
+          "kinds": {
+            "new_session": 1,
+            "session_status_changed": 1,
+            "page_config_changed": 2,
+            "navigation": 1,
+            "delta": 5,
+            "script_finished": 1
+          }
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "error_samples": [],
+  "finished": "2026-10-04T20:43:04"
+}
