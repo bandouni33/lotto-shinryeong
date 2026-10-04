@@ -1,0 +1,89 @@
+뷰포트 390x844  다이얼로그 1개
+창 좌표 {'x': 0, 'y': 0, 'w': 390, 'h': 844}
+
+[제목]
+  h2 '🎉 이벤트 알림' align=center width=314px font=20px rect={'x': 38, 'y': 60, 'w': 314, 'h': 27}
+
+[st-key-* 요소 — CSS 기준점이 실제로 있는가]
+
+[버튼 — 같은 줄인가]
+  '' rect={'x': 25, 'y': 66, 'w': 16, 'h': 6} font=16px col={'x': 25, 'y': 51, 'w': 1, 'h': 1}
+  '' rect={'x': 332, 'y': 74, 'w': 18, 'h': 18} font=16px col={'x': 26, 'y': 52, 'w': 338, 'h': 251}
+  '다시 보지 않기' rect={'x': 62, 'y': 229, 'w': 129, 'h': 40} font=16px col={'x': 62, 'y': 229, 'w': 129, 'h': 40}
+  '확인' rect={'x': 199, 'y': 229, 'w': 129, 'h': 40} font=16px col={'x': 199, 'y': 229, 'w': 129, 'h': 40}
+
+[컬럼]
+  {'rect': {'x': 62, 'y': 229, 'w': 129, 'h': 40}, 'width': '129px', 'minWidth': '0px', 'flex': '0 1 50%', 'order': '0'}
+  {'rect': {'x': 199, 'y': 229, 'w': 129, 'h': 40}, 'width': '129px', 'minWidth': '0px', 'flex': '0 1 50%', 'order': '0'}
+
+[가로블록]
+  {'rect': {'x': 62, 'y': 229, 'w': 266, 'h': 40}, 'display': 'flex', 'flexWrap': 'nowrap', 'flexDirection': 'row'}
+
+[iframe — 빈 공간]
+  rect={'x': 62, 'y': 99, 'w': 266, 'h': 120} cssHeight=120px attr=None 내용높이=120
+
+[:has() 지원] {'has': True, 'nowrap': True}
+
+[문서 전체 st-key-* (다이얼로그 포함 여부)]
+  .st-key-my_info_trigger_wrap testid=stVerticalBlock inDialog=False rect={'x': 288, 'y': 8, 'w': 90, 'h': 32}
+  .st-key-my_info_trigger_btn testid=stElementContainer inDialog=False rect={'x': 288, 'y': 8, 'w': 90, 'h': 32}
+  .st-key-manual_trigger_wrap testid=stVerticalBlock inDialog=False rect={'x': 260, 'y': 56, 'w': 118, 'h': 32}
+  .st-key-manual_trigger_btn testid=stElementContainer inDialog=False rect={'x': 260, 'y': 56, 'w': 118, 'h': 32}
+  .st-key-win_event_banner_closed_btn testid=stElementContainer inDialog=False rect={'x': 0, 'y': 0, 'w': 0, 'h': 0}
+  .st-key-main_rank_row_6n36s5 testid=stVerticalBlock inDialog=False rect={'x': 12, 'y': 847, 'w': 366, 'h': 43}
+  .st-key-main_rank_label_badge_row_6n36s5 testid=stVerticalBlock inDialog=False rect={'x': 12, 'y': 853, 'w': 267, 'h': 38}
+  .st-key-main_rank_top1_wrap_6n36s5 testid=stVerticalBlock inDialog=False rect={'x': 187, 'y': 859, 'w': 92, 'h': 32}
+  .st-key-main_rank_top1_btn_6n36s5 testid=stElementContainer inDialog=False rect={'x': 187, 'y': 859, 'w': 92, 'h': 32}
+  .st-key-FormSubmitter-main_feedback_form_6n36s5--- testid=stElementContainer inDialog=False rect={'x': 41, 'y': 1034, 'w': 308, 'h': 36}
+  .st-key-win_event_banner_body testid=stVerticalBlock inDialog=True rect={'x': 62, 'y': 99, 'w': 266, 'h': 170}
+  .st-key-win_event_banner_never testid=stElementContainer inDialog=True rect={'x': 62, 'y': 229, 'w': 129, 'h': 40}
+  .st-key-win_event_banner_ok testid=stElementContainer inDialog=True rect={'x': 199, 'y': 229, 'w': 129, 'h': 40}
+
+[우리 CSS가 DOM에 들어갔는가]
+  parent=DIV len=1793 wev=False key=True
+    '\n        .st-key-win_event_banner_closed_btn { display: none !important; }\n\n        /* 이 이벤트 창 전용 규칙 (2026-10-04 지시) — 제목 가운데 정렬 · 버튼 두 개를 한 줄로\n           (창 높이'
+
+[카드 iframe 안쪽 애니메이션 실측]
+{"shineDur": "13.6s", "shineIter": "infinite", "particles": 14, "distinctX": 14, "pDur": ["11.69s, 2.6s", "11.27s, 2.6s", "11.51s, 2.6s", "12.99s, 2.6s"], "pDurVar": ["11.69s", "11.27s", "11.51s", "12.99s", "10.06s", "11.5s"], "pSway": ["23.5px", "-6.4px", "18.5px", "-15.0px", "20.9px", "-19.8px"]}
+
+[우리 CSS 적용 여부 직접 확인]
+{
+  "matchesHas": true,
+  "closedBtnDisplay": "none",
+  "colStyle": {
+    "minWidth": "0px",
+    "flex": "0 1 50%",
+    "width": "129px"
+  },
+  "ourSheets": [
+    {
+      "rules": 10,
+      "first": [
+        ".st-key-win_event_banner_closed_btn",
+        "div[data-testid=\"stDialog\"]:has(.st-key-win_event_banner_body) > div",
+        "div[data-testid=\"stDialog\"]:has(.st-key-win_event_banner_body) h2",
+        "div[data-testid=\"stDialog\"]:has(.st-key-win_event_banner_body) h2 span, div[data-testid=\"stDialog\"]:has(.st-ke"
+      ]
+    }
+  ],
+  "allSheetCount": 17
+}
+
+[다이얼로그 outerHTML 앞부분]
+<div data-testid="stDialog" class="stDialog st-emotion-cache-a6k91m ee2kfji0" data-rac="" style="--visual-viewport-width: 390px; --visual-viewport-height: 844px; --page-width: 390px; --page-height: 0px;"><div class="st-emotion-cache-w191l5 ee2kfji1" data-rac=""><div style="border: 0px; clip: rect(0px, 0px, 0px, 0px); clip-path: inset(50%); height: 1px; margin: -1px; overflow: hidden; padding: 0px; position: absolute; width: 1px; white-space: nowrap;"><button id="react-aria535243122-:r0:" aria-label="무시" tabindex="-1" style="width: 1px; height: 1px;"></button></div><section class="st-emotion-cache-cpuwpc ee2kfji2" data-rac="" aria-labelledby="react-aria535243122-:r1:" role="dialog" tabindex="-1"><button aria-label="Close" type="button" class="st-emotion-cache-1mv5p2a ee2kfji3"><svg aria-hidden="true" height="10" viewBox="0 0 10 10" width="10" xmlns="http://www.w3.org/2000/svg"><path d="M9 1L5 5M1 9L5 5M5 5L1 1M5 5L9 9" stroke="currentColor" stroke-linecap="round" stroke-width="2"></path></svg></button><h2 id="react-aria535243122-:r1:" slot="title" class="st-emotion-cache-1wjw5f2 ee2kfji4"><span class="st-emotion-cache-1mf1b6k e1yteq8v0"><div data-testid="stMarkdownContainer" class="st-emotion-cache-1x81ldc ewutnf10"><p>🎉 이벤트 알림</p></div></span></h2><div class="st-emotion-cache-1aqxks8 ee2kfji5"><div direction="column" height="100%" class="stVerticalBlock st-emotion-cache-1bnbo98 ep3ma5o3" data-testid="stVerticalBlock"><div data-testid="stLayoutWrapper" class="st-emotion-cache-18kf3ut ep3ma5o4" width="100%" height="auto" overflow="visible"><div direction="column" overflow="visible" height="auto" class="stVerticalBlock st-emotion-cache-q25c8l ep3ma5o3" data-testid="stVerticalBlock" data-test-wrap="false" data-test-scroll-behavior="normal"><div data-testid="stLayoutWrapper" class="st-emotion-cache-18kf3ut ep3ma5o4" width="100%" height="auto" overflow="visible"><div direction="column" overflow="visible" height="auto" class="stVerticalBlock st-key-win_event_banner_body st-emotion-cache-q25c8l ep3ma5o3" data-testid="stVerticalBlock" data-test-wrap="false" data-test-scroll-behavior="normal"><div class="stElementContainer element-container st-emotion-cache-1syk1kn ep3ma5o1" data-testid="stElementContainer" data-stale="false" width="100%" height="120px" overflow="visible"><iframe class="stIFrame st-emotion-cache-fsrfgf ei36xw10" data-testid="stIFrame" allow="accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; mi
+
+[구조 트리]
+  div testid=stDialog key=- {'x': 0, 'y': 0, 'w': 390, 'h': 844}
+    div testid=- key=- {'x': 16, 'y': 48, 'w': 358, 'h': 261}
+      div testid=- key=- {'x': 25, 'y': 51, 'w': 1, 'h': 1}
+        button testid=- key=- {'x': 25, 'y': 66, 'w': 16, 'h': 6}
+      section testid=- key=- {'x': 26, 'y': 52, 'w': 338, 'h': 251}
+        button testid=- key=- {'x': 332, 'y': 74, 'w': 18, 'h': 18}
+          svg testid=- key=- {'x': 336, 'y': 78, 'w': 10, 'h': 10}
+            path testid=- key=- {'x': 337, 'y': 79, 'w': 8, 'h': 8}
+        h2 testid=- key=- {'x': 38, 'y': 60, 'w': 314, 'h': 27}
+          span testid=- key=- {'x': 38, 'y': 60, 'w': 282, 'h': 27}
+            div testid=stMarkdownContainer key=- {'x': 38, 'y': 60, 'w': 282, 'h': 27}
+        div testid=- key=- {'x': 38, 'y': 87, 'w': 314, 'h': 206}
+          div testid=stVerticalBlock key=- {'x': 62, 'y': 99, 'w': 266, 'h': 170}
+            div testid=stLayoutWrapper key=- {'x': 62, 'y': 99, 'w': 266, 'h': 170}

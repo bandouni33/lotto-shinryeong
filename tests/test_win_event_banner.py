@@ -18,6 +18,7 @@
 """
 
 import sys
+import re
 import unittest
 from pathlib import Path
 
@@ -277,13 +278,15 @@ class WinEventBannerTests(unittest.TestCase):
         창이 닫히면 이 모듈 자체가 사라지므로 infinite 는 곧 "닫기 전까지"와 같다.
         """
         css = web.style_css(2)  # 확정 스타일(네온)
-        self.assertIn("animation: wevShine 6.8s", css, "빛 사선 애니메이션이 있어야 한다(50%% 감속)")
+        self.assertEqual(web.SHINE_SECONDS, 13.6, "6.8s에서 한 번 더 50%% 감속한 값")
+        self.assertIn(f"animation: wevShine {web.SHINE_SECONDS:g}s", css)
         self.assertIn("infinite", css, "한 번이 아니라 계속 반복되어야 한다")
-        self.assertNotIn(
-            "animation: wevShine 3.4s",
-            css,
-            "2026-10-04 지시: 속도 50%% 감속(3.4s → 6.8s)",
-        )
+        for faster in ("3.4s", "6.8s"):
+            self.assertNotIn(
+                f"animation: wevShine {faster}",
+                css,
+                f"{faster}는 감속 지시 전 값이다 — 되돌아가면 다시 빠르다",
+            )
         self.assertNotIn(
             "animation: wevShine 1.5s ease-out .35s 1 both",
             css,
@@ -305,35 +308,130 @@ class WinEventBannerTests(unittest.TestCase):
         self.assertIn("translateX(230%)", css, "오른쪽 밖으로 퇴장")
         self.assertIn("88%  { opacity: 1; }", css, "지나가는 동안 밝기를 유지")
         self.assertNotIn("62%  { opacity: 0; }", css, "중간에 꺼지는 동작으로 되돌아가지 않았는지")
-        self.assertIn("wevShine 6.8s", css)
+        self.assertIn(f"wevShine {web.SHINE_SECONDS:g}s", css)
         self.assertIn("infinite", css, "창이 닫힐 때까지 계속")
 
-    def test_B8_confetti_falls_continuously_in_several_colors(self):
-        """폭죽(색종이)이 내려온다 — 여러 색 + 계속 떨어짐, 속도는 50%% 감속(2026-10-04 지시)."""
-        css = web.style_css(2)
-        self.assertIn("animation: wevFall 5.2s linear var(--d) infinite", css, "계속 떨어져야 한다")
-        self.assertNotIn("wevFall 2.6s", css, "지시대로 절반 속도로 바뀐 값이 유지되어야 한다")
-        self.assertIn("wevTwinkle 2.6s", css, "반짝임도 같은 비율로 느려진다")
-        self.assertIn("background: var(--c)", css, "색종이는 입자마다 색을 받는다")
-        self.assertGreaterEqual(int(web.STYLES[2]["particles"]), 10, "확정 스타일에는 폭죽이 있어야")
+    # ── 눈 내리듯 흘날리는 폭죽(2026-10-04 재지시) ─────────────────────
+    def _particles(self, doc):
+        return re.findall(r'<span class="wev-p" style="([^"]+)"', doc)
+
+    def _vars(self, particle: str) -> dict:
+        return dict(re.findall(r"--([a-z]+):([^;\"]+)", particle))
+
+    def _card_doc(self) -> str:
         info = {"draw_round": HIT_ROUND, "rank_1": 0, "rank_2": 1, "rank_3": 18,
                 "rank_4": 0, "rank_5": 0, "stage4_count": None}
-        doc = web.card_iframe_html(info)
+        return web.card_iframe_html(info)
+
+    def test_B8_confetti_duration_is_halved_again(self):
+        """폭죽 낙하도 한 번 더 50%% 감속됐다(5.2s → 10.4s 기준, 입자별로 흘어짐)."""
+        css = web.style_css(2)
+        self.assertEqual(web.FALL_BASE_SECONDS, 10.4, "5.2s의 두 배")
+        self.assertIn("animation: wevFall var(--dur) linear var(--d) infinite", css,
+                      "계속 떨어져야 한다(입자마다 --dur로 다른 속도)")
+        self.assertIn("background: var(--c)", css, "색종이는 입자마다 색을 받는다")
+        for faster in ("wevFall 5.2s", "wevFall 2.6s"):
+            self.assertNotIn(faster, css, f"{faster}는 감속 전 값이다")
+        self.assertIn("wevTwinkle 2.6s", css, "반짝임은 filter로 남는다")
+        self.assertIn("filter: brightness", css, "반짝임이 opacity를 건드리면 낙하 끝의 사라짐이 무효가 된다")
+
+    def test_B8_confetti_scatters_like_snow(self):
+        """입자마다 자리·시작·속도·흔들림·회전·크기·밝기가 **전부** 달라야 눈처럼 보인다.
+
+        예전엔 (i*7)%%92 좌표에 다 같이 떨어져 "줄 세운 막대"처럼 보였다.
+        """
+        doc = self._card_doc()
+        ps = self._particles(doc)
+        count = int(web.STYLES[2]["particles"])
+        self.assertEqual(len(ps), count)
+        xs, durs, sways, rots, sizes, ops = [], [], [], [], set(), []
+        for p in ps:
+            v = self._vars(p)
+            for key in ("x", "d", "dur", "o", "sx", "r", "w", "h", "c"):
+                self.assertIn(key, v, f"입자에 --{key}가 없다: {p}")
+            self.assertTrue(v["c"].startswith("#"), "색을 받는다")
+            x, d, dur = float(v["x"][:-1]), float(v["d"][:-1]), float(v["dur"][:-1])
+            xs.append(x)
+            durs.append(dur)
+            sways.append(float(v["sx"][:-2]))
+            rots.append(v["r"])
+            ops.append(float(v["o"]))
+            sizes.add((v["w"], v["h"]))
+            self.assertGreaterEqual(x, 0.0)
+            self.assertLessEqual(x, 100.0)
+            self.assertGreaterEqual(d, 0.0)
+            self.assertLessEqual(d, web.FALL_BASE_SECONDS)
+            self.assertGreaterEqual(dur, web.FALL_BASE_SECONDS * 0.85 - 1e-9)
+            self.assertLessEqual(dur, web.FALL_BASE_SECONDS * 1.25 + 1e-9)
+            self.assertGreaterEqual(ops[-1], 0.55)
+            self.assertLessEqual(ops[-1], 1.0)
+        self.assertEqual(len(set(xs)), count, "가로 위치가 겹치면 줄 세운 것과 같다")
+        self.assertGreater(len(set(durs)), 1, "낙하 시간이 제각각이어야 눈처럼 보인다")
+        self.assertTrue(any(s < 0 for s in sways) and any(s > 0 for s in sways),
+                        "좌우로 어긋나야 뒤죽박죽으로 보인다")
+        self.assertGreater(len(set(rots)), 1)
+        self.assertGreater(len(sizes), 1, "크기도 달라야 한다")
+        self.assertGreaterEqual(len(set(ops)), 2, "밝기도 달라야 한다")
+
+    def test_B8_confetti_uses_several_colors(self):
+        doc = self._card_doc()
         colors = {c for c in web.CONFETTI_COLORS if f"--c:{c}" in doc}
         self.assertGreaterEqual(len(colors), 3, f"여러 색이 섞여야 폭죽처럼 보인다: {colors}")
-        self.assertEqual(doc.count('class="wev-p"'), int(web.STYLES[2]["particles"]))
+        self.assertGreaterEqual(int(web.STYLES[2]["particles"]), 10, "확정 스타일에는 폭죽이 있어야")
+
+    def test_B8_particle_layout_is_deterministic_and_style_scoped(self):
+        """같은 입력이면 같은 배치(렌더마다 눈송이가 요동치면 화면이 매번 달라진다)."""
+        self.assertEqual(web._particles_html(2, 14), web._particles_html(2, 14))
+        self.assertNotEqual(web._particles_html(2, 14), web._particles_html(2, 10))
+        self.assertNotEqual(web._particles_html(2, 14), web._particles_html(1, 14))
+        self.assertEqual(web._particles_html(2, 0), "", "0개면 빈 문자열")
+        self.assertEqual(web._particles_html(3, 0), "", "입자 없는 스타일은 빈 문자열")
 
     def test_B8_dialog_chrome_is_centered_tight_and_one_row(self):
-        """창 틀도 손본다 — 제목 가운데 · 버튼 한 줄 · 여백 최소(2026-10-04 지시).\n\n        규칙은 components.html iframe을 품은 다이얼로그로만 좁혀 다른 안내창에 번지지 않게 한다.\n        """
+        """창 틀도 손본다 — 제목 가운데 · 버튼 한 줄 · 여백 최소(2026-10-04 지시).
+
+        규칙은 이 창 본문 컨테이너(.st-key-win_event_banner_body)를 품은 다이얼로그로만
+        좁혀 다른 안내창(적립금·충전·내정보)에 번지지 않게 한다.
+        """
         src = (ROOT / "win_event_banner.py").read_text(encoding="utf-8")
-        scope = 'div[data-testid="stDialog"]:has(.st-key-win_event_banner_body)'
-        self.assertIn(scope, src, "다이얼로그 규칙은 이 창으로만 좁혀야 한다")
+        self.assertIn('div[data-testid="stDialog"]:has(.st-key-win_event_banner_body)',
+                      web.DIALOG_SCOPE, "다이얼로그 규칙은 이 창으로만 좁힌다")
         self.assertIn('st.container(key="win_event_banner_body")', src, "기준점 컨테이너가 실제로 있어야")
-        self.assertIn("text-align: center !important;", src, "제목 가운데 정렬")
-        self.assertIn("flex-wrap: nowrap !important;", src, "버튼 두 개를 한 줄로")
-        self.assertIn("width: 50% !important;", src, "버튼 열 폭 고정(줄바꿈 방지)")
-        self.assertIn("padding: 6px 10px 4px !important;", src, "창 안쪽 여백 최소")
-        self.assertIn("white-space: nowrap !important;", src, "버튼 글씨 줄바꿈 방지")
+        self.assertIn("{DIALOG_CSS}", src, "창 틀 CSS는 DIALOG_CSS 단일 구현을 쓴다(사본 금지)")
+        self.assertEqual(src.count("flex-wrap: nowrap !important"), 1, "규칙을 복사해 두 곳에 두지 않는다")
+        self.assertIn("text-align: center !important;", web.DIALOG_CSS, "제목 가운데 정렬")
+        self.assertIn("flex-wrap: nowrap !important;", web.DIALOG_CSS, "버튼 두 개를 한 줄로")
+        self.assertIn("width: 50% !important;", web.DIALOG_CSS, "버튼 열 폭 고정(줄바꿈 방지)")
+        self.assertIn("min-width: 0 !important;", web.DIALOG_CSS,
+                      "Streamlit의 좁은 화면 규칙(min-width: calc(100% - 24px))을 이겨야 한 줄이 된다")
+        self.assertIn("padding: 4px 10px 6px !important;", web.DIALOG_CSS, "창 안쪽 여백 최소")
+        self.assertIn("padding: 0 !important;", web.DIALOG_CSS, "제목 자체 여백 제거(계측: 63px → 27px)")
+        self.assertIn("white-space: nowrap !important;", web.DIALOG_CSS, "버튼 글씨 줄바꿈 방지")
+
+    def test_B8_emitted_css_has_no_doubled_braces(self):
+        """2026-10-04 사고 재발 방지 — 문자열에 CSS를 넣을 때 중괄호를 두 번 쓰면
+        (`{{ padding: ... }}`) 브라우저가 그걸 CSS 중첩으로 보고 **규칙을 통째로 버린다**.
+
+        실제로 그렇게 새서 실기기에 "제목 왼쪽 정렬 · 버튼 두 줄"이 그대로 남았다.
+        """
+        subjects = {
+            "DIALOG_CSS": web.DIALOG_CSS,
+            "style_css(1)": web.style_css(1),
+            "style_css(2)": web.style_css(2),
+            "style_css(3)": web.style_css(3),
+            "style_css(4)": web.style_css(4),
+            "card_iframe_html": self._card_doc(),
+            "sample_html": web.sample_html(2, {"draw_round": HIT_ROUND, "rank_1": 0, "rank_2": 1,
+                                               "rank_3": 0, "rank_4": 0, "rank_5": 0,
+                                               "stage4_count": None}),
+        }
+        for name, text in subjects.items():
+            self.assertNotIn("{{", text, f"{name}에 이중 중괄호가 있다(규칙이 버려진다)")
+            self.assertNotIn("}}", text, f"{name}에 이중 중괄호가 있다(규칙이 버려진다)")
+            self.assertEqual(text.count("{"), text.count("}"), f"{name}의 중괄호 짝이 안 맞는다")
+        for chunk in web.DIALOG_CSS.split("}"):
+            if chunk.strip():
+                self.assertIn("!important", chunk, "창 틀 규칙은 Streamlit 기본값을 이겨야 한다")
 
     def test_B9_every_style_is_distinct(self):
         css = [web.style_css(style_id) for style_id in web.STYLES]

@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import html as _html
+import random
 
 import streamlit as st
 
@@ -71,22 +72,73 @@ def _hit_list(info: dict) -> str:
 
 CONFETTI_COLORS = ("#4ff0ff", "#ff5cf0", "#8a5cff", "#ffd66b", "#7cff9b")
 
+# 속도(2026-10-04 재지시: "빛 움직임 50% 줄이기 · 폭죽 눈 내리듯 50% 줄이기 — 편안하게").
+# 직전 값(6.8s / 5.2s)에서 한 번 더 절반으로 늘린 값이다. 낙하 시간은 입자마다 이 기준의
+# 0.85~1.25배로 흩어져 "눈 내리듯 뒤죽박죽"이 된다.
+SHINE_SECONDS = 13.6
+FALL_BASE_SECONDS = 10.4
+PARTICLE_SEED = 20261004
+
+# 창 틀 손질용 스코프·스타일 — 이 창 본문 컨테이너(.st-key-win_event_banner_body)를 품은
+# 다이얼로그로만 좁혀 다른 안내창(적립금·충전·내정보)에 번지지 않게 한다.
+# 주의: 이 CSS를 st.markdown 문자열에 넣을 때 중괄호를 두 번 쓰면(`{{ }}`) CSS 중첩으로 파싱돼
+# 브라우저가 규칙을 통째로 버린다 — 2026-10-04에 정확히 그렇게 새서 "적용 안 됨" 신고가 났다.
+DIALOG_SCOPE = 'div[data-testid="stDialog"]:has(.st-key-win_event_banner_body)'
+
+_DIALOG_CSS_TEMPLATE = """
+@@ > div { padding: 4px 10px 6px !important; }
+@@ h2 {
+  text-align: center !important; width: 100% !important;
+  margin: 0 !important; padding: 0 !important; min-height: 0 !important;
+  font-size: 20px !important; line-height: 1.35 !important;
+}
+@@ h2 span,
+@@ h2 div[data-testid="stMarkdownContainer"] {
+  width: 100% !important; justify-content: center !important; text-align: center !important;
+}
+@@ section { padding: 8px 12px 10px !important; }
+@@ [data-testid="stElementContainer"]:has(iframe) { margin-bottom: 0 !important; }
+@@ [data-testid="stHorizontalBlock"] {
+  display: flex !important; flex-wrap: nowrap !important; gap: 8px !important;
+  margin-top: 4px !important;
+}
+@@ [data-testid="stHorizontalBlock"] > div { width: auto !important; min-width: 0 !important; }
+@@ [data-testid="stColumn"] {
+  min-width: 0 !important; width: 50% !important; flex: 0 1 50% !important;
+}
+@@ button p { font-size: 13px !important; white-space: nowrap !important; }
+"""
+
+# 창 전용 CSS 완성본(제목 가운데 · 버튼 한 줄 · 빈 공간 최소).
+DIALOG_CSS = _DIALOG_CSS_TEMPLATE.replace("@@", DIALOG_SCOPE).strip()
+
 
 def _particles_html(style_id: int, count: int) -> str:
-    """폭죽(색종이) — 2026-10-04 지시: "폭죽 내려오는 모습" 추가.
+    """폭죽(색종이) — 2026-10-04 재지시: "눈 내리듯 뒤죽박죽, 속도 50% 줄이기".
 
-    색을 여러 개 섞고, 떨어지는 애니메이션을 무한 반복(아래 CSS)으로 둔다 — 창이 닫히면
-    이 모듈 자체가 사라져 자연히 멈춘다. 지연(--d)을 입자마다 어긋나게 줘서 줄줄이 떨어진다.
+    눈이 흩날리듯 보이게 입자마다 ① 가로 위치 ② 시작 지연 ③ 낙하 시간 ④ 좌우 흔들림
+    ⑤ 회전 ⑥ 크기 ⑦ 밝기를 모두 다르게 준다(예전엔 (i*7)%92 로 줄 세워서 다 같이
+    떨어졌다). 값은 고정 시드 난수라 **매 실행이 같은 결과**다 — 화면 렌더마다 눈송이
+    자리가 요동치면 볼 때마다 달라져 고정 검증도 못 한다.
     """
     if count <= 0:
         return ""
-    spans = "".join(
-        f'<span class="wev-p" style="--i:{i}; --x:{4 + (i * 7) % 92}%; '
-        f'--d:{round((i * 0.37) % 5.2, 2)}s; --r:{(i * 47) % 360}deg; '
-        f'--c:{CONFETTI_COLORS[i % len(CONFETTI_COLORS)]}"></span>'
-        for i in range(count)
-    )
-    return f'<div class="wev-particles" aria-hidden="true">{spans}</div>'
+    rnd = random.Random(PARTICLE_SEED + int(style_id) * 1000 + int(count))
+    spans = []
+    for i in range(count):
+        spans.append(
+            f'<span class="wev-p" style="'
+            f'--x:{round(rnd.uniform(0, 100), 2)}%; '
+            f'--d:{round(rnd.uniform(0, FALL_BASE_SECONDS), 2)}s; '
+            f'--dur:{round(FALL_BASE_SECONDS * rnd.uniform(0.85, 1.25), 2)}s; '
+            f'--o:{round(rnd.uniform(0.55, 1.0), 2)}; '
+            f'--sx:{round(rnd.uniform(6, 26), 1) * (1 if i % 2 == 0 else -1)}px; '
+            f'--r:{rnd.randint(-200, 200)}deg; '
+            f'--w:{rnd.choice((6, 7, 8, 9, 10))}px; '
+            f'--h:{rnd.choice((8, 10, 12, 15))}px; '
+            f'--c:{CONFETTI_COLORS[rnd.randrange(len(CONFETTI_COLORS))]}"></span>'
+        )
+    return f'<div class="wev-particles" aria-hidden="true">{"".join(spans)}</div>'
 
 
 # ── 스타일 정의 ────────────────────────────────────────────────────────────
@@ -163,9 +215,10 @@ def style_css(style_id: int) -> str:
 }
 /* 2026-10-04 지시: 모바일에서 사선이 잘 안 보인다 → 더 밝게/넓게 + 창이 닫힐 때까지 계속.
    또 한 번 지시: 중간에서 사라진다 → 카드 **오른쪽 끝을 지나서** 퇴장하도록 범위 확대
-   (-190% → 230%). 불투명도는 88%까지 유지하고 마지막에만 0으로 줄인다. */
-.wev-shine { animation: wevShine 6.8s cubic-bezier(.4,0,.6,1) .3s infinite; }
-"""
+   (-190% → 230%). 불투명도는 88%까지 유지하고 마지막에만 0으로 줄인다.
+   재지시(같은 날): 아직 빠르다 → 한 번 더 50% 감속(6.8s → __SHINE__s). */
+.wev-shine { animation: wevShine __SHINE__s cubic-bezier(.4,0,.6,1) .3s infinite; }
+""".replace("__SHINE__", f"{SHINE_SECONDS:g}")
         if style["shine"]
         else ".wev-shine{display:none;}"
     )
@@ -175,12 +228,16 @@ def style_css(style_id: int) -> str:
   to   {{ opacity: 1; transform: translateY(0) scale(1); }}
 }}
 @keyframes wevFall {{
-  0%   {{ opacity: 0; transform: translateY(-18px) rotate(0deg) scale(.65); }}
-  12%  {{ opacity: 1; }}
-  100% {{ opacity: 0; transform: translateY(300px) rotate(var(--r)) scale(1); }}
+  0%   {{ opacity: 0; transform: translate3d(0, -14px, 0) rotate(0deg) scale(.85); }}
+  8%   {{ opacity: var(--o); }}
+  45%  {{ transform: translate3d(var(--sx), 140px, 0) rotate(calc(var(--r) * .5)) scale(1); }}
+  88%  {{ opacity: var(--o); }}
+  100% {{ opacity: 0; transform: translate3d(calc(var(--sx) * -1), 320px, 0) rotate(var(--r)) scale(.95); }}
 }}
+/* 반짝임은 opacity가 아니라 filter로 준다 — opacity를 두 애니메이션이 동시에 만지면
+   뒤에 적힌 쪽이 이겨서 낙하 끝의 사라짐이 무효가 된다(그래서 opacity는 낙하 쪽만 쓴다). */
 @keyframes wevTwinkle {{
-  0%,100% {{ opacity: .25; }} 50% {{ opacity: 1; }}
+  0%,100% {{ filter: brightness(.92); }} 50% {{ filter: brightness(1.45); }}
 }}
 {pulse}
 {shine}
@@ -217,11 +274,12 @@ def style_css(style_id: int) -> str:
 }}
 .wev-particles {{ position: absolute; inset: 0; pointer-events: none; overflow: hidden; }}
 .wev-p {{
-  position: absolute; top: -6px; left: var(--x);
-  width: 7px; height: 11px; border-radius: 2px;
+  position: absolute; top: -10px; left: var(--x);
+  width: var(--w); height: var(--h); border-radius: 2px;
   background: var(--c);
   opacity: 0;
-  animation: wevFall 5.2s linear var(--d) infinite, wevTwinkle 2.6s ease-in-out var(--d) infinite;
+  animation: wevFall var(--dur) linear var(--d) infinite,
+             wevTwinkle 2.6s ease-in-out var(--d) infinite;
 }}
 @keyframes wevSamplePulse {{ 0%,100% {{ opacity: .55; }} 50% {{ opacity: 1; }} }}
 .wev-sample {{
@@ -245,7 +303,6 @@ def style_css(style_id: int) -> str:
   color: #ffffff; line-height: 1.35;
 }}
 .wev-note {{ margin-top: 10px; font-size: 11.5px; color: #9a9aa6; line-height: 1.5; }}
-.wev-sample {{
 """
 
 
@@ -310,6 +367,8 @@ def card_iframe_html(info: dict, style_id: int | None = None) -> str:
     높이는 고정하지 않는다(2026-10-04 신고: 창이 너무 크고 빈 공간이 많다) —
     이 저장소의 신령 이미지 블록과 같은 방식으로 내용 높이를 부모에게 알려
     프레임을 내용에 맞춰 줄인다.
+
+    창 틀(제목 가운데·버튼 한 줄·여백 최소)은 _render_close_bridge가 넣는 DIALOG_CSS가 맡는다.
     """
     body = card_html(info, style_id)
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -354,43 +413,13 @@ def _render_close_bridge(draw_round: int) -> None:
     DOM에서 함께 사라져 클릭할 대상이 없어진다.
     """
     st.markdown(
-        """
+        f"""
         <style>
-        .st-key-win_event_banner_closed_btn { display: none !important; }
+        .st-key-win_event_banner_closed_btn {{ display: none !important; }}
 
-        /* 이 이벤트 창 전용 규칙 (2026-10-04 지시) — 이 배너 본문 컨테이너
-           (.st-key-win_event_banner_body)를 품은 다이얼로그에만 :has()로 좁혀
-           다른 안내창에는 영향이 없게 한다.
-             ① 제목 가운데 정렬  ② 버튼 두 개를 한 줄로(창 높이 축소)  ③ 여백 최소 */
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) > div {{ padding: 6px 10px 4px !important; }}
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) h2 {{
-            text-align: center !important;
-            width: 100% !important;
-        }}
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) > div > div:first-child {{
-            justify-content: center !important;
-        }}
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stHorizontalBlock"] {{
-            display: flex !important;
-            flex-wrap: nowrap !important;
-            gap: 8px !important;
-        }}
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
-            width: 50% !important;
-            min-width: 0 !important;
-            flex: 1 1 0 !important;
-        }}
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stHorizontalBlock"] > div {{
-            width: auto !important;
-            min-width: 0 !important;
-        }}
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stElementContainer"]:has(iframe) {{
-            margin-bottom: 2px !important;
-        }}        
-        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) button p {{
-            font-size: 13px !important;
-            white-space: nowrap !important;
-        }}
+        /* 이 이벤트 창 전용 규칙 (2026-10-04 지시) — 제목 가운데 정렬 · 버튼 두 개를 한 줄로
+           (창 높이 축소) · 여백 최소. 아래 DIALOG_CSS는 중괄호를 한 번만 쓴 단일 구현이다. */
+        {DIALOG_CSS}
         </style>
         """,
         unsafe_allow_html=True,

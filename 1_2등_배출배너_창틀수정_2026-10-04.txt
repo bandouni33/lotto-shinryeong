@@ -1,0 +1,60 @@
+1·2등 배출 이벤트 배너 — 창 틀 수정 보고 (2026-10-04)
+======================================================
+
+■ 지시 4건 → 결과 (실제 브라우저 계측값 · 뷰포트 390x844)
+1. 이벤트알림 제목 가운데 정렬  → 적용   h2 text-align: start → center
+2. 다시 보지 않기 / 확인 한 줄  → 적용   두 버튼 y=229 동일(이전 258·314), 각 129px
+3. 빛·폭죽 50% 추가 감속 + 눈 내리듯 → 적용
+     · 빛 사선 6.8s → 13.6s (infinite)
+     · 폭죽 낙하 10.06~12.99s (기준 10.4s = 5.2s의 2배), 입자 14개 전부 다른 x,
+       좌우 흔들림 ±6~23px, 회전·크기·밝기 제각각
+4. 빈 공간 최소화 → 창 높이 330px → 251px (제목 상자 63px → 27px, 버튼 두 줄 → 한 줄)
+
+■ 왜 지난번엔 안 먹었나 (원인 확정 — 추측 아님)
+지난 코드는 창 전용 CSS를 **일반 문자열**에 넣으면서 중괄호를 두 번(`{{ }}`) 썼다.
+브라우저는 그것을 "CSS 중첩"으로 보고 해당 규칙을 통째로 버린다. 그래서 규칙 9개 중
+첫 줄(중괄호를 한 번만 쓴 `.st-key-win_event_banner_closed_btn { display: none }`)만 살아남았다.
+
+격리 DB로 앱을 띄우고 Playwright로 실제 DOM을 재서 확인한 이전 상태:
+  h2 text-align=start / 컬럼 min-width=calc(100% - 24px) / 가로블록 flex-wrap=wrap /
+  버튼 y=258과 314(두 줄) / 창 높이 330px
+  → "CSS를 넣었는데 화면은 하나도 안 바뀐" 상태였다. 선택자는 매칭되고(:has() 지원·규칙 9개 파싱)
+    있었기 때문에 파일만 봐서는 알 수 없었고, DOM 계측으로만 드러났다.
+
+■ 고친 것 (win_event_banner.py)
+· DIALOG_CSS 단일 구현(중괄호 1회) + st.markdown에서는 {DIALOG_CSS}만 참조 — 규칙 사본 금지
+· 제목: 가운데 정렬 + margin/padding/min-height 0 + 20px  (상자 63px → 27px)
+· 버튼 줄: 가로블록 flex-wrap: nowrap, 컬럼 min-width: 0 / width: 50%
+           (Streamlit의 좁은 화면 규칙 min-width: calc(100% - 24px)를 이겨야 한 줄이 된다)
+· 창 여백: 바깥 4px 10px 6px, section 8px 12px 10px, iframe 아래 여백 0
+· 스코프: div[data-testid="stDialog"]:has(.st-key-win_event_banner_body)
+          → 적립금·충전·내정보 등 다른 안내창에는 한 글자도 번지지 않는다
+· 폭죽: 고정 시드 난수로 입자마다 위치·시작 지연·낙하 시간·좌우 흔들림·회전·크기·밝기를
+        전부 다르게(예전엔 (i*7)%92 좌표로 줄 세워 다 같이 떨어졌다)
+· 반짝임은 opacity 대신 filter로 — 같은 속성을 두 애니메이션이 만지면 뒤에 적힌 쪽이 이겨
+  낙하 끝의 사라짐이 무효가 된다
+· style_css 끝에 남아 있던 닫히지 않은 `.wev-sample {` 제거(방출 CSS의 중괄호 짝 맞춤)
+
+■ 검증 (실제로 돌린 결과)
+· 단위 — tests\test_win_event_banner.py : Ran 34 tests OK (34/34)
+    신규 불변식: 입자별 x 고유·낙하 시간 범위(기준의 0.85~1.25배)·좌우 흔들림 양방향·
+    크기/밝기 다양성·같은 입력이면 같은 배치(결정성)·스타일별 분리,
+    **이중 중괄호 금지**, 창 틀 규칙 전부 !important, 규칙 사본 금지
+· 조립 — AppTest로 app.py?page=main 렌더 : 15/15 PASS (배너 뜸·닫힘·비히트 회차 미노출·태그 안 샘)
+· 실제 브라우저 — 390x844, 격리 DB + Playwright DOM 실측 :
+    제목 center / 버튼 한 줄 y=229 / 창 251px / 빛 13.6s infinite /
+    입자 14개·서로 다른 x 14종 / 낙하 10.06~12.99s
+    재현: venv312\Scripts\python.exe -u -X utf8 scratch\serve_isolated_win_banner.py
+          (다른 창에서) venv312\Scripts\python.exe -u -X utf8 scratch\probe_win_banner_dom.py
+· 운영 Turso 접촉 없음(tests/_db_isolation의 임시 sqlite), 배포 사이트 접속 없음
+
+■ 구름님 확인 필요 (실기기)
+· 새로고침 후 ① 제목 가운데 ② 버튼 한 줄 ③ 창이 얕아졌는지 ④ 빛·폭죽이 눈 내리듯 느린지
+· iOS 앱에서 보실 때는 웹뷰 캐시 때문에 반드시 새로고침이 필요합니다(제목 정렬은 캐시가
+  남아 있으면 예전 화면이 그대로 보일 수 있습니다).
+
+■ 이번에 손댄 파일
+· win_event_banner.py
+· tests/test_win_event_banner.py
+· scratch/serve_isolated_win_banner.py, scratch/probe_win_banner_dom.py,
+  scratch/probe_win_banner_css_test.py, scratch/probe_win_dom_final.txt
