@@ -147,12 +147,14 @@ def style_css(style_id: int) -> str:
     shine = (
         """
 @keyframes wevShine {
-  0%   { transform: translateX(-130%) rotate(18deg); opacity: 0; }
-  22%  { opacity: .95; }
-  60%  { opacity: 0; }
-  100% { transform: translateX(130%) rotate(18deg); opacity: 0; }
+  0%   { transform: translateX(-150%) rotate(18deg) scaleY(1.15); opacity: 0; }
+  10%  { opacity: 1; }
+  45%  { opacity: 1; }
+  62%  { opacity: 0; }
+  100% { transform: translateX(150%) rotate(18deg) scaleY(1.15); opacity: 0; }
 }
-.wev-shine { animation: wevShine 1.5s ease-out .35s 1 both; }
+/* 2026-10-04 지시: 모바일에서 사선이 잘 안 보인다 → 더 밝게/넓게 + 창이 닫힐 때까지 계속. */
+.wev-shine { animation: wevShine 2.8s cubic-bezier(.4,0,.6,1) .3s infinite; }
 """
         if style["shine"]
         else ".wev-shine{display:none;}"
@@ -191,8 +193,16 @@ def style_css(style_id: int) -> str:
   overflow: hidden;
 }}
 .wev-shine {{
-  position: absolute; top: -60%; left: 0; width: 45%; height: 220%;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 100%);
+  position: absolute; top: -70%; left: -20%; width: 70%; height: 260%;
+  background: linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,.38) 38%,
+      rgba(255,255,255,.98) 50%,
+      rgba(255,255,255,.38) 62%,
+      rgba(255,255,255,0) 100%);
+  filter: blur(1px);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
   pointer-events: none;
 }}
 .wev-particles {{ position: absolute; inset: 0; pointer-events: none; overflow: hidden; }}

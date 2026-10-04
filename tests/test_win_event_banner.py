@@ -270,6 +270,29 @@ class WinEventBannerTests(unittest.TestCase):
         self.assertIn("font-size: 17px;", css)
         self.assertIn("margin-bottom: 6px;", css)
 
+    def test_B8_shine_sweeps_continuously_until_the_banner_closes(self):
+        """빛 사선이 계속 지나간다(닫기 전까지) + 모바일에서 부각되게 강화된 상태를 고정.
+
+        2026-10-04 지시: 모바일 화면에서 빛이 잘 안 보인다 → 더 부각 + 계속 반복.
+        창이 닫히면 이 모듈 자체가 사라지므로 infinite 는 곧 "닫기 전까지"와 같다.
+        """
+        css = web.style_css(2)  # 확정 스타일(네온)
+        self.assertIn("animation: wevShine 2.8s", css, "빛 사선 애니메이션이 있어야 한다")
+        self.assertIn("infinite", css, "한 번이 아니라 계속 반복되어야 한다")
+        self.assertNotIn(
+            "animation: wevShine 1.5s ease-out .35s 1 both",
+            css,
+            "1회짜리로 되돌아가면 모바일에서 다시 안 보인다",
+        )
+        self.assertIn("mix-blend-mode: screen", css, "어두운 배경 위에서 빛이 부각되게")
+        self.assertIn("rgba(255,255,255,.98) 50%", css, "중심 광량(부각)")
+        self.assertIn("width: 70%", css, "사선 폭을 넓혀 작은 화면에서도 보이게")
+
+    def test_B8_quiet_style_keeps_the_shine_off(self):
+        """반짝임 없는 스타일(3 미니멀)은 그대로 꺼져 있어야 한다."""
+        self.assertIn(".wev-shine{display:none;}", web.style_css(3))
+        self.assertNotIn("wevShine 2.8s", web.style_css(3))
+
     def test_B9_every_style_is_distinct(self):
         css = [web.style_css(style_id) for style_id in web.STYLES]
         for style_id in web.STYLES:
