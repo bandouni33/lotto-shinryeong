@@ -167,14 +167,19 @@ class SameRootCacheFallthroughTests(unittest.TestCase):
         )
 
     def test_stats_table_distinguishes_cache_keys(self):
-        """page_auto._load_stats_table_cached — 캐시 키가 달라지면 표를 다시 만든다."""
+        """page_auto._load_stats_table_cached — 캐시 키가 달라지면 표를 다시 만든다.
+
+        2026-10-04: 표의 출처가 라이브 lotto_combinations 집계에서 확정 스냅샷
+        (combo_round_stats)으로 바뀌어(1243회차 누락 사고 수정) 회차를 추가하는 방법도
+        스냅샷 기록으로 바꿨다 — 검사하는 성질은 그대로다: 키가 달라지면 새 표를 돌려준다.
+        """
         import marketing_db as mdb
 
         mdb.init_marketing_tables()
         first, _ = page_auto._load_stats_table_cached((1.0, 2.0))
         self.assertNotIn(1243, _table_rounds(first))
 
-        mdb.bulk_insert_lotto_combinations(1243, [(1, 2, 3, 4, 5, 6)])
+        mdb.snapshot_round_stats(1243, 6465)
         second, _ = page_auto._load_stats_table_cached((3.0, 4.0))
         self.assertIn(
             1243,

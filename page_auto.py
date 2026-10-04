@@ -221,7 +221,10 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
     for item in stats:
         pattern_count = item.get("pattern_count")
         ref = None
-        if not is_mock:
+        # 2026-10-04(사용자 승인): 이미 확정된 스냅샷 행은 그 값을 그대로 쓴다 — 표가
+        # combo_round_stats를 정본으로 삼아야 "풀이 지워져도 숫자가 남는다"가 성립한다.
+        # 확정 전 행(당 회차·미리보기 행)만 예전처럼 참고등수를 우선한다.
+        if not is_mock and not item.get("finalized_at"):
             try:
                 ref = mdb.get_reference_ranks(item["draw_round"])
             except Exception:
@@ -297,7 +300,12 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     mdb.init_marketing_tables()
     mdb.ensure_marketing_pool_seeds()
     _sync_completed_draw_win_ranks()
-    stats = mdb.get_draw_extraction_stats(limit=20)
+    # 2026-10-04(사용자 승인): 표의 출처를 라이브 lotto_combinations 집계에서
+    # 확정 스냅샷(combo_round_stats)으로 바꿨다. 이 한 줄이 이번 사안의 핵심이다 —
+    # 예전에는 정리 로직이 오래된 회차 풀을 지우면 그 회차 행이 표에서 통째로
+    # 사라졌고(1243회차 누락 사고), 이제는 스냅샷에 남은 회차·숫자가 그대로 유지된다.
+    # 정렬(draw_round DESC)·limit·하한 회차(MIN_DISPLAY_DRAW_ROUND)는 기존 조회와 동일하다.
+    stats = mdb.get_round_stats_snapshot(limit=20)
 
     # 2026-08-30: "3종필터 업로드하면 적용패턴수가 바로 계산되는데 이 표에는
     # 왜 반영이 안 되냐" — 원인은 이 표가 "실제로 조합까지 저장·배포된 회차"만

@@ -137,6 +137,31 @@ def init_marketing_tables():
             recorded_at TEXT NOT NULL
         )
     """)
+    # 2026-10-04(사용자 승인) 신규: 회차별 배출표의 "확정 시점 스냅샷".
+    # 지금까지 표는 lotto_combinations를 매번 다시 GROUP BY해 만들었기 때문에, 조합생성
+    # 워커의 정리 로직(cleanup_old_lotto_combinations — 최근 2회차만 보관)이 지난 회차
+    # 풀을 지우면 그 회차 행이 표에서 통째로 사라졌다(실제 사고: 1243회차 누락).
+    # 이제 표는 이 테이블만 읽는다 — 값이 한 번 확정되면 원본 풀이 삭제돼도 그대로 남는다.
+    #
+    # 못 박기(immutability) 규칙 — 이 테이블은 두 시점에만 쓰이고, 한 번 쓴 값은
+    #   절대 덮어쓰지 않는다:
+    #     · 추출 시점  : 그때만 알 수 있는 pattern_count (snapshot_round_stats, INSERT OR IGNORE)
+    #     · 등수 확정  : rank_1~5 + finalized_at (finalize_round_stats, WHERE finalized_at IS NULL)
+    #   조합수(total_count)는 2026-10-04 사용자 지시로 아예 저장·표시하지 않는다
+    #   (표시 대상은 적용패턴수와 등수뿐).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS combo_round_stats (
+            draw_round INTEGER PRIMARY KEY,
+            pattern_count INTEGER NULL,
+            rank_1 INTEGER NULL,
+            rank_2 INTEGER NULL,
+            rank_3 INTEGER NULL,
+            rank_4 INTEGER NULL,
+            rank_5 INTEGER NULL,
+            created_at TEXT NOT NULL,
+            finalized_at TEXT NULL
+        )
+    """)
     # 테스트 기간(AUTO_PURCHASE_SKIP_AUTH) 구매내역 — 로그인 없이도 앱을 다시 켰을 때
     # 구매내역이 남아있도록, 쿠키로 유지되는 guest_id에 주문 메타데이터를 묶어 저장한다.
     # 조합 자체는 이미 lotto_combinations.auto_order_id로 영속돼 있으니, 여기엔
@@ -1946,6 +1971,169 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
     ]
 
 
+def snapshot_round_stats(draw_round: int, pattern_count: int | None) -> bool:
+    """회차별 배출표 스냅샷 — 조합을 추출한 "그 순간"의 적용패턴수를 영구 기록한다.
+    (2026-10-04 사용자 승인 신규 — 표의 라이브 재계산을 끊는 단일 기준점)
+
+    INSERT OR IGNORE라 같은 회차를 다시 생성·재실행해도 기존 행은 절대 바뀌지 않는다.
+    등수(rank_1~5)는 이 시점엔 아직 추첨 전이라 비워두고, 등수가 확정된 뒤
+    finalize_round_stats가 1회만 채운다.
+
+    반환: True = 이번에 새로 만들었다 / False = 이미 있어서 아무 것도 안 바꿨다.
+    """
+    from datetime import datetime
+
+    conn = _connect()
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO combo_round_stats
+            (draw_round, pattern_count, created_at)
+        VALUES (?, ?, ?)
+        """,
+        (
+            int(draw_round),
+            int(pattern_count) if pattern_count is not None else None,
+            datetime.now().isoformat(),
+        ),
+    )
+    created = int(cur.rowcount or 0) > 0
+    conn.commit()
+    conn.close()
+    return created
+
+
+def _settled_ranks_for_draw(draw_round: int) -> tuple[int, int, int, int, int] | None:
+    """그 회차의 "확정된 등수" — 표시 우선순위와 같은 순서로 판단한다:
+      1) 참고등수(draw_reference_ranks)가 있으면 그 값(1241회차 이상 규칙)
+      2) 없으면 win_rank 동기화가 끝난 회차에 한해 라이브 집계값
+      3) 둘 다 아니면 None = 아직 확정 근거 없음(추첨 전 회차)
+
+    3)을 반환하는 게 중요하다 — 추첨 전 회차를 0으로 못 박으면 "당첨 0건"으로
+    영구 기록돼 버린다(그래서 finalize가 이 경우 아무 것도 하지 않는다).
+    """
+    ref = get_reference_ranks(draw_round)
+    if ref is not None:
+        return (
+            int(ref["rank_1"]),
+            int(ref["rank_2"]),
+            int(ref["rank_3"]),
+            int(ref["rank_4"]),
+            int(ref["rank_5"]),
+        )
+    if not is_win_rank_synced(int(draw_round), "lotto_combinations"):
+        return None
+    counts = get_win_rank_counts_by_draw(int(draw_round))
+    return tuple(int(counts.get(rank, 0)) for rank in (1, 2, 3, 4, 5))  # type: ignore[return-value]
+
+
+def finalize_round_stats(draw_round: int) -> bool:
+    """등수 확정 — 스냅샷의 rank_1~5 와 finalized_at 을 딱 1회만 기록한다.
+
+    WHERE finalized_at IS NULL 이 못 박기의 본체다 — 이미 확정된 행은 재호출해도
+    한 글자도 바뀌지 않는다(rowcount 0). 확정 근거가 아직 없는 회차(추첨 전)는
+    아무 것도 하지 않는다(_settled_ranks_for_draw 참고).
+    pattern_count·created_at 은 이 UPDATE의 SET 목록에 없다 — 영구 불변.
+
+    반환: True = 이번에 확정했다 / False = 이미 확정됐거나 아직 근거가 없다.
+    """
+    from datetime import datetime
+
+    draw_round = int(draw_round)
+    ranks = _settled_ranks_for_draw(draw_round)
+    if ranks is None:
+        return False
+    conn = _connect()
+    cur = conn.execute(
+        """
+        UPDATE combo_round_stats
+        SET rank_1 = ?, rank_2 = ?, rank_3 = ?, rank_4 = ?, rank_5 = ?, finalized_at = ?
+        WHERE draw_round = ? AND finalized_at IS NULL
+        """,
+        (ranks[0], ranks[1], ranks[2], ranks[3], ranks[4], datetime.now().isoformat(), draw_round),
+    )
+    finalized = int(cur.rowcount or 0) > 0
+    conn.commit()
+    conn.close()
+    return finalized
+
+
+def finalize_pending_round_stats() -> list[int]:
+    """아직 확정되지 않은 스냅샷 회차 중, 지금 확정 근거가 있는 회차만 마지막으로 확정한다.
+
+    combo_gen_worker.py가 오래된 풀을 정리(cleanup_old_lotto_combinations)하기 **직전**에
+    호출하는 안전망이다(2026-10-04 사용자 지시로 포함) — 그 주 등수 동기화가 늦어
+    확정을 놓친 회차가 풀과 함께 영구 미확정으로 남는 것을 막는다.
+
+    반환: 이번에 확정된 회차 목록(정렬: 최신 우선).
+    """
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT draw_round FROM combo_round_stats "
+        "WHERE finalized_at IS NULL ORDER BY draw_round DESC"
+    ).fetchall()
+    conn.close()
+    finalized: list[int] = []
+    for row in rows:
+        draw_round = int(row[0])
+        if finalize_round_stats(draw_round):
+            finalized.append(draw_round)
+    return finalized
+
+
+def get_round_stats_snapshot(limit: int = 20) -> list[dict]:
+    """회차별 배출표의 새 출처 — combo_round_stats 스냅샷만 읽는다(2026-10-04 신규).
+
+    표가 이 함수를 쓰면, 오래된 풀이 정리로 삭제돼도 과거 회차 행과 숫자가 그대로 남는다.
+    키는 get_draw_extraction_stats와 같은 이름(draw_round/pattern_count/rank_1~5)에
+    finalized_at 을 하나 더 얹는다 — 조합수(total_count)는 2026-10-04 사용자 지시로 제외.
+    등수가 아직 확정 전이면 NULL이므로 표시용으로 0을 채운다(추첨 전과 0건을 같은 표기로).
+    """
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT draw_round, pattern_count,
+               rank_1, rank_2, rank_3, rank_4, rank_5, finalized_at
+        FROM combo_round_stats
+        WHERE draw_round >= ?
+        ORDER BY draw_round DESC
+        LIMIT ?
+        """,
+        (MIN_DISPLAY_DRAW_ROUND, int(limit)),
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "draw_round": int(row["draw_round"]),
+            "pattern_count": int(row["pattern_count"]) if row["pattern_count"] is not None else None,
+            "rank_1": int(row["rank_1"] or 0),
+            "rank_2": int(row["rank_2"] or 0),
+            "rank_3": int(row["rank_3"] or 0),
+            "rank_4": int(row["rank_4"] or 0),
+            "rank_5": int(row["rank_5"] or 0),
+            "finalized_at": row["finalized_at"],
+        }
+        for row in rows
+    ]
+
+
+def reset_round_stats_snapshot(draw_round: int) -> int:
+    """[수동 전용] 스냅샷 한 회차를 지운다 — 자동 호출부를 만들지 않는다.
+
+    못 박기 원칙 때문에 "이미 확정된 값을 고치는 길"은 자동으로 열지 않는다. 이 함수는
+    회차를 잘못 적재했다가 지우고 다시 넣는 예외적 상황에서만 사람이 직접 호출한다
+    (update_win_ranks_for_draw docstring의 예외 경로와 같은 성격).
+    """
+    conn = _connect()
+    cur = conn.execute(
+        "DELETE FROM combo_round_stats WHERE draw_round = ?", (int(draw_round),)
+    )
+    deleted = int(cur.rowcount or 0)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def get_draw_purchase_conversion_stats(limit: int = 20) -> list[dict]:
     """회차별 추출 조합 대비 실제 구매(배정)로 이어진 개수 — 관리자 대시보드용.
 
@@ -2036,6 +2224,11 @@ __all__ = [
     "get_win_rank_counts_by_draw",
     "get_combination_count_by_draw",
     "get_draw_extraction_stats",
+    "snapshot_round_stats",
+    "finalize_round_stats",
+    "finalize_pending_round_stats",
+    "get_round_stats_snapshot",
+    "reset_round_stats_snapshot",
     "get_draw_purchase_conversion_stats",
     "get_mock_draw_extraction_stats",
     "ensure_marketing_pool_seeds",

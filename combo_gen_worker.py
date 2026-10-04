@@ -251,6 +251,11 @@ def main() -> int:
             target_round, sample, top5_numbers=stats.get("top5_numbers")
         )
         marketing_db.record_draw_pattern_count(target_round, PATTERN_COUNT_DISPLAY)
+        # 2026-10-04(사용자 승인): 회차별 배출표 스냅샷 — 조합을 추출한 "그 순간"만 알 수
+        # 있는 적용패턴수를 영구 기록한다(INSERT OR IGNORE라 재실행해도 안 바뀜).
+        # 등수는 아직 추첨 전이라 여기서 채우지 않는다 — 추첨 전에 0으로 얼리면 표가
+        # "당첨 0건"으로 영구 고정된다. 등수는 아래 anchor 처리 때 1회 확정된다.
+        marketing_db.snapshot_round_stats(target_round, PATTERN_COUNT_DISPLAY)
         marketing_db.record_draw_generation_stats(
             target_round, stats["stage2_count"], stats["final_count"], stats["top5_numbers"]
         )
@@ -264,6 +269,12 @@ def main() -> int:
         # 규칙)을 어기고 있었다 — 그 결과 1237~1240회차 데이터가 복구
         # 불가능하게 삭제됨(실측 확인). cleanup_old_guest_generated_combos와
         # 똑같은 "최근 N개 회차만 보관" 함수로 교체한다.
+        # 2026-10-04(사용자 승인, 안전망): 풀을 정리하기 **직전**에, 아직 등수가 확정되지
+        # 않은 회차 중 지금 확정 근거가 있는 회차만 마지막으로 확정한다. 정리 이후에는
+        # 원본이 없어 등수를 알 수 없으므로 이 순서가 마지막 기회다(근거가 없는 회차는
+        # 그대로 미확정으로 남는다 — 근거 없이 0을 못 박지 않는다).
+        marketing_db.finalize_pending_round_stats()
+
         cleaned = marketing_db.cleanup_old_lotto_combinations(keep_rounds=2)
 
         # 번개조합/안티조합/액땜조합 저장분(guest_generated_combos)도 최근
@@ -289,6 +300,12 @@ def main() -> int:
                 pool_size, detail = ref
                 marketing_db.set_reference_ranks(anchor_round, detail["ref_ranks"])
                 ref_note = {"pool_size": pool_size, **detail}
+
+        # 2026-10-04(사용자 승인): anchor(방금 추첨된) 회차의 등수를 스냅샷에 1회 확정 기록한다.
+        # 1241회차 이상이면 위에서 기록한 참고등수를, 그 미만이거나 참고등수가 없으면
+        # win_rank 동기화가 끝난 회차에 한해 라이브 집계값을 얼린다 — 표가 앞으로 쓰는 값이다.
+        # (동기화가 아직 안 끝난 회차는 finalize가 스스로 건너뛴다: 추첨 전 0 못 박기 방지)
+        marketing_db.finalize_round_stats(anchor_round)
 
         app_settings.set_setting("combo_gen_last_round", str(target_round))
         app_settings.set_setting("combo_gen_last_count", str(inserted))
