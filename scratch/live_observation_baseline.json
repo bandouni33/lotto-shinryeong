@@ -1,0 +1,19 @@
+{
+  "started": "2026-10-04 22:27:35",
+  "minutes": 0.8,
+  "ticks": 4,
+  "http_failures": 0,
+  "probe_renders": 4,
+  "probe_gate_seen": 0,
+  "probe_script_ms_p50": 1692,
+  "probe_script_ms_p95": 1695,
+  "probe_script_ms_max": 1695,
+  "log_db_renders": 4,
+  "log_bytes_skipped_at_start": 38619,
+  "real_user_renders_est": 0,
+  "user_script_ms_p50": 447,
+  "user_script_ms_p95": 454,
+  "user_db_calls_max": 10,
+  "rss_mb_max": 148.1,
+  "probe_cpu_pct_max": 4.3
+}

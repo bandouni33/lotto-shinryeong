@@ -20,6 +20,14 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+# 2026-10-04: observation log - keep the server stdout (one [dbtrace] line per render with
+# script_ms/db_ms/calls) in a file. -u (unbuffered) is REQUIRED: when stdout is redirected to a
+# file Python block-buffers it, so lines arrive in late chunks and you cannot see live activity.
+# *.log is gitignored. NOTE: this file must stay ASCII-only (see the header above) - a Korean
+# comment here was read as cp949 by PS 5.1 and broke quoting (caught by
+# tests/test_server_address_fix.py:test_scripts_are_ascii_only on 2026-10-04).
+$logFile = Join-Path $PSScriptRoot "server_out.log"
+
 Write-Host "========================================"
 Write-Host " Lotto App - Streamlit Server"
 Write-Host "========================================"
@@ -99,14 +107,12 @@ Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
 if ($PublicHost) {
-    python -m streamlit run app.py `
-        --server.address 0.0.0.0 `
-        --server.port $Port `
-        --browser.serverAddress $PublicHost `
-        --browser.serverPort $Port
+    # 2026-10-04: send stdout/stderr to the log file. PowerShell's *>> redirect killed the python
+    # process instantly when started without a console (Task Scheduler / watchdog Start-Process
+    # -WindowStyle Hidden): the file appeared but stayed empty and the server never came up
+    # (measured). cmd's >> redirection works in that context.
+    cmd /c "python -u -m streamlit run app.py --server.address 0.0.0.0 --server.port $Port --browser.serverAddress $PublicHost --browser.serverPort $Port >> $logFile 2>&1"
 } else {
     # Do not pass an empty -browser.serverAddress (an empty value can break origin checks).
-    python -m streamlit run app.py `
-        --server.address 0.0.0.0 `
-        --server.port $Port
+    cmd /c "python -u -m streamlit run app.py --server.address 0.0.0.0 --server.port $Port >> $logFile 2>&1"
 }
