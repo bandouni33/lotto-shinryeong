@@ -82,7 +82,7 @@ def _particles_html(style_id: int, count: int) -> str:
         return ""
     spans = "".join(
         f'<span class="wev-p" style="--i:{i}; --x:{4 + (i * 7) % 92}%; '
-        f'--d:{round((i * 0.19) % 2.6, 2)}s; --r:{(i * 47) % 360}deg; '
+        f'--d:{round((i * 0.37) % 5.2, 2)}s; --r:{(i * 47) % 360}deg; '
         f'--c:{CONFETTI_COLORS[i % len(CONFETTI_COLORS)]}"></span>'
         for i in range(count)
     )
@@ -164,7 +164,7 @@ def style_css(style_id: int) -> str:
 /* 2026-10-04 지시: 모바일에서 사선이 잘 안 보인다 → 더 밝게/넓게 + 창이 닫힐 때까지 계속.
    또 한 번 지시: 중간에서 사라진다 → 카드 **오른쪽 끝을 지나서** 퇴장하도록 범위 확대
    (-190% → 230%). 불투명도는 88%까지 유지하고 마지막에만 0으로 줄인다. */
-.wev-shine { animation: wevShine 3.4s cubic-bezier(.4,0,.6,1) .3s infinite; }
+.wev-shine { animation: wevShine 6.8s cubic-bezier(.4,0,.6,1) .3s infinite; }
 """
         if style["shine"]
         else ".wev-shine{display:none;}"
@@ -221,7 +221,7 @@ def style_css(style_id: int) -> str:
   width: 7px; height: 11px; border-radius: 2px;
   background: var(--c);
   opacity: 0;
-  animation: wevFall 2.6s linear var(--d) infinite, wevTwinkle 1.3s ease-in-out var(--d) infinite;
+  animation: wevFall 5.2s linear var(--d) infinite, wevTwinkle 2.6s ease-in-out var(--d) infinite;
 }}
 @keyframes wevSamplePulse {{ 0%,100% {{ opacity: .55; }} 50% {{ opacity: 1; }} }}
 .wev-sample {{
@@ -283,14 +283,17 @@ def _banner_dialog(info: dict) -> None:
     # 글자로 노출됐다(신고 내용: <div class="wev-title">... 가 그대로 보임). 이 앱이
     # 업데이트 안내 토스트·번개조합 번호판에서 써 오는 components.html(iframe)로 바꿔
     # CSS·애니메이션을 브라우저 기본 동작으로 100% 적용되게 한다.
-    components.html(card_iframe_html(info), height=CARD_IFRAME_HEIGHT, scrolling=False)
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button(BTN_NEVER, use_container_width=True, key=NEVER_BTN_KEY):
-            _close_banner(int(info["draw_round"]))
-    with c2:
-        if st.button(BTN_OK, type="primary", use_container_width=True, key=OK_BTN_KEY):
-            _close_banner(int(info["draw_round"]))
+    with st.container(key="win_event_banner_body"):
+        # 2026-10-04 지시: 버튼 두 개를 **한 줄로** 유지해 창 높이를 줄인다.
+        # 이 컨테이너 키가 아래 창 전용 CSS의 기준점이다(:has(.st-key-win_event_banner_body)).
+        components.html(card_iframe_html(info), height=CARD_IFRAME_HEIGHT, scrolling=False)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button(BTN_NEVER, use_container_width=True, key=NEVER_BTN_KEY):
+                _close_banner(int(info["draw_round"]))
+        with c2:
+            if st.button(BTN_OK, type="primary", use_container_width=True, key=OK_BTN_KEY):
+                _close_banner(int(info["draw_round"]))
 
 
 CARD_IFRAME_HEIGHT = 120  # 초기값(폴백) — 실제 높이는 아래 리포트 스크립트가 내용에 맞춰 줄인다
@@ -355,29 +358,36 @@ def _render_close_bridge(draw_round: int) -> None:
         <style>
         .st-key-win_event_banner_closed_btn { display: none !important; }
 
-        /* 이 이벤트 창 전용 규칙 (2026-10-04 지시) — components.html iframe을 품은
-           다이얼로그에만 적용하도록 :has()로 좁혔다(다른 안내창에는 영향 없음).
-             ① 제목 가운데 정렬  ② 버튼 두 개를 한 줄로  ③ 여백(빈 공간) 최소 */
-        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) > div {{ padding: 6px 10px 4px !important; }}
-        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) h2 {{
+        /* 이 이벤트 창 전용 규칙 (2026-10-04 지시) — 이 배너 본문 컨테이너
+           (.st-key-win_event_banner_body)를 품은 다이얼로그에만 :has()로 좁혀
+           다른 안내창에는 영향이 없게 한다.
+             ① 제목 가운데 정렬  ② 버튼 두 개를 한 줄로(창 높이 축소)  ③ 여백 최소 */
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) > div {{ padding: 6px 10px 4px !important; }}
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) h2 {{
             text-align: center !important;
             width: 100% !important;
         }}
-        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) > div > div:first-child {{
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) > div > div:first-child {{
             justify-content: center !important;
         }}
-        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) [data-testid="stHorizontalBlock"] {{
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stHorizontalBlock"] {{
+            display: flex !important;
             flex-wrap: nowrap !important;
             gap: 8px !important;
         }}
-        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) [data-testid="stHorizontalBlock"] > div {{
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
+            width: 50% !important;
+            min-width: 0 !important;
+            flex: 1 1 0 !important;
+        }}
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stHorizontalBlock"] > div {{
             width: auto !important;
             min-width: 0 !important;
         }}
-        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) [data-testid="stElementContainer"]:has(iframe) {{
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) [data-testid="stElementContainer"]:has(iframe) {{
             margin-bottom: 2px !important;
-        }}
-        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) button p {{
+        }}        
+        div[data-testid="stDialog"]:has(.st-key-win_event_banner_body) button p {{
             font-size: 13px !important;
             white-space: nowrap !important;
         }}
