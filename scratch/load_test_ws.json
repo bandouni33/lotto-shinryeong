@@ -1,0 +1,73 @@
+{
+  "url": "ws://127.0.0.1:8598/_stcore/stream",
+  "query": "page=main",
+  "started": "2026-10-04T17:36:43",
+  "hold_seconds": 45.0,
+  "rerun_interval": 25.0,
+  "rows": [
+    {
+      "concurrent": 10,
+      "sessions": 10,
+      "connected": 10,
+      "renders": 20,
+      "script_p50": 1130,
+      "script_p95": 1674,
+      "script_max": 1674,
+      "timeouts": 0,
+      "errors": 0
+    },
+    {
+      "concurrent": 30,
+      "sessions": 30,
+      "connected": 30,
+      "renders": 60,
+      "script_p50": 216,
+      "script_p95": 2842,
+      "script_max": 2850,
+      "timeouts": 0,
+      "errors": 0
+    },
+    {
+      "concurrent": 60,
+      "sessions": 60,
+      "connected": 60,
+      "renders": 120,
+      "script_p50": 216,
+      "script_p95": 4426,
+      "script_max": 4480,
+      "timeouts": 0,
+      "errors": 0
+    },
+    {
+      "concurrent": 100,
+      "sessions": 100,
+      "connected": 100,
+      "renders": 200,
+      "script_p50": 216,
+      "script_p95": 6646,
+      "script_max": 6764,
+      "timeouts": 0,
+      "errors": 0
+    },
+    {
+      "concurrent": 150,
+      "sessions": 150,
+      "connected": 150,
+      "renders": 300,
+      "script_p50": 216,
+      "script_p95": 8322,
+      "script_max": 8397,
+      "timeouts": 0,
+      "errors": 0
+    }
+  ],
+  "finished": "2026-10-04T17:40:38",
+  "frames": {
+    "new_session": 300,
+    "session_status_changed": 450,
+    "page_config_changed": 390,
+    "navigation": 195,
+    "delta": 9431,
+    "script_finished": 300
+  }
+}

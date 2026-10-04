@@ -1,0 +1,168 @@
+이 PC: 여유 RAM 7073MB / 논리코어 8 / 여유 RAM이 2500MB 아래로 가면 중단
+대상: http://127.0.0.1:8598/?page=main
+단계: [10, 30, 60] · 단계당 60초 · 새로고침 주기 25초
+[워밍업] 운영 앱을 깨우는 중(유휴 상태면 30~60초 걸린다)...
+[워밍업] 첫 로딩 354ms
+
+=== 단계: 동시 10명 (신규 +10) ===
+  (지금 운영자 대시보드의 동시접속 숫자와 Cloud 로그의 [dbtrace]를 확인하세요)
+  [관찰] 동시 10명 · 이 PC 여유 RAM 6882MB · 살아있는 세션 10
+  [관찰] 동시 10명 · 이 PC 여유 RAM 6136MB · 살아있는 세션 10
+  [세션3] 최초 shell 2095ms · `render 3390ms`
+  [세션1] 최초 shell 1821ms · `render 3782ms`
+  [세션5] 최초 shell 2506ms · `render 2906ms`
+  [세션6] 최초 shell 2312ms · `render 3109ms`
+  [세션7] 최초 shell 2437ms · `render 2984ms`
+  [세션2] 최초 shell 2125ms · `render 3515ms`
+  [세션0] 최초 shell 1524ms · `render 4234ms`
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5502MB · 살아있는 세션 10
+  [세션4] 최초 shell 2132ms · `render 10109ms`
+  [세션9] 최초 shell 2307ms · `render 10594ms`
+  [세션8] 최초 shell 2408ms · `render 11422ms`
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5287MB · 살아있는 세션 10
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5479MB · 살아있는 세션 10
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5364MB · 살아있는 세션 10
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5252MB · 살아있는 세션 10
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5099MB · 살아있는 세션 10
+  [세션3] 새로고침 shell 257ms · `render 6218ms`
+  [세션6] 새로고침 shell 757ms · `render 5937ms`
+  [세션7] 새로고침 shell 889ms · `render 7281ms`
+  [세션5] 새로고침 shell 755ms · `render 7422ms`
+  [세션2] 새로고침 shell 899ms · `render 7266ms`
+  [세션1] 새로고침 shell 266ms · `render 7953ms`
+  [세션0] 새로고침 shell 734ms · `render 7813ms`
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5145MB · 살아있는 세션 10
+  [세션4] 새로고침 shell 184ms · `render 3984ms`
+  [세션9] 새로고침 shell 401ms · `render 3953ms`
+  [세션8] 새로고침 shell 289ms · `render 4360ms`
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5104MB · 살아있는 세션 10
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5420MB · 살아있는 세션 10
+  [관찰] 동시 10명 · 이 PC 여유 RAM 5424MB · 살아있는 세션 10
+
+=== 단계: 동시 30명 (신규 +20) ===
+  (지금 운영자 대시보드의 동시접속 숫자와 Cloud 로그의 [dbtrace]를 확인하세요)
+  [관찰] 동시 30명 · 이 PC 여유 RAM 5511MB · 살아있는 세션 30
+  [관찰] 동시 30명 · 이 PC 여유 RAM 5007MB · 살아있는 세션 30
+  [관찰] 동시 30명 · 이 PC 여유 RAM 4825MB · 살아있는 세션 30
+  [세션3] 새로고침 shell 1984ms · `render 6938ms`
+  [세션7] 새로고침 shell 1755ms · `render 8516ms`
+  [세션6] 새로고침 shell 2386ms · `render 9235ms`
+  [관찰] 동시 30명 · 이 PC 여유 RAM 4519MB · 살아있는 세션 30
+  [세션2] 새로고침 shell 1747ms · `render 10735ms`
+  [세션1] 새로고침 shell 1981ms · `render 10531ms`
+  [세션5] 새로고침 shell 1975ms · `render 10531ms`
+  [세션9] 새로고침 shell 1541ms · `render 7750ms`
+  [세션0] 새로고침 shell 1630ms · `render 10875ms`
+  [세션8] 새로고침 shell 1095ms · `render 8672ms`
+  [세션4] 새로고침 shell 2716ms · `render 9219ms`
+  [관찰] 동시 30명 · 이 PC 여유 RAM 4498MB · 살아있는 세션 30
+  [세션10] 최초 shell 15365ms · `render 5672ms`
+  [세션12] 최초 shell 18591ms · `render 2954ms`
+  [세션13] 최초 shell 18574ms · `render 3422ms`
+  [세션11] 최초 shell 19806ms · `render 2437ms`
+  [관찰] 동시 30명 · 이 PC 여유 RAM 4472MB · 살아있는 세션 30
+  [관찰] 동시 30명 · 이 PC 여유 RAM 4278MB · 살아있는 세션 30
+  [관찰] 동시 30명 · 이 PC 여유 RAM 4299MB · 살아있는 세션 30
+  [세션14] 최초 shell 20146ms · `render 17672ms`
+  [세션21] 최초 shell 22448ms · `render 14093ms`
+  [관찰] 동시 30명 · 이 PC 여유 RAM 3954MB · 살아있는 세션 30
+  [세션16] 최초 shell 22197ms · `render 16922ms`
+  [세션15] 최초 shell 22794ms · `render 17297ms`
+  [세션17] 최초 shell 23216ms · `render 16594ms`
+  [관찰] 동시 30명 · 이 PC 여유 RAM 3637MB · 살아있는 세션 30
+  [세션19] 최초 shell 23135ms · `render 18360ms`
+  [관찰] 동시 30명 · 이 PC 여유 RAM 3438MB · 살아있는 세션 30
+  [세션25] 최초 shell 22746ms · `render 24468ms`
+  [세션23] 최초 shell 22475ms · `render 24953ms`
+  [세션18] 최초 shell 22482ms · `render 26156ms`
+  [세션26] 최초 shell 23735ms · `render 24516ms`
+  [세션22] 최초 shell 23153ms · `render 25563ms`
+  [세션24] 최초 shell 23727ms · `render 24516ms`
+  [세션20] 최초 shell 23104ms · `render 26125ms`
+  [세션27] 최초 shell 25997ms · `render 21719ms`
+  [관찰] 동시 30명 · 이 PC 여유 RAM 3357MB · 살아있는 세션 30
+  [세션7] 새로고침 shell 679ms · `render 17953ms`
+
+=== 단계: 동시 60명 (신규 +30) ===
+  [세션3] 새로고침 shell 2125ms · `render 21250ms`
+  [세션29] 최초 shell 27228ms · `render 측정없음`
+  [세션28] 최초 shell 26307ms · `render 측정없음`
+  [세션5] 새로고침 shell 1815ms · `render 24171ms`
+  [세션8] 새로고침 shell 7387ms · `render 16484ms`
+  [세션6] 새로고침 shell 962ms · `render 27766ms`
+  [세션4] 새로고침 shell 7412ms · `render 17016ms`
+  [세션0] 새로고침 shell 2448ms · `render 23703ms`
+  [세션2] 새로고침 shell 1623ms · `render 24907ms`
+  [세션9] 새로고침 shell 1618ms · `render 24532ms`
+  [세션12] 새로고침 shell 3857ms · `render 15735ms`
+  [세션10] 새로고침 shell 4971ms · `render 15735ms`
+  [세션1] 새로고침 shell 1831ms · `render 25125ms`
+  (지금 운영자 대시보드의 동시접속 숫자와 Cloud 로그의 [dbtrace]를 확인하세요)
+  [관찰] 동시 60명 · 이 PC 여유 RAM 3188MB · 살아있는 세션 60
+  [세션13] 새로고침 shell 3800ms · `render 17984ms`
+  [관찰] 동시 60명 · 이 PC 여유 RAM 2892MB · 살아있는 세션 60
+  [세션11] 새로고침 shell 3780ms · `render 18875ms`
+  [세션21] 새로고침 shell 2610ms · `render 5469ms`
+  [세션14] 새로고침 shell 2594ms · `render 5484ms`
+  [세션16] 새로고침 shell 1748ms · `render 8031ms`
+  [세션17] 새로고침 shell 2100ms · `render 5516ms`
+  [세션15] 새로고침 shell 2895ms · `render 8453ms`
+  [관찰] 동시 60명 · 이 PC 여유 RAM 2652MB · 살아있는 세션 60
+  [관찰] 동시 60명 · 이 PC 여유 RAM 2516MB · 살아있는 세션 60
+  [세션19] 새로고침 shell 3164ms · `render 11672ms`
+  [세션25] 새로고침 shell 2769ms · `render 9672ms`
+  [세션23] 새로고침 shell 4225ms · `render 8860ms`
+  [세션27] 새로고침 shell 4168ms · `render 10031ms`
+  [세션24] 새로고침 shell 4182ms · `render 13719ms`
+  [세션18] 새로고침 shell 3377ms · `render 15094ms`
+  [세션22] 새로고침 shell 4248ms · `render 14531ms`
+  [세션20] 새로고침 shell 3356ms · `render 15438ms`
+  [세션7] 새로고침 shell 3811ms · `render 11391ms`
+  [세션26] 새로고침 shell 4209ms · `render 16234ms`
+  [세션34] 최초 shell 25507ms · `render 2390ms`
+  [세션36] 최초 shell 25759ms · `render 4344ms`
+  [세션31] 최초 shell 25680ms · `render 2860ms`
+  [세션33] 최초 shell 25752ms · `render 5640ms`
+  [세션35] 최초 shell 25974ms · `render 16421ms`
+  [세션30] 최초 shell 26286ms · `render 15329ms`
+  [세션38] 최초 shell 26210ms · `render 15281ms`
+  [세션45] 최초 shell 25614ms · `render 13875ms`
+  [세션41] 최초 shell 26139ms · `render 15156ms`
+  [세션39] 최초 shell 25653ms · `render 16110ms`
+  [세션37] 최초 shell 25884ms · `render 17750ms`
+  [세션46] 최초 shell 25308ms · `render 15953ms`
+  [세션32] 최초 shell 26355ms · `render 17563ms`
+  [세션43] 최초 shell 25888ms · `render 16829ms`
+  [세션49] 최초 shell 25334ms · `render 16954ms`
+  [세션40] 최초 shell 25477ms · `render 19234ms`
+  [세션42] 최초 shell 25892ms · `render 19563ms`
+  [세션44] 최초 shell 25241ms · `render 20390ms`
+  [세션47] 최초 shell 25882ms · `render 19703ms`
+  [세션57] 최초 shell 26904ms · `render 21266ms`
+  [세션53] 최초 shell 24845ms · `render 21250ms`
+  [세션55] 최초 shell 27243ms · `render 22297ms`
+  [세션59] 최초 shell 24990ms · `render 21968ms`
+  [세션51] 최초 shell 26448ms · `render 23093ms`
+  [세션52] 최초 shell 26513ms · `render 23016ms`
+  [세션58] 최초 shell 24925ms · `render 23297ms`
+  [세션48] 최초 shell 25026ms · `render 24141ms`
+  [세션50] 최초 shell 25363ms · `render 23875ms`
+  [세션54] 최초 shell 25101ms · `render 24203ms`
+  [세션56] 최초 shell 25025ms · `render 24219ms`
+
+==================================================================
+결과 요약
+==================================================================
+  동시 |   최초shell |  최초render p50/p95 |    새로고침shell |    새로고침render p50/p95 |   실패
+----------------------------------------------------------------------------------
+  10 |      2307 |        3782/11422 |          734 |             7266/7953 |    0
+  30 |     22794 |       18360/26156 |         1981 |           16484/25125 |    0
+  60 |     25752 |       19234/24203 |         3356 |           10031/16234 |    0
+
+단위 ms. shell = 정적 껍데기, render = 파이썬 스크립트가 다 돈 시점(Cloud 로그 [dbtrace] script_ms와 비교할 값). '-'는 그 단계에서 못 쟀다는 뜻.
+입장 제한 게이트에 막힌 횟수: 0 (이건 상한값이지 성능 한계가 아니다)
+
+중단됨 — 동시 60명 지점
+  이 PC의 여유 RAM이 2360MB까지 떨어졌다(기준 2500MB). 이 시점부터의 지연은 서버가 아니라 이 PC의 한계다 — 동시 60명에서 중단.
+
+결과 저장: scratch\load_test_local.json

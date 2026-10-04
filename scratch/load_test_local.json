@@ -1,0 +1,68 @@
+{
+  "url": "http://127.0.0.1:8598/?page=main",
+  "started": "2026-10-04T17:30:32",
+  "finished": "2026-10-04T17:33:45",
+  "steps": [
+    10,
+    30,
+    60
+  ],
+  "hold_seconds": 60,
+  "reload_interval_seconds": 25,
+  "gate_hits": 0,
+  "aborted": true,
+  "abort_reason": "이 PC의 여유 RAM이 2360MB까지 떨어졌다(기준 2500MB). 이 시점부터의 지연은 서버가 아니라 이 PC의 한계다 — 동시 60명에서 중단.",
+  "abort_at_concurrent": 60,
+  "abort_window": 20,
+  "abort_failure_share": 0.5,
+  "rows": [
+    {
+      "concurrent": 10,
+      "failures": 0,
+      "load_n": 10,
+      "load_p50": 2307,
+      "load_p95": 2506,
+      "load_render_n": 10,
+      "load_render_p50": 3782,
+      "load_render_p95": 11422,
+      "reload_n": 10,
+      "reload_p50": 734,
+      "reload_p95": 899,
+      "reload_render_n": 10,
+      "reload_render_p50": 7266,
+      "reload_render_p95": 7953
+    },
+    {
+      "concurrent": 30,
+      "failures": 0,
+      "load_n": 20,
+      "load_p50": 22794,
+      "load_p95": 27228,
+      "load_render_n": 18,
+      "load_render_p50": 18360,
+      "load_render_p95": 26156,
+      "reload_n": 24,
+      "reload_p50": 1981,
+      "reload_p95": 7387,
+      "reload_render_n": 24,
+      "reload_render_p50": 16484,
+      "reload_render_p95": 25125
+    },
+    {
+      "concurrent": 60,
+      "failures": 0,
+      "load_n": 30,
+      "load_p50": 25752,
+      "load_p95": 26904,
+      "load_render_n": 30,
+      "load_render_p50": 19234,
+      "load_render_p95": 24203,
+      "reload_n": 15,
+      "reload_p50": 3356,
+      "reload_p95": 4248,
+      "reload_render_n": 15,
+      "reload_render_p50": 10031,
+      "reload_render_p95": 16234
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+동시접속 확장 사전조사 — 실측 도구 5종 + 조사 보고서 (설정 변경 없음)
+
+이번 단계는 조사·실측까지다. 운영 설정(상한 60)·배포·서버 구성은 건드리지 않았다.
+
+실측 결과(요약)
+- 브라우저 없이 WebSocket 세션으로 서버측을 재는 도구를 새로 만들어 150세션까지 측정:
+  서버 RSS 763MB(최대 786MB) · CPU 1%대 · 실패 0건 · 워밍 재렌더 p50 216ms.
+- 세션 1개당 증가분: 10→30 3.08MB, 30→60 3.22MB, 60→100 2.78MB, 100→150 2.74MB
+  → 보수적으로 3.2MB/세션. 프로세스 기준선 254MB, 공유 캐시 워밍 후 420MB.
+- 렌더 1회당 DB 왕복: 첫 렌더 28건, 재렌더 10건(실측).
+- 메모리는 최고점으로 남는다: 60세션 종료 후에도 RSS 558.8MB에서 안 내려옴.
+- 공식 도구(브라우저)는 세션당 약 160MB라 이 PC에서 60명에서 스스로 중단(PC 한계, 서버 아님).
+- 220.127.15.204:8501 무응답(ping/TCP/HTTP 전부) · 이 PC 공인 IP는 220.127.118.224.
+
+추가한 파일
+- scratch/serve_for_concurrency.py, scratch/monitor_streamlit_resources.py,
+  scratch/load_test_ws_sessions.py, scratch/analyze_rss_steps.py,
+  scratch/count_db_calls_per_render.py
+- 동시접속_확장_사전조사_2026-10-04.txt (보고서)
+- 증거: scratch/rss_ramp.csv, scratch/load_test_ws_out.txt/.json, scratch/load_test_local_out.txt
+
+기존 scripts/load_test_concurrency.py는 수정하지 않았다.
