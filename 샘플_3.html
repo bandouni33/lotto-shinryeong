@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>샘플 3 — 1·2등 배출 배너</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0b10; color: #f2f2f6;
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+  .sample-page { max-width: 420px; margin: 0 auto; padding: 22px 16px 40px; }
+  .sample-no { font-size: 44px; font-weight: 900; letter-spacing: -2px;
+    color: #ffffff; text-align: center; margin: 6px 0 4px; }
+  .sample-desc { text-align: center; font-size: 12.5px; color: #9a9aa6; margin-bottom: 18px; }
+  .sample-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .sample-btn { flex: 1; height: 42px; border-radius: 10px; font-size: 14px; font-weight: 800;
+    border: 1px solid #3a3a46; background: #1b1b22; color: #e8e8ee; }
+  .sample-btn.primary { background: linear-gradient(180deg, #2f6df6, #2456c8); border-color: #2f6df6; color: #fff; }
+  .sample-foot { margin-top: 18px; font-size: 11.5px; color: #7c7c88; line-height: 1.6; }
+</style></head>
+<body>
+  <div class="sample-page">
+    <div class="sample-no">샘플 3</div>
+    <div class="sample-desc">미니멀 금선 — 얇은 금색 라인 + 차분한 등장만(반짝임·입자 없음) — 가장 조용한 버전</div>
+    
+<style>
+@keyframes wevIn {
+  from { opacity: 0; transform: translateY(10px) scale(.92); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes wevFall {
+  0%   { opacity: 0; transform: translateY(-14px) rotate(0deg) scale(.7); }
+  18%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(190px) rotate(var(--r)) scale(1); }
+}
+@keyframes wevTwinkle {
+  0%,100% { opacity: .25; } 50% { opacity: 1; }
+}
+
+.wev-shine{display:none;}
+.wev-wrap {
+  position: relative;
+  padding: 3px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #d9b25a 0%, #8a6b1f 100%);
+  box-shadow: 0 12px 32px rgba(0,0,0,.55);
+  animation: wevIn .38s cubic-bezier(.2,.8,.3,1.15) both;
+  overflow: hidden;
+}
+.wev-card {
+  position: relative;
+  border-radius: 18px;
+  padding: 20px 18px 16px;
+  background: linear-gradient(180deg, #16161c 0%, #101014 100%);
+  text-align: center;
+  color: #f2f2f6;
+  overflow: hidden;
+}
+.wev-shine {
+  position: absolute; top: -60%; left: 0; width: 45%; height: 220%;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 100%);
+  pointer-events: none;
+}
+.wev-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.wev-p {
+  position: absolute; top: 0; left: var(--x);
+  width: 7px; height: 11px; border-radius: 2px;
+  background: #d9b25a;
+  opacity: 0;
+  animation: wevFall 1.4s ease-in var(--d) 1 both, wevTwinkle 1.2s ease-in-out var(--d) 1 both;
+}
+@keyframes wevSamplePulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+.wev-sample {
+  font-size: 12px; font-weight: 800; letter-spacing: 1px;
+  color: #ffffff; background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 6px; padding: 2px 8px;
+  display: inline-block; margin-bottom: 10px;
+  animation: wevSamplePulse 1.6s ease-in-out infinite;
+}
+.wev-badges, .wev-badge { /* 등수 뱃지는 2026-10-04 확정으로 제거(등수는 문구 한 줄로만) */ display: none !important; }
+.wev-title {
+  font-size: 19px; font-weight: 900; letter-spacing: -0.6px;
+  color: #f0e2bd;
+  margin: 2px 0 8px;
+}
+.wev-head { font-size: 13px; color: #c8c8d2; margin-bottom: 10px; }
+.wev-head b { color: #ffffff; }
+.wev-ranks {
+  font-size: 15px; font-weight: 800; letter-spacing: -0.4px;
+  color: #ffffff; line-height: 1.5;
+}
+.wev-note { margin-top: 10px; font-size: 11.5px; color: #9a9aa6; line-height: 1.5; }
+.wev-sample {
+</style>
+<div class="wev-wrap">
+  <div class="wev-card">
+    <div class="wev-shine"></div>
+    
+    
+    <div class="wev-title">🏆 1244회차 결과 — 2등 배출</div>
+    <div class="wev-head">필터 통과 조합 기준</div>
+    <div class="wev-ranks">2등 1개 · 3등 18개</div>
+  </div>
+</div>
+
+    <div class="sample-btns">
+      <button class="sample-btn" type="button">다시 보지 않기</button>
+      <button class="sample-btn primary" type="button">확인</button>
+    </div>
+    <div class="sample-foot">
+      · 문구는 확정 문구 그대로입니다 — 배출 등수만 간략 표기, 조합수량·군말 없음.<br>
+      · 버튼은 실제 모달과 같은 자리·같은 규격입니다(이 샘플 파일에서는 동작하지 않습니다).<br>
+      · 애니메이션은 페이지를 열 때 1회 재생됩니다 — 다시 보려면 새로고침하세요.
+    </div>
+  </div>
+</body></html>
