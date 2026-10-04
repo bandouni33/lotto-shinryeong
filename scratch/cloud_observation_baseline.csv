@@ -1,0 +1,3 @@
+t,elapsed_s,http_health,http_page,page_ms,probe_script_ms,probe_gate,probe_deltas,probe_ok,new_user_renders,user_script_ms_p50,user_script_ms_max,user_db_calls_max,db_sessions_since_last,probe_cpu_pct,rss_mb,sys_cpu_pct,err
+22:46:29,0.9,200,200,160,,0,0,0,0,,,,0,,,13.300492610837434,websocket_probe_disabled_for_cloud(HTTP 401)
+22:46:44,15.5,200,200,182,,0,0,0,0,,,,0,,,1.8205980066445138,websocket_probe_disabled_for_cloud(HTTP 401)

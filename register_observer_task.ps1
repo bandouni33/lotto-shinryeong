@@ -21,7 +21,10 @@
 param(
     [string]$At = "2026-10-10T19:30:00",
     [string]$TaskName = "LottoShinryeongObserve",
-    [int]$Hours = 4
+    [int]$Hours = 4,
+    [string]$Target = "cloud",
+    [string]$BaseUrl = "https://lotto-shinryeong.streamlit.app",
+    [int]$IntervalSeconds = 120
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,7 +38,13 @@ $sum = "scratch\live_observation_$stamp.json"
 if (-not (Test-Path -LiteralPath $py)) { Write-Host "ERROR: missing $py"; exit 1 }
 if (-not (Test-Path -LiteralPath $script)) { Write-Host "ERROR: missing $script"; exit 1 }
 
-$argument = "-u -X utf8 `"$script`" --duration $($Hours * 3600) --out $csv --summary $sum"
+# 2026-10-04(정정): 관측 대상은 **Cloud 앱**이다 — 이 PC 서버는 아무도 쓰지 않는다
+# (eas.json이 Cloud를 가리키고 있다). Cloud는 그쪽 CPU/RSS/로그를 볼 수 없으므로
+# URL 프로브(HTTP + 웹소켓 렌더 + 대기화면 탐지)와 **공유 Turso에서 세션 수**를 본다.
+$argument = "-u -X utf8 `"$script`" --target $Target " +
+    "--health $BaseUrl/_stcore/health --page $BaseUrl/ " +
+    "--url $($BaseUrl -replace '^https', 'wss')/_stcore/stream " +
+    "--interval $IntervalSeconds --duration $($Hours * 3600) --out $csv --summary $sum"
 $action = New-ScheduledTaskAction -Execute $py -Argument $argument -WorkingDirectory $root
 $trigger = New-ScheduledTaskTrigger -Once -At ([datetime]$At)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `

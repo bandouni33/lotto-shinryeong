@@ -56,6 +56,38 @@ GATE_MARKERS = ("admission-overload-wrap".encode("utf-8"),
 DBTRACE_RE = re.compile(r"\[dbtrace\] page=(\S+) calls=(\d+) db_ms=(\d+) script_ms=(\d+)")
 
 
+def _db_event_probe(last_seen: str | None) -> tuple[int, str | None]:
+    """운영 DB(공유)에서 이번 간격에 새로 생긴 보안 이벤트 수를 읽는다(읽기 전용).
+
+    왜 필요한가: Cloud는 우리가 CPU/RSS를 볼 수 없다. 그런데 **Cloud도 같은 Turso에 쓴다**
+    (2026-10-04 확인) — 로그인 직후 세션은 `cookie_reachable` 이벤트를 1건 남기므로
+    이 개수가 "이 사이에 서버에 붙은 세션 수"의 가장 가까운 대리값이 된다.
+    프로브 자신도 1건을 남기므로 표시 이름에 그 사실을 밝힌다(과대 계상 방지).
+    """
+    try:
+        from env_loader import load_dotenv_file
+
+        load_dotenv_file()
+        import db_turso
+
+        conn = db_turso.connect()
+        if last_seen:
+            rows = conn.execute(
+                "SELECT count(*), max(created_at) FROM security_events WHERE created_at > ?",
+                (last_seen,)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT count(*), max(created_at) FROM security_events "
+                "WHERE created_at >= ?",
+                (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),)).fetchall()
+        row = rows[0] if rows else None
+        if row is None:
+            return 0, last_seen
+        return int(row[0] or 0), (row[1] or last_seen)
+    except Exception:
+        return -1, last_seen  # -1 = 조회 실패(0과 구분 — 실패를 '없음'으로 오해하면 안 된다)
+
+
 def _pct(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -160,6 +192,7 @@ def _http(url: str, timeout: float) -> tuple[int, int]:
 async def run(args) -> int:
     log = LogWatcher(Path(args.log) if Path(args.log).is_absolute() else ROOT / args.log)
     log.start_at_end()
+    db_seen_ts: str | None = None
     out_path = Path(args.out) if Path(args.out).is_absolute() else ROOT / args.out
     probe_renders = 0
     frames: list[dict] = []
@@ -172,7 +205,7 @@ async def run(args) -> int:
 
     header = ("t,elapsed_s,http_health,http_page,page_ms,probe_script_ms,probe_gate,probe_deltas,"
               "probe_ok,new_user_renders,user_script_ms_p50,user_script_ms_max,user_db_calls_max,"
-              "probe_cpu_pct,rss_mb,sys_cpu_pct,err")
+              "db_sessions_since_last,probe_cpu_pct,rss_mb,sys_cpu_pct,err")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8", newline="") as fh:
         fh.write(header + "\n")
@@ -182,13 +215,25 @@ async def run(args) -> int:
 
     while time.time() - started < args.duration:
         tick0 = time.time()
+        local = args.target == "local"
         health, _ = _http(args.health, args.timeout)
         page_status, page_ms = _http(args.page, args.timeout)
-        probe = await _probe(args.url, args.timeout)
-        probe_renders += 1
-        new_rows = log.poll()
+        if local:
+            probe = await _probe(args.url, args.timeout)
+            probe_renders += 1
+        else:
+            # 2026-10-04 실측: Cloud는 익명 웹소켓을 **HTTP 401로 거부**한다
+            # (`wss://…/~ +/_stcore/stream`). HTTP 페이지는 같은 시각 200이므로
+            # 앱이 죽은 게 아니라 우리 프로브가 인증 없이 못 붙는 것이다.
+            # → Cloud 모드에서는 웹소켓 렌더를 아예 시도하지 않고, HTTP + 공유 DB로만 본다.
+            probe = {"script_ms": None, "gate": 0, "deltas": 0, "ok": 0,
+                     "err": "websocket_probe_disabled_for_cloud(HTTP 401)"}
+        new_rows = log.poll() if local else []
         user_rows = [r for r in new_rows]
-        pid = monitor.pid_on_port(args.port) or args.pid
+        db_sessions, db_seen_ts = (-1, db_seen_ts) if not local else ("", db_seen_ts)
+        if args.target == "cloud":
+            db_sessions, db_seen_ts = _db_event_probe(db_seen_ts)
+        pid = monitor.pid_on_port(args.port) or args.pid if local else None
         rss = monitor.rss_mb(pid) if pid else None
         # CPU%는 모니터 도구가 쓰는 원시값(cpu_seconds/cpu_totals)에서 직접 계산한다 —
         # 별도 헬퍼를 만들면 같은 계측이 두 벌이 된다.
@@ -216,7 +261,8 @@ async def run(args) -> int:
             "new_user_renders": len(user_rows),
             "user_script_ms_p50": round(_pct([r["script_ms"] for r in user_rows], 0.5)) if user_rows else "",
             "user_script_ms_max": max((r["script_ms"] for r in user_rows), default=""),
-            "user_db_calls_max": max((r["calls"] for r in user_rows), default=""),
+            "user_db_calls_max": max((r["calls"] for r in user_rows), default="") if local else "",
+            "db_sessions_since_last": db_sessions,
             "probe_cpu_pct": "" if proc_cpu is None else round(proc_cpu, 1),
             "rss_mb": "" if rss is None else round(rss, 1),
             "sys_cpu_pct": sys_cpu, "err": probe["err"],
@@ -265,6 +311,9 @@ async def run(args) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="토요일 버스트 실사용 관측(읽기 전용)")
+    ap.add_argument("--target", choices=("local", "cloud"), default="local",
+                    help="local=이 PC의 서버(로그·RSS/CPU·웹소켓 렌더) / "
+                         "cloud=Cloud URL(HTTP + 공유 DB의 세션 수. 익명 웹소켓은 401로 거부됨)")
     ap.add_argument("--port", type=int, default=8501)
     ap.add_argument("--pid", type=int, default=None)
     ap.add_argument("--health", default="http://127.0.0.1:8501/_stcore/health")
