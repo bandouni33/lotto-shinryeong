@@ -20,7 +20,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * 안정적으로 오는지에 의존하지 않는다.
  */
 const STORAGE_KEY = 'lotto_last_active_at';
-export const BACKGROUND_LOGOUT_MS = 3 * 60 * 1000;
+/** 기준점은 서버 쪽 `auth_providers.IDLE_LOGOUT_SECONDS`(120초)다 — 이 값은 그 사본이다.
+ *  2026-10-04: 서버가 180 → 120으로 내리면서 여기도 함께 2분으로 맞췄다(일부만 바뀌면
+ *  QR스캔 화면처럼 앱 쪽 판정을 쓰는 곳만 조용히 3분으로 남는다).
+ *  실효 판정은 서버 idle 검사다(아래 배경 참고: 앱 쪽 자체 감지는 실기기에서 실패했다). */
+export const BACKGROUND_LOGOUT_MS = 2 * 60 * 1000;
 /** 하트비트 주기 — 이 간격보다 오래 못 쓰고 죽는 경우는 없다고 가정할 만큼
  * 짧게(20초) 잡는다. 지나치게 잦으면 배터리/저장소에 불필요한 부담. */
 export const HEARTBEAT_MS = 20 * 1000;

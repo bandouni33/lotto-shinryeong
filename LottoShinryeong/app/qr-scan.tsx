@@ -37,7 +37,7 @@ export default function QrScanScreen() {
   // streamlit-webview.tsx는 마운트돼 있는 동안만 20초마다 touchLastActive()로
   // "마지막 활동 시각"을 갱신하는데, QR 촬영 화면(이 파일)으로 넘어오면 그
   // WebView 컴포넌트 자체가 언마운트되면서 하트비트가 멈춘다. 위 거리조절
-  // 문제 때문에 이 화면에서 3분(BACKGROUND_LOGOUT_MS) 넘게 머물면, 웹뷰로
+  // 문제 때문에 이 화면에서 2분(BACKGROUND_LOGOUT_MS) 넘게 머물면, 웹뷰로
   // 돌아가는 순간 "3분 넘게 활동 없었음"으로 잘못 판정돼 진짜로 자동 로그아웃
   // 처리됐다 — 유저는 계속 앱을 쓰고 있었는데도. 이 화면도 열려있는 동안
   // 똑같이 하트비트를 찍어서, 카메라로 시간을 보내는 동안은 비활동으로

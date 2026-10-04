@@ -465,6 +465,16 @@ def _link_guest_to_member_safe(guest_id: str, member_id: int, ua_hash: str | Non
         pass
 
 
+# 무활동( idle) 자동 로그아웃 기준 — **이 값이 기준점이다**(2026-10-04 구름님 지시로 180 → 120).
+# 여기저기 180/3분을 박아두면 일부만 바뀌어 "어떤 화면은 3분, 어떤 화면은 2분"이 된다:
+#   · 앱 쪽 사본: assets/…가 아니라 LottoShinryeong/utils/session-timeout.ts 의
+#     BACKGROUND_LOGOUT_MS(= IDLE_LOGOUT_SECONDS * 1000). 둘이 어긋나면 QR스캔 화면처럼
+#     앱 쪽 판정을 쓰는 곳이 조용히 달라진다 → tests/test_idle_logout_2min.py 가 잠근다.
+#   · 실효 판정은 이 서버 값이다(앱 쪽 자체 감지는 실기기에서 네 번 연속 실패했다 —
+#     아래 restore_member_from_guest 주석 참고).
+IDLE_LOGOUT_SECONDS = 120
+
+
 def restore_member_from_guest() -> int | None:
     """세션이 끊겼다 재연결됐을 때(백그라운드 전환·네트워크 끊김 등) member_id가
     사라져 매번 간편인증 배너가 다시 뜨는 문제 — 이 기기(guest_id)가 이미 로그인한
@@ -513,7 +523,7 @@ def restore_member_from_guest() -> int | None:
     except Exception:
         idle_seconds = None
 
-    if idle_seconds is not None and idle_seconds >= 180:
+    if idle_seconds is not None and idle_seconds >= IDLE_LOGOUT_SECONDS:
         logout()
         return None
 
