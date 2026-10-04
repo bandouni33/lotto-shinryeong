@@ -408,6 +408,37 @@ def connect() -> _ConnectionWrapper:
     return _ConnectionWrapper(client, pool, slot)
 
 
+def close_all_clients() -> int:
+    """단독 실행 스크립트(combo_gen_worker 등) 전용 — 풀의 Turso 클라이언트를
+    모두 닫아 그 안의 비-데몬 스레드를 끝낸다. 닫은 슬롯 수를 돌려준다.
+
+    2026-10-04 실측: libsql_client.sync._AsyncExecutor 는 스레드를 daemon 없이
+    만들고(sync.py 의 threading.Thread(target=self._run, name="libsql_client")),
+    그 스레드는 close() 로 종료 신호를 넣어야만 끝난다. 앱(Streamlit)은 프로세스가
+    계속 살아 있는 장수명 프로세스라 문제가 없지만(그래서 아래 _ConnectionWrapper.
+    close() 는 일부러 아무 동작도 하지 않는다), 워커처럼 짧게 끝나는 프로세스에서는
+    이 스레드들 때문에 인터프리터가 종료 직전에 멈춘다 — 실측으로 combo_gen_worker
+    가 state="done" 을 쓴 뒤에도 30초를 넘지 않고는 끝나지 않았다(그대로 두면
+    GitHub Actions 주간 워크플로가 30분 타임아웃으로 취소된다).
+
+    작업이 전부 끝난 뒤에(파일 저장·상태 기록 포함) 호출하면 되고, 실행 중인
+    앱에서는 호출하지 않는다 — 클라이언트는 모든 세션이 공유하는 자원이다.
+    """
+    try:
+        pool = _client_pool()
+    except Exception as e:
+        _safe_log(f"[db_turso] 종료 정리: 클라이언트 풀을 얻지 못함({type(e).__name__}: {e})")
+        return 0
+    closed = 0
+    for idx in range(pool.size):
+        try:
+            pool.client_at(idx).close()
+            closed += 1
+        except Exception as e:
+            _safe_log(f"[db_turso] 종료 정리: 클라이언트 {idx} close 실패({type(e).__name__}: {e})")
+    return closed
+
+
 # ─────────────────────────────────────────────────────────────
 # 2026-09-27(임시 계측): 렌더 1회당 원격 왕복 실측
 #

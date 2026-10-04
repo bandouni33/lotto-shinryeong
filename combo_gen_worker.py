@@ -316,4 +316,17 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    exit_code = main()
+    # 2026-10-04 신규: main() 이 끝나도 libsql_client 의 비-데몬 스레드가 풀 크기만큼
+    # 남아 프로세스가 종료되지 않았다(실측: state="done" 기록 후 30초를 넘겨도 미종료,
+    # 실제 수동 실행에서는 11분 넘게 살아 있었음 — GitHub Actions 주간 워크플로가
+    # 30분 타임아웃으로 취소된 원인). 파일 저장·상태 기록은 main() 안에서 이미
+    # 끝났으므로, 여기서 클라이언트만 닫아 스레드를 정리하고 정상 종료 코드로 끝낸다.
+    # os._exit 같은 강제 종료는 쓰지 않는다(뒤에 남은 정리 코드를 건너뛸 위험).
+    try:
+        import db_turso
+
+        db_turso.close_all_clients()
+    except Exception:
+        pass
+    sys.exit(exit_code)
