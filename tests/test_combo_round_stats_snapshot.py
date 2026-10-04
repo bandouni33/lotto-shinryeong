@@ -270,6 +270,43 @@ class ComboRoundStatsSnapshotTests(unittest.TestCase):
         self.assertEqual(row["5등"], 1157)
         self.assertEqual(row["적용패턴수"], "6,465")
 
+    def test_display_requests_only_recent_five_rounds(self):
+        """표는 최근 5회차만 요청한다 — 조회 limit 만 제한하고 저장된 기록은 건드리지 않는다."""
+        import page_auto
+
+        for draw_round in (R_OLD, R_MID, R_NEW):
+            mdb.snapshot_round_stats(draw_round, 6465)
+        seen: dict[str, int] = {}
+        original = mdb.get_round_stats_snapshot
+
+        def spy(limit=20):
+            seen["limit"] = limit
+            return original(limit=limit)
+
+        mdb.get_round_stats_snapshot = spy
+        self.addCleanup(setattr, mdb, "get_round_stats_snapshot", original)
+
+        df, is_mock = page_auto._load_stats_table()
+
+        self.assertFalse(is_mock)
+        self.assertEqual(seen.get("limit"), 5, "표가 최근 5회차만 요청해야 한다")
+        for draw_round in (R_OLD, R_MID, R_NEW):
+            self.assertIn(draw_round, list(df["회차"]))
+        self.assertEqual(self._count(), 3, "표시 제한이 저장된 스냅샷 행을 지우면 안 된다")
+
+    def test_display_limit_does_not_touch_stored_rows(self):
+        """limit 을 넘겨도 테이블 행 수는 그대로다(표시 제한 ≠ 정리)."""
+        for draw_round in range(1234, 1246):
+            mdb.snapshot_round_stats(draw_round, 6465)
+        before = self._count()
+        self.assertEqual(before, 12)
+
+        self.assertEqual(len(mdb.get_round_stats_snapshot(limit=5)), 5)
+        shown = [r["draw_round"] for r in mdb.get_round_stats_snapshot(limit=5)]
+        self.assertEqual(shown, sorted(shown, reverse=True), "최신 내림차순이어야 한다")
+        self.assertEqual(shown[0], 1245, "가장 최근 회차가 맨 위")
+        self.assertEqual(self._count(), before, "조회 limit 이 테이블 행 수를 바꾸면 안 된다")
+
     def test_display_maps_missing_pattern_count_to_dash(self):
         import page_auto
 

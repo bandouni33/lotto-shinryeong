@@ -304,8 +304,11 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     # 확정 스냅샷(combo_round_stats)으로 바꿨다. 이 한 줄이 이번 사안의 핵심이다 —
     # 예전에는 정리 로직이 오래된 회차 풀을 지우면 그 회차 행이 표에서 통째로
     # 사라졌고(1243회차 누락 사고), 이제는 스냅샷에 남은 회차·숫자가 그대로 유지된다.
-    # 정렬(draw_round DESC)·limit·하한 회차(MIN_DISPLAY_DRAW_ROUND)는 기존 조회와 동일하다.
-    stats = mdb.get_round_stats_snapshot(limit=20)
+    # 정렬(draw_round DESC)·하한 회차(MIN_DISPLAY_DRAW_ROUND)는 기존 조회와 동일하다.
+    # 2026-10-04(사용자 지시): 화면 표시는 **최근 5회차**로 제한한다 — 그전엔 limit이 20이라
+    # 회차가 쌓일수록 표가 계속 길어졌다. **조회 limit만 제한하는 것이고 스냅샷에 쌓인 과거
+    # 기록(1234~1245)은 그대로 영구 보존한다** — 여기에 삭제·정리 로직을 추가하지 말 것.
+    stats = mdb.get_round_stats_snapshot(limit=5)
 
     # 2026-08-30: "3종필터 업로드하면 적용패턴수가 바로 계산되는데 이 표에는
     # 왜 반영이 안 되냐" — 원인은 이 표가 "실제로 조합까지 저장·배포된 회차"만
