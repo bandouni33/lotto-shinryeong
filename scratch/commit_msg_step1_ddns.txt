@@ -1,0 +1,40 @@
+서버 주소 고정 1단계 — DDNS 갱신·크래시 복구·IP 하드코딩 제거
+
+run_server.ps1
+- 죽은 IP 상수(210.99.230.83) 제거. 이제 .env.ddns 의 DDNS 호스트명을 우선 쓰고, 없으면
+  NIC의 현 공인 IP를 자동 감지한다(공유기 없는 회선 — 공인 IP가 NIC에 직접 온다).
+- -PublicHost 추가(기존 -PublicIp 는 별칭으로 유지). 주소를 못 찾으면 빈 인자를 넘기지 않는다.
+
+keep_server_up.ps1 (신규)
+- 8501이 LISTENING이 아니고 streamlit 프로세스도 없을 때만 run_server.ps1 을 숨김 실행.
+- 살아 있으면 아무 것도 하지 않는다(로그도 남기지 않음).
+
+register_server_task.ps1 (신규)
+- LottoShinryeongServer(5분 주기 크래시 복구) · LottoShinryeongDDNS(5분 주기 주소 갱신) 등록.
+- schtasks 는 작업을 못 만들어도 종료코드 0을 주므로 작업 존재 조회로 성공을 판정한다.
+- /sc onlogon 은 관리자 권한이 필요해 만들어지지 않는다 → SKIP 으로 정직하게 보고하고
+  관리자용 onstart/SYSTEM 명령을 안내한다.
+
+update_ddns.ps1 (신규)
+- DuckDNS 갱신(도메인+토큰은 .env.ddns 에서 읽음). 현재 공인 IP를 NIC에서 읽어 등록.
+- Invoke-WebRequest 가 인코딩 없는 응답을 byte[] 로 주는 경우 "79 75"로 비교해 성공을 실패로
+  보고하던 문제 수정(ASCII 디코드).
+
+tests/test_server_address_fix.py (신규, 14건)
+- .ps1 은 ASCII 전용 + PowerShell 파서 오류 0(PS 5.1 은 BOM 없는 UTF-8 을 ANSI 로 읽어
+  비-ASCII 가 따옴표를 깨뜨린다 — 이번에 실제로 스크립트가 파싱 실패했던 함정).
+- 죽은 IP 가 코드 값으로 남지 않음 · 자동 감지 · schtasks 거짓 성공 방지.
+- 보고서 두 사본 같은 크기·참조 파일 실재·실측 근거 포함.
+- 조립 상태: 작업 등록 여부 + 8501 실제 응답 + 감시 스크립트 무부작용.
+
+검증
+- 단위/내용/산출물/조립 14/14 OK.
+- 실측: 강제 종료 → 작업 스케줄러가 40초 내 재기동(2회), 인자에
+  --browser.serverAddress lottoshinryeong.duckdns.org 확인, 호스트명 HTTP 200,
+  외부 3개국 노드 접속 성공, DDNS 주소로 WebSocket 세션 렌더 4건 정상(실패 0).
+
+커밋 제외(의도적)
+- .env.ddns(도메인+토큰): .gitignore 의 .env.* 규칙으로 제외 — 스테이징 후 토큰 검사 0건 확인.
+- server_keepalive.log, ddns_update.log: .gitignore 의 *.log 규칙으로 제외.
+- LottoShinryeong/.env(DDNS 주소로 교체됨): .gitignore 의 .env 규칙으로 무시되는 로컬 파일이라
+  커밋 대상이 아니다(추적된 템플릿은 .env.example).
