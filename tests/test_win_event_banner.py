@@ -224,6 +224,29 @@ class WinEventBannerTests(unittest.TestCase):
             self.assertIn(web.style_css(style_id), sample, "샘플과 화면이 같은 CSS를 쓴다")
             self.assertIn("2등 1개 · 3등 18개", sample)
 
+    def test_B8_card_is_rendered_in_an_iframe_not_markdown(self):
+        """실기기 신고(태그가 글자로 보임) 재발 방지 — 카드는 iframe(components.html)로 그린다."""
+        src = (ROOT / "win_event_banner.py").read_text(encoding="utf-8")
+        self.assertIn("components.html(card_iframe_html(info)", src)
+        self.assertNotIn(
+            "st.markdown(card_html(info)",
+            src,
+            "카드를 st.markdown HTML로 그리면 환경에 따라 태그가 글자로 노출된다",
+        )
+
+    def test_B8_iframe_document_carries_the_card_and_the_copy(self):
+        info = {"draw_round": HIT_ROUND, "rank_1": 0, "rank_2": 1, "rank_3": 18,
+                "rank_4": 169, "rank_5": 1157, "stage4_count": 1_025_190}
+        doc = web.card_iframe_html(info)
+        self.assertTrue(doc.startswith("<!doctype html>"))
+        self.assertIn("background: transparent", doc, "창 배경을 해치지 않게 투명")
+        self.assertIn("wev-card", doc)
+        self.assertIn(web.style_css(web.CHOSEN_STYLE), doc, "확정 스타일 CSS가 들어 있다")
+        self.assertIn(f"{HIT_ROUND}회차 결과 — 2등 배출", doc)
+        self.assertIn("필터 통과 조합 기준", doc)
+        self.assertIn("2등 1개 · 3등 18개", doc)
+        self.assertNotIn("1,025,190", doc)
+
     def test_B9_every_style_is_distinct(self):
         css = [web.style_css(style_id) for style_id in web.STYLES]
         for style_id in web.STYLES:

@@ -257,7 +257,13 @@ def card_html(info: dict, style_id: int | None = None, *, sample_label: str = ""
 @st.dialog("🎉 이벤트 알림")
 def _banner_dialog(info: dict) -> None:
     """축하 모달 — 버튼 동선은 기존 안내창(points_notice_dialog)과 같은 2열 구조."""
-    st.markdown(card_html(info), unsafe_allow_html=True)
+    import streamlit.components.v1 as components
+
+    # 2026-10-04 실기기 신고 대응: 카드를 st.markdown HTML로 그리면 환경에 따라 태그가
+    # 글자로 노출됐다(신고 내용: <div class="wev-title">... 가 그대로 보임). 이 앱이
+    # 업데이트 안내 토스트·번개조합 번호판에서 써 오는 components.html(iframe)로 바꿔
+    # CSS·애니메이션을 브라우저 기본 동작으로 100% 적용되게 한다.
+    components.html(card_iframe_html(info), height=CARD_IFRAME_HEIGHT, scrolling=False)
     c1, c2 = st.columns(2)
     with c1:
         if st.button(BTN_NEVER, use_container_width=True, key=NEVER_BTN_KEY):
@@ -265,6 +271,26 @@ def _banner_dialog(info: dict) -> None:
     with c2:
         if st.button(BTN_OK, type="primary", use_container_width=True, key=OK_BTN_KEY):
             _close_banner(int(info["draw_round"]))
+
+
+CARD_IFRAME_HEIGHT = 200
+
+
+def card_iframe_html(info: dict, style_id: int | None = None) -> str:
+    """카드 하나를 독립 HTML 문서로 감싼다 — components.html(iframe)로 그리기 위한 것.
+
+    왜 st.markdown이 아니라 iframe인가(2026-10-04 실기기 신고): 실제 앱에서 카드가
+    HTML로 그려지지 않고 태그가 글자로 보였다. Streamlit markdown의 HTML 처리에
+    의존하지 않고 iframe 안에서 그리면 CSS·애니메이션이 그대로 동작한다.
+    배경은 투명(transparent) — 창 배경을 해치지 않게.
+    """
+    body = card_html(info, style_id)
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<style>
+  html, body {{ margin: 0; padding: 0; background: transparent; }}
+  body {{ font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }}
+</style></head>
+<body>{body}</body></html>"""
 
 
 def _close_banner(draw_round: int) -> None:
