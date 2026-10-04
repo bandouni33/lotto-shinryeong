@@ -277,8 +277,13 @@ class WinEventBannerTests(unittest.TestCase):
         창이 닫히면 이 모듈 자체가 사라지므로 infinite 는 곧 "닫기 전까지"와 같다.
         """
         css = web.style_css(2)  # 확정 스타일(네온)
-        self.assertIn("animation: wevShine 2.8s", css, "빛 사선 애니메이션이 있어야 한다")
+        self.assertIn("animation: wevShine 3.4s", css, "빛 사선 애니메이션이 있어야 한다")
         self.assertIn("infinite", css, "한 번이 아니라 계속 반복되어야 한다")
+        self.assertNotIn(
+            "animation: wevShine 2.8s",
+            css,
+            "3.4s 전체 횡단으로 교체됨(중간에서 끊기지 않게)",
+        )
         self.assertNotIn(
             "animation: wevShine 1.5s ease-out .35s 1 both",
             css,
@@ -292,6 +297,39 @@ class WinEventBannerTests(unittest.TestCase):
         """반짝임 없는 스타일(3 미니멀)은 그대로 꺼져 있어야 한다."""
         self.assertIn(".wev-shine{display:none;}", web.style_css(3))
         self.assertNotIn("wevShine 2.8s", web.style_css(3))
+
+    def test_B8_shine_crosses_the_whole_card(self):
+        """빛 사선이 중간에서 꺼지지 않고 **오른쪽 끝을 지나서** 나가야 한다(2026-10-04 지시).\n\n        이전엔 불투명도가 62%에서 0이 돼 중간에서 사라졌다(신고: 중간까지만 오다 끝남).\n        """
+        css = web.style_css(2)
+        self.assertIn("translateX(-190%)", css, "왼쪽 밖에서 시작")
+        self.assertIn("translateX(230%)", css, "오른쪽 밖으로 퇴장")
+        self.assertIn("88%  { opacity: 1; }", css, "지나가는 동안 밝기를 유지")
+        self.assertNotIn("62%  { opacity: 0; }", css, "중간에 꺼지는 동작으로 되돌아가지 않았는지")
+        self.assertIn("wevShine 3.4s", css)
+        self.assertIn("infinite", css, "창이 닫힐 때까지 계속")
+
+    def test_B8_confetti_falls_continuously_in_several_colors(self):
+        """폭죽(색종이)이 내려온다 — 여러 색 + 계속 떨어짐(2026-10-04 지시)."""
+        css = web.style_css(2)
+        self.assertIn("animation: wevFall 2.6s linear var(--d) infinite", css, "계속 떨어져야 한다")
+        self.assertIn("background: var(--c)", css, "색종이는 입자마다 색을 받는다")
+        self.assertGreaterEqual(int(web.STYLES[2]["particles"]), 10, "확정 스타일에는 폭죽이 있어야")
+        info = {"draw_round": HIT_ROUND, "rank_1": 0, "rank_2": 1, "rank_3": 18,
+                "rank_4": 0, "rank_5": 0, "stage4_count": None}
+        doc = web.card_iframe_html(info)
+        colors = {c for c in web.CONFETTI_COLORS if f"--c:{c}" in doc}
+        self.assertGreaterEqual(len(colors), 3, f"여러 색이 섞여야 폭죽처럼 보인다: {colors}")
+        self.assertEqual(doc.count('class="wev-p"'), int(web.STYLES[2]["particles"]))
+
+    def test_B8_dialog_chrome_is_centered_tight_and_one_row(self):
+        """창 틀도 손본다 — 제목 가운데 · 버튼 한 줄 · 여백 최소(2026-10-04 지시).\n\n        규칙은 components.html iframe을 품은 다이얼로그로만 좁혀 다른 안내창에 번지지 않게 한다.\n        """
+        src = (ROOT / "win_event_banner.py").read_text(encoding="utf-8")
+        scope = 'div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"])'
+        self.assertIn(scope, src, "다이얼로그 규칙은 이 창으로만 좁혀야 한다")
+        self.assertIn("text-align: center !important;", src, "제목 가운데 정렬")
+        self.assertIn("flex-wrap: nowrap !important;", src, "버튼 두 개를 한 줄로")
+        self.assertIn("padding: 6px 10px 4px !important;", src, "창 안쪽 여백 최소")
+        self.assertIn("white-space: nowrap !important;", src, "버튼 글씨 줄바꿈 방지")
 
     def test_B9_every_style_is_distinct(self):
         css = [web.style_css(style_id) for style_id in web.STYLES]

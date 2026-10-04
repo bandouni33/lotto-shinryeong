@@ -10,9 +10,9 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes wevFall {
-  0%   { opacity: 0; transform: translateY(-14px) rotate(0deg) scale(.7); }
-  18%  { opacity: 1; }
-  100% { opacity: 0; transform: translateY(190px) rotate(var(--r)) scale(1); }
+  0%   { opacity: 0; transform: translateY(-18px) rotate(0deg) scale(.65); }
+  12%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(300px) rotate(var(--r)) scale(1); }
 }
 @keyframes wevTwinkle {
   0%,100% { opacity: .25; } 50% { opacity: 1; }
@@ -20,14 +20,15 @@
 @keyframes wevPulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.35)} }.wev-card{animation: wevIn .38s cubic-bezier(.2,.8,.3,1.15) both, wevPulse 2.6s ease-in-out .5s 2;}
 
 @keyframes wevShine {
-  0%   { transform: translateX(-150%) rotate(18deg) scaleY(1.15); opacity: 0; }
-  10%  { opacity: 1; }
-  45%  { opacity: 1; }
-  62%  { opacity: 0; }
-  100% { transform: translateX(150%) rotate(18deg) scaleY(1.15); opacity: 0; }
+  0%   { transform: translateX(-190%) rotate(18deg) scaleY(1.15); opacity: 0; }
+  6%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateX(230%) rotate(18deg) scaleY(1.15); opacity: 0; }
 }
-/* 2026-10-04 지시: 모바일에서 사선이 잘 안 보인다 → 더 밝게/넓게 + 창이 닫힐 때까지 계속. */
-.wev-shine { animation: wevShine 2.8s cubic-bezier(.4,0,.6,1) .3s infinite; }
+/* 2026-10-04 지시: 모바일에서 사선이 잘 안 보인다 → 더 밝게/넓게 + 창이 닫힐 때까지 계속.
+   또 한 번 지시: 중간에서 사라진다 → 카드 **오른쪽 끝을 지나서** 퇴장하도록 범위 확대
+   (-190% → 230%). 불투명도는 88%까지 유지하고 마지막에만 0으로 줄인다. */
+.wev-shine { animation: wevShine 3.4s cubic-bezier(.4,0,.6,1) .3s infinite; }
 
 .wev-wrap {
   position: relative;
@@ -62,11 +63,11 @@
 }
 .wev-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .wev-p {
-  position: absolute; top: 0; left: var(--x);
+  position: absolute; top: -6px; left: var(--x);
   width: 7px; height: 11px; border-radius: 2px;
-  background: #4ff0ff;
+  background: var(--c);
   opacity: 0;
-  animation: wevFall 1.4s ease-in var(--d) 1 both, wevTwinkle 1.2s ease-in-out var(--d) 1 both;
+  animation: wevFall 2.6s linear var(--d) infinite, wevTwinkle 1.3s ease-in-out var(--d) infinite;
 }
 @keyframes wevSamplePulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
 .wev-sample {
@@ -95,7 +96,7 @@
 <div class="wev-wrap">
   <div class="wev-card">
     <div class="wev-shine"></div>
-    
+    <div class="wev-particles" aria-hidden="true"><span class="wev-p" style="--i:0; --x:4%; --d:0.0s; --r:0deg; --c:#4ff0ff"></span><span class="wev-p" style="--i:1; --x:11%; --d:0.19s; --r:47deg; --c:#ff5cf0"></span><span class="wev-p" style="--i:2; --x:18%; --d:0.38s; --r:94deg; --c:#8a5cff"></span><span class="wev-p" style="--i:3; --x:25%; --d:0.57s; --r:141deg; --c:#ffd66b"></span><span class="wev-p" style="--i:4; --x:32%; --d:0.76s; --r:188deg; --c:#7cff9b"></span><span class="wev-p" style="--i:5; --x:39%; --d:0.95s; --r:235deg; --c:#4ff0ff"></span><span class="wev-p" style="--i:6; --x:46%; --d:1.14s; --r:282deg; --c:#ff5cf0"></span><span class="wev-p" style="--i:7; --x:53%; --d:1.33s; --r:329deg; --c:#8a5cff"></span><span class="wev-p" style="--i:8; --x:60%; --d:1.52s; --r:16deg; --c:#ffd66b"></span><span class="wev-p" style="--i:9; --x:67%; --d:1.71s; --r:63deg; --c:#7cff9b"></span><span class="wev-p" style="--i:10; --x:74%; --d:1.9s; --r:110deg; --c:#4ff0ff"></span><span class="wev-p" style="--i:11; --x:81%; --d:2.09s; --r:157deg; --c:#ff5cf0"></span><span class="wev-p" style="--i:12; --x:88%; --d:2.28s; --r:204deg; --c:#8a5cff"></span><span class="wev-p" style="--i:13; --x:95%; --d:2.47s; --r:251deg; --c:#ffd66b"></span></div>
     
     <div class="wev-title">🏆 1244회차 결과 — 2등 배출</div>
     <div class="wev-head">필터 통과 조합 기준</div>

@@ -69,12 +69,21 @@ def _hit_list(info: dict) -> str:
     return " · ".join(parts)
 
 
+CONFETTI_COLORS = ("#4ff0ff", "#ff5cf0", "#8a5cff", "#ffd66b", "#7cff9b")
+
+
 def _particles_html(style_id: int, count: int) -> str:
+    """폭죽(색종이) — 2026-10-04 지시: "폭죽 내려오는 모습" 추가.
+
+    색을 여러 개 섞고, 떨어지는 애니메이션을 무한 반복(아래 CSS)으로 둔다 — 창이 닫히면
+    이 모듈 자체가 사라져 자연히 멈춘다. 지연(--d)을 입자마다 어긋나게 줘서 줄줄이 떨어진다.
+    """
     if count <= 0:
         return ""
     spans = "".join(
-        f'<span class="wev-p" style="--i:{i}; --x:{8 + (i * 7) % 84}%; '
-        f'--d:{0.1 + (i % 5) * 0.16}s; --r:{(i * 37) % 360}deg"></span>'
+        f'<span class="wev-p" style="--i:{i}; --x:{4 + (i * 7) % 92}%; '
+        f'--d:{round((i * 0.19) % 2.6, 2)}s; --r:{(i * 47) % 360}deg; '
+        f'--c:{CONFETTI_COLORS[i % len(CONFETTI_COLORS)]}"></span>'
         for i in range(count)
     )
     return f'<div class="wev-particles" aria-hidden="true">{spans}</div>'
@@ -98,14 +107,14 @@ STYLES: dict[int, dict[str, object]] = {
     },
     2: {
         "name": "네온",
-        "desc": "시안-보라 네온 테두리 + 강한 발광, 테두리 맥동(pulse), 입자 없음",
+        "desc": "시안-보라 네온 테두리 + 강한 발광, 빛 사선 계속 지나감, 폭죽 내려옴",
         "border": "linear-gradient(135deg, #4ff0ff 0%, #8a5cff 50%, #ff5cf0 100%)",
         "bg": "radial-gradient(120% 130% at 50% -20%, #102033 0%, #0b1020 55%, #07070f 100%)",
         "accent": "#4ff0ff",
         "title_color": "#c8f9ff",
         "glow": "0 0 28px rgba(79,240,255,.45), 0 0 60px rgba(138,92,255,.35)",
         "shine": True,
-        "particles": 0,
+        "particles": 14,
         "pulse": True,
     },
     3: {
@@ -147,14 +156,15 @@ def style_css(style_id: int) -> str:
     shine = (
         """
 @keyframes wevShine {
-  0%   { transform: translateX(-150%) rotate(18deg) scaleY(1.15); opacity: 0; }
-  10%  { opacity: 1; }
-  45%  { opacity: 1; }
-  62%  { opacity: 0; }
-  100% { transform: translateX(150%) rotate(18deg) scaleY(1.15); opacity: 0; }
+  0%   { transform: translateX(-190%) rotate(18deg) scaleY(1.15); opacity: 0; }
+  6%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateX(230%) rotate(18deg) scaleY(1.15); opacity: 0; }
 }
-/* 2026-10-04 지시: 모바일에서 사선이 잘 안 보인다 → 더 밝게/넓게 + 창이 닫힐 때까지 계속. */
-.wev-shine { animation: wevShine 2.8s cubic-bezier(.4,0,.6,1) .3s infinite; }
+/* 2026-10-04 지시: 모바일에서 사선이 잘 안 보인다 → 더 밝게/넓게 + 창이 닫힐 때까지 계속.
+   또 한 번 지시: 중간에서 사라진다 → 카드 **오른쪽 끝을 지나서** 퇴장하도록 범위 확대
+   (-190% → 230%). 불투명도는 88%까지 유지하고 마지막에만 0으로 줄인다. */
+.wev-shine { animation: wevShine 3.4s cubic-bezier(.4,0,.6,1) .3s infinite; }
 """
         if style["shine"]
         else ".wev-shine{display:none;}"
@@ -165,9 +175,9 @@ def style_css(style_id: int) -> str:
   to   {{ opacity: 1; transform: translateY(0) scale(1); }}
 }}
 @keyframes wevFall {{
-  0%   {{ opacity: 0; transform: translateY(-14px) rotate(0deg) scale(.7); }}
-  18%  {{ opacity: 1; }}
-  100% {{ opacity: 0; transform: translateY(190px) rotate(var(--r)) scale(1); }}
+  0%   {{ opacity: 0; transform: translateY(-18px) rotate(0deg) scale(.65); }}
+  12%  {{ opacity: 1; }}
+  100% {{ opacity: 0; transform: translateY(300px) rotate(var(--r)) scale(1); }}
 }}
 @keyframes wevTwinkle {{
   0%,100% {{ opacity: .25; }} 50% {{ opacity: 1; }}
@@ -207,11 +217,11 @@ def style_css(style_id: int) -> str:
 }}
 .wev-particles {{ position: absolute; inset: 0; pointer-events: none; overflow: hidden; }}
 .wev-p {{
-  position: absolute; top: 0; left: var(--x);
+  position: absolute; top: -6px; left: var(--x);
   width: 7px; height: 11px; border-radius: 2px;
-  background: {style['accent']};
+  background: var(--c);
   opacity: 0;
-  animation: wevFall 1.4s ease-in var(--d) 1 both, wevTwinkle 1.2s ease-in-out var(--d) 1 both;
+  animation: wevFall 2.6s linear var(--d) infinite, wevTwinkle 1.3s ease-in-out var(--d) infinite;
 }}
 @keyframes wevSamplePulse {{ 0%,100% {{ opacity: .55; }} 50% {{ opacity: 1; }} }}
 .wev-sample {{
@@ -344,6 +354,33 @@ def _render_close_bridge(draw_round: int) -> None:
         """
         <style>
         .st-key-win_event_banner_closed_btn { display: none !important; }
+
+        /* 이 이벤트 창 전용 규칙 (2026-10-04 지시) — components.html iframe을 품은
+           다이얼로그에만 적용하도록 :has()로 좁혔다(다른 안내창에는 영향 없음).
+             ① 제목 가운데 정렬  ② 버튼 두 개를 한 줄로  ③ 여백(빈 공간) 최소 */
+        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) > div {{ padding: 6px 10px 4px !important; }}
+        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) h2 {{
+            text-align: center !important;
+            width: 100% !important;
+        }}
+        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) > div > div:first-child {{
+            justify-content: center !important;
+        }}
+        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) [data-testid="stHorizontalBlock"] {{
+            flex-wrap: nowrap !important;
+            gap: 8px !important;
+        }}
+        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) [data-testid="stHorizontalBlock"] > div {{
+            width: auto !important;
+            min-width: 0 !important;
+        }}
+        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) [data-testid="stElementContainer"]:has(iframe) {{
+            margin-bottom: 2px !important;
+        }}
+        div[data-testid="stDialog"]:has(iframe[title="st.components.v1.html"]) button p {{
+            font-size: 13px !important;
+            white-space: nowrap !important;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
