@@ -14,6 +14,7 @@
 - Streamlit 버전 고정: `streamlit==1.64.0`
 
 ## 2. 최근 완료 작업 (2026-10-02 ~ 10-05, git log 기준)
+- **(10-05) `tests/test_resume_and_experiment.py` 격리 정비** — 진입점 테스트 2건이 격리 없이 운영 Turso에 붙어 **실행마다 운영 `security_events`에 시험 기록 1~2건**을 남기던 문제(네이티브 로그인 계측에 섞였을 수 있음). 전 테스트를 `@_isolated`(`isolated_db()`)로 감싸고, 빠진 테스트가 생기면 실패하는 안전장치 테스트 추가. 7/7 통과(접속정보 없는 환경에서도), 안전장치는 일부러 빼서 실패 확인.
 - **(10-05) 로그인 후 "보던 화면 그대로" (앱)** — 타로·자동·번개·번호검증 등에서 로그인하면 메인으로 튕기던 문제. 원인: 설치된 앱 빌드가 로그인 후 `buildUri()`로 page 없이 다시 로드. 처방(서버만, 빌드 불필요): 로그인 버튼을 누른 화면을 임시저장(`auth_providers.remember_return_page_at_login_click`, 배너 열 때도 `_remember_pending_resume`이 page 저장) → 로그인 완료 때 `_restore_pending_resume`가 그 화면으로 복귀. 허용 화면 목록은 `auth_providers.RETURN_PAGES` 한 곳. 웹(state 우선)·다음 앱 빌드(`reloadWith`)·계정삭제/관리자 화면은 결과 불변. 검증 `tests/test_login_return_page.py` 21/21(원본 코드에서는 실패 확인) + 로그인 관련 테스트 23개 파일 통과.
 - **(10-05) 저장내역 짝 카드 강조를 왼쪽·오른쪽 조각 독립 판정으로 수정** — 번개조합(`combo_history_ui.same_source_pair_card_html`)·자동구매(`page_auto._history_pair_card_html`) 동일 규칙. 양쪽 새것 → 카드 전체(기존 모양), 한쪽만 → 그 열만. 예전엔 왼쪽만 보고 카드 전체를 강조해 옛 저장분까지 깜박였다.
 - **(10-05) `tests/test_history_chunk_pairing.py` 러너 수정** — 실패를 PASS로 삼키던 결함. 실제로는 6건 실패였음 → 원인별 수정 후 **21/21**(C4 계산 오류, C10/C11 `_combo(11)` 중복번호 시험데이터 결함 + C10 CSS 선택자까지 세던 오류, 강조를 조각 수로 세기, C13/C14 신규). 관련 테스트 10개 파일 59건 통과.
@@ -42,7 +43,7 @@
 - 동시접속: 병목은 코어가 아니라 **DB 왕복(도쿄 ~75ms × 렌더당 10~28회)** — 운영 부하·VPS 실측 미검증
 - 로그인된 세션 기준 관측 도구 없음 (Cloud 보고서 "다음 과제")
 - **로그인 후 화면 유지는 실기기 미확인** — 네이티브 로그인 자체가 카카오 잠금 수정 빌드 반영 후에야 가능
-- `tests/test_resume_and_experiment.py` 진입점 테스트 2건은 **격리 없이 운영 DB 접속**(Turso 접속정보 없으면 실패) — `isolated_db()`로 감싸면 6/6 통과 확인. 테스트 파일 정비 필요(승인 대기)
+- `tests/test_manual_privacy_notice.py`도 진입점(app.py)을 **격리 없이** 띄운다 — 같은 방식 정비 필요(승인 대기)
 - 저장내역 **한쪽 열만 강조될 때의 모양**(보라 테두리·"방금 저장" 배지 위치) 실기기 미확인 — 테스트는 HTML 구조만 검증
 
 ## 5. 다음 작업

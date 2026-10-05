@@ -13,7 +13,11 @@
 스크립트)이 원인이 아님을 확인한 뒤의 정리다. 실험 코드가 다시 필요하면 커밋
 ef1a4589를 참고.)
 
-DB는 건드리지 않는다 — app_settings/멤버 생성/게스트 연결을 테스트 안에서 스텁으로 바꾼다.
+DB: app_settings/멤버 생성/게스트 연결은 테스트 안에서 스텁으로 바꾸고, **모든 테스트를
+_db_isolation.isolated_db()로 감싼다**(@_isolated). 2026-10-05 정비 전에는 진입점 테스트 2건이
+격리 없이 운영 Turso에 붙어, 실행할 때마다 security_events에 시험 기록이 1~2건씩 남았고
+(네이티브 로그인 계측 등) 접속정보가 없는 환경에선 그 자리에서 실패했다. 격리 안에서는
+운영 클라이언트 생성 자체가 즉시 실패하므로(_db_isolation._install) 누수도 같이 잡힌다.
 pytest 없이도 돌도록 표준 assert + __main__ 러너를 함께 둔다.
 """
 
@@ -29,10 +33,27 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TESTS_DIR = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
+import functools  # noqa: E402
+
+import _db_isolation  # noqa: E402
 import dialog_registry  # noqa: E402
+
+
+def _isolated(fn):
+    """테스트 전체를 격리 DB 안에서 돌린다(직접 호출·__main__ 러너 어느 쪽이든)."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _db_isolation.isolated_db():
+            return fn(*args, **kwargs)
+
+    wrapper._isolated = True
+    return wrapper
 
 ENTRY = str(ROOT / "app.py")
 TIMEOUT_SEC = 60
@@ -57,6 +78,7 @@ RESUME_DATA_SHAPES = [
 
 
 # ── R2: 순수 함수 — 이상한 state도 안전하게 풀려야 한다 ──────────────────────
+@_isolated
 def test_decode_state_handles_legacy_and_hostile_input() -> None:
     import auth_providers as ap
 
@@ -106,6 +128,7 @@ st.session_state["roundtrip"] = results
 """
 
 
+@_isolated
 def test_state_roundtrip_preserves_resume_for_every_kind_and_shape() -> None:
     # 주의: gid를 쿼리파라미터로 못 박는다. AppTest의 st.context.cookies는 MagicMock이라
     # (항상 truthy) 쿠키 폴백 분기를 타면 guest_id가 Mock이 돼 quote()가 TypeError를 낸다 —
@@ -190,6 +213,7 @@ st.session_state["out"] = before
 """
 
 
+@_isolated
 def test_resume_survives_full_reload_via_callback() -> None:
     at = AppTest.from_string(_CALLBACK_APP, default_timeout=TIMEOUT_SEC)
     gid = "cbgid" + os.urandom(4).hex()
@@ -242,6 +266,7 @@ st.session_state["out"] = {"mid": mid, "second": second, "flag_after_second": st
 """
 
 
+@_isolated
 def test_pending_resume_is_consumed_once_and_expires() -> None:
     # 정상(TTL 안쪽): 1회 소비되고 두 번째 호출은 아무것도 하지 않는다
     at = AppTest.from_string(_PENDING_APP, default_timeout=TIMEOUT_SEC)
@@ -270,6 +295,7 @@ def test_pending_resume_is_consumed_once_and_expires() -> None:
 
 
 # ── R3(조립): 실제 진입점(app.py)에서 완전 리로드를 거친 로그인이 재개되는가 ──
+@_isolated
 def test_resume_survives_full_reload_in_real_entry() -> None:
     """가짜 state를 들고 앱을 띄워, 콜백 → 재개 실행까지를 조립된 상태로 한 번 돌린다.
     라이브 DB 쓰기를 막기 위해 멤버 생성·게스트 연결·설정 저장을 스텁으로 바꾼다."""
@@ -321,6 +347,7 @@ def test_resume_survives_full_reload_in_real_entry() -> None:
 
 
 # ── R3(조립·앱 경로): 네이티브 토큰 로그인 한 줄기를 진입점에서 이어본다 ──────
+@_isolated
 def test_native_token_login_reopens_the_pending_dialog_in_real_entry() -> None:
     """앱(native)이 실제로 밟는 한 줄기: 창을 열며 배너를 띄우고(서버에 재개 의도
     임시저장) → native_kakao_token으로 로그인(세션 리셋 왕복) → 열려 있던 창이
@@ -380,8 +407,20 @@ def test_native_token_login_reopens_the_pending_dialog_in_real_entry() -> None:
             setattr(mod, name, fn)
 
 
+def test_every_test_in_this_file_runs_isolated() -> None:
+    """정비 내용 잠금: 이 파일의 모든 테스트가 격리 안에서 돈다(새 테스트가 빠지면 실패)."""
+    module = sys.modules[__name__]
+    names = [n for n in dir(module) if n.startswith("test_") and callable(getattr(module, n))]
+    missing = [n for n in names
+               if n != "test_every_test_in_this_file_runs_isolated"
+               and not getattr(getattr(module, n), "_isolated", False)]
+    assert not missing, f"격리 없이 도는 테스트가 있다(운영 DB 접속 위험): {missing}"
+    assert not _db_isolation.isolation_active(), "격리가 테스트 밖까지 새어 나왔다"
+
+
 def _main() -> int:
     tests = [
+        test_every_test_in_this_file_runs_isolated,
         test_decode_state_handles_legacy_and_hostile_input,
         test_state_roundtrip_preserves_resume_for_every_kind_and_shape,
         test_resume_survives_full_reload_via_callback,
