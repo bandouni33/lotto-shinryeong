@@ -976,7 +976,9 @@ if current_page == "main":
         box-shadow: 2px 3px 6px rgba(0,0,0,0.6), inset 4px 6px 12px rgba(0,0,0,0.8), inset -2px -2px 6px rgba(255,255,255,0.05);
     }
     .tarot-icon { font-size: 21px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
-    .tarot-title { color: #ffffff; font-weight: 900; font-size: 13px; letter-spacing: 0.5px; }
+    .tarot-title { color: #ffffff; font-weight: 900; font-size: 14px; letter-spacing: 0.5px; }
+    /* 2026-10-05: 14px로 키우면 폭 370px 이하 작은 폰에서 두 줄로 넘어가서 그 폭에서만 기존 13px 유지 */
+    @media (max-width: 370px) { .tarot-title { font-size: 13px; } }
     </style>
 
 <div class="tarot-unit">
