@@ -74,6 +74,7 @@ TMP = Path(tempfile.mkdtemp(prefix="lotto_window_test_"))
 FILES = {
     "전체표본": (TRACKER / "조합생성_후보숫자_추적표_전체표본_윈도우비교.xlsx", None, "기준빈도(전체)"),
     "최근500표본": (TRACKER / "조합생성_후보숫자_추적표_최근500표본_윈도우비교.xlsx", 500, "기준빈도(최근500회)"),
+    "최근300표본": (TRACKER / "조합생성_후보숫자_추적표_최근300표본_윈도우비교.xlsx", 300, "기준빈도(최근300회)"),
 }
 _SRC_HASH = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p, _, _ in FILES.values()}
 
@@ -305,8 +306,10 @@ class ValueInvariantTests(unittest.TestCase):
                             continue
                         self.assertNotEqual(got, [counts[other][i] for i in NUMS],
                                             f"{sn}의 3행이 최근{other}회 빈도와 같다")
-                    if book.basis is not None:
+                    if book.basis is not None and book.basis != n:
                         self.assertNotEqual(got, [basis_counts[i] for i in NUMS])
+                    # 2026-10-05: 최근300표본의 300회 시트는 기준(2행)=비교창(3행)=300이라
+                    # 3행이 2행과 같은 것이 정상이다(오차 전부 0 — 사용자 결정으로 시트 유지).
 
     def test_row2_sum_matches_basis_length(self):
         for label, book in _BOOKS.items():

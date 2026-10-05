@@ -209,6 +209,7 @@ def check_excel(expected_round: int | None) -> None:
         "200회검증용": tracker / "조합생성_후보숫자_추적표_샘플_200회검증용.xlsx",
         "전체표본": tracker / "조합생성_후보숫자_추적표_전체표본_윈도우비교.xlsx",
         "최근500표본": tracker / "조합생성_후보숫자_추적표_최근500표본_윈도우비교.xlsx",
+        "최근300표본": tracker / "조합생성_후보숫자_추적표_최근300표본_윈도우비교.xlsx",
         "표본vs최근50회": tracker / "★후보숫자_추적표_표본vs최근50회.xlsx",
     }
     for label, path in files.items():

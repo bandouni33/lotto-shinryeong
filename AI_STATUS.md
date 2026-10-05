@@ -19,6 +19,7 @@
 - Streamlit 버전 고정: `streamlit==1.64.0`
 
 ## 2. 최근 완료 작업 (2026-10-02 ~ 10-05, git log 기준)
+- **(10-05) 최근300표본 추적표 신설 + 주간 자동 업데이트 등록** — `★조합생성_후보숫자_추적표\조합생성_후보숫자_추적표_최근300표본_윈도우비교.xlsx`(최근500표본 복사). 6시트 전부 2행 기준모집단 `-499→-299`, K2 라벨 `기준빈도(최근300회)`(파이썬 폴백이 이 라벨로 창을 읽음). 과거 기록 1,045행(L:BD 줄세우기 + I:K 상·중·하 적중수)을 300 기준으로 재계산 — 계산식은 기존 500 기록 1,045행·4행 캐시를 **100% 재현**해 검증. 서식·조건부서식(당첨/보너스 마킹, L4 강조)·7행 배열수식은 원본과 동일(셀 단위 비교). LibreOffice 재계산으로 2행·4행·7행이 파이썬 계산과 일치 확인. `weekly_lotto_file_update.FILE_PATHS`·`ADVANCE_3CHA_FILES`에 `최근300표본` 추가(+ 검증 스크립트 3개 목록), 1회차 전진 시뮬레이션(파이썬 폴백) 통과. **300회 시트는 기준=비교창이라 오차 전부 0·줄세우기 1~45 번호순 — 사용자 결정으로 유지.** L4 강조 임계값(예: <-17)은 500 기준 그대로(300 기준은 오차 폭이 좁아 덜 칠해질 수 있음).
 - **(10-05) PC↔GitHub 동기화 완료** — PC 로컬 전용 커밋 `f71be4c`(문서 테스트·협업방식 보고서)를 원격에 반영(`cc91be3`, 블롭 동일) → PC `pull --rebase --autostash`로 원격 5커밋 수신(`f71be4c`는 중복이라 자동 제외). 충돌 1건 `tests/test_history_chunk_pairing.py`(PC 미커밋 테스트 vs 원격 수정)는 원격본 유지 + PC 테스트를 **C15·C16**으로 병합(`9095cd5`), PC 진단 print 제외, AGENTS #P·§7-3 범위 C1~C16. PC HEAD = origin/main `9095cd5` 확인(사용자 화면 Fast-forward).
 - **(10-05) PC 서버 재시작** — 동기화로 바뀐 코드(`auth_providers`·`wallet_ui`·`combo_history_ui`·`page_auto`) 반영 위해 streamlit 프로세스 종료 → `keep_server_up` 감시작업이 12:22:03 감지, **12:22:10 재기동**(`server_keepalive.log`·`server_out.log` 확인).
 - **(10-05) 운영 `security_events` 읽기 전용 조회** — 총 2,534건, 최근 24h 침입 의심 0건. 발견: `guest_ua_diag_mismatch`가 `EVENT_LABELS`·계측 제외 목록 모두에 없음(배지 집계에 포함됨), IP가 전부 Cloud 내부 `10.16.x.x`/None(실사용자 IP 아님), `cookie_reachable` detail 최근 100건 전부 `0`(의미 미확인). 조회 도구: PC `scratch\sec_events_run.bat` → `scratch\sec_events_out.txt`.
@@ -61,6 +62,7 @@
 - **(10-05) PC 미커밋 테스트 병합분 미실행** — PC↔GitHub 동기화 때 `tests/test_history_chunk_pairing.py`에 PC 쪽 미커밋 테스트(C15 `_chunk_batch` 불변식, C16 여러 구매 건 걸친 조각)를 합침. 클라우드에서는 DB 없는 테스트(C1~C5·C13·C15)만 통과 확인 — **DB 쓰는 테스트(C6~C12·C14·C16)는 PC에서 실행 필요**
 
 - **PC 로컬 미커밋 13개 파일** — `.astra/*`, `tests/test_admission_gate_load.py` 등 테스트 7개, `scratch/analyze_rss_steps.py`, 추적표 xlsx, 보고서 txt, 죽은 코드 txt. 상당수는 줄바꿈(LF↔CRLF) 차이로 보임 — 정리 여부 미결. PC git stash `stash@{0}: autostash`(동기화 전 원본)도 안전용으로 보관 중
+- **추적표 기존 결함(500·300 공통, 이번 작업 전부터)** — ① `Sheet1!AL4` 수식이 `#REF!`(10-04 13:50 주간 점검 후 Sheet1 수동 편집으로 생김) → **다음 일요일 주간 업데이트가 오류값으로 '실패' 처리할 것** ② `3차필터(50회_후보)` 블록이 51행(다른 시트는 창 크기와 일치) ③ 검증 테스트가 Sheet1 존재·외부 검증기 타입 오류로 실패. 수정은 사용자 승인 대기
 - **security_events 후속 조사 미착수** — 위 §2 발견 3건(라벨 없는 이벤트·내부 IP·cookie_reachable=0)
 
 ## 5. 다음 작업
