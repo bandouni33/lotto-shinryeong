@@ -41,6 +41,10 @@
     세서 <style> 안의 CSS 선택자까지 잡혔다(15→21). 실제 줄 div만 세도록 고쳤다.
   · 강조 개수는 "강조된 마크다운 덩어리 수"가 아니라 **강조된 조각 수**로 센다
     (짝 카드 1개 = 조각 2개라 덩어리 수로는 실제 강조 범위를 못 본다).
+  C15 `_chunk_batch` 자체의 불변식(모든 회차값·조각 크기): 카드 함수가 먹는 모양이고,
+     회차를 잃지 않고, 조합 순서가 그대로다.
+  C16 여러 구매 건에 걸친 조각(한 조각이 두 구매분을 섮는 경우) 보존: 화면에 그려진
+     조합이 구매 순서 그대로 정확히 1회씩, 조각 크기 ≤ 5, 라벨값 = 조각 크기.
 
 DB는 _db_isolation.isolated_db()로만 만진다. 실행:
   venv312\\Scripts\\python.exe -X utf8 tests\\test_history_chunk_pairing.py
@@ -518,7 +522,7 @@ st.session_state["_label_probe"] = [
 
 
 class ChunkMetadataTests(unittest.TestCase):
-    """C11 — 조각이 원본 배치의 메타를 물려받는가.
+    """C11·C15 — 조각이 원본 배치의 메타를 물려받는가.
 
     `_chunk_batch`는 조각을 기존 카드 함수가 먹는 모양으로 감싼다. 그때 회차
     (`draw_round`)를 안 넘기면 `_combo_rows_html`이 당첨번호를 못 찾아 동그라미가
@@ -557,6 +561,23 @@ class ChunkMetadataTests(unittest.TestCase):
                              "당첨 동그라미가 6개가 아니다 — _chunk_batch가 회차를 잃었을 수 있다")
             self.assertEqual(markup.count('class="auto-banner-ball auto-banner-ball-bonus"'), 15,
                              "보너스 동그라미가 15개가 아니다 — 회차·보너스가 조각에 안 실렸다")
+
+    def test_C15_chunk_batch_keeps_round_and_order_for_every_input(self):
+        """C11의 일반화 — 화면 한 케이스가 아니라 **모든 회차값·조각 크기**에서.
+
+        `_combo_rows_html`이 읽는 건 draw_round와 combos 둘뿐이므로, 이 둘이 모든
+        입력에서 그대로 전달되면 당첨 동그라미도 모든 입력에서 살아남는다.
+        """
+        for draw_round in (1245, "1245", 0, ""):
+            for count in (0, 1, 5, 6, 13):
+                part = [(_combo(i + 1), i % 2) for i in range(count)]
+                chunk = chu._chunk_batch(draw_round, part)
+                self.assertEqual(set(chunk), {"draw_round", "combos"},
+                                 "카드 함수가 먹는 배치 모양이 아니다")
+                self.assertEqual(chunk["draw_round"], draw_round,
+                                 f"회차가 조각에 안 실렸다: {draw_round!r}")
+                self.assertEqual(chunk["combos"], [combo for combo, _idx in part],
+                                 f"조합 순서가 바뀌거나 빠졌다: {draw_round!r}/{count}")
 
 
 class ChunkLabelTests(unittest.TestCase):
@@ -657,6 +678,108 @@ class IndependentHighlightTests(unittest.TestCase):
             self.assertEqual(_highlighted_chunks(at), 1)
 
 
+_MIXED_ITEMS_APP = r"""
+import streamlit as st
+import combo_history_ui as chu
+import page_auto
+
+counts = [__COUNTS__]
+seen = []
+_orig_pair = page_auto._history_pair_card_html
+_orig_banner = page_auto._purchase_banner_html
+
+
+def _pair(left, right, highlight=False):
+    seen.append((left, right))
+    return _orig_pair(left, right, highlight=highlight)
+
+
+def _banner(item, **kwargs):
+    seen.append((item, None))
+    return _orig_banner(item, **kwargs)
+
+
+page_auto._history_pair_card_html = _pair
+page_auto._purchase_banner_html = _banner
+
+items = []
+for order_idx, count in enumerate(counts):
+    base = 20 * order_idx
+    items.append(
+        {
+            "draw_round": 1245,
+            "combo_count": count,
+            "cost": 10 * count,
+            "purchase_method": "즉시",
+            "order_id": 100 - order_idx,
+            "allocated": [
+                {"combo": [base + i + 1, 11, 22, 33, 44, 45]} for i in range(count)
+            ],
+        }
+    )
+
+page_auto._collect_purchase_history_items = lambda mid: (items, False)
+st.session_state["auto_history_blink"] = True
+page_auto._render_auto_history_content()
+
+
+def _snap(item):
+    if item is None:
+        return None
+    return (
+        item.get("combo_count"),
+        [tuple(alloc.get("combo") or []) for alloc in (item.get("allocated") or [])],
+    )
+
+
+st.session_state["_chunks"] = [tuple(_snap(one) for one in pair) for pair in seen]
+st.session_state["_expected"] = [
+    tuple(alloc["combo"]) for item in items for alloc in item["allocated"]
+]
+"""
+
+
+class CrossItemChunkTests(unittest.TestCase):
+    """C16 — 한 조각이 두 구매분을 섮을 때도 보존되는가(일반 입력).
+
+    C12는 구매 1건씩 따로 본다. 실제로는 여러 건이 같은 회차에 쌓이므로 5의 배수가
+    아닌 크기를 이어 붙이면 **한 조각이 두 구매분을 섮는다**(예: 7+2 → 마지막 조각이
+    4개). 그때도 화면에 나온 조합이 구매 순서 그대로 정확히 1회씩인지, 라벨값이
+    실제 조각 크기인지, 조각이 5개를 넘지 않는지를 화면에 들어간 dict로 확인한다.
+    """
+
+    def test_C16_cross_item_chunks_lose_nothing_and_keep_the_order(self):
+        counts = [15, 7, 2]
+        at = AppTest.from_string(_MIXED_ITEMS_APP.replace("__COUNTS__", ", ".join(map(str, counts))),
+                                 default_timeout=TIMEOUT_SEC)
+        at.session_state["member_id"] = 424242
+        at.run()
+        self.assertFalse(at.exception, f"렌더 예외: {at.exception}")
+
+        chunks = [one for pair in at.session_state["_chunks"] for one in pair if one is not None]
+        expected = [tuple(combo) for combo in at.session_state["_expected"]]
+        total = sum(counts)
+
+        for label, combos in chunks:
+            self.assertEqual(label, len(combos),
+                             f"라벨값({label})과 실제 조각 크기({len(combos)})가 다르다")
+            self.assertGreaterEqual(len(combos), 1)
+            self.assertLessEqual(len(combos), chu.CHUNK_SIZE,
+                                 f"조각이 {chu.CHUNK_SIZE}개를 넘었다")
+
+        rendered = [combo for _label, combos in chunks for combo in combos]
+        self.assertEqual(len(rendered), total, "화면에 나온 조합 수가 구매 개수와 다르다")
+        self.assertEqual(rendered, expected,
+                         "조각 배치가 조합을 빠뜨리거나 중복시키거나 순서를 바꿨다")
+        self.assertEqual(len(chunks), -(-total // chu.CHUNK_SIZE),
+                         "조각 개수가 ceil(전체 개수/5)가 아니다")
+        # 이 케이스(15+7+2=24)의 마지막 조각은 4개고, 그 안에 두 구매분이 섮인다.
+        # (번호가 base+1..base+count, base=20*구매순서라 (n-1)//20 이 구매 순서다.)
+        origin_counts = [len({(combo[0] - 1) // 20 for combo in combos}) for _label, combos in chunks]
+        self.assertGreaterEqual(max(origin_counts), 2,
+                                "한 조각이 두 구매분을 섮는 경우가 안 만들어졌다(테스트가 헛돌았다)")
+
+
 def _main() -> int:
     tests = [
         ChunkMathTests("test_C1_chunk_pairs_never_loses_or_reorders_items"),
@@ -677,9 +800,11 @@ def _main() -> int:
         ChangeContractTests("test_shared_css_classes_did_not_grow"),
         EntryPointTests("test_C10_entry_point_shows_all_fifteen_of_one_purchase"),
         ChunkMetadataTests("test_C11_chunk_keeps_draw_round_so_winner_circles_survive"),
+        ChunkMetadataTests("test_C15_chunk_batch_keeps_round_and_order_for_every_input"),
         ChunkLabelTests("test_C12_chunk_label_matches_the_real_chunk_size"),
         IndependentHighlightTests("test_C13_pair_card_highlights_each_side_independently"),
         IndependentHighlightTests("test_C14_two_saves_highlight_only_the_new_side"),
+        CrossItemChunkTests("test_C16_cross_item_chunks_lose_nothing_and_keep_the_order"),
     ]
     # 2026-10-05: 예전엔 test()를 직접 불렀는데, TestCase.__call__ 은 실패를 결과 객체에
     # 담고 예외를 올리지 않아 **실패가 전부 PASS로 찍혔다**. 반드시 결과 객체로 판정한다.

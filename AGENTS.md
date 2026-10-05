@@ -40,7 +40,7 @@
 | M | "메인으로" 이동 버튼·링크 | `shared_ui_styles.brand_home_link_html()` (href는 `user_scope.internal_nav_href`) | 각 화면 좌상단 아이콘, 타로 게이트 | `tests/test_kakao_login_branch_links.py`, `tests/test_tarot_gate_flow.py`(T3) |
 | N | 계정 삭제(회원 탈퇴) 실행 | `account_deletion.delete_account()` (순서·대상 목록) + 표별 SQL은 각 DB 모듈(`wallet_db.anonymize_member_account`·`marketing_db.delete_guest_data`·`birthday_db.delete_all_birthdays`·`feedback_db.delete_member_feedback`) | 앱 내 진입점 `wallet_ui._my_info_dialog`(버튼 키 `wallet_delete_account_btn`) → `_delete_account_dialog`; 웹 공개 URL `user_page`의 `page=delete_account`; 문구 `legal_notices.ACCOUNT_DELETION_BODY`; 삭제/보관 목록 `account_deletion.DELETED_ITEMS`·`RETAINED_ITEMS` | `tests/test_account_deletion.py`(I1~I8, B1·B2, F1·F2), `tests/test_dialog_registry.py` |
 | O | 무료 지급 우회 판정 | `auth_providers._dev_mock_enabled()`(명시적으로 켤 때만 True) + `kakao_configured()`(env → st.secrets) → `wallet_ui._testing_period_active()` | 3650일 무료 구독 지급·조용한 자동 로그인 분기(`wallet_ui`), `.env`·`run_server.ps1`(개발용 켜기) | `tests/test_free_grant_hardening.py`(H1~H5), `scripts/preflight_review_build.py` |
-| P | 저장내역 2열 배치(5개 조각 짝짓기) | `combo_history_ui.py` (`CHUNK_SIZE`·`chunk_pairs()`·`chunk_is_from_newest()`) | `page_auto.py`(같은 함수를 import해 재사용 — 화면마다 사본을 만들지 않는다), 조각을 카드 함수가 먹는 모양으로 감싸는 `_chunk_batch`(회차 `draw_round`를 잃으면 당첨·보너스 동그라미가 조용히 사라진다), 화면별 강조 판정 | `tests/test_history_chunk_pairing.py`(C1~C14) |
+| P | 저장내역 2열 배치(5개 조각 짝짓기) | `combo_history_ui.py` (`CHUNK_SIZE`·`chunk_pairs()`·`chunk_is_from_newest()`) | `page_auto.py`(같은 함수를 import해 재사용 — 화면마다 사본을 만들지 않는다), 조각을 카드 함수가 먹는 모양으로 감싸는 `_chunk_batch`(회차 `draw_round`를 잃으면 당첨·보너스 동그라미가 조용히 사라진다), 화면별 강조 판정 | `tests/test_history_chunk_pairing.py`(C1~C16) |
 
 ### A(다이얼로그)에 등록된 재개 이름 — 이 목록이 정본이다
 

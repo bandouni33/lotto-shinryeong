@@ -55,6 +55,8 @@
 - `tests/test_manual_privacy_notice.py`도 진입점(app.py)을 **격리 없이** 띄운다 — 같은 방식 정비 필요(승인 대기)
 - 저장내역 **한쪽 열만 강조될 때의 모양**(보라 테두리·"방금 저장" 배지 위치) 실기기 미확인 — 테스트는 HTML 구조만 검증
 
+- **(10-05) PC 미커밋 테스트 병합분 미실행** — PC↔GitHub 동기화 때 `tests/test_history_chunk_pairing.py`에 PC 쪽 미커밋 테스트(C15 `_chunk_batch` 불변식, C16 여러 구매 건 걸친 조각)를 합침. 클라우드에서는 DB 없는 테스트(C1~C5·C13·C15)만 통과 확인 — **DB 쓰는 테스트(C6~C12·C14·C16)는 PC에서 실행 필요**
+
 ## 5. 다음 작업
 1. 토요일 실사용 관측 실행·결과 정리 (0원)
 2. 렌더당 DB 왕복 줄이기 — 캐시 후보 조사 (0원)
@@ -89,7 +91,7 @@
 - **[해소]** `AGENTS.md` §2 기준점 표에 "저장내역 2열 배치(chunk pairing)" 행이 없던 건 — 2026-10-05 이 커밋에서 **§2 #P 행**으로 반영했다.
   - 기준점: `combo_history_ui.py`의 `CHUNK_SIZE`·`chunk_pairs()`·`chunk_is_from_newest()`
   - 영향받는 곳: `page_auto.py`(같은 함수를 import해 재사용 — 화면마다 사본을 만들지 않는다)
-  - 걸리는 테스트: `tests/test_history_chunk_pairing.py`(C1~C14)
+  - 걸리는 테스트: `tests/test_history_chunk_pairing.py`(C1~C16)
 - 그 밖에 이 문서에 등록된 미해결 항목은 없다(새 항목이 생기면 여기에 적는다).
 
 ### 7-4. 검증 관행
