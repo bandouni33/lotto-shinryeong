@@ -2,7 +2,7 @@
 
 > 새 채팅은 **이 파일 → `git status`/`git log` → 관련 코드** 순서로 확인 후 작업한다.
 > 채팅 기억보다 이 파일과 실제 코드가 우선. 확인 안 된 내용은 적지 않는다.
-> 마지막 갱신: 2026-10-05 (§0 작업 원칙 + §3 카카오 결과 누락 반영 / 이전: 로그인 후 보던 화면 유지, main.
+> 마지막 갱신: 2026-10-05 12:3x (PC↔GitHub 동기화·PC 서버 재시작 기록 / 이전: §0 작업 원칙, main.
 > PC 로컬은 미커밋분이 남아 있을 수 있음 → §6 참조)
 
 ## 0. 작업 원칙 (2026-10-05 사용자 지시 — 항상 명심)
@@ -19,6 +19,9 @@
 - Streamlit 버전 고정: `streamlit==1.64.0`
 
 ## 2. 최근 완료 작업 (2026-10-02 ~ 10-05, git log 기준)
+- **(10-05) PC↔GitHub 동기화 완료** — PC 로컬 전용 커밋 `f71be4c`(문서 테스트·협업방식 보고서)를 원격에 반영(`cc91be3`, 블롭 동일) → PC `pull --rebase --autostash`로 원격 5커밋 수신(`f71be4c`는 중복이라 자동 제외). 충돌 1건 `tests/test_history_chunk_pairing.py`(PC 미커밋 테스트 vs 원격 수정)는 원격본 유지 + PC 테스트를 **C15·C16**으로 병합(`9095cd5`), PC 진단 print 제외, AGENTS #P·§7-3 범위 C1~C16. PC HEAD = origin/main `9095cd5` 확인(사용자 화면 Fast-forward).
+- **(10-05) PC 서버 재시작** — 동기화로 바뀐 코드(`auth_providers`·`wallet_ui`·`combo_history_ui`·`page_auto`) 반영 위해 streamlit 프로세스 종료 → `keep_server_up` 감시작업이 12:22:03 감지, **12:22:10 재기동**(`server_keepalive.log`·`server_out.log` 확인).
+- **(10-05) 운영 `security_events` 읽기 전용 조회** — 총 2,534건, 최근 24h 침입 의심 0건. 발견: `guest_ua_diag_mismatch`가 `EVENT_LABELS`·계측 제외 목록 모두에 없음(배지 집계에 포함됨), IP가 전부 Cloud 내부 `10.16.x.x`/None(실사용자 IP 아님), `cookie_reachable` detail 최근 100건 전부 `0`(의미 미확인). 조회 도구: PC `scratch\sec_events_run.bat` → `scratch\sec_events_out.txt`.
 - **(10-05) `tests/test_resume_and_experiment.py` 격리 정비** — 진입점 테스트 2건이 격리 없이 운영 Turso에 붙어 **실행마다 운영 `security_events`에 시험 기록 1~2건**을 남기던 문제(네이티브 로그인 계측에 섞였을 수 있음). 전 테스트를 `@_isolated`(`isolated_db()`)로 감싸고, 빠진 테스트가 생기면 실패하는 안전장치 테스트 추가. 7/7 통과(접속정보 없는 환경에서도), 안전장치는 일부러 빼서 실패 확인.
 - **(10-05) 로그인 후 "보던 화면 그대로" (앱)** — 타로·자동·번개·번호검증 등에서 로그인하면 메인으로 튕기던 문제. 원인: 설치된 앱 빌드가 로그인 후 `buildUri()`로 page 없이 다시 로드. 처방(서버만, 빌드 불필요): 로그인 버튼을 누른 화면을 임시저장(`auth_providers.remember_return_page_at_login_click`, 배너 열 때도 `_remember_pending_resume`이 page 저장) → 로그인 완료 때 `_restore_pending_resume`가 그 화면으로 복귀. 허용 화면 목록은 `auth_providers.RETURN_PAGES` 한 곳. 웹(state 우선)·다음 앱 빌드(`reloadWith`)·계정삭제/관리자 화면은 결과 불변. 검증 `tests/test_login_return_page.py` 21/21(원본 코드에서는 실패 확인) + 로그인 관련 테스트 23개 파일 통과.
 - **(10-05) 저장내역 짝 카드 강조를 왼쪽·오른쪽 조각 독립 판정으로 수정** — 번개조합(`combo_history_ui.same_source_pair_card_html`)·자동구매(`page_auto._history_pair_card_html`) 동일 규칙. 양쪽 새것 → 카드 전체(기존 모양), 한쪽만 → 그 열만. 예전엔 왼쪽만 보고 카드 전체를 강조해 옛 저장분까지 깜박였다.
@@ -57,6 +60,9 @@
 
 - **(10-05) PC 미커밋 테스트 병합분 미실행** — PC↔GitHub 동기화 때 `tests/test_history_chunk_pairing.py`에 PC 쪽 미커밋 테스트(C15 `_chunk_batch` 불변식, C16 여러 구매 건 걸친 조각)를 합침. 클라우드에서는 DB 없는 테스트(C1~C5·C13·C15)만 통과 확인 — **DB 쓰는 테스트(C6~C12·C14·C16)는 PC에서 실행 필요**
 
+- **PC 로컬 미커밋 13개 파일** — `.astra/*`, `tests/test_admission_gate_load.py` 등 테스트 7개, `scratch/analyze_rss_steps.py`, 추적표 xlsx, 보고서 txt, 죽은 코드 txt. 상당수는 줄바꿈(LF↔CRLF) 차이로 보임 — 정리 여부 미결. PC git stash `stash@{0}: autostash`(동기화 전 원본)도 안전용으로 보관 중
+- **security_events 후속 조사 미착수** — 위 §2 발견 3건(라벨 없는 이벤트·내부 IP·cookie_reachable=0)
+
 ## 5. 다음 작업
 1. 토요일 실사용 관측 실행·결과 정리 (0원)
 2. 렌더당 DB 왕복 줄이기 — 캐시 후보 조사 (0원)
@@ -82,6 +88,8 @@
 - **Astra(PC 로컬)**: Windows 셸 실행 권한 보유 — 실제 서버 운영·배포, PC/Windows 인프라 작업을 맡는다.
 - **이 세션(Claude)**: 2026-10-05부터 GitHub push 권한 보유 — 앱 로직(Python/Streamlit)의 구현·테스트·커밋·푸시를 직접 할 수 있다.
 - 어느 쪽에 맡길지는 작업 성격으로 그때그때 판단한다: **PC/Windows 인프라**는 Astra, **앱 코드**는 이 세션.
+- **(10-05 사용자 지시) Astra는 앞으로 안 풀리는 문제·방법·조언을 구할 때만 사용** — 작업은 이 세션이 직접 진행.
+- 이 세션의 PC 연결 한계(10-05 확인): PC 파일 읽기·쓰기·화면 클릭만 가능, **PC 명령 실행(git·python) 불가**(터미널·탐색기는 입력 차단). 그래서 git 작업은 클라우드 클론에서 커밋·푸시 → PC 반영은 PC에서 `git pull --ff-only origin main`(사용자 실행). 이 세션이 푸시하면 PC는 그만큼 뒤처지므로 기록 커밋은 가능하면 작업과 묶는다.
 
 ### 7-2. 작업 순서 원칙
 기존 기능에 영향 줄 수 있는 수정은 **코드를 짜기 전에** `AGENTS.md` §2 기준점 표에서 연계 파일·걸리는 테스트부터 확인하고, **계획을 먼저 공유한 뒤** 진행한다.
