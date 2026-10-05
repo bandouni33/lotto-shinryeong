@@ -955,7 +955,8 @@ if current_page == "main":
         background: linear-gradient(145deg, #2a1c45, #161028);
         border: 2px solid rgba(186, 104, 200, 0.7);
         border-radius: 20px;
-        padding: 9px 8px;
+        /* 2026-10-05: 오른쪽 40px는 카드 장식(.tarot-card-deco) 자리 — 글자와 겹치지 않게 비워 둔다 */
+        padding: 9px 40px 9px 8px;
         min-height: 48px;
         width: 100%;
         max-width: 100%;
@@ -1081,8 +1082,8 @@ if current_page == "main":
                     .tarot-card-deco {{
                         position: absolute;
                         top: 50%;
-                        right: -28px;
-                        width: 36px;
+                        right: 7px;
+                        width: 26px;
                         height: auto;
                         border-radius: 6px;
                         border: 1px solid rgba(255, 193, 7, 0.4);
