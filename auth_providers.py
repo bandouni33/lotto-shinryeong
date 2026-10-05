@@ -157,16 +157,32 @@ def _log_cookie_reachability_once() -> None:
         pass
 
 
+# 로그인 후 되돌아갈 수 있는 화면 — **이 목록이 기준점이다**(웹 OAuth state와 네이티브
+# 앱 임시저장이 함께 쓴다. 다른 곳에 사본을 만들지 말 것).
+# 2026-09-11(사용자 지시): "hedge"(안티·액땜/전체·개별리셋)와 "tarot"가 빠져 있어
+# 그 화면에서 로그인하면 조용히 "main"으로 되돌려졌다 — user_page.py가 실제로
+# 라우팅하는 8개 페이지를 전부 담는다. 관리자·계정삭제·심사용 페이지는 일부러 뺀다
+# (로그인 복귀 대상이 아니고, 임시저장 값으로 그쪽에 보내지면 안 된다).
+RETURN_PAGES = ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot", "hedge")
+
+
+def _valid_return_page(page) -> str | None:
+    """page가 로그인 복귀 대상이면 그 이름을, 아니면 None(리스트로 오는 값도 처리)."""
+    if isinstance(page, (list, tuple)):
+        page = page[0] if page else ""
+    name = str(page or "").strip()
+    return name if name in RETURN_PAGES else None
+
+
+def _current_page() -> str:
+    try:
+        return _valid_return_page(st.query_params.get("page", "main")) or "main"
+    except Exception:
+        return "main"
+
+
 def _encode_oauth_state(provider: str, return_page: str = "main") -> str:
-    page = (return_page or "main").strip() or "main"
-    # 2026-09-11(사용자 지시): "hedge"(안티·액땜/전체·개별리셋)와 "tarot"가
-    # 허용 목록에서 빠져 있었다 — user_page.py가 실제로 라우팅하는 8개 페이지
-    # (main/thunder/auto/stats/birthday/advanced/tarot/hedge) 중 이 둘만
-    # 빠져서, 안티·액땜·타로 화면에서 로그인하면 조용히 "main"으로 되돌려져
-    # "저장내역 누르고 로그인했더니 메인으로 가버린다"는 신고로 이어졌다.
-    allowed = ("main", "thunder", "auto", "stats", "birthday", "advanced", "tarot", "hedge")
-    if page not in allowed:
-        page = "main"
+    page = _valid_return_page(return_page) or "main"
     # 2026-09-09 수정: 카카오 로그인 버튼을 누른 시점의 guest_id를 state에 실어서
     # 콜백 때 복원한다 — 예전엔 안 실었는데, 카카오의 redirect_uri는 고정 URL이라
     # 우리 쪽 ?gid= 파라미터를 못 실어보내고, 그러면 로그인 완료 직후 이 콜백
@@ -254,7 +270,21 @@ def _remember_pending_resume(resume: str | None, data: dict | None) -> None:
     import json
 
     name = str(resume or "").strip()
-    if not name:
+    # 2026-10-05(사용자 지시 — "로그인하면 메인화면으로 튕긴다"): 지금 설치된 앱 빌드는
+    # 카카오 로그인 후 주소를 새로 조립해(buildUri) 화면(page)을 잃고 메인으로 간다.
+    # 그래서 **보던 화면도 함께 남겨** 로그인 완료 때 되돌린다(_restore_pending_resume).
+    # 앱에서는 재개할 동작이 없어도 남긴다 — 저장내역 보기·내정보처럼 resume 없이
+    # 배너만 뜨는 경우에도 화면은 유지돼야 하고, 매 배너마다 덮어써야 이전 화면이
+    # 묵어서 엉뚱한 곳으로 가는 일이 없다. 웹은 state에 화면이 실리므로 기존대로
+    # resume이 있을 때만 남긴다(불필요한 DB 쓰기를 늘리지 않음).
+    native = False
+    try:
+        from wallet_ui import in_native_app
+
+        native = in_native_app()
+    except Exception:
+        native = False
+    if not name and not native:
         return
     from user_scope import get_or_create_guest_id
 
@@ -265,7 +295,12 @@ def _remember_pending_resume(resume: str | None, data: dict | None) -> None:
         set_setting(
             _PENDING_RESUME_PREFIX + get_or_create_guest_id(),
             json.dumps(
-                {"resume": name, "data": data or {}, "ts": int(time.time())},
+                {
+                    "resume": name,
+                    "data": data or {},
+                    "page": _current_page(),
+                    "ts": int(time.time()),
+                },
                 ensure_ascii=False,
             ),
         )
@@ -303,6 +338,60 @@ def forget_pending_resume_for(guest_id: str) -> None:
         pass
 
 
+def _apply_pending_return_page(page) -> None:
+    """임시저장된 화면이 복귀 대상이고 지금 화면과 다르면 page 파라미터만 바꾼다
+    (gid·native 등 다른 파라미터는 그대로 — 호출부가 곧 st.rerun()한다).
+    지금 화면이 복귀 대상이 아닌 특수 화면(계정삭제·관리자·심사용 등)이면 건드리지 않는다."""
+    target = _valid_return_page(page)
+    if not target:
+        return
+    try:
+        raw_now = st.query_params.get("page", "main")
+        if isinstance(raw_now, (list, tuple)):
+            raw_now = raw_now[0] if raw_now else "main"
+        raw_now = str(raw_now or "").strip() or "main"
+        if raw_now not in RETURN_PAGES:
+            return
+        if raw_now != target:
+            st.query_params["page"] = target
+    except Exception:
+        pass
+
+
+def remember_return_page_at_login_click() -> None:
+    """로그인 버튼을 **실제로 누른 순간**의 화면으로 임시저장의 page를 갱신한다(앱 경로).
+
+    배너를 연 화면과 로그인 버튼을 누른 화면이 다를 수 있다(배너를 연 채 다른 화면으로
+    이동) — 그때 배너를 연 화면으로 보내면 엉뚱한 곳이 된다. 재개 의도(resume/data)는
+    그대로 두고 page·ts만 바꾼다. 실패해도 로그인 자체를 막지 않는다."""
+    import json
+
+    from user_scope import get_or_create_guest_id
+
+    try:
+        from app_settings import get_setting, init_settings_table, set_setting
+
+        init_settings_table()
+        key = _PENDING_RESUME_PREFIX + get_or_create_guest_id()
+        try:
+            payload = json.loads(get_setting(key, "") or "{}")
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        # 이미 만료된 재개 의도는 되살리지 않는다(ts를 새로 찍으면 묵은 의도가 살아난다).
+        old_ts = int(payload.get("ts") or 0) if str(payload.get("ts") or "0").isdigit() else 0
+        if old_ts and (time.time() - old_ts) > _PENDING_RESUME_TTL_SEC:
+            payload = {}
+        payload.setdefault("resume", "")
+        payload.setdefault("data", {})
+        payload["page"] = _current_page()
+        payload["ts"] = int(time.time())
+        set_setting(key, json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        pass
+
+
 def _restore_pending_resume() -> bool:
     """로그인 완료 직전에 서버에 남겨둔 재개 의도를 1회 소비해 session_state로 옮긴다.
     모든 로그인 경로(카카오 리다이렉트·PASS·금융인증서·네이티브 SDK 토큰)가 이
@@ -334,6 +423,11 @@ def _restore_pending_resume() -> bool:
     ts = int(payload.get("ts") or 0)
     if ts and (time.time() - ts) > _PENDING_RESUME_TTL_SEC:
         return False
+    # 2026-10-05: 로그인 직전에 보던 화면으로 되돌린다(만료 검사 뒤 — 묵은 값은 무시).
+    # 웹 콜백(handle_oauth_callback)은 이 뒤에 state의 화면으로 다시 덮어쓰고, 심사용
+    # 로그인은 직후 "main"으로 보내므로 그 경로들의 결과는 바뀌지 않는다. 허용 목록
+    # (RETURN_PAGES) 밖의 값이면 아무것도 하지 않는다.
+    _apply_pending_return_page(payload.get("page"))
     name = str(payload.get("resume") or "").strip()
     if not name:
         return False

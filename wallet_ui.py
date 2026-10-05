@@ -611,6 +611,11 @@ def _render_auth_banner_form() -> None:
                     type="primary",
                     key="auth_banner_kakao_native",
                 ):
+                    # 2026-10-05: 로그인 후 "보던 화면 그대로" — 버튼을 누른 이 화면을
+                    # 서버에 남긴다(지금 앱 빌드는 로그인 후 메인 주소로 다시 로드한다).
+                    from auth_providers import remember_return_page_at_login_click
+
+                    remember_return_page_at_login_click()
                     _fire_kakao_native_login_trigger()
             else:
                 st.link_button(
