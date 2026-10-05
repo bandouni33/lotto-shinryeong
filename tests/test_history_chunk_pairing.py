@@ -26,6 +26,7 @@
   C12 조각의 `combo_count`(= "N개 배정" 라벨값)가 **실제 조각 크기**와 같은지.
   C13 짝 카드 강조는 왼쪽·오른쪽 조각을 **각각 독립 판정**한다(2026-10-05) — 왼쪽만
      새것이면 왼쪽 열만, 양쪽 다 새것이면 카드 전체(예전 모양), 둘 다 아니면 없음.
+  C8(2026-10-05 보강) 자동구매도 같은 규칙 — 최신 구매(왼쪽) 열만 강조, 카드 전체 X.
   C14 조립(번개조합): 5개씩 2번 저장 → 짝 카드에서 새 저장분(왼쪽) 열만 강조되고
      옛 저장분(오른쪽)은 강조되지 않는다(예전엔 카드 전체가 깜박였다).
 
@@ -270,6 +271,15 @@ page_auto._render_auto_history_content()
         self.assertEqual(missing, [], f"화면에 안 나온 조합: {missing}")
         hl = _highlighted_chunks(at)
         self.assertEqual(hl, 1, f"최신 구매의 조각 1개만 강조여야 한다: {hl}")
+        # 2026-10-05: 강조가 붙은 곳이 **최신 구매(왼쪽) 열**이어야 한다(카드 전체 X).
+        self.assertNotIn("auto-history-pair-card " + NEEDLE, markup,
+                         "자동구매 카드 전체가 강조됐다 — 옛 구매분(오른쪽)까지 깜박인다")
+        card = next(v for v in (m.value or "" for m in at.markdown)
+                    if '<div class="auto-history-pair-card' in v)
+        left_html, right_html = card.split('<div class="auto-history-pair-col', 2)[1:]
+        self.assertIn(NEEDLE, left_html, "최신 구매(왼쪽) 열이 강조되지 않았다")
+        self.assertIn(">01<", left_html)
+        self.assertNotIn(NEEDLE, right_html, "옛 구매(오른쪽) 열이 강조됐다")
 
     def test_C9_hedge_two_source_pairing_is_untouched(self):
         import marketing_db as mdb
@@ -477,9 +487,9 @@ _orig_pair = page_auto._history_pair_card_html
 _orig_banner = page_auto._purchase_banner_html
 
 
-def _pair(left, right, highlight=False):
+def _pair(left, right, **kwargs):
     seen.append((left, right))
-    return _orig_pair(left, right, highlight=highlight)
+    return _orig_pair(left, right, **kwargs)
 
 
 def _banner(item, **kwargs):

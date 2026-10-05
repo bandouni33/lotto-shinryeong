@@ -575,18 +575,36 @@ def _history_grid_rows_html(item: dict) -> str:
     return rows
 
 
-def _history_pair_card_html(item_left: dict, item_right: dict, highlight: bool = False) -> str:
-    _cls = "auto-history-pair-card"
-    if highlight:
-        from combo_history_ui import JUST_SAVED_CLASS
+def _history_pair_card_html(
+    item_left: dict,
+    item_right: dict,
+    highlight: bool = False,
+    highlight_left: bool | None = None,
+    highlight_right: bool | None = None,
+) -> str:
+    """2026-10-05(사용자 지시): 강조는 왼쪽·오른쪽 조각을 **각각 독립 판정**한다
+    (번개조합 combo_history_ui.same_source_pair_card_html과 같은 규칙).
+    양쪽 다 → 카드 전체(예전 모양), 한쪽만 → 그 열만. highlight=는 기존 호환(양쪽)."""
+    from combo_history_ui import JUST_SAVED_CLASS
 
+    hl_left = highlight if highlight_left is None else bool(highlight_left)
+    hl_right = highlight if highlight_right is None else bool(highlight_right)
+    both = hl_left and hl_right
+    _cls = "auto-history-pair-card"
+    if both:
         _cls += f" {JUST_SAVED_CLASS}"
+    left_cls = "auto-history-pair-col auto-history-pair-col-left"
+    right_cls = "auto-history-pair-col"
+    if hl_left and not both:
+        left_cls += f" {JUST_SAVED_CLASS}"
+    if hl_right and not both:
+        right_cls += f" {JUST_SAVED_CLASS}"
     return f"""
     <div class="{_cls}">
-      <div class="auto-history-pair-col auto-history-pair-col-left">
+      <div class="{left_cls}">
         {_history_grid_rows_html(item_left)}
       </div>
-      <div class="auto-history-pair-col">
+      <div class="{right_cls}">
         {_history_grid_rows_html(item_right)}
       </div>
     </div>
@@ -910,8 +928,13 @@ def _render_auto_history_content():
                 right_item = dict(items[right_part[0][1]])
                 right_item["allocated"] = [alloc for alloc, _idx in right_part]
                 right_item["combo_count"] = len(right_part)
+                # 2026-10-05: 오른쪽 조각도 따로 판정(다른 구매분이면 강조 안 함).
+                highlight_right = newest_hl and chunk_is_from_newest(right_part)
                 st.markdown(
-                    _history_pair_card_html(left_item, right_item, highlight=highlight),
+                    _history_pair_card_html(
+                        left_item, right_item,
+                        highlight_left=highlight, highlight_right=highlight_right,
+                    ),
                     unsafe_allow_html=True,
                 )
             else:
