@@ -554,7 +554,11 @@ def get_image_base64(file_path):
             return base64.b64encode(img_file.read()).decode()
     return ""
 
-icon_base64 = get_image_base64("K-325.jpg")
+# 2026-10-05(첫 화면 속도): 메인 로고는 105px로만 보이는데 원본 K-325.jpg(512px, 120KB →
+# base64 약 160KB)를 매 렌더 통째로 보내고 있었다. 표시 크기의 3배(315px, 고해상도 화면용)로
+# 줄인 사본을 쓴다(약 47KB). 원본은 page_icon·다른 화면 아이콘에서 그대로 쓰므로 지우지 않는다.
+# 사본이 없으면 원본으로 되돌아가 로고가 사라지지 않게 한다.
+icon_base64 = get_image_base64("K-325_main_315.jpg") or get_image_base64("K-325.jpg")
 
 
 # ==========================================
@@ -1058,7 +1062,13 @@ if current_page == "main":
     """, height=0)
 
     # 타로 카드 장식 이미지 (버튼 밖으로 살짝 삐져나오는 고정 데코레이션)
-    tarot_card_deco_base64 = get_image_base64(os.path.join("tarot", "images", "major_17.jpg"))
+    # 2026-10-05(첫 화면 속도): 이 장식은 36px 폭으로만 보이는데 원본 카드(1086x1810, 499KB →
+    # base64 약 665KB)를 매 렌더 보내고 있었다 — 메인 화면 전송량의 대부분. 폭 108px(3배) 사본을
+    # 쓴다(약 13KB). 원본 major_17.jpg는 타로 화면의 큰 카드로 쓰이므로 건드리지 않는다.
+    tarot_card_deco_base64 = (
+        get_image_base64(os.path.join("tarot", "images", "major_17_deco.jpg"))
+        or get_image_base64(os.path.join("tarot", "images", "major_17.jpg"))
+    )
     if tarot_card_deco_base64:
         components.html(f"""
         <script>
