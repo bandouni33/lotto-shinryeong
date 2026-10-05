@@ -24,6 +24,22 @@
   C11 조각이 원본 배치의 회차(draw_round)를 물려받아 **당첨번호·보너스 동그라미**가
      살아남는지(조각이 메타를 잃으면 동그라미가 조용히 사라진다).
   C12 조각의 `combo_count`(= "N개 배정" 라벨값)가 **실제 조각 크기**와 같은지.
+  C13 짝 카드 강조는 왼쪽·오른쪽 조각을 **각각 독립 판정**한다(2026-10-05) — 왼쪽만
+     새것이면 왼쪽 열만, 양쪽 다 새것이면 카드 전체(예전 모양), 둘 다 아니면 없음.
+  C14 조립(번개조합): 5개씩 2번 저장 → 짝 카드에서 새 저장분(왼쪽) 열만 강조되고
+     옛 저장분(오른쪽)은 강조되지 않는다(예전엔 카드 전체가 깜박였다).
+
+2026-10-05 정정:
+  · __main__ 러너가 TestCase를 그대로 호출해 실패를 삼켰다(전부 PASS로 찍힘) →
+    unittest 러너로 교체. 그 결과 드러난 실패를 아래처럼 원인별로 고쳤다.
+  · C4: 테스트 자체 계산 오류(15개면 마지막 쌍의 오른쪽이 비는데 그걸 조각으로 셌다).
+  · C10/C11: 격리 문제가 아니라 **시험 데이터 결함** — _combo(11)이 [11,11,…]로 번호가
+    중복돼 DB가 그 조합을 버렸고(15→14, C10), 화면엔 보너스 11이 한 줄에 2번 찍혔다
+    (15→16, C11). 채움 번호를 21~45로 바꿔 1~15와 겹치지 않게 했다.
+    데이터를 고치자 C10에서 계산 오류가 하나 더 드러났다 — 줄 수를 클래스 이름으로
+    세서 <style> 안의 CSS 선택자까지 잡혔다(15→21). 실제 줄 div만 세도록 고쳤다.
+  · 강조 개수는 "강조된 마크다운 덩어리 수"가 아니라 **강조된 조각 수**로 센다
+    (짝 카드 1개 = 조각 2개라 덩어리 수로는 실제 강조 범위를 못 본다).
 
 DB는 _db_isolation.isolated_db()로만 만진다. 실행:
   venv312\\Scripts\\python.exe -X utf8 tests\\test_history_chunk_pairing.py
@@ -85,12 +101,31 @@ chu.render_history_section(
 
 
 def _combo(first: int) -> list[int]:
-    """첫 번호로 구분되는 6개 조합 — 화면에 그 번호가 나오는지로 확인한다."""
-    return [first, 11, 22, 33, 44, 45]
+    """첫 번호로 구분되는 6개 조합 — 화면에 그 번호가 나오는지로 확인한다.
+
+    채움 번호(21·22·33·44·45)는 first(1~15)와 절대 겹치지 않아야 한다 — 예전엔 11을
+    채움에 써서 _combo(11)=[11,11,…]이 무효 조합이 됐다(2026-10-05 C10/C11 원인)."""
+    assert 1 <= first <= 20, first
+    return [first, 21, 22, 33, 44, 45]
 
 
 def _marked(at: AppTest) -> list[str]:
     return [(m.value or "") for m in at.markdown if NEEDLE in (m.value or "")]
+
+
+def _highlighted_chunks(at: AppTest) -> int:
+    """화면에서 '방금 저장' 강조가 붙은 **조각 수**.
+
+    · 열(column) 하나에 붙은 강조 = 조각 1개
+    · 짝 카드 전체에 붙은 강조 = 조각 2개(양쪽 다 새것일 때만 카드에 붙는다)
+    · 단일 카드에 붙은 강조 = 조각 1개
+    """
+    total = 0
+    for value in ((m.value or "") for m in at.markdown):
+        n = value.count(NEEDLE)
+        n += value.count("pair-card " + NEEDLE)  # 카드 전체 강조는 조각 2개
+        total += n
+    return total
 
 
 def _all_markup(at: AppTest) -> str:
@@ -138,7 +173,7 @@ class ChunkMathTests(unittest.TestCase):
         pairs = chu.chunk_pairs(flat)
         self.assertEqual([len(left) + len(right) for left, right in pairs], [10, 5],
                          "15개는 5+5 / 5 로 나뉘어야 한다")
-        chunks = [left for left, _right in pairs] + [pairs[-1][1]]
+        chunks = [c for left, right in pairs for c in (left, right) if c]
         self.assertEqual([len(c) for c in chunks], [5, 5, 5])
         self.assertTrue(all(chu.chunk_is_from_newest(c) for c in chunks),
                         "한 번에 저장한 15개 조각이 강조되지 않았다")
@@ -191,9 +226,8 @@ class RenderLevelTests(unittest.TestCase):
             markup = _all_markup(at)
             missing = [i + 1 for i in range(15) if f">{i + 1:02d}<" not in markup]
             self.assertEqual(missing, [], f"화면에 안 나온 조합: {missing}")
-            marked = _marked(at)
-            self.assertEqual(len(marked), 3,
-                             f"한 번에 저장한 15개 = 3조각 모두 강조여야 한다: {len(marked)}")
+            hl = _highlighted_chunks(at)
+            self.assertEqual(hl, 3, f"한 번에 저장한 15개 = 3조각 모두 강조여야 한다: {hl}")
 
             at.run()  # 새로고침 — 강조는 1회성
             self.assertEqual(_marked(at), [],
@@ -234,8 +268,8 @@ page_auto._render_auto_history_content()
         markup = _all_markup(at)
         missing = [i + 1 for i in range(10) if f">{i + 1:02d}<" not in markup]
         self.assertEqual(missing, [], f"화면에 안 나온 조합: {missing}")
-        self.assertEqual(len(_marked(at)), 1,
-                         f"최신 구매의 조각 1개만 강조여야 한다: {len(_marked(at))}")
+        hl = _highlighted_chunks(at)
+        self.assertEqual(hl, 1, f"최신 구매의 조각 1개만 강조여야 한다: {hl}")
 
     def test_C9_hedge_two_source_pairing_is_untouched(self):
         import marketing_db as mdb
@@ -268,7 +302,7 @@ count = __N__
 items = [
     {"draw_round": 1245, "combo_count": count, "cost": 10 * count,
      "purchase_method": "즉시", "order_id": 7,
-     "allocated": [{"combo": [i + 1, 11, 22, 33, 44, 45]} for i in range(count)]},
+     "allocated": [{"combo": [i + 1, 21, 22, 33, 44, 45]} for i in range(count)]},
 ]
 page_auto._collect_purchase_history_items = lambda mid: (items, False)
 st.session_state["auto_history_blink"] = True
@@ -306,7 +340,7 @@ class CountCasesTests(unittest.TestCase):
                 at.run()
                 self.assertFalse(at.exception, f"{count}개 렌더 예외: {at.exception}")
                 self._assert_all_shown(_all_markup(at), count, f"번개조합 {count}개")
-                self.assertEqual(len(_marked(at)), _expected_chunks(count),
+                self.assertEqual(_highlighted_chunks(at), _expected_chunks(count),
                                  f"번개조합 {count}개: 강조 조각 수가 {_expected_chunks(count)}가 아니다")
 
     def test_auto_5_10_15_at_once(self):
@@ -317,7 +351,7 @@ class CountCasesTests(unittest.TestCase):
             at.run()
             self.assertFalse(at.exception, f"{count}개 렌더 예외: {at.exception}")
             self._assert_all_shown(_all_markup(at), count, f"자동구매 {count}개")
-            self.assertEqual(len(_marked(at)), _expected_chunks(count),
+            self.assertEqual(_highlighted_chunks(at), _expected_chunks(count),
                              f"자동구매 {count}개: 강조 조각 수가 {_expected_chunks(count)}가 아니다")
 
 
@@ -424,7 +458,9 @@ class EntryPointTests(unittest.TestCase):
             markup = _all_markup(at)
             missing = [i + 1 for i in range(15) if f">{i + 1:02d}<" not in markup]
             self.assertEqual(missing, [], f"화면에 안 나온 조합: {missing}")
-            rows = markup.count("auto-banner-ball-row")
+            # 실제 줄(div)만 센다 — 클래스 이름만 세면 <style> 안의 CSS 선택자까지 잡혀
+            # 21로 나온다(2026-10-05 C10 정정: 시험 데이터를 고치자 드러난 계산 오류).
+            rows = markup.count('<div class="auto-banner-ball-row">')
             self.assertEqual(rows, 15, f"번호 줄이 15개가 아니다: {rows}(예전엔 5에서 잘렸다)")
             self.assertGreaterEqual(len(_marked(at)), 1,
                                     "방금 구매한 15개가 강조되지 않았다")
@@ -456,7 +492,7 @@ page_auto._purchase_banner_html = _banner
 items = [
     {"draw_round": 1245, "combo_count": count, "cost": 10 * count,
      "purchase_method": "즉시", "order_id": 7,
-     "allocated": [{"combo": [i + 1, 11, 22, 33, 44, 45]} for i in range(count)]},
+     "allocated": [{"combo": [i + 1, 21, 22, 33, 44, 45]} for i in range(count)]},
 ]
 page_auto._collect_purchase_history_items = lambda mid: (items, False)
 st.session_state["auto_history_blink"] = True
@@ -489,12 +525,12 @@ class ChunkMetadataTests(unittest.TestCase):
             gid = "dr" + uuid.uuid4().hex[:8]
             mdb.init_marketing_tables()
             drdb.init_draw_results_table()
-            drdb.upsert_draw_result(1245, [1, 2, 3, 4, 5, 6], 11)
+            drdb.upsert_draw_result(1245, [1, 2, 3, 4, 5, 6], 21)
             # 캐시 키가 (건수, 최신회차)라 다른 테스트와 겹칠 수 있다 — 방금 넣은
             # 당첨번호가 반드시 보이도록 비운다.
             lotto_stats._load_lotto_data_db_cached.clear()
             # 1~6번 조합은 당첨번호를 1개씩(줄 6개), 나머지 9줄은 0개.
-            # 11은 보너스번호라 15줄 전부에 붙는다.
+            # 21은 보너스번호라(_combo의 채움 번호) 15줄 전부에 정확히 1번씩 붙는다.
             mdb.save_guest_generated_combos(gid, "thunder", 1245,
                                             [_combo(i + 1) for i in range(15)])
 
@@ -542,6 +578,75 @@ class ChunkLabelTests(unittest.TestCase):
                              "이 테스트도 함께 고쳐야 한다(지금은 구매 완료 배너에만 있다)")
 
 
+class IndependentHighlightTests(unittest.TestCase):
+    """C13·C14 — 짝 카드의 왼쪽·오른쪽 강조를 각각 독립 판정(2026-10-05)."""
+
+    @staticmethod
+    def _card(hl_left, hl_right) -> str:
+        left = {"draw_round": 1245, "combos": [{"combo": _combo(1)}]}
+        right = {"draw_round": 1245, "combos": [{"combo": _combo(2)}]}
+        return chu.same_source_pair_card_html(
+            left, right, highlight_left=hl_left, highlight_right=hl_right)
+
+    def test_C13_pair_card_highlights_each_side_independently(self):
+        card_hl = "hedge-pair-card " + NEEDLE
+        left_hl = "hedge-pair-col hedge-pair-col-left " + NEEDLE
+        right_hl = '<div class="hedge-pair-col ' + NEEDLE
+
+        html = self._card(True, False)  # 왼쪽만 새것 — 이번 버그의 정확한 재현
+        self.assertIn(left_hl, html, "왼쪽 열이 강조되지 않았다")
+        self.assertNotIn(card_hl, html, "카드 전체가 강조됐다 — 옛 저장분(오른쪽)까지 깜박인다")
+        self.assertNotIn(right_hl, html, "오른쪽(옛 저장분)이 강조됐다")
+        self.assertEqual(html.count(NEEDLE), 1)
+
+        html = self._card(False, True)
+        self.assertIn(right_hl, html)
+        self.assertNotIn(left_hl, html)
+        self.assertNotIn(card_hl, html)
+
+        html = self._card(True, True)  # 양쪽 다 새것 → 예전과 같은 모양(카드 1개, 배지 1개)
+        self.assertIn(card_hl, html)
+        self.assertEqual(html.count(NEEDLE), 1, "양쪽 강조인데 배지가 여러 개 생겼다")
+
+        self.assertNotIn(NEEDLE, self._card(False, False))
+
+        # 기존 호출 호환: highlight=True 는 양쪽 모두 = 카드 전체
+        legacy = chu.same_source_pair_card_html(
+            {"draw_round": 1245, "combos": [{"combo": _combo(1)}]},
+            {"draw_round": 1245, "combos": [{"combo": _combo(2)}]}, highlight=True)
+        self.assertIn(card_hl, legacy)
+
+    def test_C14_two_saves_highlight_only_the_new_side(self):
+        import marketing_db as mdb
+
+        with _db_isolation.isolated_db():
+            gid = "ih" + uuid.uuid4().hex[:8]
+            mdb.init_marketing_tables()
+            mdb.save_guest_generated_combos(gid, "thunder", 1245,
+                                            [_combo(i + 11) for i in range(5)])  # 옛 저장
+            time.sleep(0.02)
+            mdb.save_guest_generated_combos(gid, "thunder", 1245,
+                                            [_combo(i + 1) for i in range(5)])  # 새 저장
+            at = AppTest.from_string(_PANEL_APP, default_timeout=TIMEOUT_SEC)
+            at.query_params["gid"] = gid
+            at.session_state["member_id"] = 424242
+            at.session_state[BLINK_FLAG] = True
+            at.run()
+            self.assertFalse(at.exception, f"렌더 예외: {at.exception}")
+            cards = [m.value or "" for m in at.markdown if "hedge-pair-card" in (m.value or "")
+                     and "<style" not in (m.value or "")]
+            self.assertEqual(len(cards), 1, f"5+5는 짝 카드 1장이어야 한다: {len(cards)}")
+            card = cards[0]
+            self.assertNotIn("hedge-pair-card " + NEEDLE, card,
+                             "카드 전체가 강조됐다 — 옛 저장분까지 깜박인다(이번 버그)")
+            left_html, right_html = card.split('<div class="hedge-pair-col', 2)[1:]
+            self.assertIn(NEEDLE, left_html, "새 저장분(왼쪽) 열이 강조되지 않았다")
+            self.assertIn(">01<", left_html, "왼쪽 열이 새 저장분이 아니다")
+            self.assertNotIn(NEEDLE, right_html, "옛 저장분(오른쪽) 열이 강조됐다")
+            self.assertIn(">11<", right_html, "오른쪽 열이 옛 저장분이 아니다")
+            self.assertEqual(_highlighted_chunks(at), 1)
+
+
 def _main() -> int:
     tests = [
         ChunkMathTests("test_C1_chunk_pairs_never_loses_or_reorders_items"),
@@ -563,17 +668,24 @@ def _main() -> int:
         EntryPointTests("test_C10_entry_point_shows_all_fifteen_of_one_purchase"),
         ChunkMetadataTests("test_C11_chunk_keeps_draw_round_so_winner_circles_survive"),
         ChunkLabelTests("test_C12_chunk_label_matches_the_real_chunk_size"),
+        IndependentHighlightTests("test_C13_pair_card_highlights_each_side_independently"),
+        IndependentHighlightTests("test_C14_two_saves_highlight_only_the_new_side"),
     ]
+    # 2026-10-05: 예전엔 test()를 직접 불렀는데, TestCase.__call__ 은 실패를 결과 객체에
+    # 담고 예외를 올리지 않아 **실패가 전부 PASS로 찍혔다**. 반드시 결과 객체로 판정한다.
     failed = 0
     for test in tests:
-        try:
-            test()
-        except AssertionError as exc:
+        result = unittest.TestResult()
+        test.run(result)
+        problems = [("FAIL", tb) for _t, tb in result.failures] + \
+                   [("ERROR", tb) for _t, tb in result.errors]
+        if result.testsRun != 1:
+            problems.append(("ERROR", f"testsRun={result.testsRun}"))
+        if problems:
             failed += 1
-            print(f"FAIL {test._testMethodName}: {exc}")
-        except Exception as exc:  # noqa: BLE001
-            failed += 1
-            print(f"ERROR {test._testMethodName}: {type(exc).__name__}: {exc}")
+            for kind, tb in problems:
+                last = tb.strip().splitlines()[-1] if tb.strip() else tb
+                print(f"{kind} {test._testMethodName}: {last}")
         else:
             print(f"PASS {test._testMethodName}")
         sys.stdout.flush()

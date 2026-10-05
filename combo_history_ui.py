@@ -590,19 +590,42 @@ def _render_single_batch(
     st.markdown(batch_card_html(batch, highlight=highlight), unsafe_allow_html=True)
 
 
-def same_source_pair_card_html(batch_left: dict, batch_right: dict, highlight: bool = False) -> str:
+def same_source_pair_card_html(
+    batch_left: dict,
+    batch_right: dict,
+    highlight: bool = False,
+    highlight_left: bool | None = None,
+    highlight_right: bool | None = None,
+) -> str:
     """번개조합처럼 소스가 하나뿐인 화면에서, 같은 회차에 저장된 배치가 2개
     이상이면 세로로 쌓지 않고 좌우 2열로 나란히 보여준다("같은 회차는 2줄
-    나란히" 요청) — 배지는 없음(소스가 같으니 구분 표시가 필요 없다)."""
+    나란히" 요청) — 배지는 없음(소스가 같으니 구분 표시가 필요 없다).
+
+    2026-10-05(사용자 지시): 강조는 **왼쪽·오른쪽 조각을 각각 독립적으로** 판단한다.
+    예전엔 왼쪽 조각만 보고 카드 전체를 강조해서, 오른쪽이 옛 저장분이어도 같이
+    깜박였다. highlight_left/right를 주면 그 값이 우선한다(highlight는 기존 호출
+    호환용 = 양쪽 모두).
+      · 양쪽 다 강조 → 카드 전체에 1개(예전과 같은 모양, 배지 1개)
+      · 한쪽만 강조 → 그 열에만(배지도 그 열에만)
+    """
+    hl_left = highlight if highlight_left is None else bool(highlight_left)
+    hl_right = highlight if highlight_right is None else bool(highlight_right)
+    both = hl_left and hl_right
     _cls = "hedge-pair-card"
-    if highlight:
+    if both:
         _cls += f" {JUST_SAVED_CLASS}"
+    left_cls = "hedge-pair-col hedge-pair-col-left"
+    right_cls = "hedge-pair-col"
+    if hl_left and not both:
+        left_cls += f" {JUST_SAVED_CLASS}"
+    if hl_right and not both:
+        right_cls += f" {JUST_SAVED_CLASS}"
     return f"""
     <div class="{_cls}">
-      <div class="hedge-pair-col hedge-pair-col-left">
+      <div class="{left_cls}">
         {_combo_rows_html(batch_left, "auto-banner-ball-row")}
       </div>
-      <div class="hedge-pair-col">
+      <div class="{right_cls}">
         {_combo_rows_html(batch_right, "auto-banner-ball-row")}
       </div>
     </div>
@@ -709,13 +732,17 @@ def _render_batches(
                 newest_hl = newest_batch is not None
                 for left_part, right_part in chunk_pairs(flat):
                     left_chunk = _chunk_batch(dr, left_part)
+                    # 2026-10-05: 왼쪽·오른쪽 조각을 각각 독립 판정(오른쪽이 다른
+                    # 저장분이면 오른쪽은 강조하지 않는다).
                     highlight = newest_hl and chunk_is_from_newest(left_part)
                     if right_part:
+                        highlight_right = newest_hl and chunk_is_from_newest(right_part)
                         st.markdown(
                             same_source_pair_card_html(
                                 left_chunk,
                                 _chunk_batch(dr, right_part),
-                                highlight=highlight,
+                                highlight_left=highlight,
+                                highlight_right=highlight_right,
                             ),
                             unsafe_allow_html=True,
                         )
