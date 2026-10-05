@@ -1016,11 +1016,64 @@ def main() -> int:
     return 1 if any_error else 0
 
 
+# ============================== 실행 전 자기 갱신 (2026-10-05) =====================
+# 왜: 이 스크립트는 PC에 있는 코드로 돈다. 클라우드 세션이 GitHub에 고친 내용(예: 새
+# 추적표 파일 등록)은 누가 PC에서 git pull을 해줘야만 반영됐다 — 잊으면 일요일 업데이트가
+# 옛 코드로 돈다. 그래서 예약 작업이 이 파일을 직접 실행할 때만(테스트가 main()을 부를 때는
+# 아님) 시작하자마자 GitHub 최신 코드를 받아오고, 바뀌었으면 새 코드로 한 번 다시 실행한다.
+#   · --ff-only: PC에 충돌하는 수정이 있으면 git이 아무것도 바꾸지 않고 실패한다 → 기록만
+#     남기고 지금 코드 그대로 업데이트를 계속한다(자기 갱신 실패가 주간 업데이트를 막지 않음).
+#   · 서버 재시작은 하지 않는다(위험). 끄려면 환경변수 LOTTO_SKIP_SELF_UPDATE=1.
+
+_SELF_UPDATED_ENV = "LOTTO_SELF_UPDATED"
+
+
+def _git(args: list[str], repo: Path, timeout: int = 180):
+    import os
+    import subprocess
+
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")  # 비밀번호 입력창이 떠서 멈추는 것 방지
+    return subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True,
+                          timeout=timeout, env=env)
+
+
+def self_update_from_github(repo: Path = LOTTO_APP_DIR) -> bool:
+    """GitHub main을 fast-forward로만 받아온다. 코드가 실제로 바뀌었으면 True."""
+    import os
+
+    if os.environ.get("LOTTO_SKIP_SELF_UPDATE") == "1" or os.environ.get(_SELF_UPDATED_ENV) == "1":
+        return False
+    if not (repo / ".git").exists():
+        return False
+    try:
+        before = _git(["rev-parse", "HEAD"], repo).stdout.strip()
+        r = _git(["pull", "--ff-only", "origin", "main"], repo)
+        after = _git(["rev-parse", "HEAD"], repo).stdout.strip()
+    except Exception as e:  # noqa: BLE001 — git 없음·시간초과 등: 기록만 하고 계속
+        log(f"[자기갱신] git pull 실행 실패 → 지금 코드로 계속합니다: {e}")
+        return False
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout or "").strip().replace("\n", " | ")[:400]
+        log(f"[자기갱신] git pull 실패(코드 {r.returncode}) → 지금 코드로 계속합니다: {msg}")
+        return False
+    if before and after and before != after:
+        log(f"[자기갱신] 최신 코드 받음 {before[:7]} → {after[:7]} — 새 코드로 다시 실행합니다")
+        return True
+    log(f"[자기갱신] 이미 최신({after[:7]})")
+    return False
+
+
 if __name__ == "__main__":
+    import os as _os
+
+    if self_update_from_github():
+        import subprocess as _sp
+
+        _env = dict(_os.environ, **{_SELF_UPDATED_ENV: "1"})
+        _os._exit(_sp.call([sys.executable, _os.path.abspath(__file__), *sys.argv[1:]], env=_env))
+
     # 2026-09-27: 회차 조회를 DB(draw_results)로 바꾸면서 db_turso의 non-daemon 스레드가
     # 프로세스 종료를 붙잡게 됐다 — 마지막 줄을 다 찍고도 프로세스가 안 끝나서(실측)
     # 스케줄러가 종료코드를 못 받고, 뒤이어 돌릴 작업이 시작조차 못 한다.
     # hourly_draw_sync.py가 같은 이유로 os._exit()를 쓰고 있으니 그 방식을 따른다.
-    import os as _os
-
     _os._exit(main())
