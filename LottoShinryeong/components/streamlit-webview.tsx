@@ -66,6 +66,16 @@ const PRICE_WAIT_MS = 2500;
 // 타임아웃으로 간주해 락을 풀어준다 — 그래야 사용자가 재시도할 수 있다.
 const KAKAO_NATIVE_LOGIN_TIMEOUT_MS = 20000;
 
+// 2026-10-06(iOS 실기기 — 카카오 로그인 먹통·이벤트창 빈칸·타로 장식 없음·하단 레이아웃 깨짐):
+// react-native-webview 는 iOS 에서만 **iframe 로드까지** originWhitelist 검사를 거친다
+// (RNCWebViewImpl decidePolicyForNavigationAction → createOnShouldStartLoadWithRequest).
+// 기본값은 about:blank + http/https 라서 Streamlit components.html 이 쓰는 about:srcdoc iframe 이
+// 전부 차단되고 외부 앱 열기(Linking)로 넘겨져 조용히 사라진다 — 서버가 iframe 으로 넣는
+// 로그인 신호 스크립트·스타일·장식이 iOS 앱에서만 하나도 실행되지 않던 원인이다.
+// 안드로이드는 iframe 로드에 이 검사를 하지 않아 영향이 없다. 카카오톡 등 외부 앱 스킴은
+// 지금처럼 목록 밖이라 기존 동작(외부 앱으로 넘김)이 그대로 유지된다.
+const WEBVIEW_ORIGIN_WHITELIST = ['http://*', 'https://*', 'about:srcdoc'];
+
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string = 'kakao_native_login_timeout'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
@@ -825,6 +835,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           key={webViewUri}
           source={{ uri: webViewUri }}
           style={styles.webview}
+          originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
           onNavigationStateChange={onNavigationStateChange}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onMessage={onMessage}
