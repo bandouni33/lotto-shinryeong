@@ -677,6 +677,9 @@ def _render_auth_banner_form() -> None:
         # 기존 방식 그대로 둔다(영향 없음).
         is_native_app = st.query_params.get("native") == "1"
         _log_login_branch_once(is_native_app)
+        if is_native_app:
+            # 임시 진단(2026-10-06) — 로그인창이 뜰 때 바로 표시(클릭 후 갱신 의존 제거).
+            _render_kakao_bridge_diag_if_enabled()
         with st.container(key="auth_banner_kakao"):
             if is_native_app:
                 if st.button(
@@ -691,7 +694,6 @@ def _render_auth_banner_form() -> None:
 
                     remember_return_page_at_login_click()
                     _fire_kakao_native_login_trigger()
-                    _render_kakao_bridge_diag_if_enabled()
             else:
                 st.link_button(
                     GATE_BUTTON,
