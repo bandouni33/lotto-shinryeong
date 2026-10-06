@@ -944,11 +944,12 @@ if current_page == "main":
     .stats-icon { font-size: 21px; line-height: 1; filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); }
     .stats-title { color: #ffffff; font-weight: 900; font-size: 13px; letter-spacing: 0.5px; }
 
+    /* 2026-10-06(사용자 지시): 타로 버튼 폭을 아래 메뉴 격자(.menu-grid, 100%)와 같게 —
+       예전 88% + 왼쪽 치우침(translateX)을 없애 좌우 끝을 격자와 맞추고 제목이 한 줄에 들어갈 폭 확보. */
     .tarot-unit {
-        width: 88%;
-        max-width: 88%;
+        width: 100%;
+        max-width: 100%;
         margin: 35px auto 35px;
-        transform: translateX(-2%) translateX(-12px);
     }
     .tarot-box {
         position: relative;
