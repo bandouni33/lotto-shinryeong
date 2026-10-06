@@ -223,9 +223,12 @@ def style_css(style_id: int) -> str:
         else ".wev-shine{display:none;}"
     )
     return f"""
+/* 2026-10-06(아이폰 실기기: 창 본문이 빈칸): 등장 애니메이션이 투명(opacity 0)에서 시작하면
+   iOS 가 열리는 창 속 iframe 의 애니메이션을 멈춰 둘 때 카드가 투명한 채로 굳는다.
+   → 투명도는 건드리지 않고 위치·크기만 움직인다(애니메이션이 멈춰도 카드는 항상 보임). */
 @keyframes wevIn {{
-  from {{ opacity: 0; transform: translateY(10px) scale(.92); }}
-  to   {{ opacity: 1; transform: translateY(0) scale(1); }}
+  from {{ transform: translateY(10px) scale(.92); }}
+  to   {{ transform: translateY(0) scale(1); }}
 }}
 @keyframes wevFall {{
   0%   {{ opacity: 0; transform: translate3d(0, -14px, 0) rotate(0deg) scale(.85); }}
