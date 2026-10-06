@@ -450,20 +450,28 @@ def _force_kakao_link_same_tab() -> None:
 # ── 임시 진단(2026-10-06, 사용자 승인 A안) — iOS 앱 카카오 로그인 무반응 원인 확인용 ──
 # iOS 빌드 8에서 서버는 로그인 신호(kakao_native_trigger)를 보내지만 앱이 응답하지 않는다
 # (첫 사용자·기존 사용자 모두, 같은 계정의 사파리 웹 로그인은 성공). 신호가 웹 → 앱으로
-# 넘어가는 지점을 화면에 한 줄로 보여 준다. **지정한 테스트 기기(guest_id 앞자리)에만**
+# 넘어가는 지점을 화면에 한 줄로 보여 준다. **아이폰 네이티브 앱에서만, 만료 시각까지**
 # 보이며, 신호 보내기 동작(_fire_kakao_native_login_trigger)은 전혀 바꾸지 않는다.
 # 원인 확인이 끝나면 이 상수·함수·호출 한 줄을 함께 지운다.
-KAKAO_BRIDGE_DIAG_GID_PREFIXES: tuple[str, ...] = ("a7cd8872",)
+# 대상: 네이티브 앱(native=1) + 아이폰(UA에 "iPhone") + 만료 시각 전. 내정보의 ID는 카카오 계정
+# 표시값이라 기기 ID로 좁힐 수 없어 이 조건을 쓴다(애플 심사 기기는 iPad였음). 만료 후 자동으로 꺼진다.
+KAKAO_BRIDGE_DIAG_UNTIL_KST = "2026-10-07 12:00"
 
 
 def _kakao_bridge_diag_enabled() -> bool:
     try:
-        from user_scope import get_or_create_guest_id
+        import datetime as _dt
 
-        gid = str(get_or_create_guest_id() or "")
+        kst = _dt.timezone(_dt.timedelta(hours=9))
+        until = _dt.datetime.strptime(KAKAO_BRIDGE_DIAG_UNTIL_KST, "%Y-%m-%d %H:%M").replace(tzinfo=kst)
+        if _dt.datetime.now(kst) >= until:
+            return False
+        if st.query_params.get("native") != "1":
+            return False
+        ua = st.context.headers.get("User-Agent") or ""
+        return isinstance(ua, str) and "iPhone" in ua
     except Exception:
         return False
-    return any(gid.startswith(p) for p in KAKAO_BRIDGE_DIAG_GID_PREFIXES)
 
 
 KAKAO_BRIDGE_DIAG_HTML = """<div id="d" style="font:12px/1.45 monospace;color:#fff;background:#222;
