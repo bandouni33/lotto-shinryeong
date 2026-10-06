@@ -19,6 +19,7 @@
 - Streamlit 버전 고정: `streamlit==1.64.0`
 
 ## 2. 최근 완료 작업 (2026-10-02 ~ 10-05, git log 기준)
+- **(10-06) iOS 앱 근본 원인 확인·수정(재빌드 대기)** — 지인 아이폰(TestFlight 빌드 8)·애플 반려 2.1(a)의 카카오 로그인 먹통·이벤트창 빈칸·타로 장식 없음·하단 레이아웃 깨짐은 모두 react-native-webview(iOS)가 `about:srcdoc` iframe을 originWhitelist로 차단해서 생김(서버 기록: 신호 발송 후 결과 0건, 사파리 웹 로그인은 성공). `fa63fab2`에서 `originWhitelist`에 about:srcdoc 추가, 로컬 시뮬레이션으로 재현·해제 확인. **iOS 재빌드 후 실기기 확인 필요**(`네이티브_빌드_대기목록.md` §9). 이벤트창 등장 애니메이션 투명 시작 제거(`ac10b0b4`, 서버). 임시 진단 코드는 넣었다가 제거(`64394613`).
 - **(10-06) 통신판매업 신고번호 기재(사용자 제공 신고증)** — 제2026-경기안산-1944호(안산시, 10-06 발급)를 `legal_notices.NOTICES["business"]`(앱 사업자 정보 탭·PG 공개 페이지가 같은 값 사용)와 `docs/legal/MEMBER_NOTICES.md` §7에 기재, "신고 완료 후 기재·PG 연동 불가" 임시 안내문 삭제. 문구만 변경(로그인·결제 무관). 같은 날 iOS 1.0.2 반려(4.8 Apple 로그인 부재, 2.1(a) iPad 카카오 무반응) → 버그 수정 제출로 승인 요청 회신 — 경과·1.0.3 작업은 Projects 문서 `claude/남은작업_iOS심사후_2026-10-05.md`
 - **(10-05) 주간 엑셀 업데이트 실행 전 자기 갱신(사용자 지시: PC git pull 자동화)** — `weekly_lotto_file_update.py`를 예약 작업이 직접 실행할 때만 시작 시 `git pull --ff-only origin main` → 코드가 바뀌었으면 새 코드로 1회 재실행. 충돌·실패 시 기록만 남기고 기존 코드로 계속, 서버 재시작 없음, 끄기 `LOTTO_SKIP_SELF_UPDATE=1`. `main()`에는 넣지 않아 테스트가 git을 안 건드림. 검증 `tests/test_weekly_self_update.py` 6/6(임시 git 저장소). **PC가 이 코드를 받으려면 수동 `git pull` 1회 필요(토요일 전)** — 그 뒤로는 매주 자동.
 - **(10-05) 메인 타로 버튼 제목 13px → 14px(사용자 지시)** — 폭 370px 이하 작은 폰에서만 두 줄 넘김 방지로 13px 유지(미디어쿼리).
