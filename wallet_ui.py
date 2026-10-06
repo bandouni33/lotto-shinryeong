@@ -447,6 +447,72 @@ def _force_kakao_link_same_tab() -> None:
     )
 
 
+# ── 임시 진단(2026-10-06, 사용자 승인 A안) — iOS 앱 카카오 로그인 무반응 원인 확인용 ──
+# iOS 빌드 8에서 서버는 로그인 신호(kakao_native_trigger)를 보내지만 앱이 응답하지 않는다
+# (첫 사용자·기존 사용자 모두, 같은 계정의 사파리 웹 로그인은 성공). 신호가 웹 → 앱으로
+# 넘어가는 지점을 화면에 한 줄로 보여 준다. **지정한 테스트 기기(guest_id 앞자리)에만**
+# 보이며, 신호 보내기 동작(_fire_kakao_native_login_trigger)은 전혀 바꾸지 않는다.
+# 원인 확인이 끝나면 이 상수·함수·호출 한 줄을 함께 지운다.
+KAKAO_BRIDGE_DIAG_GID_PREFIXES: tuple[str, ...] = ("a7cd8872",)
+
+
+def _kakao_bridge_diag_enabled() -> bool:
+    try:
+        from user_scope import get_or_create_guest_id
+
+        gid = str(get_or_create_guest_id() or "")
+    except Exception:
+        return False
+    return any(gid.startswith(p) for p in KAKAO_BRIDGE_DIAG_GID_PREFIXES)
+
+
+KAKAO_BRIDGE_DIAG_HTML = """<div id="d" style="font:12px/1.45 monospace;color:#fff;background:#222;
+padding:6px 8px;border-radius:6px;white-space:pre-wrap;word-break:break-all">진단 중…</div>
+<script>
+(function () {
+  var out = [];
+  function add(k, v) { out.push(k + "=" + v); }
+  function show() { document.getElementById("d").textContent = out.join("\\n"); }
+  try { add("ua", (navigator.userAgent || "").slice(0, 60)); } catch (e) {}
+  try { add("frame_rnwv", typeof window.ReactNativeWebView); } catch (e) { add("frame_rnwv", "ERR"); }
+  var top = null;
+  try { top = window.top; add("top_same", top === window ? "self" : "other"); } catch (e) { add("top", "ERR"); }
+  try { add("top_doc", top && top.document ? "ok" : "none"); } catch (e) { add("top_doc", "BLOCKED:" + e.name); }
+  try { add("top_url", String(top.location.href).replace(/[?#].*$/, "")); } catch (e) { add("top_url", "ERR"); }
+  try { add("top_rnwv", typeof top.ReactNativeWebView); } catch (e) { add("top_rnwv", "ERR:" + e.name); }
+  try { add("top_rnwv_post", top.ReactNativeWebView ? typeof top.ReactNativeWebView.postMessage : "-"); } catch (e) { add("top_rnwv_post", "ERR"); }
+  try {
+    var mh = top.webkit && top.webkit.messageHandlers;
+    add("top_webkit_mh", mh ? (mh.ReactNativeWebView ? "RNWV" : "noRNWV") : "none");
+  } catch (e) { add("top_webkit_mh", "ERR"); }
+  try { add("par_rnwv", typeof window.parent.ReactNativeWebView); } catch (e) { add("par_rnwv", "ERR"); }
+  try { add("sandbox", String(window.parent.frameElement && window.parent.frameElement.getAttribute("sandbox") || "-").slice(0, 120)); } catch (e) { add("sandbox", "ERR:" + e.name); }
+  // 최상위 문서에 심은 스크립트가 실제로 실행되는지(CSP 등으로 막히는지) — 실행되면 표시만 남긴다.
+  try {
+    top.__lsDiagRan = "no";
+    var s = top.document.createElement("script");
+    s.textContent = "window.__lsDiagRan='yes:'+(typeof window.ReactNativeWebView);";
+    top.document.head.appendChild(s);
+    s.parentNode.removeChild(s);
+  } catch (e) { add("inject", "ERR:" + e.name); }
+  setTimeout(function () {
+    try { add("inject_ran", top.__lsDiagRan); } catch (e) { add("inject_ran", "ERR"); }
+    show();
+  }, 400);
+  show();
+})();
+</script>"""
+
+
+def _render_kakao_bridge_diag_if_enabled() -> None:
+    """임시 진단 표시 — 지정 테스트 기기에서만. 실패해도 로그인 흐름에 영향 없게 예외를 삼킨다."""
+    try:
+        if _kakao_bridge_diag_enabled():
+            components.html(KAKAO_BRIDGE_DIAG_HTML, height=230)
+    except Exception:
+        pass
+
+
 def _fire_kakao_native_login_trigger() -> None:
     """네이티브 앱(streamlit-webview.tsx)에게 카카오 네이티브 SDK 로그인을
     시작하라는 신호를 보낸다 — page_hedge.py의 QR스캔 트리거(_fire_qr_scan_
@@ -617,6 +683,7 @@ def _render_auth_banner_form() -> None:
 
                     remember_return_page_at_login_click()
                     _fire_kakao_native_login_trigger()
+                    _render_kakao_bridge_diag_if_enabled()
             else:
                 st.link_button(
                     GATE_BUTTON,
