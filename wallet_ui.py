@@ -1711,7 +1711,7 @@ def _my_info_dialog(*, zp_uid: str | None, member_id: int | None) -> None:
     else:
         bal = get_balance(member_id)
         tag = st.session_state.get("oauth_hash_display", "ID")
-        st.markdown(f"**적립금 {bal:,}P** · ID `{tag}` · v{NOTICE_VERSION}")
+        st.markdown(f"**적립금 {bal:,}P** · ID `{tag}` · {NOTICE_VERSION}")
         bc1, bc2 = st.columns(2)
         with bc1:
             if st.button("충전", key="wallet_charge_btn", use_container_width=True, type="secondary"):
