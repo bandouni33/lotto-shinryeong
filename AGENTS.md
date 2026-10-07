@@ -74,9 +74,13 @@
   호출하면 고아 DOM 중복 렌더가 난다. 게이트 판정은 `st.button(..., on_click=콜백)`으로.
 - `@st.cache_data` 함수의 인자 이름이 밑줄로 시작하면 캐시 키에서 제외된다 → 무효화용
   인자에 `_`를 붙이면 캐시 무효화가 통째로 무력해진다.
-- Streamlit 내부이동 링크(`user_scope.internal_nav_href`)는 `page`·`gid`·`native`만
-  실어 보낸다 → 주소에 실어 보낸 값(예: 앱이 보낸 스토어 가격)은 화면 이동에서 사라진다.
+- Streamlit 내부이동 링크(`user_scope.internal_nav_href`)는 `page`·`gid`·`native`·`native_platform`·
+  `apple_login`만 실어 보낸다 → 그 밖에 주소에 실어 보낸 값(예: 앱이 보낸 스토어 가격)은 화면 이동에서 사라진다.
   그래서 가격은 앱이 보낸 값을 서버가 저장해두고 재사용한다(`wallet_ui.iap_prices`).
+- Cloud 는 git push 후 프로세스를 재시작하지 않을 수 있다 → 이미 import 된 모듈은 옛 코드로 남는다.
+  화면 모듈은 `user_page._reload_if_stale`, 공용 모듈(로그인 창·로그인 처리·링크 등)은
+  `user_page._reload_stale_core_modules`(`_CORE_RELOAD_ORDER`)가 "프로세스 시작 뒤 바뀐 파일"만 새로 읽는다.
+  상태를 들고 있는 모듈(db_turso·wallet_db·결제 모듈)은 넣지 말 것. 새 공용 모듈을 고쳤는데 반영이 안 되면 이 목록부터 본다.
 - 결제 승인은 서버 전담: 앱은 `finishTransaction`을 호출하지 않는다
   (`google_play_pg.py`가 검증→지급→consume/acknowledge). 구독 지급은
   `wallet_db.activate_paid_advanced_sub_once`(멱등 마커 `pg_charges.pg_ref_id`).

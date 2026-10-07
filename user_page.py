@@ -26,6 +26,69 @@ def _reload_if_stale(module):
         module._loaded_mtime = mtime
     return module
 
+
+# 2026-10-07(실측): 위 장치는 화면 모듈에만 걸려 있어서, 로그인 창·로그인 처리·링크를 만드는
+# 공용 모듈(wallet_ui·auth_providers·user_scope 등)은 git push 후에도 Cloud 프로세스가 재시작될
+# 때까지 옛 코드로 남았다 — 실제로 내정보 'vv' 수정·Apple 로그인 버튼이 재부팅을 눌러도 반영되지
+# 않았다. 이 파일(user_page.py)은 매 실행 새로 읽히므로, 여기서 공용 모듈도 같은 방식(파일 수정
+# 시각 비교)으로 새로 읽는다. 의존 순서대로(아래 것이 위 것을 import) 처리하고, 하나라도 새로
+# 읽었으면 그 함수를 이름으로 가져다 쓰는 화면 모듈도 다음 import 때 새로 읽히게 표시를 지운다.
+# DB 연결 풀·지갑 원장 모듈(db_turso·wallet_db)과 결제 모듈은 상태를 들고 있어 대상에서 뺀다.
+_CORE_RELOAD_ORDER = (
+    "legal_notices",
+    "login_gate",
+    "security_log",
+    "user_scope",
+    "auth_providers",
+    "wallet_ui",
+    "combo_history_ui",
+    "win_event_banner",
+)
+_PAGE_MODULES_USING_CORE = ("page_thunder", "page_birthday", "page_hedge", "page_auto", "tarot_page")
+
+
+def _reload_stale_core_modules() -> None:
+    import sys as _sys
+    import threading as _threading
+
+    lock = getattr(_sys, "_lotto_core_reload_lock", None)
+    if lock is None:
+        lock = _threading.Lock()
+        _sys._lotto_core_reload_lock = lock
+    # 프로세스 시작 시각 — 그 뒤에 바뀐 파일만 새로 읽는다(처음부터 최신으로 읽은 모듈을 괜히 다시
+    # 읽지 않고, 테스트가 바꿔 둔 대역도 지우지 않는다). 리눅스(Cloud)는 /proc 로, 그 밖은 이 함수가
+    # 처음 불린 시각으로 대신한다.
+    proc_start = getattr(_sys, "_lotto_proc_start", None)
+    if proc_start is None:
+        try:
+            proc_start = os.stat(f"/proc/{os.getpid()}").st_ctime
+        except OSError:
+            proc_start = time.time()
+        _sys._lotto_proc_start = proc_start
+    with lock:
+        reloaded = False
+        for name in _CORE_RELOAD_ORDER:
+            module = _sys.modules.get(name)
+            if module is None or not getattr(module, "__file__", None):
+                continue  # 아직 import 전이면 그냥 import 할 때 최신 파일을 읽는다
+            try:
+                mtime = os.path.getmtime(module.__file__)
+                seen = getattr(module, "_loaded_mtime", None)
+                stale = (mtime != seen) if seen is not None else (mtime > proc_start)
+                if stale:
+                    _reload_if_stale(module)  # importlib.reload — 같은 모듈 객체를 새 코드로 채운다
+                    reloaded = True
+            except Exception:
+                continue  # 새로 읽기 실패 시 옛 모듈로 계속(화면이 죽지 않게)
+        if reloaded:
+            for name in _PAGE_MODULES_USING_CORE:
+                page_module = _sys.modules.get(name)
+                if page_module is not None:
+                    page_module._loaded_mtime = None
+
+
+_reload_stale_core_modules()
+
 if st.session_state.get("is_admin", False):
     with st.sidebar:
         st.markdown("## ⚙️ 관리자 제어 센터")
