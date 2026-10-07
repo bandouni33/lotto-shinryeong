@@ -565,7 +565,13 @@ def _log_login_branch_once(is_native_app: bool) -> None:
             "kakao_login_branch",
             f"branch={'native' if is_native_app else 'web'} "
             f"native_param={st.query_params.get('native')!r} "
-            f"wv={'1' if 'wv' in ua else '0'} android={'1' if 'Android' in ua else '0'}",
+            f"wv={'1' if 'wv' in ua else '0'} android={'1' if 'Android' in ua else '0'} "
+            # 2026-10-07(사용자 승인): iOS 앱에 Apple 버튼이 안 뜬 원인 확정용 — 앱이 보낸
+            # 플랫폼·Apple 수신부 신호를 그대로 남긴다(판정은 native_platform()·apple_login_available()).
+            f"plat={native_platform()!r} "
+            f"{APPLE_LOGIN_CAPABILITY_PARAM}={st.query_params.get(APPLE_LOGIN_CAPABILITY_PARAM)!r} "
+            f"apple_btn={'1' if apple_login_available() else '0'} "
+            f"iphone={'1' if 'iPhone' in ua else '0'}",
         )
     except Exception:
         pass
