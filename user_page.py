@@ -64,6 +64,18 @@ except ImportError:  # 배포 직후 옛 db_turso가 캐시된 상태(새 심볼
         return None
 
 
+# 2026-10-06(Apple 로그인): 위 2026-09-30 사고와 같은 이유로, 이번에 새로 생긴 심볼은 따로
+# 가져온다 — 배포 직후 옛 auth_providers 가 캐시된 프로세스에서도 화면이 죽지 않고 Apple 경로만
+# 잠시 꺼진다(다음 재시작부터 정상).
+try:
+    from auth_providers import finalize_login_with_apple_token, record_native_login_error
+except ImportError:  # 배포 직후 옛 auth_providers가 캐시된 상태(새 심볼 없음)
+    finalize_login_with_apple_token = None
+
+    def record_native_login_error(*_args, **_kwargs):
+        return None
+
+
 from user_scope import init_guest_scope, internal_nav_href, local_storage_gid_recovery_html
 
 # 2026-09-09: 모바일에서 Streamlit 웹소켓이 끊겼다 재연결되면(알려진 Streamlit
@@ -108,10 +120,21 @@ init_guest_scope()
 # 오류·앱키 불일치) 서버는 그 사실조차 몰랐다. 실패 이유는 이제 auth_providers가
 # [kakao_native_login_fail]로 남기고(Cloud 로그 + 운영자 대시보드 계측: 어디서
 # 끊겼는지가 남는다), 사용자에게는 앱 전체 공통 규격인 토스트로 알린다.
-_native_kakao_token = st.query_params.get("native_kakao_token")
-if _native_kakao_token:
-    del st.query_params["native_kakao_token"]
-    if finalize_login_with_native_token(_native_kakao_token):
+# 2026-10-06(애플 심사 4.8): Apple 로그인(iOS 앱)도 같은 자리·같은 규격으로 처리한다 —
+# 앱이 identity token 을 native_apple_token 으로 실어 보낸다. 실패 안내 문구는 카카오와 하나.
+# native_apple_code(애플 authorization code)는 탈퇴 시 토큰 해지(2단계)용으로 앱이 함께 보내는
+# 값인데 지금은 쓰지 않으므로 주소에서 지우기만 한다.
+for _native_param, _native_finalize in (
+    ("native_kakao_token", finalize_login_with_native_token),
+    ("native_apple_token", finalize_login_with_apple_token),
+):
+    _native_token = st.query_params.get(_native_param)
+    if not _native_token or _native_finalize is None:
+        continue
+    del st.query_params[_native_param]
+    if "native_apple_code" in st.query_params:
+        del st.query_params["native_apple_code"]
+    if _native_finalize(_native_token):
         st.rerun()
     else:
         # 문구·try/except는 handle_oauth_callback(카카오 리다이렉트 경로)이 쓰는 것과
@@ -120,6 +143,17 @@ if _native_kakao_token:
             st.toast("로그인이 완료되지 않았어요. 다시 시도해 주세요.", icon="⚠️")
         except Exception:
             pass
+
+# 2026-10-06: 앱이 로그인 SDK 단계에서 실패(사용자 취소 제외)하면 이유를 native_login_error 로
+# 보고한다 — 기록만 남기고(운영자 대시보드 계측) 같은 실패 안내를 띄운다.
+_native_login_error = st.query_params.get("native_login_error")
+if _native_login_error:
+    del st.query_params["native_login_error"]
+    record_native_login_error(_native_login_error)
+    try:
+        st.toast("로그인이 완료되지 않았어요. 다시 시도해 주세요.", icon="⚠️")
+    except Exception:
+        pass
 
 # 2026-09-17(간편인증 A안 부작용 정리): wallet_ui.py의 카카오 로그인 트리거가
 # postMessage 브릿지를 못 쓰는 기기에서 URL 폴백으로 이 파라미터를 실어보내는데
@@ -131,8 +165,9 @@ if _native_kakao_token:
 # 뜨는 부작용으로 이어질 수 있다. 네이티브 쪽은 이미 URL 자체를 보고 즉시
 # 반응했으므로(onNavigationStateChange/onShouldStartLoadWithRequest) 서버는 그냥
 # 흔적만 지우면 된다 — native_kakao_token과 달리 이 값 자체로 할 일은 없다.
-if st.query_params.get("kakao_native_trigger"):
-    del st.query_params["kakao_native_trigger"]
+for _trigger_param in ("kakao_native_trigger", "apple_native_trigger"):
+    if st.query_params.get(_trigger_param):
+        del st.query_params[_trigger_param]
 
 # 네이티브 앱이 콜드 스타트(=완전히 껐다 다시 켬) 직후 최초 로드에만 ?fresh_start=1을
 # 실어보낸다(LottoShinryeong/utils/fresh-start.ts 참고 — 백그라운드 전환/앱 내

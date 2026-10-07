@@ -20,6 +20,10 @@ GATE_LINES = [
 
 GATE_BUTTON = "카카오로 시작하기"
 
+# 2026-10-06(애플 심사 가이드라인 4.8): iOS 앱에서만 카카오 버튼과 같은 크기·위치로 함께 노출.
+# 문구는 애플 Human Interface Guidelines 한국어 표기("Apple로 로그인")를 따른다.
+GATE_BUTTON_APPLE = "Apple로 로그인"
+
 # 안내창을 이미 한 번 본 뒤, 로그인 안 한 채로 막힌 기능을 또 눌렀을 때
 # 각 자리에 조용히 남기는 한 줄(안내창 자체는 다시 안 띄움).
 GATE_INLINE_HINT = "로그인이 필요합니다"

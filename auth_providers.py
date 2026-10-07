@@ -741,7 +741,7 @@ def _exchange_kakao_code(code: str) -> tuple[str | None, str | None]:
     return _fetch_kakao_uid_with_token(token)
 
 
-def _record_native_login(result: str, detail: str = "") -> None:
+def _record_native_login(result: str, detail: str = "", provider: str = "kakao") -> None:
     """앱(네이티브) 토큰 로그인 경로의 도착·결과를 남긴다 — 이 경로만은 실패해도
     서버에 아무 흔적이 안 남아서, 2026-09-27 테스터 전원 로그인 불가 신고 때
     "앱이 신호를 못 받은 것"과 "서버가 토큰을 거절한 것"을 사후에 구분할 수 없었다.
@@ -758,7 +758,7 @@ def _record_native_login(result: str, detail: str = "") -> None:
         import security_log
 
         security_log.log_event(
-            "kakao_native_login_ok" if result == "ok" else "kakao_native_login_fail",
+            f"{provider}_native_login_ok" if result == "ok" else f"{provider}_native_login_fail",
             str(detail or "")[:200],
         )
     except Exception:
@@ -790,6 +790,139 @@ def finalize_login_with_native_token(access_token: str) -> tuple[int, bool, bool
         return None
     _record_native_login("ok")
     return result
+
+
+# ── Apple 로그인(Sign in with Apple) — 2026-10-06, 애플 심사 가이드라인 4.8 ─────────────
+# iOS 앱(expo-apple-authentication)이 받은 identity token(JWT)을 주소에 실어 보내면 서버가
+# 애플 공개키(JWKS)로 서명·발급자·대상(번들 ID)·만료를 직접 검증한다 — 앱이 보낸 값을 그대로
+# 믿지 않는다(카카오 경로가 카카오 서버에 직접 묻는 것과 같은 원칙). 회원 식별자는 토큰의
+# sub(애플이 앱마다 발급하는 고정 사용자 ID)만 쓰고, 이름·이메일은 요청하지도 저장하지도 않는다
+# (앱이 requestedScopes 를 비워 보낸다 — 개인정보 처리방침 "OAuth 프로필 보관하지 않음"과 일치).
+APPLE_ISSUER = "https://appleid.apple.com"
+APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+# 토큰의 aud 는 앱 번들 ID 다. LottoShinryeong/app.json 의 ios.bundleIdentifier 와 같아야 한다
+# (tests/test_apple_login.py 가 두 값을 대조한다).
+APPLE_BUNDLE_ID = "com.bandouni.lottoshinryeong"
+
+_APPLE_JWKS_CACHE: dict = {"at": 0.0, "keys": {}}
+_APPLE_JWKS_TTL_SECONDS = 3600
+_APPLE_CLOCK_LEEWAY_SECONDS = 60
+
+
+def _b64url_decode(part: str) -> bytes:
+    import base64
+
+    return base64.urlsafe_b64decode(part + "=" * (-len(part) % 4))
+
+
+def _apple_public_keys(force: bool = False) -> dict:
+    """애플 JWKS(kid → RSA 공개키). 1시간 캐시, 모르는 kid 가 오면 한 번 새로 받는다.
+
+    새 패키지(PyJWT 등)를 requirements 에 추가하지 않으려고(심사 중 Cloud 재설치 위험)
+    google-auth 의존성으로 이미 설치돼 있는 cryptography 로 직접 만든다."""
+    import time
+
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+
+    now = time.time()
+    if not force and _APPLE_JWKS_CACHE["keys"] and now - _APPLE_JWKS_CACHE["at"] < _APPLE_JWKS_TTL_SECONDS:
+        return _APPLE_JWKS_CACHE["keys"]
+    resp = requests.get(APPLE_JWKS_URL, timeout=10)
+    resp.raise_for_status()
+    keys = {}
+    for jwk in resp.json().get("keys", []):
+        if jwk.get("kty") != "RSA" or not jwk.get("kid"):
+            continue
+        n = int.from_bytes(_b64url_decode(jwk["n"]), "big")
+        e = int.from_bytes(_b64url_decode(jwk["e"]), "big")
+        keys[jwk["kid"]] = RSAPublicNumbers(e, n).public_key()
+    _APPLE_JWKS_CACHE["keys"] = keys
+    _APPLE_JWKS_CACHE["at"] = now
+    return keys
+
+
+def verify_apple_identity_token(identity_token: str, *, public_keys: dict | None = None,
+                                now: float | None = None) -> tuple[str | None, str | None]:
+    """(sub, None) 또는 (None, 실패 이유).
+
+    확인: RS256 서명(애플 공개키, kid 일치) · iss=애플 · aud=이 앱 번들 ID · exp 미만료 · sub 존재.
+    public_keys·now 는 테스트용 주입 지점이다."""
+    import json
+    import time
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+
+    token = str(identity_token or "").strip()
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None, "Apple 토큰 형식 오류"
+    try:
+        header = json.loads(_b64url_decode(parts[0]))
+        claims = json.loads(_b64url_decode(parts[1]))
+        signature = _b64url_decode(parts[2])
+    except Exception as exc:
+        return None, f"Apple 토큰 해석 실패: {type(exc).__name__}"
+    if header.get("alg") != "RS256":
+        return None, f"Apple 토큰 알고리즘 거부: {header.get('alg')}"
+    kid = header.get("kid")
+    try:
+        keys = public_keys if public_keys is not None else _apple_public_keys()
+        key = keys.get(kid)
+        if key is None and public_keys is None:
+            key = _apple_public_keys(force=True).get(kid)
+    except Exception as exc:
+        return None, f"Apple 공개키 조회 실패: {type(exc).__name__}: {exc}"[:200]
+    if key is None:
+        return None, "Apple 공개키(kid) 불일치"
+    try:
+        key.verify(signature, f"{parts[0]}.{parts[1]}".encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
+    except Exception:
+        return None, "Apple 토큰 서명 불일치"
+    if claims.get("iss") != APPLE_ISSUER:
+        return None, "Apple 토큰 발급자 불일치"
+    aud = claims.get("aud")
+    if (aud != APPLE_BUNDLE_ID) and not (isinstance(aud, list) and APPLE_BUNDLE_ID in aud):
+        return None, "Apple 토큰 대상(번들 ID) 불일치"
+    current = time.time() if now is None else now
+    try:
+        if float(claims["exp"]) + _APPLE_CLOCK_LEEWAY_SECONDS < current:
+            return None, "Apple 토큰 만료"
+    except (KeyError, TypeError, ValueError):
+        return None, "Apple 토큰 만료시각 없음"
+    sub = str(claims.get("sub") or "").strip()
+    if not sub:
+        return None, "Apple 사용자 ID(sub) 없음"
+    return sub, None
+
+
+def finalize_login_with_apple_token(identity_token: str) -> tuple[int, bool, bool] | None:
+    """Apple identity token으로 로그인 완료 — finalize_login_with_native_token(카카오)과 같은 규격:
+    실패는 None + [apple_native_login_fail] 기록, 성공은 finalize_login("apple", sub) 결과 그대로."""
+    sub, error = verify_apple_identity_token(identity_token)
+    if not sub:
+        logging.warning("[apple_native_login_fail] %s", error)
+        _record_native_login("fail", error or "이유 없음", provider="apple")
+        return None
+    try:
+        result = finalize_login("apple", sub)
+    except Exception as exc:
+        logging.exception("[apple_native_login_fail] 로그인 처리 중 예외")
+        _record_native_login("fail", f"예외 {type(exc).__name__}: {exc}", provider="apple")
+        return None
+    _record_native_login("ok", provider="apple")
+    return result
+
+
+def record_native_login_error(raw: str) -> None:
+    """앱이 SDK 단계에서 실패했을 때(취소 제외) 보내는 보고를 남긴다 — 2026-10-06 iOS 로그인 먹통
+    때 앱이 실패를 조용히 삼켜 원인을 하루 동안 못 찾았던 재발 방지. 형식: "<kakao|apple>:<내용>"."""
+    try:
+        import security_log
+
+        security_log.log_event("native_login_error", str(raw or "")[:200])
+    except Exception:
+        pass
 
 
 def _exchange_pass_code(code: str) -> str | None:

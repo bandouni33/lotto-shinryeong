@@ -14,6 +14,7 @@
     "ios": {
       "bundleIdentifier": "com.bandouni.lottoshinryeong",
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
@@ -69,7 +70,8 @@
           }
         }
       ],
-      "expo-iap"
+      "expo-iap",
+      "expo-apple-authentication"
     ],
     "extra": {
       "router": {},

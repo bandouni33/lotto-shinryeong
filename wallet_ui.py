@@ -383,6 +383,15 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_close_x {
     min-height: 42px !important;
     font-weight: 700 !important;
 }
+/* 2026-10-06: Apple 로그인(iOS 앱 전용) — 애플 HIG 검정 버튼. 카카오 버튼과 같은 크기·모서리. */
+.st-key-auth_banner_kakao .st-key-auth_banner_apple div[data-testid="stButton"] button[kind="primary"] {
+    background: #000000 !important;
+    color: #ffffff !important;
+    border-color: #000000 !important;
+}
+.st-key-auth_banner_kakao .st-key-auth_banner_apple div[data-testid="stButton"] button[kind="primary"] p::before {
+    content: "\\F8FF  ";
+}
 </style>
         """,
         unsafe_allow_html=True,
@@ -447,7 +456,17 @@ def _force_kakao_link_same_tab() -> None:
     )
 
 
-def _fire_kakao_native_login_trigger() -> None:
+# 2026-10-06(Apple 로그인 추가): 카카오와 Apple 이 같은 신호 방식(최상위 문서 postMessage → 없으면
+# URL 파라미터 폴백)을 쓰도록 한 함수로 묶었다 — 화면마다·로그인 수단마다 사본을 두지 않는다.
+# 메시지 이름·URL 파라미터 이름은 LottoShinryeong/components/streamlit-webview.tsx 의 수신부와
+# 짝이다(tests/test_apple_login.py 가 양쪽을 대조한다).
+NATIVE_LOGIN_TRIGGERS = {
+    "kakao": ("kakaoNativeLogin", "kakao_native_trigger"),
+    "apple": ("appleNativeLogin", "apple_native_trigger"),
+}
+
+
+def _fire_native_login_trigger(provider: str) -> None:
     """네이티브 앱(streamlit-webview.tsx)에게 카카오 네이티브 SDK 로그인을
     시작하라는 신호를 보낸다 — page_hedge.py의 QR스캔 트리거(_fire_qr_scan_
     trigger)와 완전히 같은 기법: components.html은 항상 iframe 안에서
@@ -466,6 +485,7 @@ def _fire_kakao_native_login_trigger() -> None:
     항상 실행하면(QR스캔에서 겪은 부작용, 위 _fire_qr_scan_trigger 독스트링
     참고) 브릿지가 성공했을 때도 URL 이동이 같이 걸려 화면이 깜빡이며
     되돌아오는 문제가 생길 수 있어 피한다."""
+    message_type, url_param = NATIVE_LOGIN_TRIGGERS[provider]
     components.html(
         """<script>
         (function () {
@@ -476,10 +496,10 @@ def _fire_kakao_native_login_trigger() -> None:
                     "try{" +
                     "var rnwv = window.ReactNativeWebView;" +
                     "if(rnwv && typeof rnwv.postMessage === 'function'){" +
-                    "rnwv.postMessage(JSON.stringify({type:'kakaoNativeLogin'}));" +
+                    "rnwv.postMessage(JSON.stringify({type:'__MSG__'}));" +
                     "}else{" +
                     "var u = new URL(window.location.href);" +
-                    "u.searchParams.set('kakao_native_trigger', '1');" +
+                    "u.searchParams.set('__PARAM__', '1');" +
                     "window.location.href = u.toString();" +
                     "}" +
                     "}catch(e){}";
@@ -490,24 +510,32 @@ def _fire_kakao_native_login_trigger() -> None:
                 // 최소한 이 폴백만이라도 시도한다.
                 try {
                     var u2 = new URL(top.location.href);
-                    u2.searchParams.set('kakao_native_trigger', '1');
+                    u2.searchParams.set('__PARAM__', '1');
                     top.location.href = u2.toString();
                 } catch (e2) {}
             }
         })();
-        </script>""",
+        </script>""".replace("__MSG__", message_type).replace("__PARAM__", url_param),
         height=0,
     )
     # 2026-09-27(테스터 전원 로그인 불가 진단): 이 한 줄이 "앱에 로그인 신호를 보냈다"는
-    # 서버 쪽 증거다. 이 기록 뒤에 auth_providers의 kakao_native_login_ok/fail이 없으면
+    # 서버 쪽 증거다. 이 기록 뒤에 auth_providers의 <provider>_native_login_ok/fail이 없으면
     # 앱이 응답하지 않은 것(빌드에 수신부 없음·앱키/키해시 불일치·사용자 취소)이고,
     # fail이 있으면 토큰 검증에서 끊긴 것이다 — 대시보드에서 두 이벤트 순서만 보면 갈린다.
     try:
         import security_log
 
-        security_log.log_event("kakao_native_trigger", "banner=native")
+        security_log.log_event(url_param, "banner=native")
     except Exception:
         pass
+
+
+def _fire_kakao_native_login_trigger() -> None:
+    _fire_native_login_trigger("kakao")
+
+
+def _fire_apple_native_login_trigger() -> None:
+    _fire_native_login_trigger("apple")
 
 
 def _log_login_branch_once(is_native_app: bool) -> None:
@@ -617,6 +645,23 @@ def _render_auth_banner_form() -> None:
 
                     remember_return_page_at_login_click()
                     _fire_kakao_native_login_trigger()
+                # 2026-10-06(애플 심사 가이드라인 4.8): iOS 앱에서만 같은 크기의 Apple 로그인을
+                # 카카오 바로 아래에 함께 둔다(안드로이드·웹에는 없음). 판정은 apple_login_available
+                # (iOS 앱 + Apple 수신부가 있는 빌드). 문구는 login_gate.GATE_BUTTON_APPLE 한 곳.
+                if apple_login_available():
+                    from login_gate import GATE_BUTTON_APPLE
+
+                    with st.container(key="auth_banner_apple"):
+                        if st.button(
+                            GATE_BUTTON_APPLE,
+                            use_container_width=True,
+                            type="primary",
+                            key="auth_banner_apple_native",
+                        ):
+                            from auth_providers import remember_return_page_at_login_click
+
+                            remember_return_page_at_login_click()
+                            _fire_apple_native_login_trigger()
             else:
                 st.link_button(
                     GATE_BUTTON,
@@ -915,6 +960,28 @@ def in_ios_native_app() -> bool:
     안드로이드 스위치(IAP_CHARGE_ENABLED·IAP_SUBSCRIPTION_ENABLED·TEST_CHARGE_ENABLED)
     와 무관하게 동작하게 하려는 것이다(스위치는 안드로이드 전용으로 계속 쓴다)."""
     return in_native_app() and native_platform() == "ios"
+
+
+# 2026-10-06(Apple 로그인): 앱 빌드가 Apple 로그인 수신부를 가졌다는 표시. 앱
+# (streamlit-webview.tsx APPLE_LOGIN_CAPABILITY_PARAMS)이 iOS 에서만 apple_login=1 을 싣고,
+# 내부이동 링크(user_scope.internal_nav_href)가 그대로 이어 보낸다.
+APPLE_LOGIN_CAPABILITY_PARAM = "apple_login"
+
+
+def apple_login_available() -> bool:
+    """Apple 로그인 버튼을 그려도 되는가 — iOS 앱이면서 수신부가 있는 빌드일 때만.
+
+    수신부 없는 이전 빌드(심사 중 1.0.2 build 8, TestFlight build 10)에 버튼을 띄우면 눌러도
+    반응이 없어 그 자체가 심사 반려(2.1 앱 완성도) 사유가 된다."""
+    if not in_ios_native_app():
+        return False
+    try:
+        value = st.query_params.get(APPLE_LOGIN_CAPABILITY_PARAM)
+    except Exception:
+        return False
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value or "") == "1"
 
 
 def _iap_points_products() -> dict:

@@ -208,6 +208,15 @@ def internal_nav_href(page: str, **extra_params: str) -> str:
     native = st.query_params.get("native")
     if native:
         params["native"] = native
+    # 2026-10-06: native_platform(ios/android)도 같은 이유로 이어 보낸다 — 앱은 첫 주소에만
+    # 싣는데 내부이동(전체 새로고침)마다 사라져, 하위 화면에서 wallet_ui.in_ios_native_app()이
+    # False 가 됐다(iOS 결제 버튼 숨김·Apple 로그인 버튼 노출 판정이 하위 화면에서 풀림).
+    platform = st.query_params.get("native_platform")
+    if platform:
+        params["native_platform"] = platform
+    # Apple 로그인 수신부가 있는 빌드 표시(wallet_ui.APPLE_LOGIN_CAPABILITY_PARAM)도 같은 이유로 잇는다.
+    if st.query_params.get("apple_login"):
+        params["apple_login"] = st.query_params.get("apple_login")
     params.update(extra_params)
     query = urllib.parse.urlencode(params)
     return f"?{query}"

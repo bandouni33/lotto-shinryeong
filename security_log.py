@@ -27,6 +27,10 @@ EVENT_LABELS = {
     "kakao_native_trigger": "카카오 앱 로그인 신호 전송(계측)",
     "kakao_native_login_ok": "카카오 앱 로그인 완료(계측)",
     "kakao_native_login_fail": "카카오 앱 로그인 실패(계측)",
+    "apple_native_trigger": "Apple 로그인 신호 전송(계측)",
+    "apple_native_login_ok": "Apple 로그인 완료(계측)",
+    "apple_native_login_fail": "Apple 로그인 실패(계측)",
+    "native_login_error": "앱 로그인 SDK 오류 보고(계측)",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용
@@ -47,6 +51,11 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "kakao_native_trigger",
         "kakao_native_login_ok",
         "kakao_native_login_fail",
+        # 2026-10-06: Apple 로그인(가이드라인 4.8)과 앱 SDK 오류 보고도 같은 3단계 계측이다.
+        "apple_native_trigger",
+        "apple_native_login_ok",
+        "apple_native_login_fail",
+        "native_login_error",
     }
 )
 

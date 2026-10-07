@@ -25,6 +25,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { login as kakaoNativeLogin } from '@react-native-seoul/kakao-login';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 import { getStreamlitBaseUrl, getStreamlitPageUrl } from '@/constants/streamlit';
 import { getOrCreateGuestId } from '@/utils/guest-id';
@@ -75,6 +76,12 @@ const KAKAO_NATIVE_LOGIN_TIMEOUT_MS = 20000;
 // 안드로이드는 iframe 로드에 이 검사를 하지 않아 영향이 없다. 카카오톡 등 외부 앱 스킴은
 // 지금처럼 목록 밖이라 기존 동작(외부 앱으로 넘김)이 그대로 유지된다.
 const WEBVIEW_ORIGIN_WHITELIST = ['http://*', 'https://*', 'about:srcdoc'];
+
+// 2026-10-06(Apple 로그인): 이 빌드가 Apple 로그인 수신부를 갖고 있음을 서버에 알리는 표시.
+// 서버(wallet_ui.APPLE_LOGIN_CAPABILITY_PARAM)는 이 값이 있을 때만 Apple 버튼을 그린다 —
+// 수신부가 없는 이전 빌드(심사 중 1.0.2 build 8 등)에 눌러도 반응 없는 버튼이 생기지 않게.
+const APPLE_LOGIN_CAPABILITY_PARAMS: Record<string, string> =
+  Platform.OS === 'ios' ? { apple_login: '1' } : {};
 
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string = 'kakao_native_login_timeout'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -271,6 +278,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         // 분기를 서버에 만들 수 없다. 값은 상수 문자열이 아니라 Platform.OS를
         // 그대로 쓴다(ios/android가 그대로 내려간다).
         native_platform: Platform.OS,
+        ...APPLE_LOGIN_CAPABILITY_PARAMS,
         ...priceParamsRef.current,
         ...(overrides || {}),
       }),
@@ -298,6 +306,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     (params: Record<string, string>) =>
       withParams(currentUrlRef.current ?? buildUri(), {
         native_platform: Platform.OS,
+        ...APPLE_LOGIN_CAPABILITY_PARAMS,
         ...params,
       }),
     [buildUri]
@@ -594,6 +603,24 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 라이브러리가 자동으로 Custom Tab 기반 계정 로그인으로 대체한다.
   // 받은 access_token은 서버가 카카오에 직접 검증하도록 다음 웹뷰 로드에
   // 실어 보낸다(로그인 자체가 이미 끝난 뒤라 앱 밖으로 나갈 필요가 없다).
+  // 2026-10-06(iOS 로그인 먹통 재발 방지): 예전엔 SDK 실패를 조용히 삼켜 화면·서버 어디에도
+  // 흔적이 없었다(원인 찾는 데 하루가 걸림). 사용자가 직접 취소한 경우만 조용히 넘기고, 그 밖의
+  // 실패는 이유를 native_login_error 로 서버에 남긴다(서버는 기록 + 공통 실패 안내 토스트).
+  const reportNativeLoginError = useCallback(
+    (provider: 'kakao' | 'apple', err: unknown) => {
+      const e = err as { code?: unknown; message?: unknown } | null;
+      const code = String(e?.code ?? '');
+      const message = String(e?.message ?? err ?? '');
+      const text = `${code} ${message}`.toLowerCase();
+      if (code === 'ERR_REQUEST_CANCELED' || text.includes('cancel')) {
+        return;
+      }
+      const detail = `${provider}:${code || 'error'}:${message}`.slice(0, 180);
+      setWebViewUri(reloadWith({ native_login_error: detail, _cb: String(Date.now()) }));
+    },
+    [reloadWith]
+  );
+
   const handleKakaoNativeLogin = useCallback(async () => {
     // 2026-09-06: 클라이언트 쪽 3단계(브릿지 수신 → login() 성공 → 토큰 세팅)는
     // Alert 진단으로 이미 확인 완료 — 매번 뜨는 팝업이 오히려 뒤 화면(서버
@@ -608,12 +635,14 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       // 재빌드하면 사용자가 웹뷰 안에서 이동해둔 페이지(그리고 주소에 남아있던
       // 파라미터·열린 화면 표시)를 잃고 처음 페이지로 튕긴다.
       setWebViewUri(reloadWith({ native_kakao_token: token.accessToken, _cb: String(Date.now()) }));
-    } catch {
+    } catch (err) {
       // 사용자가 취소했거나 카카오 로그인 자체가 실패했거나(타임아웃 포함) —
-      // 로그인 배너에서 다시 시도할 수 있으니 조용히 무시한다. 타임아웃이어도
+      // 로그인 배너에서 다시 시도할 수 있다. 타임아웃이어도
       // triggerKakaoNativeLoginOnce의 .finally()가 락을 반드시 풀어준다.
+      // 2026-10-06: 취소가 아닌 실패는 이유를 서버에 보고한다(reportNativeLoginError 설명 참고).
+      reportNativeLoginError('kakao', err);
     }
-  }, [reloadWith]);
+  }, [reloadWith, reportNativeLoginError]);
 
   // 2026-09-06: QR스캔에서 이미 겪은 문제(위 qrScanRedirected 부근 주석 —
   // 특정 실기기에서 window.ReactNativeWebView 자체가 안 만들어져 postMessage
@@ -630,6 +659,45 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       kakaoLoginLockRef.current = false;
     });
   }, [handleKakaoNativeLogin]);
+
+  // 2026-10-06(애플 심사 가이드라인 4.8): Apple 로그인 — 카카오와 같은 3단계(서버 신호 →
+  // 네이티브 로그인 → 토큰을 주소에 실어 서버 검증). 이름·이메일은 요청하지 않는다
+  // (requestedScopes 비움 — 서버는 애플 사용자 ID만 쓴다). authorizationCode 는 탈퇴 시 토큰
+  // 해지(2단계)용으로 함께 보내며 지금 서버는 주소에서 지우기만 한다.
+  // 서버 쪽 짝: wallet_ui.NATIVE_LOGIN_TRIGGERS["apple"], user_page 의 native_apple_token 처리.
+  const handleAppleNativeLogin = useCallback(async () => {
+    try {
+      const credential = await withTimeout(
+        AppleAuthentication.signInAsync({ requestedScopes: [] }),
+        KAKAO_NATIVE_LOGIN_TIMEOUT_MS * 6,
+        'apple_native_login_timeout'
+      );
+      if (!credential.identityToken) {
+        reportNativeLoginError('apple', { code: 'NO_IDENTITY_TOKEN', message: 'identityToken 없음' });
+        return;
+      }
+      setWebViewUri(
+        reloadWith({
+          native_apple_token: credential.identityToken,
+          ...(credential.authorizationCode ? { native_apple_code: credential.authorizationCode } : {}),
+          _cb: String(Date.now()),
+        })
+      );
+    } catch (err) {
+      reportNativeLoginError('apple', err);
+    }
+  }, [reloadWith, reportNativeLoginError]);
+
+  const appleLoginLockRef = useRef(false);
+  const triggerAppleNativeLoginOnce = useCallback(() => {
+    if (Platform.OS !== 'ios' || appleLoginLockRef.current) {
+      return;
+    }
+    appleLoginLockRef.current = true;
+    handleAppleNativeLogin().finally(() => {
+      appleLoginLockRef.current = false;
+    });
+  }, [handleAppleNativeLogin]);
 
   // 1) onNavigationStateChange — 웹뷰의 실제 URL이 바뀔 때마다 항상 불리는(리액티브)
   // 이벤트라 세 경로 중 가장 신뢰도가 높다. 실기기(Android 16, Samsung SM-M166S)에서
@@ -649,12 +717,15 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (navState.url && navState.url.includes('kakao_native_trigger=1')) {
         triggerKakaoNativeLoginOnce();
       }
+      if (navState.url && navState.url.includes('apple_native_trigger=1')) {
+        triggerAppleNativeLoginOnce();
+      }
       const iapFromUrl = parseIapRequestFromUrl(navState.url);
       if (iapFromUrl) {
         triggerIapPurchaseOnce(iapFromUrl);
       }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
   );
 
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
@@ -674,6 +745,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         triggerKakaoNativeLoginOnce();
         return false;
       }
+      if (request.url.includes('apple_native_trigger=1')) {
+        triggerAppleNativeLoginOnce();
+        return false;
+      }
       const iapFromUrl = parseIapRequestFromUrl(request.url);
       if (iapFromUrl) {
         triggerIapPurchaseOnce(iapFromUrl);
@@ -681,7 +756,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       }
       return true;
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
@@ -707,6 +782,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         goToQrScan();
       } else if (payload?.type === 'kakaoNativeLogin') {
         triggerKakaoNativeLoginOnce();
+      } else if (payload?.type === 'appleNativeLogin') {
+        triggerAppleNativeLoginOnce();
       } else if (payload?.type === 'iapPurchase' && typeof payload.productId === 'string') {
         // wallet_ui.py _fire_iap_purchase_trigger()가 보내는 결제 요청.
         triggerIapPurchaseOnce({
@@ -719,7 +796,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         setDialogOpen(!!payload.open);
       }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce, triggerIapPurchaseOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, triggerIapPurchaseOnce]
   );
 
   const goToStreamlitHome = useCallback(() => {
