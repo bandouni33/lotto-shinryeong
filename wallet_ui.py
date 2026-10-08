@@ -87,12 +87,17 @@ WALLET_TOAST_BOX_KEY = "wallet_toast_box"
 # 두 개 있을 때만 이전 것(stale 요소를 품은 쪽)을 숨긴다 — 한 개뿐일 땐 다시 그리는 중에도 그대로
 # 보여 깜빡이지 않는다. render_wallet_bar 의 공통 style 에 함께 넣는다(모든 화면 공통 자리).
 _AUTH_BANNER_LW = '[data-testid="stLayoutWrapper"]'
-_AUTH_BANNER_DUPLICATE_HIDE_CSS = (
-    f"{_AUTH_BANNER_LW}:has(> .st-key-auth_banner_wrap [data-stale=\"true\"])"
-    f":has(~ {_AUTH_BANNER_LW} > .st-key-auth_banner_wrap),"
-    f"{_AUTH_BANNER_LW}:has(> .st-key-auth_banner_wrap) ~ "
-    f"{_AUTH_BANNER_LW}:has(> .st-key-auth_banner_wrap [data-stale=\"true\"])"
+# 안내 문구 묶음(auth_banner_wrap)과 카카오(·Apple) 버튼 묶음(auth_banner_kakao)은 같은 높이의 형제 칸이라
+# 둘 다 따로 검사한다(실측: 시뮬레이션에서 겹친 것은 버튼 묶음이었다 — 새 것 y=158, 이전 것 y=289).
+# 새 것이 실제로 그려진(stale=false) 뒤에만 이전 것을 숨긴다 — 그 전에 숨기면 버튼이 잠깐 통째로 사라진다.
+_AUTH_BANNER_DUP_KEYS = ("auth_banner_wrap", "auth_banner_kakao")
+_AUTH_BANNER_DUPLICATE_HIDE_CSS = "".join(
+    f"{_AUTH_BANNER_LW}:has(> .st-key-{k} [data-stale=\"true\"])"
+    f":has(~ {_AUTH_BANNER_LW} > .st-key-{k} [data-stale=\"false\"]),"
+    f"{_AUTH_BANNER_LW}:has(> .st-key-{k} [data-stale=\"false\"]) ~ "
+    f"{_AUTH_BANNER_LW}:has(> .st-key-{k} [data-stale=\"true\"])"
     "{display:none !important;}"
+    for k in _AUTH_BANNER_DUP_KEYS
 )
 AUTH_BANNER_DISMISS_REDIRECT = "auth_banner_dismiss_redirect"
 
