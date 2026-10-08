@@ -35,6 +35,7 @@ def _reload_if_stale(module):
 # 읽었으면 그 함수를 이름으로 가져다 쓰는 화면 모듈도 다음 import 때 새로 읽히게 표시를 지운다.
 # DB 연결 풀·지갑 원장 모듈(db_turso·wallet_db)과 결제 모듈은 상태를 들고 있어 대상에서 뺀다.
 _CORE_RELOAD_ORDER = (
+    "shared_ui_styles",
     "legal_notices",
     "login_gate",
     "security_log",
@@ -99,6 +100,15 @@ if st.session_state.get("is_admin", False):
 # 1. 페이지 초기 설정 및 상태 관리
 # ==========================================
 st.set_page_config(page_title="로또신령", page_icon="K-325.jpg", layout="centered", initial_sidebar_state="collapsed")
+
+# 2026-10-08: 다시 그리는 동안 화면이 흐려지는 효과를 모든 화면에서 끈다(shared_ui_styles 설명).
+# 배포 직후 옛 shared_ui_styles 가 캐시돼 함수가 없어도 화면은 그대로 뜨게 감싼다.
+try:
+    from shared_ui_styles import no_stale_dim_css
+
+    st.html(no_stale_dim_css())
+except Exception:
+    pass
 
 from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables

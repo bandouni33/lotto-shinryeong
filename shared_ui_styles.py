@@ -129,6 +129,26 @@ def brand_home_link_css() -> str:
     return _BRAND_HOME_LINK_CSS
 
 
+# ── 버튼을 누를 때 화면 전체가 흐려지는 효과 끄기 (2026-10-08 사용자 지시) ──
+# Streamlit 은 다시 그리는 동안(0.5초 뒤부터) 이전 화면 요소에 data-stale="true" 를 달고
+# 투명도를 낮춘다(1.64 기준 opacity 전환 '1s ease-in 0.5s'). 이용자 평가 "화면 이동이 끊기는 듯
+# 부자연스럽다"의 직접 원인이라 모든 화면에서 끈다. 요소를 숨기거나 옮기지 않고 투명도만 원래대로
+# 두므로 버튼 위치·동작은 그대로다. 호출은 user_page 한 곳(매 실행)에서만 한다 — st.html 로
+# style 만 넣으면 Streamlit 이 화면 밖(event 컨테이너)에 넣어 레이아웃 간격도 생기지 않는다.
+_NO_STALE_DIM_CSS = """
+<style>
+[data-stale="true"] {
+    opacity: 1 !important;
+    transition: none !important;
+}
+</style>
+"""
+
+
+def no_stale_dim_css() -> str:
+    return _NO_STALE_DIM_CSS
+
+
 def brand_home_link_html(href: str | None = None) -> str:
     """화면 좌상단에 떠 있는 작은 원형 아이콘(글자 없음) — 클릭하면 메인으로.
     position:fixed라 문서 흐름에서 빠져 있어 다른 요소를 밀어내지 않는다
