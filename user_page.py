@@ -305,6 +305,14 @@ if st.query_params.get("fresh_start") == "1":
         from wallet_db import unlink_guest_from_member
 
         unlink_guest_from_member(get_or_create_guest_id())
+        # 2026-10-08: 로그인 유지 확인을 기기별로 잠깐 기억해 두므로(auth_providers) 그 칸도 비운다 —
+        # 안 비우면 바로 아래 restore 가 기억해 둔 옛 연결로 다시 로그인시킨다.
+        try:
+            from auth_providers import _forget_guest_recheck
+
+            _forget_guest_recheck(get_or_create_guest_id())
+        except Exception:
+            pass
 
 # 세션이 끊겼다 재연결되면(모바일 백그라운드 전환·네트워크 끊김 등) member_id가
 # 사라져서 기능을 쓸 때마다 간편인증 배너가 다시 뜨는 문제가 있었다 — 이 기기
@@ -488,10 +496,17 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
             was_guest_update_notice_shown_today,
         )
 
-        init_marketing_tables()
-        _un_guest_id = get_or_create_guest_id()
         _un_today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
-        _un_already_shown = was_guest_update_notice_shown_today(_un_guest_id, _un_version, _un_today)
+        # 2026-10-08(로딩 시간 — 사용자 승인): 이 접속(세션)에서 오늘 이 버전을 이미 확인했으면 DB를
+        # 다시 묻지 않는다(메인 화면마다 조회 2회+기록 1회 ≈ 0.2~0.3초였다). 하루 1회 노출 규칙은 그대로다.
+        _un_session_key = f"_un_checked_{_un_version}_{_un_today}"
+        if st.session_state.get(_un_session_key):
+            _un_already_shown = True
+        else:
+            init_marketing_tables()
+            _un_guest_id = get_or_create_guest_id()
+            _un_already_shown = was_guest_update_notice_shown_today(_un_guest_id, _un_version, _un_today)
+            st.session_state[_un_session_key] = True
 
         if not _un_already_shown:
           mark_guest_update_notice_shown(_un_guest_id, _un_version, _un_today)

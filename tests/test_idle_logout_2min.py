@@ -148,6 +148,12 @@ class BoundaryBehaviourTests(unittest.TestCase):
                      (stamp, TEST_GUEST))
         conn.commit()
         conn.close()
+        # 2026-10-08: 로그인 유지 확인은 기기별로 30초 기억된다(auth_providers.RESTORE_RECHECK_SECONDS).
+        # 이 테스트는 "age_seconds 만큼 시간이 흘렀다"를 DB 값으로만 흉내 내므로, 실제로 시간이 흘렀다면
+        # 이미 사라졌을 기억 칸도 같이 비운다(tests/test_restore_recheck_throttle.py 가 기억 동작 자체를 본다).
+        import auth_providers
+
+        auth_providers._forget_guest_recheck(TEST_GUEST)
         return stamp
 
     def _link_row(self):

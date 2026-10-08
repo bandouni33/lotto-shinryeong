@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 import uuid
 import urllib.parse
@@ -557,6 +558,7 @@ def _link_guest_to_member_safe(guest_id: str, member_id: int, ua_hash: str | Non
         link_guest_to_member(guest_id, member_id, ua_hash)
     except Exception:
         pass
+    _forget_guest_recheck(guest_id)  # 2026-10-08: 새 연결을 다음 화면이 바로 보게
 
 
 # 무활동( idle) 자동 로그아웃 기준 — **이 값이 기준점이다**(2026-10-04 구름님 지시로 180 → 120).
@@ -567,6 +569,32 @@ def _link_guest_to_member_safe(guest_id: str, member_id: int, ua_hash: str | Non
 #   · 실효 판정은 이 서버 값이다(앱 쪽 자체 감지는 실기기에서 네 번 연속 실패했다 —
 #     아래 restore_member_from_guest 주석 참고).
 IDLE_LOGOUT_SECONDS = 120
+RESTORE_RECHECK_SECONDS = 30
+# 2026-10-08(사용자 승인 — 로딩 시간): 기기(guest_id)별 최근 확인 결과를 이 프로세스 안에 잠깐 둔다.
+# 이 앱은 화면을 옮길 때마다 새 세션이 열리므로 세션 단위가 아니라 기기 단위여야 효과가 있다.
+#   _GUEST_SEEN[guest] = 마지막으로 DB 유휴 확인·접속 기록을 한 시각
+#   _GUEST_LINK[guest] = (시각, member_id, ua_hash) — 연결 회원 조회 결과
+# 로그아웃(연결 끊기)·로그인(연결 맺기) 때 그 기기 칸을 즉시 지운다(_forget_guest_recheck).
+_GUEST_RECHECK_LOCK = threading.Lock()
+_GUEST_SEEN: dict = {}
+_GUEST_LINK: dict = {}
+
+
+def _forget_guest_recheck(guest_id) -> None:
+    with _GUEST_RECHECK_LOCK:
+        _GUEST_SEEN.pop(str(guest_id), None)
+        _GUEST_LINK.pop(str(guest_id), None)
+
+
+def _guest_recently_seen(guest_id, now: float) -> bool:
+    with _GUEST_RECHECK_LOCK:
+        ts = _GUEST_SEEN.get(str(guest_id))
+    return ts is not None and 0 <= now - ts < RESTORE_RECHECK_SECONDS
+
+
+def _mark_guest_seen(guest_id, now: float) -> None:
+    with _GUEST_RECHECK_LOCK:
+        _GUEST_SEEN[str(guest_id)] = now
 
 
 def restore_member_from_guest() -> int | None:
@@ -595,7 +623,19 @@ def restore_member_from_guest() -> int | None:
 
     init_wallet_tables()
     guest_id = get_or_create_guest_id()
-    _log_cookie_reachability_once()
+    # 2026-10-08(사용자 승인 — 로딩 시간): 쿠키 도달 계측(_log_cookie_reachability_once)은 몇 주간
+    # 결과가 항상 0이라 목적을 다했다 — 세션마다 DB 기록 1회를 없애려고 부르지 않는다(함수는 남김).
+
+    # 2026-10-08(사용자 승인 — 로딩 시간): 이 기기가 RESTORE_RECHECK_SECONDS 안에 이미 확인됐으면
+    # 아래 DB 조회(유휴 시간·연결 회원)·기록(마지막 접속)을 건너뛴다 — 화면마다 2회(≈0.2초)였다.
+    # 안전한 이유: 같은 기기가 30초 안에 요청을 보냈다면 유휴 120초는 불가능하다. 대신 DB의 마지막
+    # 접속 시각이 최대 30초 늦게 기록되므로, 앱을 껐다 새로 켠 경우 자동 로그아웃이 실제 유휴
+    # 90~120초 사이에 걸릴 수 있다(기존 120초). 로그인 직후·로그아웃 직후 동작은 바뀌지 않는다
+    # (로그인은 finalize_login 이 즉시 연결을 쓰고, 로그아웃은 연결을 끊는다).
+    _now = time.time()
+    _recently_seen = _guest_recently_seen(guest_id, _now)
+    if _recently_seen and st.session_state.get("member_id"):
+        return None
 
     # 2026-09-07: 서버 idle 로그아웃 정상 동작 확인 완료(2026-09-07 실기기
     # 백그라운드→재접속 테스트로 검증) — 검증 과정에서 원인 추적용으로 넣었던
@@ -612,30 +652,41 @@ def restore_member_from_guest() -> int | None:
     # 실패는 강제 로그아웃과는 전혀 다른 사안이므로 — 실패하면 그냥 이번
     # 렌더는 판정을 건너뛰고 기존 세션 상태를 그대로 둔다(안전한 쪽으로
     # fail-open; 진짜 3분 이상 idle이면 다음 정상 조회 때 어차피 잡힌다).
-    try:
-        idle_seconds = guest_idle_seconds(guest_id)
-    except Exception:
-        idle_seconds = None
+    if not _recently_seen:
+        try:
+            idle_seconds = guest_idle_seconds(guest_id)
+        except Exception:
+            idle_seconds = None
 
-    if idle_seconds is not None and idle_seconds >= IDLE_LOGOUT_SECONDS:
-        logout()
-        return None
+        if idle_seconds is not None and idle_seconds >= IDLE_LOGOUT_SECONDS:
+            logout()
+            return None
 
     if st.session_state.get("member_id"):
         try:
             touch_guest_last_seen(guest_id)
+            _mark_guest_seen(guest_id, _now)
         except Exception:
             pass
         return None
 
+    with _GUEST_RECHECK_LOCK:
+        _link_hit = _GUEST_LINK.get(str(guest_id))
     try:
-        member_id, stored_ua_hash = get_member_and_ua_for_guest(guest_id)
+        if _link_hit is not None and 0 <= _now - _link_hit[0] < RESTORE_RECHECK_SECONDS:
+            member_id, stored_ua_hash = _link_hit[1], _link_hit[2]
+        else:
+            member_id, stored_ua_hash = get_member_and_ua_for_guest(guest_id)
+            with _GUEST_RECHECK_LOCK:
+                _GUEST_LINK[str(guest_id)] = (_now, member_id, stored_ua_hash)
     except Exception:
         # 이 조회가 실패하면 이미 연결된 회원인지 알 수 없다 — 로그인
         # 배너가 한 번 더 뜨는 게 최악의 경우이고(로그인 상태를 잃지는
         # 않음), 예외를 그대로 흘려서 페이지 자체가 죽는 것보단 안전하다.
         return None
     if not member_id:
+        if not _recently_seen:
+            _mark_guest_seen(guest_id, _now)
         return None
 
     # 2026-09-20(진단 모드, 구름님 지시 — 아래 _ua_check_enabled() 차단 로직은
@@ -685,10 +736,12 @@ def restore_member_from_guest() -> int | None:
             return None
 
     bind_identity_on_login(member_id)
-    try:
-        touch_guest_last_seen(guest_id)
-    except Exception:
-        pass
+    if not _recently_seen:
+        try:
+            touch_guest_last_seen(guest_id)
+            _mark_guest_seen(guest_id, _now)
+        except Exception:
+            pass
     return member_id
 
 
@@ -1024,7 +1077,9 @@ def logout() -> None:
     # session_state만 비우면 다음 페이지 이동 때 restore_member_from_guest()가
     # guest_member_links를 보고 조용히 다시 로그인시켜버린다 — 그 연결 자체도
     # 끊어야 로그아웃이 실제로 유지된다.
-    unlink_guest_from_member(get_or_create_guest_id())
+    _gid = get_or_create_guest_id()
+    unlink_guest_from_member(_gid)
+    _forget_guest_recheck(_gid)  # 2026-10-08: 최근 확인 칸도 즉시 비운다(다음 화면이 옛 연결을 쓰지 않게)
     clear_user_session()
 
 
