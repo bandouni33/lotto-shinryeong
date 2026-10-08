@@ -5,6 +5,41 @@ import base64
 import os
 import time
 
+# 2026-10-08(로딩 시간 실측 — 사용자 지시 "로딩시간 줄이는 데 집중"): 이 화면 스크립트 한 번이
+# 서버에서 몇 ms 걸리는지(모든 화면 공통). _record_render_timing 참고.
+_LN_PAGE_T0 = time.perf_counter()
+_LN_RT_MAX_PER_SESSION = 3
+try:
+    st.session_state["_ln_rt_started"] = int(st.session_state.get("_ln_rt_started", 0)) + 1
+    st.session_state.setdefault("_ln_rt_session_t0", time.time())
+except Exception:
+    pass
+
+
+def _record_render_timing(trace: dict | None) -> None:
+    """세션당 처음 몇 번의 '끝까지 그린' 실행만 security_events 에 한 줄씩 남긴다(순수 계측).
+
+    실기기 첫 화면이 13초 넘게 걸리는데 서버 쪽이 얼마인지 운영(Cloud)에서 잰 적이 없어서 넣는다.
+    total_ms = 이 스크립트 처음~끝, since_session_ms = 이 세션 첫 실행 시작~지금(중간에 끊긴
+    실행·대기 포함), started = 이 세션에서 시작된 실행 수(끊긴 것 포함). DB 숫자는 계측이 켜져
+    있을 때만(db_turso.db_trace_end_run). 기록 실패는 화면에 영향 없게 삼킨다."""
+    n = int(st.session_state.get("_ln_rt_logged", 0))
+    if n >= _LN_RT_MAX_PER_SESSION:
+        return
+    st.session_state["_ln_rt_logged"] = n + 1
+    total_ms = round((time.perf_counter() - _LN_PAGE_T0) * 1000)
+    since_ms = round((time.time() - float(st.session_state.get("_ln_rt_session_t0", time.time()))) * 1000)
+    t = trace or {}
+    detail = (
+        f"page={st.query_params.get('page', 'main')} run={n + 1} "
+        f"started={st.session_state.get('_ln_rt_started', '?')} total_ms={total_ms} "
+        f"since_session_ms={since_ms} db_calls={t.get('calls', '?')} db_ms={t.get('db_ms', '?')} "
+        f"native={st.query_params.get('native', '')} plat={st.query_params.get('native_platform', '')}"
+    )
+    import security_log
+
+    security_log.log_event("render_timing", detail)
+
 
 def _reload_if_stale(module):
     """이 화면 모듈을 import한 직후 호출 — 디스크의 파일이 이 프로세스가 마지막
@@ -2254,6 +2289,10 @@ if current_page == "main":
 # 2026-09-27(임시 계측): 화면 스크립트의 마지막 줄이라 모든 화면에 공통으로 걸린다 —
 # 이번 렌더가 DB 왕복에 몇 번·몇 ms를 썼는지 한 줄로 로그에 남긴다. 위
 # db_trace_begin_run()과 짝이다(계측이 꺼져 있으면 아무 것도 찍지 않는다).
-db_trace_end_run()
+_ln_trace = db_trace_end_run()
+try:
+    _record_render_timing(_ln_trace)
+except Exception:
+    pass
 
 

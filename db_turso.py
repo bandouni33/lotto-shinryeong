@@ -567,13 +567,16 @@ def db_trace_note(sql, ms: float) -> None:
         pass
 
 
-def db_trace_end_run() -> None:
+def db_trace_end_run() -> dict | None:
     """화면 스크립트 마지막 줄에서 1회 호출 — 이번 렌더가 원격 DB에 몇 번·몇 ms를
     썼고 그게 화면 전체 시간의 몇 %인지 한 줄로 찍는다. 로그는 전부 ASCII로만
-    쓴다(호출부의 _safe_log가 인코딩 실패에 로그를 통째로 잃지 않게)."""
+    쓴다(호출부의 _safe_log가 인코딩 실패에 로그를 통째로 잃지 않게).
+
+    2026-10-08: 같은 숫자를 dict 로도 돌려준다(로딩 시간 실측 기록용 — user_page 참고).
+    계측이 꺼져 있으면 None."""
     try:
         if not _TRACE.on:
-            return
+            return None
         _TRACE.on = False
         script_ms = (time.perf_counter() - _TRACE.t0) * 1000.0 if _TRACE.t0 else 0.0
         top = sorted(_TRACE.sql.items(), key=lambda kv: (-kv[1][0], -kv[1][1]))[:5]
@@ -584,5 +587,12 @@ def db_trace_end_run() -> None:
             f"db_ms={_TRACE.db_ms:.0f} script_ms={script_ms:.0f} "
             f"db_share={share:.0f}% top={top_txt}"
         )
+        return {
+            "page": _TRACE.page or "?",
+            "calls": int(_TRACE.calls),
+            "db_ms": round(_TRACE.db_ms),
+            "script_ms": round(script_ms),
+            "top": top_txt,
+        }
     except Exception:
-        pass
+        return None

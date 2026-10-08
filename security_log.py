@@ -31,6 +31,7 @@ EVENT_LABELS = {
     "apple_native_login_ok": "Apple 로그인 완료(계측)",
     "apple_native_login_fail": "Apple 로그인 실패(계측)",
     "native_login_error": "앱 로그인 SDK 오류 보고(계측)",
+    "render_timing": "화면 그리기 소요 시간(계측)",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용
@@ -56,6 +57,8 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "apple_native_login_ok",
         "apple_native_login_fail",
         "native_login_error",
+        # 2026-10-08: 로딩 시간 실측(세션당 처음 3회) — 정상 트래픽이다.
+        "render_timing",
     }
 )
 
