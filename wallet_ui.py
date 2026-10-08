@@ -842,6 +842,12 @@ def render_auth_banner() -> None:
         return
     if st.session_state.pop("_auth_banner_scroll_pending", False):
         _scroll_to_top_once()
+    else:
+        # 2026-10-08(실기기 영상 12초·37.5초 — 안내창 겹침의 근본 원인): 위 스크롤 칸은 안내창을
+        # 처음 띄울 때만 생겨서, 다음 실행(카카오 버튼 누름 등)에서 그 아래 안내창·버튼이 한 칸씩
+        # 당겨졌고, 이전 것이 그려질 때까지 새 것과 겹쳐 보였다. 같은 자리에 빈 칸을 남겨 칸 순서를
+        # 고정한다(높이 0 — 스크롤 칸이 있을 때와 배치가 같다).
+        st.empty()
     _inject_auth_banner_css()
     _render_auth_banner_form()
 
