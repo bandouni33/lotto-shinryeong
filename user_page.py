@@ -9,6 +9,14 @@ import time
 # 서버에서 몇 ms 걸리는지(모든 화면 공통). _record_render_timing 참고.
 _LN_PAGE_T0 = time.perf_counter()
 _LN_RT_MAX_PER_SESSION = 3
+_LN_MARKS: list = []  # (구간 이름, 시작부터 ms) — 이 실행 동안만(모듈이 매 실행 새로 돈다)
+
+
+def _ln_mark(label: str) -> None:
+    try:
+        _LN_MARKS.append((label, round((time.perf_counter() - _LN_PAGE_T0) * 1000)))
+    except Exception:
+        pass
 try:
     st.session_state["_ln_rt_started"] = int(st.session_state.get("_ln_rt_started", 0)) + 1
     st.session_state.setdefault("_ln_rt_session_t0", time.time())
@@ -34,7 +42,8 @@ def _record_render_timing(trace: dict | None) -> None:
         f"page={st.query_params.get('page', 'main')} run={n + 1} "
         f"started={st.session_state.get('_ln_rt_started', '?')} total_ms={total_ms} "
         f"since_session_ms={since_ms} db_calls={t.get('calls', '?')} db_ms={t.get('db_ms', '?')} "
-        f"native={st.query_params.get('native', '')} plat={st.query_params.get('native_platform', '')}"
+        f"native={st.query_params.get('native', '')} plat={st.query_params.get('native_platform', '')} "
+        f"marks={','.join(f'{k}:{v}' for k, v in _LN_MARKS)}"
     )
     import security_log
 
@@ -124,6 +133,7 @@ def _reload_stale_core_modules() -> None:
 
 
 _reload_stale_core_modules()
+_ln_mark("reload")
 
 if st.session_state.get("is_admin", False):
     with st.sidebar:
@@ -207,6 +217,7 @@ db_trace_begin_run(st.query_params.get("page", "main"))
 
 init_wallet_tables()
 init_zero_phone_tables()
+_ln_mark("init")
 init_birthday_table()
 if handle_oauth_callback():
     st.rerun()
@@ -300,6 +311,7 @@ if st.query_params.get("fresh_start") == "1":
 # (guest_id)가 이미 로그인한 적 있으면 인증 절차 없이 조용히 다시 로그인시킨다.
 # (fresh_start로 방금 연결을 끊은 경우엔 이 호출이 찾을 게 없어 그냥 통과한다.)
 restore_member_from_guest()
+_ln_mark("restore")
 
 # 2026-09-25(Google Play 인앱결제): toss_pg.handle_toss_payment_return()과 달리
 # 반드시 restore_member_from_guest() "이후"에 호출해야 한다 — 토스는 결제창을
@@ -425,6 +437,7 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
     from wallet_ui import render_wallet_bar
 
     render_wallet_bar(show_my_info_trigger=(current_page == "main"))
+    _ln_mark("wallet")
 
     # 2026-09-22(사용자 지시): 메인화면 "내정보" 버튼 아래에 "사용설명서" 버튼을 고정 노출.
     # 상세화면(자동구매 등)에는 아직 두지 않는다 — 노출 범위는 메인만으로 컨펌된 범위.
@@ -689,6 +702,7 @@ def _load_lucky_display() -> list[int]:
 
 
 lucky_display = _load_lucky_display()
+_ln_mark("lucky")
 # ===============================================================================
 
 def get_image_base64(file_path):
@@ -774,6 +788,7 @@ if current_page == "main":
         from lotto_stats import load_lotto_data
 
         df = load_lotto_data()
+        _ln_mark("lotto_data")
         row = df.iloc[0].tolist()
         draw_no = str(row[1]).replace(".0", "") + "회" 
         numbers = sorted([int(x) for x in row[3:9]])
@@ -1200,6 +1215,7 @@ if current_page == "main":
             f'href="{_old_href}"', f'href="{internal_nav_href(_menu_page, **_menu_extra)}"'
         )
     markdown_keep_styles(_menu_grid_html)
+    _ln_mark("menu")
 
     components.html("""
     <script>
@@ -1627,6 +1643,7 @@ if current_page == "main":
     from feedback_db import init_feedback_tables, save_feedback
     from auth_providers import current_member_id
 
+    _ln_mark("before_feedback")
     init_feedback_tables()
 
     st.markdown(
@@ -2289,6 +2306,7 @@ if current_page == "main":
 # 2026-09-27(임시 계측): 화면 스크립트의 마지막 줄이라 모든 화면에 공통으로 걸린다 —
 # 이번 렌더가 DB 왕복에 몇 번·몇 ms를 썼는지 한 줄로 로그에 남긴다. 위
 # db_trace_begin_run()과 짝이다(계측이 꺼져 있으면 아무 것도 찍지 않는다).
+_ln_mark("end")
 _ln_trace = db_trace_end_run()
 try:
     _record_render_timing(_ln_trace)
