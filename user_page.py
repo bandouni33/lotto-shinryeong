@@ -673,6 +673,18 @@ icon_base64 = get_image_base64("K-325_main_315.jpg") or get_image_base64("K-325.
 # 📺 화면 1: 메인 페이지 (Main View) - 🎨 모바일 앱 고급 UI 적용 완료
 # ==========================================
 if current_page == "main":
+    # 2026-10-08(사용자 승인 A — 메인 먼저): 화면 style 을 순서 무관 칸으로 보낸다(shared_ui_styles 설명).
+    # 배포 직후 옛 shared_ui_styles 가 캐시돼 함수가 없으면 예전 방식(st.markdown)으로 그린다.
+    try:
+        from shared_ui_styles import markdown_keep_styles
+    except ImportError:
+
+        def markdown_keep_styles(html):
+            st.markdown(html, unsafe_allow_html=True)
+
+    # 아래 화면 틀 style 은 다른 칸들과 우선순위가 얽혀 있어(시뮬레이션: 옮기면 여백·접힘 메뉴 색이
+    # 바뀜) 그대로 두고, 밀려나는 순간 하얗게 번쩍이지 않도록 배경색(같은 값)만 순서 무관 칸에 둔다.
+    st.html("<style>.stApp { background-color: #12182b; }</style>")
     st.markdown("""
     <style>
         .stApp { background-color: #12182b; color: white; }
@@ -759,7 +771,7 @@ if current_page == "main":
         """
 
 
-    st.markdown(f"""
+    markdown_keep_styles(f"""
     <style>
         @keyframes orbitSpin {{
             0% {{ transform: rotate({0}deg) translateY(-52px) rotate(-{0}deg); opacity: 0.7; }}
@@ -944,7 +956,7 @@ if current_page == "main":
             <span>로</span><span>또</span><span>신</span><span>령</span>
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
     # 🟢 1. 로또볼 디자인 (3D 입체감 & 크기 확대)
     col1 = st.columns([1])[0]
@@ -1152,7 +1164,7 @@ if current_page == "main":
         _menu_grid_html = _menu_grid_html.replace(
             f'href="{_old_href}"', f'href="{internal_nav_href(_menu_page, **_menu_extra)}"'
         )
-    st.markdown(_menu_grid_html, unsafe_allow_html=True)
+    markdown_keep_styles(_menu_grid_html)
 
     components.html("""
     <script>

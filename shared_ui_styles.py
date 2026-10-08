@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 from functools import lru_cache
 
 # ── "메인으로" 상세페이지 공통 네비게이션 버튼 ──
@@ -147,6 +148,33 @@ _NO_STALE_DIM_CSS = """
 
 def no_stale_dim_css() -> str:
     return _NO_STALE_DIM_CSS
+
+
+# ── 화면 스타일이 다시 그리는 동안 잠깐 풀리는 문제 (2026-10-08 실기기 영상·사용자 승인: 메인 먼저) ──
+# st.markdown 안의 <style> 은 "화면의 몇 번째 칸"에 붙어 있다. 로그인 안내·완료 안내처럼 위쪽에
+# 칸이 새로 끼어들면 그 칸이 밀려나 서버가 같은 자리를 다시 그려 줄 때까지(운영 0.5~1초) 스타일이
+# 빠진다 — 배경이 하얗게 번쩍이고 메인 캐릭터 이미지가 좁아져 "회전하는 듯" 보였던 원인이다.
+# style 만 st.html 로 보내면 Streamlit 이 순서와 무관한 칸(event 컨테이너)에 두어 밀려나지 않는다.
+# 원래 자리에는 같은 칸(본문 또는 빈 st.markdown)을 그대로 남겨 칸 수·간격·배치가 바뀌지 않게 한다.
+_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>.*?</style>", re.IGNORECASE | re.DOTALL)
+
+
+def split_style_blocks(html: str) -> tuple[str, str]:
+    """(style 블록만 이어 붙인 것, 나머지 본문) — 순서·내용은 그대로."""
+    styles = "".join(m.group(0) for m in _STYLE_BLOCK_RE.finditer(html or ""))
+    rest = _STYLE_BLOCK_RE.sub("", html or "")
+    return styles, rest
+
+
+def markdown_keep_styles(html: str) -> None:
+    """st.markdown(html, unsafe_allow_html=True) 대신 쓴다 — 화면은 같고 style 만 밀려나지 않는다."""
+    import streamlit as st
+
+    styles, rest = split_style_blocks(html)
+    if styles:
+        st.html(styles)
+    # 본문이 없으면(=style 전용) 빈 칸을 남겨 원래 칸 수를 유지한다.
+    st.markdown(rest if rest.strip() else "", unsafe_allow_html=True)
 
 
 def brand_home_link_html(href: str | None = None) -> str:
