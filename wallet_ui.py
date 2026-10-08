@@ -80,6 +80,8 @@ AUTH_RESUME_FLAG = "auth_resume_flag"
 AUTH_RESUME_DATA = "auth_resume_data"
 AUTH_BANNER_DISMISSED = "auth_banner_dismissed"
 AUTH_BANNER_JUST_DISMISSED = "auth_banner_just_dismissed"
+# 공통 완료 안내(wallet_toast — 로그인·충전·결제·탈퇴 완료)를 감싸는 칸. render_wallet_bar 참고.
+WALLET_TOAST_BOX_KEY = "wallet_toast_box"
 AUTH_BANNER_DISMISS_REDIRECT = "auth_banner_dismiss_redirect"
 
 
@@ -1650,9 +1652,20 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     if current_member_id() and st.session_state.get(AUTH_RESUME_FLAG):
         _finish_auth_success()
 
+    # 2026-10-08(사용자 신고·영상 35.6초): 로그인 직후 뜬 "로그인되었습니다." 초록 안내가, 그 다음
+    # 동작(예: 내정보 → 로그아웃)을 처리하는 동안에도 화면에 그대로 남아 "로그아웃했는데 로그인됐다"로
+    # 보였다. 안내는 한 번 보여주는 것이라(세션에서 pop), 다음 실행이 시작돼 이전 화면 요소가
+    # stale 로 표시되는 순간 이 칸만 숨긴다 — 모양·위치는 그대로다. 규칙은 안내가 없는 실행에도 항상
+    # 넣어 둔다(안내를 띄운 실행의 다음 실행에서 규칙이 있어야 숨겨진다). style 전용 st.html 이라
+    # 화면 공간을 차지하지 않는다.
+    st.html(
+        f'<style>.st-key-{WALLET_TOAST_BOX_KEY} [data-stale="true"]'
+        "{display:none !important;}</style>"
+    )
     toast = st.session_state.pop("wallet_toast", None)
     if toast:
-        st.success(toast)
+        with st.container(key=WALLET_TOAST_BOX_KEY):
+            st.success(toast)
 
     render_auth_banner()
 
