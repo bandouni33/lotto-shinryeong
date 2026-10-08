@@ -83,6 +83,63 @@ const WEBVIEW_ORIGIN_WHITELIST = ['http://*', 'https://*', 'about:srcdoc'];
 const APPLE_LOGIN_CAPABILITY_PARAMS: Record<string, string> =
   Platform.OS === 'ios' ? { apple_login: '1' } : {};
 
+// 2026-10-08(이용자 평가 "로딩이 길고 화면 이동이 끊긴다" — 실기기 영상 실측): 예전엔 문서
+// 로드가 끝나면(onLoadEnd) 바로 "불러오는 중" 화면을 내렸는데, Streamlit 은 그 뒤에 자바스크립트로
+// 화면을 그리기 시작해서 흰 화면(약 3.5초) → 빈 어두운 화면(약 9.5초)이 그대로 보였다.
+// 이제 Streamlit 이 첫 실행을 마쳤다는 신호(stApp 의 data-test-script-state 가 running →
+// notRunning)를 받을 때까지 "불러오는 중" 화면을 유지한다. 서버 코드는 바꾸지 않는다.
+//  · 신호는 이 스크립트가 최상위 문서에서 직접 보낸다(postMessage {type:'pageReady'}).
+//  · Streamlit 이 주소 파라미터만 지우는 경우(history.replaceState — QR 진입 등)에 웹뷰가 로드
+//    시작만 알리고 끝을 안 알리는 일이 있어(아래 6초 안전장치 주석), 그때도 이미 그려진 화면이면
+//    곧바로 pageReady 를 다시 보낸다.
+//  · 신호가 끝내 안 오면 PAGE_READY_MAX_WAIT_MS 뒤에 어쨌든 내린다(멈춘 것처럼 보이지 않게).
+const PAGE_READY_MESSAGE_TYPE = 'pageReady';
+const PAGE_READY_MAX_WAIT_MS = 15000;
+const PAGE_READY_INJECTED_JS = `
+(function () {
+  if (window.__lnPageReadyInstalled) { return; }
+  window.__lnPageReadyInstalled = true;
+  function post() {
+    try {
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: '${PAGE_READY_MESSAGE_TYPE}' }));
+      }
+    } catch (e) {}
+  }
+  function app() { return document.querySelector('[data-testid="stApp"]'); }
+  function state() { var a = app(); return a ? a.getAttribute('data-test-script-state') : null; }
+  // 이 앱의 모든 화면은 어두운 배경을 직접 칠한다 — 배경이 아직 Streamlit 기본(밝은색)이면 화면
+  // 스타일이 덜 들어온 상태다(시뮬레이션: 첫 실행이 끝난 순간에도 배경이 밝은 경우가 있었다).
+  function painted() {
+    var a = app(); if (!a) { return false; }
+    var m = /rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/.exec(getComputedStyle(a).backgroundColor || '');
+    if (!m) { return false; }
+    return (Number(m[1]) + Number(m[2]) + Number(m[3])) / 3 < 128;
+  }
+  // 첫 화면은 실행이 연달아 이어지는 경우가 많아(로그인 복원·부품 값 전달로 인한 재실행) 실행이 끝난
+  // 상태가 SETTLE_MS 동안 이어지고 화면이 칠해졌을 때만 "다 그렸다"로 본다.
+  var SETTLE_MS = 400, POLL_MS = 100, idleSince = null, sent = false;
+  var timer = setInterval(function () {
+    if (sent) { clearInterval(timer); return; }
+    if (state() !== 'notRunning') { idleSince = null; return; }
+    if (idleSince === null) { idleSince = Date.now(); return; }
+    if (Date.now() - idleSince >= SETTLE_MS && painted()) { sent = true; clearInterval(timer); post(); }
+  }, POLL_MS);
+  // Streamlit 이 주소 파라미터만 지울 때(history.replaceState — QR 진입 등) 웹뷰가 로드 시작만
+  // 알리고 끝을 안 알리는 경우가 있어, 이미 그려진 화면이면 곧바로 다시 알린다.
+  ['replaceState', 'pushState'].forEach(function (name) {
+    var orig = history[name];
+    if (typeof orig !== 'function') { return; }
+    history[name] = function () {
+      var r = orig.apply(this, arguments);
+      if (sent && state() === 'notRunning') { post(); }
+      return r;
+    };
+  });
+})();
+true;
+`;
+
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string = 'kakao_native_login_timeout'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
@@ -144,6 +201,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   const [guestId, setGuestId] = useState<string | null>(null);
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
+  // 2026-10-08: PAGE_READY_INJECTED_JS 설명 참고. awaitingPageReadyRef = 지금 로드가 아직
+  // Streamlit 첫 실행 완료 신호를 못 받았는가. pageReadyUnsupportedRef = 첫 로드에서 끝내 신호가
+  // 안 왔다(스크립트가 안 먹는 환경) → 이후엔 예전처럼 문서 로드 끝(onLoadEnd)에 바로 내린다.
+  const awaitingPageReadyRef = useRef(true);
+  const pageReadySeenRef = useRef(false);
+  const pageReadyUnsupportedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   // 2026-09-23(사용자 지시): st.dialog(내정보·사용설명서 등)가 열려있는지 —
@@ -577,7 +640,17 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     if (!loading) {
       return;
     }
-    const timer = setTimeout(() => setLoading(false), 6000);
+    // 2026-10-08: 6초 → PAGE_READY_MAX_WAIT_MS. 이제 "불러오는 중"은 Streamlit 이 화면을 다 그릴
+    // 때까지 유지하므로(PAGE_READY_INJECTED_JS), 6초에 내리면 운영 첫 화면(실측 약 14초)에서 다시
+    // 빈 화면이 드러난다. 위 QR 경우는 replaceState 감지로 즉시 신호가 오므로 여기까지 오지 않는다.
+    const timer = setTimeout(() => {
+      if (awaitingPageReadyRef.current && !pageReadySeenRef.current) {
+        // 첫 로드부터 신호가 한 번도 안 왔다 — 이 환경에선 신호를 기다리지 않는다.
+        pageReadyUnsupportedRef.current = true;
+      }
+      awaitingPageReadyRef.current = false;
+      setLoading(false);
+    }, PAGE_READY_MAX_WAIT_MS);
     return () => clearTimeout(timer);
   }, [loading, webViewUri]);
 
@@ -790,6 +863,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           sku: payload.productId,
           basePlanId: payload.basePlanId || undefined,
         });
+      } else if (payload?.type === PAGE_READY_MESSAGE_TYPE) {
+        // PAGE_READY_INJECTED_JS — Streamlit 이 화면을 다 그렸다.
+        pageReadySeenRef.current = true;
+        awaitingPageReadyRef.current = false;
+        setLoading(false);
       } else if (payload?.type === 'dialogState') {
         // wallet_ui.inject_manual_dialog_back_bridge()가 보내는 신호 — st.dialog
         // (내정보·사용설명서 등 전부 공통)가 지금 열려 있는지.
@@ -916,7 +994,9 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           onNavigationStateChange={onNavigationStateChange}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           onMessage={onMessage}
+          injectedJavaScript={PAGE_READY_INJECTED_JS}
           onLoadStart={() => {
+            awaitingPageReadyRef.current = true;
             setLoading(true);
           }}
           onLoadEnd={() => {
@@ -926,7 +1006,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             // 이동시키는 주소에 실려 나가고, 이 로드가 끝난 뒤 다시 지울
             // 것도 다시 로드할 것도 없다(주소창의 토큰은 서버가 1회용
             // 소비 직후 이미 지운다).
-            setLoading(false);
+            // 2026-10-08: 문서 로드가 끝나도 Streamlit 이 아직 그리는 중이면 "불러오는 중"을 유지한다
+            // (PAGE_READY_INJECTED_JS). 신호가 이미 왔거나 신호를 못 쓰는 환경이면 예전처럼 내린다.
+            if (pageReadyUnsupportedRef.current || !awaitingPageReadyRef.current) {
+              setLoading(false);
+            }
           }}
           onError={(e) => {
             setLoading(false);
