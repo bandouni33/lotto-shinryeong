@@ -82,6 +82,18 @@ AUTH_BANNER_DISMISSED = "auth_banner_dismissed"
 AUTH_BANNER_JUST_DISMISSED = "auth_banner_just_dismissed"
 # 공통 완료 안내(wallet_toast — 로그인·충전·결제·탈퇴 완료)를 감싸는 칸. render_wallet_bar 참고.
 WALLET_TOAST_BOX_KEY = "wallet_toast_box"
+# 2026-10-08(실기기 영상 13.5초·38.5초): 로그인 안내창을 다시 그리는 동안 이전 안내창(stale)이 새
+# 안내창과 위아래로 두 개 겹쳐 보였다(예전엔 흐리게, 흐려짐을 끈 뒤엔 선명하게 0.3~0.5초). 안내창이
+# 두 개 있을 때만 이전 것(stale 요소를 품은 쪽)을 숨긴다 — 한 개뿐일 땐 다시 그리는 중에도 그대로
+# 보여 깜빡이지 않는다. render_wallet_bar 의 공통 style 에 함께 넣는다(모든 화면 공통 자리).
+_AUTH_BANNER_LW = '[data-testid="stLayoutWrapper"]'
+_AUTH_BANNER_DUPLICATE_HIDE_CSS = (
+    f"{_AUTH_BANNER_LW}:has(> .st-key-auth_banner_wrap [data-stale=\"true\"])"
+    f":has(~ {_AUTH_BANNER_LW} > .st-key-auth_banner_wrap),"
+    f"{_AUTH_BANNER_LW}:has(> .st-key-auth_banner_wrap) ~ "
+    f"{_AUTH_BANNER_LW}:has(> .st-key-auth_banner_wrap [data-stale=\"true\"])"
+    "{display:none !important;}"
+)
 AUTH_BANNER_DISMISS_REDIRECT = "auth_banner_dismiss_redirect"
 
 
@@ -1660,7 +1672,9 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     # 화면 공간을 차지하지 않는다.
     st.html(
         f'<style>.st-key-{WALLET_TOAST_BOX_KEY} [data-stale="true"]'
-        "{display:none !important;}</style>"
+        "{display:none !important;}"
+        + _AUTH_BANNER_DUPLICATE_HIDE_CSS
+        + "</style>"
     )
     toast = st.session_state.pop("wallet_toast", None)
     if toast:
