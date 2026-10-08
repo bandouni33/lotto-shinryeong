@@ -43,13 +43,26 @@ def init_settings_table() -> None:
     _SETTINGS_TABLE_READY = True
 
 
-def get_setting(key: str, default: str = "") -> str:
+# 2026-10-08(로딩 시간): 관리자 설정은 거의 안 바뀌는데 화면마다 여러 번 읽어 원격 왕복이 쌓였다.
+# 같은 프로세스 안에서 _SETTINGS_TTL_SECONDS 동안 재사용하고, 이 모듈의 set_setting 은 즉시 비운다
+# (관리자 화면에서 바꾸면 바로 반영). 다른 프로세스(워커 등)가 바꾼 값은 최대 이 시간만큼 늦게 보인다.
+_SETTINGS_TTL_SECONDS = 30
+
+
+def _get_setting_raw(key: str):
     conn = _connect()
     row = conn.execute(
         "SELECT value FROM app_settings WHERE key = ?", (key,)
     ).fetchone()
     conn.close()
-    return str(row["value"]) if row else default
+    return str(row["value"]) if row else None
+
+
+def get_setting(key: str, default: str = "") -> str:
+    import ttl_cache
+
+    value = ttl_cache.cached("app_settings:get", _SETTINGS_TTL_SECONDS, lambda: _get_setting_raw(key), key)
+    return default if value is None else value
 
 
 def set_setting(key: str, value: str) -> None:
@@ -66,6 +79,9 @@ def set_setting(key: str, value: str) -> None:
     )
     conn.commit()
     conn.close()
+    import ttl_cache
+
+    ttl_cache.invalidate("app_settings")
 
 
 def get_update_notice() -> dict:
@@ -76,15 +92,21 @@ def get_update_notice() -> dict:
     정작 이 함수는 모든 화면 렌더마다 불려서, 화면을 옮길 때마다 안 쓰이는
     조회가 3번씩 쌓이고 있었다(호출부는 main 화면에서만 부르도록 별도로
     옮김). 여기서는 한 번의 IN 쿼리로 합쳐 왕복을 1회로 줄인다."""
+    import ttl_cache
+
     init_settings_table()
     keys = (UPDATE_VERSION_KEY, UPDATE_URL_KEY, UPDATE_MESSAGE_KEY)
-    conn = _connect()
-    placeholders = ",".join("?" for _ in keys)
-    rows = conn.execute(
-        f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", keys
-    ).fetchall()
-    conn.close()
-    values = {row["key"]: row["value"] for row in rows}
+
+    def _load() -> dict:
+        conn = _connect()
+        placeholders = ",".join("?" for _ in keys)
+        rows = conn.execute(
+            f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", keys
+        ).fetchall()
+        conn.close()
+        return {row["key"]: row["value"] for row in rows}
+
+    values = dict(ttl_cache.cached("app_settings:update_notice", _SETTINGS_TTL_SECONDS, _load))
     return {
         "version": values.get(UPDATE_VERSION_KEY, ""),
         "url": values.get(UPDATE_URL_KEY, ""),

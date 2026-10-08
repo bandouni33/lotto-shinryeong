@@ -49,6 +49,16 @@ def _connect():
     return db_turso.connect()
 
 
+def _invalidate_marketing_cache() -> None:
+    """2026-10-08: ttl_cache 로 짧게 재사용하는 조회(이벤트 회차·추출 통계·패턴 수)를 쓰는 쪽이 즉시 비운다."""
+    try:
+        import ttl_cache
+
+        ttl_cache.invalidate("marketing:")
+    except Exception:
+        pass
+
+
 _MARKETING_TABLES_READY = False
 
 
@@ -1600,16 +1610,23 @@ def record_draw_pattern_count(draw_round: int, pattern_count: int) -> None:
     )
     conn.commit()
     conn.close()
+    _invalidate_marketing_cache()
 
 
 def get_pattern_count_for_draw(draw_round: int) -> int | None:
-    conn = _connect()
-    row = conn.execute(
-        "SELECT pattern_count FROM draw_pattern_counts WHERE draw_round = ?",
-        (int(draw_round),),
-    ).fetchone()
-    conn.close()
-    return int(row[0]) if row else None
+    # 2026-10-08(로딩 시간): 주 1회 생성 때만 바뀌는 값 — 자동조합 화면마다 읽던 것을 2분 재사용.
+    import ttl_cache
+
+    def _load() -> int | None:
+        conn = _connect()
+        row = conn.execute(
+            "SELECT pattern_count FROM draw_pattern_counts WHERE draw_round = ?",
+            (int(draw_round),),
+        ).fetchone()
+        conn.close()
+        return int(row[0]) if row else None
+
+    return ttl_cache.cached("marketing:pattern_count", 120, _load, int(draw_round))
 
 
 def get_pattern_recorded_at(draw_round: int) -> str | None:
@@ -1672,6 +1689,7 @@ def record_draw_generation_stats(
         ),
     )
     conn.commit()
+    _invalidate_marketing_cache()
     conn.close()
 
 
@@ -1879,6 +1897,7 @@ def set_reference_ranks(
         (int(draw_round), r1, r2, r3, r4, r5, datetime.now().isoformat()),
     )
     conn.commit()
+    _invalidate_marketing_cache()
     conn.close()
 
 
@@ -1938,42 +1957,49 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
     pattern_count는 그 회차 조합을 추출한 "그 순간"에 기록해둔 필터 규칙 수
     (draw_pattern_counts, record_draw_pattern_count 참고) — 이 기록이 생기기
     전에 추출된 옛 회차는 None(관리자 화면에서 "기록 없음"으로 표시)."""
-    conn = _connect()
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        """
-        SELECT
-            lc.draw_round,
-            COUNT(*) AS total_count,
-            SUM(CASE WHEN lc.win_rank = 1 THEN 1 ELSE 0 END) AS rank_1,
-            SUM(CASE WHEN lc.win_rank = 2 THEN 1 ELSE 0 END) AS rank_2,
-            SUM(CASE WHEN lc.win_rank = 3 THEN 1 ELSE 0 END) AS rank_3,
-            SUM(CASE WHEN lc.win_rank = 4 THEN 1 ELSE 0 END) AS rank_4,
-            SUM(CASE WHEN lc.win_rank = 5 THEN 1 ELSE 0 END) AS rank_5,
-            MAX(dpc.pattern_count) AS pattern_count
-        FROM lotto_combinations lc
-        LEFT JOIN draw_pattern_counts dpc ON dpc.draw_round = lc.draw_round
-        WHERE lc.draw_round >= ?
-        GROUP BY lc.draw_round
-        ORDER BY lc.draw_round DESC
-        LIMIT ?
-        """,
-        (MIN_DISPLAY_DRAW_ROUND, int(limit)),
-    ).fetchall()
-    conn.close()
-    return [
-        {
-            "draw_round": int(row["draw_round"]),
-            "total_count": int(row["total_count"]),
-            "rank_1": int(row["rank_1"] or 0),
-            "rank_2": int(row["rank_2"] or 0),
-            "rank_3": int(row["rank_3"] or 0),
-            "rank_4": int(row["rank_4"] or 0),
-            "rank_5": int(row["rank_5"] or 0),
-            "pattern_count": int(row["pattern_count"]) if row["pattern_count"] is not None else None,
-        }
-        for row in rows
-    ]
+    # 2026-10-08(로딩 시간): 조합 테이블 전체를 집계하는 무거운 조회를 자동조합 화면마다 하던 것을
+    # 2분 재사용(조합은 주 1회 생성). 관리자 화면도 같은 값을 최대 2분 늦게 볼 수 있다.
+    import ttl_cache
+
+    def _load() -> list[dict]:
+        conn = _connect()
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT
+                lc.draw_round,
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN lc.win_rank = 1 THEN 1 ELSE 0 END) AS rank_1,
+                SUM(CASE WHEN lc.win_rank = 2 THEN 1 ELSE 0 END) AS rank_2,
+                SUM(CASE WHEN lc.win_rank = 3 THEN 1 ELSE 0 END) AS rank_3,
+                SUM(CASE WHEN lc.win_rank = 4 THEN 1 ELSE 0 END) AS rank_4,
+                SUM(CASE WHEN lc.win_rank = 5 THEN 1 ELSE 0 END) AS rank_5,
+                MAX(dpc.pattern_count) AS pattern_count
+            FROM lotto_combinations lc
+            LEFT JOIN draw_pattern_counts dpc ON dpc.draw_round = lc.draw_round
+            WHERE lc.draw_round >= ?
+            GROUP BY lc.draw_round
+            ORDER BY lc.draw_round DESC
+            LIMIT ?
+            """,
+            (MIN_DISPLAY_DRAW_ROUND, int(limit)),
+        ).fetchall()
+        conn.close()
+        return [
+            {
+                "draw_round": int(row["draw_round"]),
+                "total_count": int(row["total_count"]),
+                "rank_1": int(row["rank_1"] or 0),
+                "rank_2": int(row["rank_2"] or 0),
+                "rank_3": int(row["rank_3"] or 0),
+                "rank_4": int(row["rank_4"] or 0),
+                "rank_5": int(row["rank_5"] or 0),
+                "pattern_count": int(row["pattern_count"]) if row["pattern_count"] is not None else None,
+            }
+            for row in rows
+        ]
+
+    return [dict(r) for r in ttl_cache.cached("marketing:extraction_stats", 120, _load, int(limit))]
 
 
 def snapshot_round_stats(draw_round: int, pattern_count: int | None) -> bool:
@@ -2003,6 +2029,7 @@ def snapshot_round_stats(draw_round: int, pattern_count: int | None) -> bool:
     )
     created = int(cur.rowcount or 0) > 0
     conn.commit()
+    _invalidate_marketing_cache()
     conn.close()
     return created
 
@@ -2058,6 +2085,7 @@ def finalize_round_stats(draw_round: int) -> bool:
     )
     finalized = int(cur.rowcount or 0) > 0
     conn.commit()
+    _invalidate_marketing_cache()
     conn.close()
     return finalized
 
@@ -2162,37 +2190,44 @@ def get_latest_win_event_round() -> dict | None:
     등수가 NULL인 미확정 행이 섞여도 COALESCE로 0 취급해 안전하다.
     stage4_count(4차 통과 조합 수)는 배너 문구(수치 근거형)에 쓰는 값이라 함께 준다.
     """
-    conn = _connect()
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        """
-        SELECT s.draw_round, s.rank_1, s.rank_2, s.rank_3, s.rank_4, s.rank_5,
-               s.pattern_count, s.finalized_at, g.stage4_count
-        FROM combo_round_stats s
-        LEFT JOIN draw_generation_stats g ON g.draw_round = s.draw_round
-        WHERE s.finalized_at IS NOT NULL AND s.draw_round >= ?
-        ORDER BY s.draw_round DESC
-        LIMIT 1
-        """,
-        (WIN_EVENT_BANNER_MIN_ROUND,),
-    ).fetchone()
-    conn.close()
-    if row is None:
-        return None
-    rank_1 = int(row["rank_1"] or 0)
-    rank_2 = int(row["rank_2"] or 0)
-    if rank_1 <= 0 and rank_2 <= 0:
-        return None
-    return {
-        "draw_round": int(row["draw_round"]),
-        "rank_1": rank_1,
-        "rank_2": rank_2,
-        "rank_3": int(row["rank_3"] or 0),
-        "rank_4": int(row["rank_4"] or 0),
-        "rank_5": int(row["rank_5"] or 0),
-        "pattern_count": int(row["pattern_count"]) if row["pattern_count"] is not None else None,
-        "stage4_count": int(row["stage4_count"]) if row["stage4_count"] is not None else None,
-    }
+    # 2026-10-08(로딩 시간): 메인 화면마다 읽던 것을 1분 재사용(회차 확정은 주 1회).
+    import ttl_cache
+
+    def _load() -> dict | None:
+        conn = _connect()
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT s.draw_round, s.rank_1, s.rank_2, s.rank_3, s.rank_4, s.rank_5,
+                   s.pattern_count, s.finalized_at, g.stage4_count
+            FROM combo_round_stats s
+            LEFT JOIN draw_generation_stats g ON g.draw_round = s.draw_round
+            WHERE s.finalized_at IS NOT NULL AND s.draw_round >= ?
+            ORDER BY s.draw_round DESC
+            LIMIT 1
+            """,
+            (WIN_EVENT_BANNER_MIN_ROUND,),
+        ).fetchone()
+        conn.close()
+        if row is None:
+            return None
+        rank_1 = int(row["rank_1"] or 0)
+        rank_2 = int(row["rank_2"] or 0)
+        if rank_1 <= 0 and rank_2 <= 0:
+            return None
+        return {
+            "draw_round": int(row["draw_round"]),
+            "rank_1": rank_1,
+            "rank_2": rank_2,
+            "rank_3": int(row["rank_3"] or 0),
+            "rank_4": int(row["rank_4"] or 0),
+            "rank_5": int(row["rank_5"] or 0),
+            "pattern_count": int(row["pattern_count"]) if row["pattern_count"] is not None else None,
+            "stage4_count": int(row["stage4_count"]) if row["stage4_count"] is not None else None,
+        }
+
+    hit = ttl_cache.cached("marketing:win_event_round", 60, _load)
+    return dict(hit) if hit else None
 
 
 def was_win_event_banner_closed(guest_id: str, draw_round: int) -> bool:

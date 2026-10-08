@@ -199,6 +199,7 @@ def _install(path: str, registry: list):
 
     db_turso._make_client = _no_remote
     db_turso._shared_client = _no_remote
+    _clear_ttl_cache()
     return original
 
 
@@ -206,6 +207,17 @@ def _uninstall(original):
     db_turso.connect = original["connect"]
     db_turso._make_client = original["make_client"]
     db_turso._shared_client = original["shared_client"]
+    _clear_ttl_cache()
+
+
+def _clear_ttl_cache() -> None:
+    """ttl_cache(2026-10-08 — 짧게 재사용하는 DB 조회)가 다른 DB(운영/다른 테스트)의 값을 넘겨주지 않게 비운다."""
+    try:
+        import ttl_cache
+
+        ttl_cache.invalidate()
+    except Exception:
+        pass
 
 
 @contextlib.contextmanager

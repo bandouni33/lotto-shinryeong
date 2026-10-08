@@ -69,6 +69,9 @@ def upsert_draw_result(draw_round: int, numbers: list[int], bonus: int) -> None:
         (int(draw_round), *nums, bonus, datetime.now().isoformat()),
     )
     conn.commit()
+    import ttl_cache
+
+    ttl_cache.invalidate("draw_results")
 
 
 def get_all_draw_results() -> list[dict]:
@@ -167,8 +170,15 @@ def get_cache_key() -> tuple[int, int]:
     """load_lotto_data() 캐시 무효화용 — (전체 건수, 최신 회차)가 바뀌면
     새 데이터로 간주한다(신규 등록·수정 둘 다 최신 회차나 건수를 움직이므로
     충분히 민감한 키)."""
-    conn = _connect()
-    row = conn.execute(
-        "SELECT COUNT(*), COALESCE(MAX(draw_round), 0) FROM draw_results"
-    ).fetchone()
-    return (int(row[0]), int(row[1])) if row else (0, 0)
+    # 2026-10-08(로딩 시간): 화면 한 번에 이 조회가 최대 3번(번개조합) 불렸다 — 10초 재사용.
+    # 이 프로세스에서 회차를 넣으면(upsert_draw_result) 즉시 비운다.
+    import ttl_cache
+
+    def _load() -> tuple[int, int]:
+        conn = _connect()
+        row = conn.execute(
+            "SELECT COUNT(*), COALESCE(MAX(draw_round), 0) FROM draw_results"
+        ).fetchone()
+        return (int(row[0]), int(row[1])) if row else (0, 0)
+
+    return ttl_cache.cached("draw_results:cache_key", 10, _load)
