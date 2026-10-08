@@ -1,6 +1,8 @@
 """로또최근당첨내역.xlsb 기반 통계 집계 (과거 데이터 사실 기반)."""
 
 import os
+import threading
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -132,12 +134,54 @@ def _auto_sync_latest_draw_cached() -> int | None:
     return draw_results_db.sync_latest_from_dhlottery()
 
 
+# 2026-10-08(운영 실측 — 앱 재실행 첫 화면 서버 처리 11.1초): 위 _auto_sync_latest_draw_cached
+# (1시간 캐시)를 화면 그리기 도중에 직접 불러서, 캐시가 만료된 뒤 처음 들어온 이용자가 동행복권
+# 사이트 응답(최대 8초 타임아웃 — Cloud 서버는 해외라 느리거나 막힐 수 있음)을 그대로 기다렸다.
+# 이제 화면은 기다리지 않는다: 1시간에 한 번 백그라운드 스레드로만 확인하고, 새 회차를 넣으면
+# 다음 화면부터 get_cache_key()가 바뀌어 자동 반영된다. 본 동기화는 GitHub Actions 매시
+# 작업(hourly_draw_sync.py)이 따로 하고 있어 이건 보조 경로다.
+_AUTO_SYNC_INTERVAL_SECONDS = 3600
+_auto_sync_lock = threading.Lock()
+_auto_sync_state = {"last": 0.0, "running": False}
+
+
+def _auto_sync_latest_draw_in_background() -> bool:
+    """필요하면 백그라운드 확인을 시작하고 즉시 돌아온다(시작했으면 True)."""
+    import draw_results_db
+
+    now = time.time()
+    with _auto_sync_lock:
+        if _auto_sync_state["running"] or now - _auto_sync_state["last"] < _AUTO_SYNC_INTERVAL_SECONDS:
+            return False
+        _auto_sync_state["running"] = True
+        _auto_sync_state["last"] = now
+    # 호출 시점의 함수를 잡아 둔다(테스트가 바꿔 둔 대역을 스레드가 그대로 쓰게).
+    sync = draw_results_db.sync_latest_from_dhlottery
+
+    def _run() -> None:
+        try:
+            sync()
+        except Exception:
+            pass
+        finally:
+            with _auto_sync_lock:
+                _auto_sync_state["running"] = False
+
+    try:
+        threading.Thread(target=_run, name="ln-draw-sync", daemon=True).start()
+    except Exception:
+        with _auto_sync_lock:
+            _auto_sync_state["running"] = False
+        return False
+    return True
+
+
 def _draw_results_cache_key() -> tuple[int, int]:
     try:
         import draw_results_db
 
         draw_results_db.init_draw_results_table()
-        _auto_sync_latest_draw_cached()  # 새 회차 있으면 여기서 자동으로 채워짐
+        _auto_sync_latest_draw_in_background()  # 새 회차 확인은 백그라운드(화면은 기다리지 않음)
         return draw_results_db.get_cache_key()
     except Exception:
         return (0, 0)
