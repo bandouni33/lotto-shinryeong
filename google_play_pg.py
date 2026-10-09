@@ -421,6 +421,8 @@ def refresh_subscription(token: str) -> bool:
     row = get_gplay_purchase(token)
     if not row or row.get("kind") != "sub" or row.get("state") == "REPLACED":
         return False
+    if (row.get("store") or "google") != "google":
+        return False  # 2026-10-09: 같은 표의 애플 행(apple_iap)은 구글에 묻지 않는다
     ok, data = _api_get(f"purchases/subscriptionsv2/tokens/{token}")
     if not ok:
         # 조회 실패 — 권한은 그대로 두고 1시간 뒤 다시 본다(이미 확인을 끝낸 행은 다시 켜지 않는다).

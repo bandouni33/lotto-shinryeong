@@ -469,18 +469,29 @@ def test_N7_trigger_rejects_unknown_product():
 
 
 def test_N8_app_code_does_not_finish_transactions():
-    """승인(consume/acknowledge)은 서버 전담 — 앱이 finishTransaction을 부르면
-    서버 검증 전에 구매가 소비돼 환불·이중지급 사고가 난다."""
+    """구글 승인(consume/acknowledge)은 서버 전담 — 앱이 구글 구매에 finishTransaction을 부르면
+    서버 검증 전에 구매가 소비돼 환불·이중지급 사고가 난다.
+
+    2026-10-09: 애플은 서버가 거래를 끝낼 방법이 없어 앱이 끝내야 한다 — 단, 서버가 확인·지급을 끝낸 뒤
+    보내는 신호(iapFinish)를 받은 finishApplePurchase 안에서만, iOS 일 때만 부른다(그 밖의 호출은 금지)."""
     tsx = TSX.read_text(encoding="utf-8")
     assert "purchaseUpdatedListener" in tsx, "구매 결과 수신부가 없다"
     assert "requestPurchase" in tsx, "구매 요청부가 없다"
-    # 주석(설명)에 이름이 나오는 건 무방 — 금지하는 건 실제 호출/import다.
+    start = tsx.index("const finishApplePurchase = useCallback(")
+    end = tsx.index("const restoreApplePurchases", start)
+    apple_body = tsx[start:end]
+    assert "if (Platform.OS !== 'ios'" in apple_body.split("finishTransaction(")[0], "iOS 확인 없이 거래를 끝낸다"
+    outside = tsx[:start] + tsx[end:]
+    # 주석(설명)에 이름이 나오는 건 무방 — 금지하는 건 실제 호출이다(import 한 줄은 허용).
     offenders = [
         line.strip()
-        for line in tsx.splitlines()
-        if "finishTransaction" in line and not line.strip().startswith(("//", "*", "/*"))
+        for line in outside.splitlines()
+        if "finishTransaction" in line
+        and not line.strip().startswith(("//", "*", "/*"))
+        and line.strip() != "finishTransaction,"
     ]
-    assert not offenders, f"앱이 finishTransaction을 호출·import하고 있다: {offenders}"
+    assert not offenders, f"애플 끝내기 함수 밖에서 finishTransaction을 부른다: {offenders}"
+    assert "iapFinish" in tsx and "finishApplePurchase(" in tsx, "서버 신호로만 끝내는 배선이 없다"
     assert "iap_purchase_token" in tsx, "서버로 토큰을 넘기는 배선이 없다"
 
 

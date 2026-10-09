@@ -10,6 +10,7 @@ TEST_CHARGE_ENABLED=True)는 "Mock 결제 (테스트) — 1,000P 충전" 버튼�
   venv312\\Scripts\\python.exe scripts\\preflight_review_build.py              # 심사용 검사
   ... --cloud-secrets-confirmed   # Cloud Secrets 를 직접 확인한 뒤(R6·R7)
   venv312\\Scripts\\python.exe scripts\\preflight_review_build.py --phase tester  # 테스터용 검사
+  venv312\\Scripts\\python.exe scripts\\preflight_review_build.py --phase ios     # iOS(애플 결제) 제출 검사
 
 exit 0 = 통과 / exit 1 = 실패(무엇을 어떻게 바꿔야 하는지 줄 단위로 출력).
 검사는 상수(빠름)뿐 아니라 **실제 화면 렌더**(tests/_iap_probe.py + 운영과 같은
@@ -82,10 +83,12 @@ def _member(handle: str) -> int:
     return int(mid)
 
 
-def _render(mode: str, mid: int) -> AppTest:
+def _render(mode: str, mid: int, platform: str | None = None) -> AppTest:
     at = AppTest.from_file(PROBE, default_timeout=TIMEOUT_SEC)
     at.query_params["probe"] = mode
     at.query_params["native"] = "1"
+    if platform:
+        at.query_params["native_platform"] = platform
     at.query_params["iap"] = "1"  # 2026-10-09: 제출할 새 빌드는 결제 수신부 표시(iap=1)를 보낸다
     at.session_state["member_id"] = mid
     at.run()
@@ -212,6 +215,79 @@ def run_review_checks() -> None:
     )
 
 
+def run_ios_checks() -> None:
+    """2026-10-09 iOS 1.0.2 반려(2.1(a) '충전을 누르면 준비 중') 대응 — iOS 빌드 제출 전 검사."""
+    import subprocess
+
+    import wallet_ui
+
+    check(
+        wallet_ui.APPLE_IAP_ENABLED is True,
+        "I1 iOS 충전·구독 = 애플 인앱결제 노출(APPLE_IAP_ENABLED=True)",
+        "wallet_ui.py에서 APPLE_IAP_ENABLED를 True로",
+    )
+    with _db_isolation.isolated_db():
+        mid = _member("preflight_ios")
+        at = _render("charge", mid, platform="ios")
+        keys = _keys(at)
+        check(not at.exception, "I2a iOS 충전창이 예외 없이 렌더된다", str(at.exception))
+        check(
+            {"apple_buy_points_1000", "apple_buy_points_3000"} <= set(keys),
+            "I2b iOS 충전창에 애플 결제 버튼(1,000P·3,000P)이 그려진다",
+            f"그려진 키: {keys}",
+        )
+        check(
+            not any(k.startswith("iap_buy_") or k in (TOSS_KEY, "test_charge_btn") for k in keys)
+            and not any("Mock" in label for label in _labels(at)),
+            "I2c iOS 충전창에 구글·토스·Mock 결제가 없다",
+            f"그려진 키: {keys}",
+        )
+        infos = " ".join((m.value or "") for m in at.info)
+        check(
+            wallet_ui.CHARGE_PENDING_NOTICE not in infos,
+            "I2d iOS 충전창에 '결제 연동 준비 중' 안내가 없다(1.0.2 반려 사유)",
+            infos,
+        )
+        original = wallet_ui.ADVANCED_FILTER_FIRST_SUB_FREE
+        wallet_ui.ADVANCED_FILTER_FIRST_SUB_FREE = False
+        try:
+            sub = _render("sub", mid, platform="ios")
+        finally:
+            wallet_ui.ADVANCED_FILTER_FIRST_SUB_FREE = original
+        sub_keys = _keys(sub)
+        check(
+            {"apple_sub_monthly", "apple_sub_3month", "apple_restore"} <= set(sub_keys)
+            and not any(k.startswith("iap_sub_m") or k.startswith("iap_sub_3") for k in sub_keys),
+            "I3 iOS 구독창 = 애플 요금제 2개 + 구매 복원(구글 요금제 없음)",
+            f"그려진 키: {sub_keys}",
+        )
+    check(
+        CLOUD_SECRETS_CONFIRMED,
+        "I4 Cloud Secrets 에 APPLE_IAP_KEY_ID·APPLE_IAP_ISSUER_ID·APPLE_IAP_PRIVATE_KEY 가 있다"
+        "(없으면 애플 결제가 '준비 중' 안내로 끝남) - 사람이 확인함",
+        "Streamlit Cloud > Settings > Secrets 에서 확인 후 --cloud-secrets-confirmed 로 다시 실행",
+    )
+    tsx = (ROOT / "LottoShinryeong" / "components" / "streamlit-webview.tsx").read_text(encoding="utf-8")
+    check(
+        "APPLE_SUBSCRIPTION_SKUS" in tsx and "finishApplePurchase" in tsx and "{ iap: '1' }" in tsx,
+        "I5 앱 소스에 iOS 애플 결제 수신부(결제·서버 전달·끝내기·복원)가 들어 있다",
+        "네이티브_빌드_대기목록.md §14 를 반영한 소스로 빌드할 것",
+    )
+    apple = subprocess.run(
+        [sys.executable, "-X", "utf8", str(ROOT / "tests" / "test_apple_iap.py")],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    tail = (apple.stdout or "").strip().splitlines()[-1:] or ["(출력 없음)"]
+    check(
+        apple.returncode == 0,
+        f"I6 애플 결제 서버 테스트 통과(tests/test_apple_iap.py: {tail[0]})",
+        "tests/test_apple_iap.py 를 직접 실행해 FAIL 항목을 고칠 것",
+    )
+
+
 def run_tester_checks() -> None:
     import wallet_ui
 
@@ -246,7 +322,7 @@ def run_tester_checks() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="심사/테스터 빌드 전 스위치 검사")
-    parser.add_argument("--phase", choices=("review", "tester"), default="review")
+    parser.add_argument("--phase", choices=("review", "tester", "ios"), default="review")
     parser.add_argument(
         "--cloud-secrets-confirmed",
         action="store_true",
@@ -256,11 +332,13 @@ def main() -> int:
     global CLOUD_SECRETS_CONFIRMED
     CLOUD_SECRETS_CONFIRMED = bool(args.cloud_secrets_confirmed)
 
-    phase = "심사 제출용" if args.phase == "review" else "테스터용"
+    phase = {"review": "심사 제출용", "tester": "테스터용", "ios": "iOS(애플 결제) 제출용"}[args.phase]
     _out(f"[preflight] {phase} 빌드 설정 검사 (phase={args.phase})")
     with _prod_like_env():
         if args.phase == "review":
             run_review_checks()
+        elif args.phase == "ios":
+            run_ios_checks()
         else:
             run_tester_checks()
 

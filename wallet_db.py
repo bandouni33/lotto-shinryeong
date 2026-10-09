@@ -927,6 +927,12 @@ def _init_gplay_purchases_table(conn) -> None:
     gplay_cols = {row[1] for row in conn.execute("PRAGMA table_info(gplay_purchases)")}
     if "is_test" not in gplay_cols:
         conn.execute("ALTER TABLE gplay_purchases ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
+    # 2026-10-09(애플 인앱결제): 이 표는 스토어 결제(구글·애플) 공용이다. store 로 가른다 —
+    # 구글 백그라운드 점검이 애플 행을 구글 API 로 조회하지 않게(반대도 마찬가지).
+    # 애플 행의 키는 'apple:<거래 ID>'(적립금) / 'apple:<원거래 ID>'(구독)라 구글 토큰과 겹치지 않고,
+    # 지급 표시(원장·pg_charges)는 기존 규칙 그대로 pg:gplay:apple:<…> 다(이월·초기화·탈퇴 처리가 같이 동작).
+    if "store" not in gplay_cols:
+        conn.execute("ALTER TABLE gplay_purchases ADD COLUMN store TEXT NOT NULL DEFAULT 'google'")
 
 
 def _fmt_ts(value: datetime) -> str:
@@ -952,7 +958,7 @@ def get_gplay_purchase(token: str) -> dict | None:
 
 
 def record_gplay_points_purchase(
-    member_id: int, token: str, product_id: str, points: int, is_test: bool = False
+    member_id: int, token: str, product_id: str, points: int, is_test: bool = False, store: str = "google"
 ) -> None:
     """구글이 '결제됨'으로 확인해 준 소모성 구매를 지급 전에 먼저 기록한다(이미 있으면 그대로).
     지급·소비 중 어디서 끊겨도 이 행(finished=0)이 남아 백그라운드 재시도가 이어서 처리한다."""
@@ -961,10 +967,10 @@ def record_gplay_points_purchase(
     conn.execute(
         """
         INSERT OR IGNORE INTO gplay_purchases
-            (purchase_token, member_id, kind, product_id, points, finished, is_test, created_at, updated_at)
-        VALUES (?, ?, 'points', ?, ?, 0, ?, ?, ?)
+            (purchase_token, member_id, kind, product_id, points, finished, is_test, store, created_at, updated_at)
+        VALUES (?, ?, 'points', ?, ?, 0, ?, ?, ?, ?)
         """,
-        (token, member_id, product_id, int(points), 1 if is_test else 0, now, now),
+        (token, member_id, product_id, int(points), 1 if is_test else 0, store, now, now),
     )
     conn.commit()
     conn.close()
@@ -980,28 +986,31 @@ def mark_gplay_finished(token: str) -> None:
     conn.close()
 
 
-def list_unfinished_gplay_purchases(newer_than: datetime, limit: int = 50) -> list[dict]:
-    """소비/승인이 아직 안 된 구매(구글은 3일 안에 승인이 없으면 자동 환불한다)."""
+def list_unfinished_gplay_purchases(newer_than: datetime, limit: int = 50, store: str = "google") -> list[dict]:
+    """소비/승인이 아직 안 된 구매(구글은 3일 안에 승인이 없으면 자동 환불한다).
+    애플은 서버가 할 승인 단계가 없어 '지급까지 끝남'을 finished 로 쓴다(store='apple')."""
     conn = _connect()
     rows = conn.execute(
         """
         SELECT * FROM gplay_purchases
-        WHERE finished = 0 AND voided_at IS NULL AND created_at > ?
+        WHERE finished = 0 AND voided_at IS NULL AND created_at > ? AND store = ?
         ORDER BY created_at LIMIT ?
         """,
-        (_fmt_ts(newer_than), int(limit)),
+        (_fmt_ts(newer_than), store, int(limit)),
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def list_due_gplay_subscriptions(now: datetime, *, member_id: int | None = None, limit: int = 50) -> list[dict]:
-    """다시 확인할 때가 된 구글 구독(next_check_at이 지났거나 같은 것)."""
+def list_due_gplay_subscriptions(
+    now: datetime, *, member_id: int | None = None, limit: int = 50, store: str = "google"
+) -> list[dict]:
+    """다시 확인할 때가 된 스토어 구독(next_check_at이 지났거나 같은 것) — store 별로 따로 본다."""
     sql = (
         "SELECT * FROM gplay_purchases WHERE kind = 'sub' AND next_check_at IS NOT NULL"
-        " AND next_check_at <= ?"
+        " AND next_check_at <= ? AND store = ?"
     )
-    params: list = [_fmt_ts(now)]
+    params: list = [_fmt_ts(now), store]
     if member_id is not None:
         sql += " AND member_id = ?"
         params.append(int(member_id))
@@ -1041,6 +1050,7 @@ def activate_gplay_subscription(
     next_check: datetime | None,
     linked_token: str | None = None,
     is_test: bool = False,
+    store: str = "google",
 ) -> bool:
     """구글 정기결제 첫 지급 — 토큰당 한 번만(멱등). 구독 행 만료일 = 구글 만료일(+권한 여유) + 이월.
 
@@ -1095,13 +1105,13 @@ def activate_gplay_subscription(
                     """
                     INSERT INTO gplay_purchases
                         (purchase_token, member_id, kind, product_id, base_plan_id, finished,
-                         carry_seconds, is_test, state, google_expiry, next_check_at, created_at, updated_at)
-                    SELECT ?, ?, 'sub', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?
+                         carry_seconds, is_test, store, state, google_expiry, next_check_at, created_at, updated_at)
+                    SELECT ?, ?, 'sub', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?
                     WHERE EXISTS (SELECT 1 FROM pg_charges WHERE pg_ref_id = ?)
                     """,
                     (
                         token, member_id, products.SUBSCRIPTION_PRODUCT, base_plan_id, carry,
-                        1 if is_test else 0,
+                        1 if is_test else 0, store,
                         state, _fmt_ts(google_expiry), _fmt_ts(next_check) if next_check else None,
                         now_iso, now_iso, ref,
                     ),
@@ -1140,6 +1150,7 @@ def update_gplay_subscription(
     access_until: datetime | None,
     next_check: datetime | None,
     keep_access: bool = False,
+    base_plan_id: str | None = None,
 ) -> bool:
     """다시 확인한 구글 상태를 반영한다. access_until=None 이면 권한을 지금 끊는다
     (보류·일시중지·만료·환불). 값이 있으면 그 시각 + 이월 기간까지 권한을 준다.
@@ -1171,7 +1182,8 @@ def update_gplay_subscription(
     conn.execute(
         """
         UPDATE gplay_purchases
-        SET state = ?, google_expiry = COALESCE(?, google_expiry), next_check_at = ?, updated_at = ?
+        SET state = ?, google_expiry = COALESCE(?, google_expiry), next_check_at = ?, updated_at = ?,
+            base_plan_id = COALESCE(?, base_plan_id)
         WHERE purchase_token = ?
         """,
         (
@@ -1179,6 +1191,7 @@ def update_gplay_subscription(
             _fmt_ts(google_expiry) if google_expiry else None,
             _fmt_ts(next_check) if next_check else None,
             now_iso,
+            base_plan_id,
             token,
         ),
     )

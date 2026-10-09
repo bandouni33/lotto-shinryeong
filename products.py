@@ -75,6 +75,43 @@ IAP_PRICE_FALLBACK: dict[str, str] = {
 }
 
 
+# ── 애플(App Store) 인앱결제 — 2026-10-09 App Store Connect 등록값 ─────────────────
+# 적립금(소모성)은 구글과 **같은 상품 ID**(POINTS_PRODUCTS)를 쓴다 — 지급 포인트도 같은 표.
+# 구독은 애플 제품 ID에 하이픈을 쓸 수 없어 밑줄로 등록했다. 서버는 애플 제품 ID를 구글 기본요금제
+# ID로 바꿔 같은 권한·기간 규칙(SUBSCRIPTION_BASE_PLAN_DAYS 등)을 그대로 쓴다.
+# (`premium_quarterly`·`premium_3month`는 ASC에서 잘못 만들었다 지운 ID라 다시 쓸 수 없다.)
+APPLE_SUBSCRIPTION_PRODUCTS: dict[str, str] = {
+    "premium_monthly": BASE_PLAN_MONTHLY,
+    "premium_3months": BASE_PLAN_QUARTERLY,
+}
+# ASC 구독 그룹 '로또신령 프리미엄' — 두 구독은 같은 그룹이라 동시에 결제되지 않는다(요금제 변경만).
+APPLE_SUBSCRIPTION_GROUP_ID = "22457283"
+# 애플 가격표(KRW)에는 10,000원·12,000원·30,000원이 없어 한 단계 아래 가격으로 등록했다
+# (2026-10-09 사용자 결정). 지급량은 상품 ID로 정해지므로(1000P/3000P·1개월/3개월) 가격만 다르다.
+# 화면 표시는 앱이 App Store에서 읽은 가격이 우선이고, 이 값은 못 받았을 때의 기본값이다.
+IAP_PRICE_FALLBACK_IOS: dict[str, str] = {
+    "points_1000": "9,900원",
+    "points_3000": "29,000원",
+    BASE_PLAN_MONTHLY: "11,000원",
+    BASE_PLAN_QUARTERLY: "29,000원",
+}
+# 애플 구독 관리(해지) 화면 — 앱 안에 이 길을 둔다(App Store 심사 지침 3.1.2).
+APPLE_SUBSCRIPTION_MANAGE_URL = "https://apps.apple.com/account/subscriptions"
+
+
+def apple_product_for_plan(base_plan_id: str) -> str:
+    """구글 기본요금제 ID → 애플 구독 제품 ID."""
+    for apple_id, plan in APPLE_SUBSCRIPTION_PRODUCTS.items():
+        if plan == base_plan_id:
+            return apple_id
+    raise KeyError(base_plan_id)
+
+
+def apple_product_ids() -> tuple[str, ...]:
+    """애플에 등록된 제품 ID 전체(적립금 + 구독)."""
+    return points_product_ids() + tuple(APPLE_SUBSCRIPTION_PRODUCTS)
+
+
 def points_product_ids() -> tuple[str, ...]:
     return tuple(POINTS_PRODUCTS)
 

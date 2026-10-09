@@ -25,7 +25,9 @@ from legal_notices import (
     ACCOUNT_DELETION_DONE,
     AUTH_CONSENT_ITEMS,
     IAP_CHARGE_NOTICE,
+    IAP_CHARGE_NOTICE_IOS,
     IAP_SUBSCRIPTION_NOTICE,
+    IAP_SUBSCRIPTION_NOTICE_IOS,
     NOTICE_VERSION,
     PRICING,
     format_advanced_points_notice,
@@ -900,6 +902,15 @@ CHARGE_PENDING_NOTICE = "결제 연동 준비 중입니다. 조금만 기다려�
 # 2026-10-09(점검 B4): 결제 스위치는 켜졌는데 결제 수신부가 없는 옛 앱 — 먹통 버튼 대신 이 안내.
 APP_UPDATE_FOR_IAP_NOTICE = "결제를 이용하려면 Play 스토어에서 로또신령 앱을 최신 버전으로 업데이트해 주세요."
 
+# 2026-10-09(iOS 1.0.2 반려 2.1(a) — "충전을 누르면 '준비 중'만 뜬다"): iOS 는 애플 인앱결제로 판다.
+# 버튼은 애플 결제 수신부가 있는 빌드(iap=1 을 보내는 1.0.3 이상)에만 나가고, 옛 iOS 빌드에는 업데이트 안내.
+# 안드로이드 스위치(IAP_CHARGE_ENABLED 등)와는 따로다 — iOS 를 끄려면 이 값 하나만 False 로.
+# 서버 확인·지급은 apple_iap.py(키가 Cloud secrets 에 있어야 동작).
+APPLE_IAP_ENABLED = True
+APP_UPDATE_FOR_APPLE_IAP_NOTICE = "결제를 이용하려면 App Store에서 로또신령 앱을 최신 버전으로 업데이트해 주세요."
+# iOS 가격은 안드로이드와 다르다(애플 가격표) — 저장 키를 이 접두어로 나눈다(서로 덮어쓰지 않게).
+IOS_PRICE_KEY_PREFIX = "ios:"
+
 # 앱(streamlit-webview.tsx)이 스토어에서 읽은 실제 가격을 실어 보내는 파라미터 이름과,
 # 그 값이 아직 없을 때 쓸 기본값(2026-09-26). 실제 표시는 항상 앱이 보내온 값이
 # 우선하므로, Play Console에서 가격을 바꾸면 다음 앱 실행 때 화면에 자동 반영되고
@@ -915,14 +926,22 @@ def _won_value(text: str) -> int | None:
 _STORE_PRICE_RE = re.compile(r"^(₩|KRW)?\s?[0-9]{1,3}(,[0-9]{3})*(\.[0-9]{1,2})?\s?(원)?$")
 
 
-def _plausible_store_price(key: str, value: str) -> bool:
+def _price_fallback(ios: bool) -> dict:
+    """화면 기본 가격 — iOS 는 애플 가격표 기준(products.IAP_PRICE_FALLBACK_IOS).
+    products 는 Cloud 재부팅 전까지 옛 모듈일 수 있어 getattr 로 읽는다(없으면 안드로이드 값)."""
+    if ios:
+        return dict(getattr(products, "IAP_PRICE_FALLBACK_IOS", IAP_PRICE_FALLBACK))
+    return dict(IAP_PRICE_FALLBACK)
+
+
+def _plausible_store_price(key: str, value: str, fallback_map: dict | None = None) -> bool:
     """2026-10-09(점검 H5): 주소로 들어온 가격은 누구나 꾸며 보낼 수 있고, 저장되면 모든 이용자
     화면에 보인다. 한국 원화 표기 모양이고, 기본 가격의 절반~두 배 안일 때만 받아들인다
     (실제 결제 금액은 항상 구글 결제창이 보여주므로, 이 값은 버튼 표시용일 뿐이다)."""
     text = str(value or "").strip()
     if not text or len(text) > 20 or not _STORE_PRICE_RE.match(text):
         return False
-    fallback = _won_value(IAP_PRICE_FALLBACK.get(key, ""))
+    fallback = _won_value((fallback_map if fallback_map is not None else IAP_PRICE_FALLBACK).get(key, ""))
     amount = _won_value(text.split(".")[0])
     if not fallback or not amount:
         return False
@@ -940,15 +959,22 @@ def iap_prices() -> dict:
     page/gid/native만 전달) 파라미터가 사라진다. 그래서 앱이 보내준 값을 DB에 남겨
     이후 모든 렌더가 같은 값을 쓰게 한다 — 결제 화면 어느 진입로에서든 가격이
     일관되고, Play Console 가격 변경이 다음 앱 실행에 자동 반영된다.
-    값이 달라졌을 때만 쓴다(렌더마다 원격 DB 쓰기를 피한다)."""
-    prices = dict(IAP_PRICE_FALLBACK)
+    값이 달라졌을 때만 쓴다(렌더마다 원격 DB 쓰기를 피한다).
+
+    2026-10-09: iOS 앱은 App Store 가격(애플 가격표라 안드로이드와 다르다)을 같은 파라미터로 보낸다 —
+    저장은 'ios:<키>'로 따로 두고, iOS 화면은 그 값과 iOS 기본값만 쓴다(서로 덮어쓰지 않는다)."""
+    ios = in_ios_native_app()
+    prefix = IOS_PRICE_KEY_PREFIX if ios else ""
+    fallback_map = _price_fallback(ios)
+    prices = dict(fallback_map)
     saved = {}
     try:
         import app_settings
 
         saved = app_settings.get_store_prices() or {}
-        for key, value in saved.items():
-            if key in prices and _plausible_store_price(key, value):
+        for key in prices:
+            value = saved.get(prefix + key)
+            if value and _plausible_store_price(key, value, fallback_map):
                 prices[key] = value
     except Exception:
         saved = {}
@@ -960,19 +986,19 @@ def iap_prices() -> dict:
             if isinstance(raw, (list, tuple)):
                 raw = raw[0] if raw else ""
             raw = str(raw or "").strip()
-            if raw and _plausible_store_price(key, raw):
+            if raw and _plausible_store_price(key, raw, fallback_map):
                 fresh[key] = raw
     except Exception:
         fresh = {}
 
     if fresh:
         prices.update(fresh)
-        if any(saved.get(key) != value for key, value in fresh.items()):
+        if any(saved.get(prefix + key) != value for key, value in fresh.items()):
             try:
                 import app_settings
 
                 merged = dict(saved)
-                merged.update(fresh)
+                merged.update({prefix + key: value for key, value in fresh.items()})
                 app_settings.set_store_prices(merged)
             except Exception:
                 pass
@@ -1098,6 +1124,29 @@ def iap_available() -> bool:
     return str(value or "") == "1"
 
 
+def apple_iap_available() -> bool:
+    """애플 결제 버튼을 그려도 되는가 — iOS 앱이면서 애플 결제 수신부가 있는 빌드(iap=1)일 때만.
+    수신부 없는 옛 iOS 빌드(1.0.2 이하)는 iap 를 안 보낸다 → 먹통 버튼 대신 업데이트 안내."""
+    if not in_ios_native_app():
+        return False
+    if not hasattr(products, "apple_product_for_plan"):
+        return False  # products 가 Cloud 재부팅 전 옛 모듈 — 애플 버튼 대신 업데이트 안내로 둔다(화면이 죽지 않게)
+    try:
+        value = st.query_params.get(IAP_CAPABILITY_PARAM)
+    except Exception:
+        return False
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value or "") == "1"
+
+
+def _apple_product_ids() -> tuple:
+    try:
+        return tuple(products.apple_product_ids())
+    except Exception:  # products 가 재부팅 전 옛 모듈
+        return ()
+
+
 def _iap_points_products() -> dict:
     """상품 ID → 지급 포인트. 기준점은 products.py다(여기서 새로 만들지 말 것)."""
     return dict(products.POINTS_PRODUCTS)
@@ -1119,7 +1168,9 @@ def _fire_iap_purchase_trigger(product_id: str, base_plan_id: str | None = None)
     수신부는 앱 쪽(LottoShinryeong/components/streamlit-webview.tsx)이며
     postMessage 페이로드 키(type/productId/basePlanId)와 URL 파라미터명
     (iap_buy/iap_plan)은 그 파일과 한 쌍이다 — 한쪽만 바꾸면 결제가 안 뜬다."""
-    if product_id not in IAP_ALLOWED_PRODUCT_IDS:
+    # 애플 구독 제품 ID(premium_monthly 등)는 iOS 앱에서만 받는다(적립금 ID 는 두 스토어 공용).
+    apple_ok = in_ios_native_app() and product_id in _apple_product_ids() and base_plan_id is None
+    if product_id not in IAP_ALLOWED_PRODUCT_IDS and not apple_ok:
         raise ValueError(f"unknown iap product: {product_id}")
     if base_plan_id is not None and base_plan_id not in IAP_ALLOWED_BASE_PLANS:
         raise ValueError(f"unknown iap base plan: {base_plan_id}")
@@ -1166,6 +1217,26 @@ def _fire_iap_purchase_trigger(product_id: str, base_plan_id: str | None = None)
     )
 
 
+def _render_apple_charge_options() -> None:
+    """iOS 앱 충전 화면 — App Store 소모성 상품(적립금)만. 상품 ID·지급량은 안드로이드와 같고(products.py),
+    가격은 애플 가격표 기준(앱이 읽어 온 App Store 가격 우선). 지급은 apple_iap 가 애플에 확인한 뒤에만."""
+    points_map = _iap_points_products()
+    prices = iap_prices()
+    st.caption(IAP_CHARGE_NOTICE_IOS)
+    for index, product_id in enumerate(IAP_POINTS_PRODUCT_IDS):
+        points = points_map.get(product_id)
+        if not points:
+            continue
+        label_price = prices.get(product_id) or f"{int(points) * WON_PER_POINT:,}원"
+        if st.button(
+            f"{label_price} · {points:,}P 충전",
+            type="primary" if index == 0 else "secondary",
+            use_container_width=True,
+            key=f"apple_buy_{product_id}",
+        ):
+            _fire_iap_purchase_trigger(product_id)
+
+
 def _render_iap_charge_options() -> None:
     """네이티브 앱 전용 충전 화면 — Google Play 소모성 상품(1,000P/3,000P)만 노출한다.
     실제 지급은 서버가 purchaseToken을 검증한 뒤에만 일어난다(google_play_pg.py)."""
@@ -1208,8 +1279,16 @@ def _render_charge_actions(member_id: int) -> None:
         # 여기서 끝내므로, 안드로이드 스위치를 건드리지 않고도 iOS 만 안전해진다.
         # native_platform 파라미터가 없는 구버전 빌드는 ""이라 이 분기를 안 탄다 —
         # 기존 안드로이드 동작이 그대로 유지된다.
+        #
+        # 2026-10-09(iOS 1.0.2 반려 2.1(a)): '준비중'만 띄우던 것을 애플 인앱결제로 바꾼다. 여전히
+        # 구글플레이·토스·테스터 Mock 은 iOS 에 절대 안 나간다(이 분기에서 끝난다).
         if in_ios_native_app():
-            st.info(CHARGE_PENDING_NOTICE)
+            if APPLE_IAP_ENABLED and apple_iap_available():
+                _render_apple_charge_options()
+            elif APPLE_IAP_ENABLED:
+                st.info(APP_UPDATE_FOR_APPLE_IAP_NOTICE)
+            else:
+                st.info(CHARGE_PENDING_NOTICE)
             return
         if IAP_CHARGE_ENABLED:
             if iap_available():
@@ -1497,7 +1576,17 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
                 st.rerun()
         return
 
-    if in_ios_native_app() or not IAP_SUBSCRIPTION_ENABLED:
+    if in_ios_native_app():
+        # 2026-10-09(iOS 1.0.2 반려 2.1(a)): iOS 는 애플 자동 갱신 구독으로 판다(안드로이드 스위치와 무관).
+        if APPLE_IAP_ENABLED and apple_iap_available():
+            _render_apple_subscription_options(on_close=on_close)
+            return
+        st.info(APP_UPDATE_FOR_APPLE_IAP_NOTICE if APPLE_IAP_ENABLED else CHARGE_PENDING_NOTICE)
+        if st.button("닫기", use_container_width=True, key="iap_sub_pending_close"):
+            on_close()
+            st.rerun()
+        return
+    if not IAP_SUBSCRIPTION_ENABLED:
         # 2026-09-26(사용자 지시): 충전과 같은 이유·같은 방식 — 수신부 없는 빌드에서
         # 구글플레이 요금제 버튼이 먹통이라 준비중 안내만 낸다(죽은 버튼을 안 보여준다).
         # 2026-10-03: iOS 도 같은 처리다(조건에 in_ios_native_app() 추가) — App Store
@@ -1541,6 +1630,48 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
     if st.button("취소", use_container_width=True, key="iap_sub_cancel"):
         on_close()
         st.rerun()
+
+
+def _render_apple_subscription_options(*, on_close) -> None:
+    """iOS 앱 구독 화면 — App Store 자동 갱신 구독(1개월·3개월). App Store 심사 지침 3.1.2에 따라
+    결제 버튼 위에 기간·가격·자동 갱신·해지 방법을, 아래에 이용약관·개인정보 처리방침 링크와
+    구독 관리·구매 복원을 둔다. 기간은 서버가 애플 응답의 제품 ID 로만 정한다(apple_iap)."""
+    from user_scope import internal_nav_href
+
+    labels = dict(products.SUBSCRIPTION_LABELS)
+    prices = iap_prices()
+    st.markdown("**구독 기간** (App Store 자동 갱신 구독)")
+    st.caption(IAP_SUBSCRIPTION_NOTICE_IOS)
+    for index, (plan_key, base_plan_id) in enumerate(IAP_SUBSCRIPTION_PLANS):
+        apple_id = products.apple_product_for_plan(base_plan_id)
+        label_price = prices.get(base_plan_id) or products.subscription_price_label(base_plan_id)
+        if st.button(
+            f"프리미엄 {labels[base_plan_id]} · {label_price} ({labels[base_plan_id]}마다 자동 갱신)",
+            type="primary" if index == 0 else "secondary",
+            use_container_width=True,
+            key=f"apple_sub_{plan_key}",
+        ):
+            _fire_iap_purchase_trigger(apple_id)
+    terms_href = html.escape(internal_nav_href("terms"), quote=True)
+    privacy_href = html.escape(internal_nav_href("privacy"), quote=True)
+    st.markdown(
+        f'<div style="font-size:12px;text-align:center;margin:4px 0 8px;">'
+        f'<a href="{terms_href}" target="_self">이용약관</a> · '
+        f'<a href="{privacy_href}" target="_self">개인정보 처리방침</a></div>',
+        unsafe_allow_html=True,
+    )
+    # 앱(streamlit-webview.tsx isAppStoreUrl)이 App Store 앱의 구독 관리 화면으로 연다.
+    st.link_button("구독 관리·해지 (App Store)", products.APPLE_SUBSCRIPTION_MANAGE_URL, use_container_width=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("구매 복원", use_container_width=True, key="apple_restore"):
+            import apple_iap
+
+            apple_iap.fire_restore_trigger()
+    with c2:
+        if st.button("취소", use_container_width=True, key="iap_sub_cancel"):
+            on_close()
+            st.rerun()
 
 
 @_dialog_decorator("고급필터 구독")

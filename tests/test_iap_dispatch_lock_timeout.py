@@ -393,12 +393,16 @@ def test_I5_the_previous_source_keeps_the_lock() -> None:
 def test_message_wiring_is_iap_only() -> None:
     text = _tsx()
     count = text.count("'iap_dispatch_timeout'")
-    assert count == 3, f"§7 호출부 3곳에만 결제용 문구가 넘어가야 한다(현재 {count}곳)"
-    assert text.count("IAP_DISPATCH_TIMEOUT_MS,") == 3, "타임아웃 상수 뒤에 문구가 안 붙은 호출이 있다"
+    # 2026-10-09: 애플 상품 조회 1곳이 같은 문구로 추가돼 3 → 4곳. 애플 결제 요청은 결제 시트가 끝나야
+    # 돌아오므로 일부러 타임아웃을 걸지 않는다(걸면 결제 중 오류 창·중복 결제).
+    assert count == 4, f"§7 결제 호출부 4곳(구글 3·애플 상품조회 1)에만 결제용 문구가 넘어가야 한다(현재 {count}곳)"
+    assert text.count("IAP_DISPATCH_TIMEOUT_MS,") == 4, "타임아웃 상수 뒤에 문구가 안 붙은 호출이 있다"
+    apple_req = text[text.index("requestPurchase({ request: { apple:"):]
+    assert "IAP_DISPATCH_TIMEOUT_MS" not in apple_req[:400], "애플 결제 요청에 타임아웃이 걸렸다"
     assert "await withTimeout(kakaoNativeLogin(), KAKAO_NATIVE_LOGIN_TIMEOUT_MS)" in text, (
         "§6 호출부가 바뀌었다(문구를 넘기면 카카오 로그인 안내가 결제용 문구로 바뀐다)"
     )
-    print("  (I6 문구 배선: §7 3곳은 'iap_dispatch_timeout', §6 호출부는 기본값 그대로)")
+    print("  (I6 문구 배선: §7 4곳은 'iap_dispatch_timeout', §6 호출부는 기본값 그대로)")
 
 
 # ── 타이머 정리 ─────────────────────────────────────────────────────────────

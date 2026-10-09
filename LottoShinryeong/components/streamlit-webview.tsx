@@ -14,7 +14,9 @@ import {
 import { WebView } from 'react-native-webview';
 import {
   fetchProducts,
+  finishTransaction,
   getAvailablePurchases,
+  getPendingTransactionsIOS,
   initConnection,
   isUserCancelledError,
   purchaseErrorListener,
@@ -59,6 +61,25 @@ const IAP_PRICE_PARAMS: Record<string, string> = {
 };
 const IAP_IN_APP_SKUS = ['points_1000', 'points_3000'];
 const IAP_SUBSCRIPTION_SKU = 'premium';
+
+// 2026-10-09(iOS 1.0.2 반려 2.1(a) 대응 — 애플 인앱결제): App Store 구독 제품 ID → 서버가 쓰는 요금제 키
+// (서버 products.APPLE_SUBSCRIPTION_PRODUCTS 와 한 쌍 — 테스트가 대조한다). 애플 제품 ID 는 하이픈을 못 써서
+// 구글 기본요금제 ID 와 이름이 다르다. 적립금(소모성)은 구글과 같은 ID(IAP_IN_APP_SKUS)다.
+const APPLE_SUBSCRIPTION_SKUS: Record<string, string> = {
+  premium_monthly: 'premium-monthly',
+  premium_3months: 'premium-quarterly',
+};
+// 앱 ↔ 서버(apple_iap.py) 신호 이름 — 결제한 거래 ID 를 보내고, 서버가 처리를 끝낸 거래를 알려 준다.
+const IAP_APPLE_TX_PARAM = 'iap_apple_tx';
+const IAP_FINISH_URL_PARAM = 'iap_finish';
+const IAP_RESTORE_URL_PARAM = 'iap_restore';
+// 서버가 '끝내기' 신호를 안 주면(일시 오류 — 애플이 다음 실행 때 다시 보낸다) 이만큼 뒤 다음 거래로 넘어간다.
+const APPLE_DELIVERY_TIMEOUT_MS = 30000;
+// App Store 주소(구독 관리 등)는 웹뷰가 아니라 App Store 앱으로 넘긴다.
+const APP_STORE_URL_PREFIXES = ['https://apps.apple.com/', 'itms-apps://'];
+function isAppStoreUrl(url: string): boolean {
+  return Platform.OS === 'ios' && APP_STORE_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
 /** 상품 가격 조회를 이만큼만 기다리고 첫 화면을 띄운다(스토어가 느려도 앱은 뜨게). */
 const PRICE_WAIT_MS = 2500;
 
@@ -85,11 +106,11 @@ const WEBVIEW_ORIGIN_WHITELIST = ['http://*', 'https://*', 'about:srcdoc'];
 const APPLE_LOGIN_CAPABILITY_PARAMS: Record<string, string> =
   Platform.OS === 'ios' ? { apple_login: '1' } : {};
 
-// 2026-10-09(구글 인앱결제 점검 B4): 이 빌드가 구글 결제 수신부(아래 expo-iap 배선)를 갖고 있음을
+// 2026-10-09(구글 인앱결제 점검 B4): 이 빌드가 결제 수신부(아래 expo-iap 배선)를 갖고 있음을
 // 서버에 알리는 표시. 서버(wallet_ui.IAP_CAPABILITY_PARAM)는 이 값이 있을 때만 결제 버튼을 그린다 —
 // 결제 스위치를 켠 뒤에도 수신부 없는 옛 빌드에는 먹통 버튼 대신 "앱 업데이트" 안내가 나간다.
-const IAP_CAPABILITY_PARAMS: Record<string, string> =
-  Platform.OS === 'android' ? { iap: '1' } : {};
+// 같은 날 iOS 도 애플 결제 수신부가 생겨 두 플랫폼 모두 보낸다(서버는 native_platform 으로 스토어를 가른다).
+const IAP_CAPABILITY_PARAMS: Record<string, string> = { iap: '1' };
 
 // 2026-10-09(구독 관리 링크): Play 스토어 주소(정기 결제 관리·스토어 페이지)는 웹뷰 안이 아니라
 // Play 스토어 앱으로 넘긴다 — 웹뷰 안에서 열면 앱으로 돌아올 길이 없어진다.
@@ -387,7 +408,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 구글은 3일 안에 승인이 없으면 자동 환불하므로, 결제 직후 앱이 꺼졌거나 Play 스토어에서
   // 직접 재구독한 경우도 다음 실행 때 여기서 이어진다. 여러 건이면 다음 실행 때 다음 건.
   const recoveryParamsRef = useRef<Record<string, string>>({});
-  const [pricesReady, setPricesReady] = useState(Platform.OS !== 'android');
+  // 2026-10-09: iOS 도 App Store 가격을 읽어 첫 주소에 싣는다(최대 PRICE_WAIT_MS 기다림).
+  const [pricesReady, setPricesReady] = useState(false);
   // 지금 웹뷰가 실제로 보고 있는 주소 — 로그인 성공·결제 완료 후 이 자리로 돌아온다.
   const currentUrlRef = useRef<string | null>(null);
 
@@ -410,9 +432,6 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   );
 
   useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
     let cancelled = false;
     const finish = () => {
       if (!cancelled) {
@@ -422,10 +441,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     const timer = setTimeout(finish, PRICE_WAIT_MS);
     (async () => {
       try {
+        // iOS: initConnection 뒤 애플이 끝내지 않은 거래를 purchaseUpdatedListener 로 다시 보내 준다
+        // (아래 리스너가 서버로 넘긴다 — 안드로이드의 '미처리 결제 복구'에 해당).
         await initConnection();
+        const subsSkus = Platform.OS === 'ios' ? Object.keys(APPLE_SUBSCRIPTION_SKUS) : [IAP_SUBSCRIPTION_SKU];
         const [inAppFetched, subsFetched] = await Promise.all([
           fetchProducts({ skus: IAP_IN_APP_SKUS, type: 'in-app' }),
-          fetchProducts({ skus: [IAP_SUBSCRIPTION_SKU], type: 'subs' }),
+          fetchProducts({ skus: subsSkus, type: 'subs' }),
         ]);
         const displayPrices: Record<string, string> = {};
         for (const item of (Array.isArray(inAppFetched) ? inAppFetched : []) as Product[]) {
@@ -434,6 +456,14 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           }
         }
         for (const item of (Array.isArray(subsFetched) ? subsFetched : []) as ProductSubscription[]) {
+          if (Platform.OS === 'ios') {
+            // 애플 구독 제품 ID → 서버 요금제 키(가격 파라미터 이름은 두 플랫폼 공용).
+            const planKey = APPLE_SUBSCRIPTION_SKUS[item.id];
+            if (planKey && item.displayPrice) {
+              displayPrices[planKey] = item.displayPrice;
+            }
+            continue;
+          }
           if (item.displayPrice) {
             displayPrices[item.id] = item.displayPrice;
           }
@@ -452,6 +482,9 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           }
         }
         priceParamsRef.current = params;
+        if (Platform.OS !== 'android') {
+          return; // 아래 '미처리 결제 복구'는 구글 전용(애플은 리스너가 다시 받아 처리한다)
+        }
         try {
           const owned = (await getAvailablePurchases()) as Purchase[];
           const unfinished = (Array.isArray(owned) ? owned : []).find(
@@ -522,16 +555,153 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     [reloadWith]
   );
 
+  // ── 2026-10-09 애플 인앱결제: 거래 전달 → 서버 확인·지급 → 서버의 '끝내기' 신호로 finishTransaction ──
+  // 애플은 끝내지 않은 거래를 앱을 켤 때마다 다시 보내므로, 서버 확인 전에는 절대 끝내지 않는다
+  // (끝낸 뒤 서버 지급이 실패하면 되살릴 길이 없다). 한 번에 한 건씩 서버로 보낸다(주소 하나에 하나).
+  const applePurchasesRef = useRef<Map<string, Purchase>>(new Map());
+  const appleQueueRef = useRef<string[]>([]);
+  const appleInFlightRef = useRef<string | null>(null);
+  const appleInFlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pumpAppleQueue = useCallback(() => {
+    if (appleInFlightRef.current || appleQueueRef.current.length === 0) {
+      return;
+    }
+    const transactionId = appleQueueRef.current.shift() as string;
+    appleInFlightRef.current = transactionId;
+    if (appleInFlightTimerRef.current) {
+      clearTimeout(appleInFlightTimerRef.current);
+    }
+    appleInFlightTimerRef.current = setTimeout(() => {
+      // 서버가 끝내기를 안 보냈다(일시 오류 등) — 이 거래는 다음 실행 때 애플이 다시 보낸다.
+      if (appleInFlightRef.current === transactionId) {
+        appleInFlightRef.current = null;
+        pumpAppleQueue();
+      }
+    }, APPLE_DELIVERY_TIMEOUT_MS);
+    if (!initialUriSetRef.current) {
+      // 첫 화면 주소가 아직 안 정해졌다 — 첫 주소에 함께 싣는다(덮어써져 사라지지 않게).
+      recoveryParamsRef.current = { ...recoveryParamsRef.current, [IAP_APPLE_TX_PARAM]: transactionId };
+      return;
+    }
+    setWebViewUri(reloadWith({ [IAP_APPLE_TX_PARAM]: transactionId, _cb: String(Date.now()) }));
+  }, [reloadWith]);
+
+  const deliverApplePurchase = useCallback(
+    (purchase: Purchase) => {
+      const transactionId = String((purchase as { transactionId?: string }).transactionId || purchase.id || '');
+      if (!/^[0-9]{1,32}$/.test(transactionId)) {
+        Alert.alert('결제 확인 실패', '구매 정보를 받지 못했습니다. 앱을 다시 열면 자동으로 다시 확인됩니다.');
+        return;
+      }
+      setIapRequest(null);
+      applePurchasesRef.current.set(transactionId, purchase);
+      if (appleInFlightRef.current !== transactionId && !appleQueueRef.current.includes(transactionId)) {
+        appleQueueRef.current.push(transactionId);
+      }
+      pumpAppleQueue();
+    },
+    [pumpAppleQueue]
+  );
+
+  const finishApplePurchase = useCallback(
+    async (transactionId: string) => {
+      if (Platform.OS !== 'ios' || !/^[0-9]{1,32}$/.test(transactionId)) {
+        return;
+      }
+      let purchase = applePurchasesRef.current.get(transactionId);
+      if (!purchase) {
+        try {
+          const pending = (await getPendingTransactionsIOS()) as Purchase[];
+          purchase = (Array.isArray(pending) ? pending : []).find(
+            (item) => String((item as { transactionId?: string }).transactionId || item.id) === transactionId
+          );
+        } catch {
+          purchase = undefined;
+        }
+      }
+      if (purchase) {
+        try {
+          await finishTransaction({
+            purchase,
+            isConsumable: !APPLE_SUBSCRIPTION_SKUS[purchase.productId],
+          });
+          applePurchasesRef.current.delete(transactionId);
+        } catch {
+          // 끝내기 실패 — 애플이 다음 실행 때 다시 보내고, 서버는 이미 처리된 거래로 보고 다시 끝내기를 보낸다.
+        }
+      }
+      if (appleInFlightRef.current === transactionId) {
+        appleInFlightRef.current = null;
+        if (appleInFlightTimerRef.current) {
+          clearTimeout(appleInFlightTimerRef.current);
+          appleInFlightTimerRef.current = null;
+        }
+        pumpAppleQueue();
+      }
+    },
+    [pumpAppleQueue]
+  );
+
+  // '구매 복원'(App Store 지침 3.1.1) — 이 Apple ID 의 유효한 구독을 찾아 서버로 다시 보낸다.
+  // 구독은 로그인 계정에 묶여 있어 같은 계정이면 다른 기기에서도 그대로 이어지고, 다른 계정에 이미 연결된
+  // 구독이면 서버가 안내한다. 적립금(소모성)은 복원 대상이 아니다.
+  const restoreApplePurchases = useCallback(async () => {
+    if (Platform.OS !== 'ios') {
+      return;
+    }
+    try {
+      await initConnection();
+      const owned = (await getAvailablePurchases()) as Purchase[];
+      const subs = (Array.isArray(owned) ? owned : [])
+        .filter((item) => !!APPLE_SUBSCRIPTION_SKUS[item.productId])
+        .sort((a, b) => (b.transactionDate || 0) - (a.transactionDate || 0));
+      if (subs.length === 0) {
+        Alert.alert('복원할 구독이 없습니다', '이 Apple ID로 이용 중인 로또신령 구독을 찾지 못했습니다.');
+        return;
+      }
+      deliverApplePurchase(subs[0]);
+    } catch (e) {
+      Alert.alert('구매 복원에 실패했습니다', e instanceof Error ? e.message : '잠시 후 다시 시도해 주세요.');
+    }
+  }, [deliverApplePurchase]);
+
+  const restoreLockRef = useRef(false);
+  const triggerAppleRestoreOnce = useCallback(() => {
+    if (restoreLockRef.current) {
+      return;
+    }
+    restoreLockRef.current = true;
+    restoreApplePurchases().finally(() => {
+      restoreLockRef.current = false;
+    });
+  }, [restoreApplePurchases]);
+
+  const finishFromUrl = useCallback(
+    (url?: string) => {
+      const value = paramFromUrl(url, IAP_FINISH_URL_PARAM);
+      if (!value) {
+        return false;
+      }
+      for (const id of value.split(',')) {
+        finishApplePurchase(id.trim());
+      }
+      return true;
+    },
+    [finishApplePurchase]
+  );
+
   // 매 렌더마다 새 함수를 쓰면 리스너가 재등록되므로 ref로 최신 구현을 본다.
   const deliverRef = useRef(deliverPurchaseToServer);
   useEffect(() => {
     deliverRef.current = deliverPurchaseToServer;
   }, [deliverPurchaseToServer]);
+  const deliverAppleRef = useRef(deliverApplePurchase);
+  useEffect(() => {
+    deliverAppleRef.current = deliverApplePurchase;
+  }, [deliverApplePurchase]);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
     let cancelled = false;
     // 스토어 연결·상품 조회·미완료 구매 재전송은 아래 가격 수집 effect가 한 번에
     // 처리한다(initConnection을 두 곳에서 부르면 관리 포인트만 늘어난다).
@@ -553,6 +723,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         );
         return;
       }
+      if (Platform.OS === 'ios') {
+        deliverAppleRef.current(purchase);
+        return;
+      }
       deliverRef.current(purchase);
     });
     const failed = purchaseErrorListener((error) => {
@@ -571,7 +745,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 결제 실행 — 상품 조회 → (구독이면 기본요금제에 맞는 offerToken 선택) → 결제창.
   // 결과는 위 purchaseUpdatedListener로 온다(반환값 아님 — expo-iap 규약).
   useEffect(() => {
-    if (!iapRequest || Platform.OS !== 'android' || purchaseInFlightRef.current) {
+    if (!iapRequest || purchaseInFlightRef.current) {
       return;
     }
     let cancelled = false;
@@ -579,6 +753,26 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     (async () => {
       purchaseInFlightRef.current = true;
       try {
+        if (Platform.OS === 'ios') {
+          // 애플: 구독은 제품 ID 하나가 요금제 하나다(기본요금제·offerToken 없음).
+          const isSub = !!APPLE_SUBSCRIPTION_SKUS[request.sku];
+          const fetchedIos = await withTimeout(
+            fetchProducts({ skus: [request.sku], type: isSub ? 'subs' : 'in-app' }),
+            IAP_DISPATCH_TIMEOUT_MS,
+            'iap_dispatch_timeout'
+          );
+          const listIos = (Array.isArray(fetchedIos) ? fetchedIos : []) as Array<Product | ProductSubscription>;
+          if (!listIos.find((item) => item.id === request.sku)) {
+            throw new Error('상품 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+          }
+          // 타임아웃을 걸지 않는다: iOS 의 requestPurchase 는 결제 시트(Face ID·암호 입력)가 끝나야 돌아온다
+          // (안드로이드는 결제창이 열리면 바로 돌아온다). 20초에 끊으면 결제는 되는데 오류 창이 뜨고,
+          // 잠금이 풀려 한 번 더 결제할 수 있게 된다(독립 검토 지적, 2026-10-09).
+          await (isSub
+            ? requestPurchase({ request: { apple: { sku: request.sku } }, type: 'subs' })
+            : requestPurchase({ request: { apple: { sku: request.sku } }, type: 'in-app' }));
+          return;
+        }
         const queryType = request.basePlanId ? ('subs' as const) : ('in-app' as const);
         const fetched = await withTimeout(
           fetchProducts({ skus: [request.sku], type: queryType }),
@@ -877,8 +1071,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       if (iapFromUrl) {
         triggerIapPurchaseOnce(iapFromUrl);
       }
+      finishFromUrl(navState.url);
+      if (navState.url && navState.url.includes(`${IAP_RESTORE_URL_PARAM}=1`)) {
+        triggerAppleRestoreOnce();
+      }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce, finishFromUrl, triggerAppleRestoreOnce]
   );
 
   // 2) onShouldStartLoadWithRequest — 로드 자체를 가로채 취소하고 대신 보낸다.
@@ -890,8 +1088,15 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 빠르게(실제 로드 자체를 막으면서) 넘어가므로 그대로 둔다.
   const onShouldStartLoadWithRequest = useCallback(
     (request: { url: string }) => {
-      if (isPlayStoreUrl(request.url)) {
+      if (isPlayStoreUrl(request.url) || isAppStoreUrl(request.url)) {
         Linking.openURL(request.url).catch(() => {});
+        return false;
+      }
+      if (finishFromUrl(request.url)) {
+        return false;
+      }
+      if (request.url.includes(`${IAP_RESTORE_URL_PARAM}=1`)) {
+        triggerAppleRestoreOnce();
         return false;
       }
       if (request.url.includes('qrscan=1')) {
@@ -913,7 +1118,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       }
       return true;
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, parseIapRequestFromUrl, triggerIapPurchaseOnce, finishFromUrl, triggerAppleRestoreOnce]
   );
 
   // 3) onMessage(postMessage) — 웹뷰 JS가 곧장 네이티브로 메시지를 보내는 경로.
@@ -947,6 +1152,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           sku: payload.productId,
           basePlanId: payload.basePlanId || undefined,
         });
+      } else if (payload?.type === 'iapFinish' && typeof (payload as { transactionId?: unknown }).transactionId === 'string') {
+        // apple_iap.render_finish_signals() — 서버가 확인·지급을 끝낸 애플 거래.
+        finishApplePurchase((payload as { transactionId: string }).transactionId);
+      } else if (payload?.type === 'iapRestore') {
+        // apple_iap.fire_restore_trigger() — 구독 화면의 '구매 복원'.
+        triggerAppleRestoreOnce();
       } else if (payload?.type === PAGE_READY_MESSAGE_TYPE) {
         // PAGE_READY_INJECTED_JS — Streamlit 이 화면을 다 그렸다.
         pageReadySeenRef.current = true;
@@ -958,7 +1169,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         setDialogOpen(!!payload.open);
       }
     },
-    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, triggerIapPurchaseOnce]
+    [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, triggerIapPurchaseOnce, finishApplePurchase, triggerAppleRestoreOnce]
   );
 
   // 새 창 요청(target=_blank·window.open) — 위 isOwnServerUrl 설명 참고. 안드로이드 전용 이벤트.

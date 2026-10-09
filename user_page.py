@@ -343,6 +343,23 @@ try:
 except Exception:
     pass
 
+# 2026-10-09(iOS 1.0.2 반려 2.1(a) 대응): 애플 인앱결제 — 구글과 같은 자리·같은 순서
+# (로그인 회원 확정 뒤 결제 확인 → 처리 끝난 거래를 앱에 알림 → 구독 재확인·점검).
+# apple_iap·wallet_db·products 는 Cloud 재부팅 전까지 옛 코드일 수 있어 통째로 감싼다(화면은 계속 뜬다).
+_apple_rerun = False
+try:
+    import apple_iap as _apple_iap
+
+    _apple_rerun = _apple_iap.handle_apple_purchase_return(current_member_id())
+    if not _apple_rerun:
+        _apple_iap.render_finish_signals()
+        _apple_iap.refresh_member_subscriptions_if_due(current_member_id())
+        _apple_iap.maybe_run_maintenance_in_background()
+except Exception:
+    _apple_rerun = False
+if _apple_rerun:
+    st.rerun()
+
 current_page = st.query_params.get("page", "main")
 
 st.markdown(
@@ -2155,6 +2172,28 @@ elif current_page == "privacy":
     st.markdown(NOTICES["privacy"]["body"])
     # 사업자 정보는 사업자등록 완료 전까지는 미기재 항목이 그대로 노출되므로,
     # 실제 값이 채워지기 전까지 이 공개 페이지에는 넣지 않는다.
+
+
+# ==========================================================
+# 📄 이용약관·적립금/환불정책 — 2026-10-09 App Store 구독 화면의 '이용약관' 링크용 단독 URL
+# (privacy 페이지와 같은 패턴 — 앱을 열거나 로그인하지 않고도 볼 수 있다. App Store 심사 지침 3.1.2)
+# ==========================================================
+elif current_page == "terms":
+    st.markdown(
+        """
+        <style>
+        .stApp { background-color: #12182b; color: white; }
+        .block-container { max-width: 680px; padding: 24px 20px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    from legal_notices import NOTICES
+
+    st.markdown(f"## {NOTICES['terms']['title']}")
+    st.markdown(NOTICES["terms"]["body"])
+    st.markdown(f"## {NOTICES['points']['title']}")
+    st.markdown(NOTICES["points"]["body"])
 
 
 # ==========================================================

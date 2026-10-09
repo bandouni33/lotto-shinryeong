@@ -7,9 +7,11 @@
 
   S1 서버가 앱과 같은 파라미터 이름(native_platform)을 읽는다 (교차 계약)
   S2 두 렌더 지점(충전·구독)이 모두 iOS 분기를 갖는다 (한 곳만 고치면 조용히 남는다)
-  S3 iOS + 스위치 3개 8조합 전수: 충전 화면에 결제 버튼 0개 + '준비중' 안내
-  S4 iOS 구독: 유료 요금제 버튼 0개 (무료 프로모는 유지 — 무료 지급은 결제가 아니다)
+  S3 iOS + 스위치 3개 8조합 전수: 충전 화면에 구글·토스·Mock 버튼 0개 + (애플 수신부 없는 옛 빌드) 업데이트 안내
+  S4 iOS 구독: 구글·포인트 요금제 버튼 0개 (무료 프로모는 유지 — 무료 지급은 결제가 아니다)
   S5 대조군(안드로이드): 플랫폼 파라미터가 없으면 기존 동작 그대로 (라이브 회귀 방지)
+  S6 (2026-10-09 iOS 반려 2.1(a) 대응) 애플 수신부가 있는 iOS 빌드(iap=1): 애플 결제 버튼만 뜬다,
+     스위치 8조합 전부 — 구글·토스·Mock 은 여전히 0개, '준비중' 안내도 없다
 
 DB는 _db_isolation.isolated_db()로만 만진다(운영 Turso 접촉 0). pytest 없이 돌도록
 표준 assert + __main__ 러너를 둔다(AGENTS §3).
@@ -102,9 +104,11 @@ def _member(handle: str) -> int:
 
 
 def _render(mode: str, member_id: int, *, native: bool = True,
-            platform: str | None = "ios") -> AppTest:
+            platform: str | None = "ios", iap: bool = False) -> AppTest:
     at = AppTest.from_file(PROBE, default_timeout=TIMEOUT_SEC)
     at.query_params["probe"] = mode
+    if iap:
+        at.query_params["iap"] = "1"
     if native:
         at.query_params["native"] = "1"
     if platform is not None:
@@ -165,9 +169,10 @@ def test_S3_ios_charge_hides_every_payment_button_for_all_switch_combos():
             assert not any("Mock 결제" in lab for lab in _labels(at)), (
                 f"iOS 인데 Mock 결제 버튼이 그려진다({config}): {_labels(at)}"
             )
-            assert wallet_ui.CHARGE_PENDING_NOTICE in _infos(at), (
-                f"iOS 인데 '준비중' 안내가 없다({config}): {_infos(at)!r}"
+            assert wallet_ui.APP_UPDATE_FOR_APPLE_IAP_NOTICE in _infos(at), (
+                f"애플 수신부 없는 iOS 빌드인데 업데이트 안내가 없다({config}): {_infos(at)!r}"
             )
+            assert not any(k.startswith("apple_") for k in keys), f"옛 iOS 빌드에 애플 버튼이 떴다: {keys}"
             seen.append(config)
     assert len(seen) == 8, f"조합을 다 못 돌았다: {len(seen)}"
 
@@ -187,8 +192,8 @@ def test_S4a_ios_subscription_hides_paid_plans():
                     f"iOS 인데 유료 구독 버튼 {key} 가 떴다(IAP_SUBSCRIPTION_ENABLED={enabled}): "
                     f"{keys}"
                 )
-            assert wallet_ui.CHARGE_PENDING_NOTICE in _infos(at), (
-                f"iOS 인데 '준비중' 안내가 없다: {_infos(at)!r}"
+            assert wallet_ui.APP_UPDATE_FOR_APPLE_IAP_NOTICE in _infos(at), (
+                f"애플 수신부 없는 iOS 빌드인데 업데이트 안내가 없다: {_infos(at)!r}"
             )
 
 
@@ -214,7 +219,7 @@ def test_S4b_ios_keeps_the_free_promo_but_no_paid_plan():
                 "무료 프로모 대상인데 무료 시작 버튼이 없다 — iOS 사용자만 혜택에서 빠진다"
             )
         else:
-            assert wallet_ui.CHARGE_PENDING_NOTICE in _infos(at)
+            assert wallet_ui.APP_UPDATE_FOR_APPLE_IAP_NOTICE in _infos(at)
 
 
 # ── S5 안드로이드 대조군 ─────────────────────────────────────
@@ -238,6 +243,35 @@ def test_S5_android_without_platform_param_is_unchanged():
         assert "test_charge_btn" in _keys(at2), "android 인데 iOS 분기를 탔다"
 
 
+# ── S6 애플 수신부가 있는 iOS 빌드 ─────────────────────────────
+def test_S6_ios_with_apple_receiver_shows_only_apple_buttons():
+    with _prod_like_env(), _db_isolation.isolated_db():
+        mid = _member("ios_s6")
+        for combo in itertools.product((False, True), repeat=len(SWITCHES)):
+            config = dict(zip(SWITCHES, combo))
+            with _switches(**config):
+                at = _render("charge", mid, platform="ios", iap=True)
+            assert not at.exception, f"iOS(애플) 충전 렌더 예외({config}): {at.exception}"
+            keys = _keys(at)
+            for key in FORBIDDEN_CHARGE:
+                assert key not in keys, f"iOS 인데 {key} 가 떴다({config}): {keys}"
+            assert {"apple_buy_points_1000", "apple_buy_points_3000"} <= set(keys), (
+                f"애플 결제 버튼이 없다({config}): {keys}"
+            )
+            assert wallet_ui.CHARGE_PENDING_NOTICE not in _infos(at), "'준비중' 안내가 남았다(반려 사유)"
+        with _switches(ADVANCED_FILTER_FIRST_SUB_FREE=False, IAP_SUBSCRIPTION_ENABLED=False):
+            at = _render("sub", mid, platform="ios", iap=True)
+        assert not at.exception, at.exception
+        keys = _keys(at)
+        for key in FORBIDDEN_SUB:
+            assert key not in keys, f"iOS 구독에 {key} 가 떴다: {keys}"
+        assert {"apple_sub_monthly", "apple_sub_3month", "apple_restore"} <= set(keys), keys
+        with _switches(APPLE_IAP_ENABLED=False):
+            at = _render("charge", mid, platform="ios", iap=True)
+        assert wallet_ui.CHARGE_PENDING_NOTICE in _infos(at), "iOS 스위치를 끄면 준비중 안내로 돌아가야 한다"
+        assert not any(k.startswith("apple_") for k in _keys(at))
+
+
 def _main() -> int:
     import os as _os
 
@@ -248,6 +282,7 @@ def _main() -> int:
         test_S4a_ios_subscription_hides_paid_plans,
         test_S4b_ios_keeps_the_free_promo_but_no_paid_plan,
         test_S5_android_without_platform_param_is_unchanged,
+        test_S6_ios_with_apple_receiver_shows_only_apple_buttons,
     ]
     failed = 0
     for test in tests:

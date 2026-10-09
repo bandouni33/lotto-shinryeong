@@ -66,6 +66,13 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "gplay_voided_poll_failed",
         "gplay_voided_points",
         "gplay_voided_subscription",
+        # 2026-10-09: 애플 결제 운영 기록(apple_iap) — 구글과 같은 기준(검증 실패·키 없음은 배지에 남긴다).
+        "apple_refresh_failed",
+        "apple_member_refresh_error",
+        "apple_maint_error",
+        "apple_refund_poll_failed",
+        "apple_refund_points",
+        "apple_refund_subscription",
         # 2026-10-08: 로딩 시간 실측(세션당 처음 3회) — 정상 트래픽이다.
         "render_timing",
     }
