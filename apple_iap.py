@@ -176,7 +176,7 @@ def _api_token() -> str | None:
         return token
 
 
-def _api(method: str, path: str, env: str, *, body: dict | None = None) -> tuple[int, dict | str]:
+def _api(method: str, path: str, env: str, *, body: dict | None = None, timeout: float = 15) -> tuple[int, dict | str]:
     """(HTTP 상태, JSON 또는 오류 문자열). 상태 0 = 통신 실패·키 없음."""
     token = _api_token()
     if not token:
@@ -187,7 +187,7 @@ def _api(method: str, path: str, env: str, *, body: dict | None = None) -> tuple
             f"{API_HOSTS[env]}{path}",
             headers={"Authorization": f"Bearer {token}"},
             json=body,
-            timeout=15,
+            timeout=timeout,
         )
     except requests.RequestException as exc:
         return 0, f"애플 서버 통신 실패: {exc}"
@@ -362,6 +362,12 @@ def _credit_points(member_id: int, info: dict, env: str) -> tuple[str, str]:
     if not charge_points(member_id, points, gplay_ref(key)):
         return RETRY, "포인트 지급 실패(지갑 없음 등)"
     mark_gplay_finished(key)
+    # 성공 기록(운영 확인용, 경고 배지 제외) — new=0 은 앱 재실행으로 같은 거래가 다시 온 것.
+    _log(
+        "apple_purchase_ok",
+        f"member_id={member_id} product={product_id} env={env} key={key} "
+        f"new={0 if existing and int(existing.get('finished') or 0) else 1}",
+    )
     return OK, "ok"
 
 
@@ -384,6 +390,10 @@ def _credit_subscription(member_id: int, info: dict, env: str) -> tuple[str, str
         _apply_entitlement(key, ent)
         if not int(existing.get("finished") or 0):
             mark_gplay_finished(key)
+        _log(
+            "apple_purchase_ok",
+            f"member_id={member_id} product={info.get('productId')} env={env} key={key} new=0 state={ent['state']}",
+        )
         return OK, "ok"
 
     if ent["access_until"] is None and not ent["keep_access"]:
@@ -411,6 +421,10 @@ def _credit_subscription(member_id: int, info: dict, env: str) -> tuple[str, str
     if not activated:
         return RETRY, "구독 활성화 실패"
     mark_gplay_finished(key)
+    _log(
+        "apple_purchase_ok",
+        f"member_id={member_id} product={info.get('productId')} env={env} key={key} new=1 state={ent['state']}",
+    )
     return OK, "ok"
 
 
@@ -507,6 +521,7 @@ MAINTENANCE_INTERVAL_SECONDS = 3600
 MAINTENANCE_FIRST_DELAY_SECONDS = 300
 REFUND_POLL_SETTING = "apple_refund_last_poll_ms_{env}"
 _HISTORY_DAYS = {"Production": 180, "Sandbox": 30}
+HISTORY_TIMEOUT_SECONDS = 60
 _maint_state = {
     "running": False,
     "last": time.monotonic() - MAINTENANCE_INTERVAL_SECONDS + MAINTENANCE_FIRST_DELAY_SECONDS,
@@ -581,8 +596,11 @@ def _poll_refunds(now: datetime, env: str) -> int:
         path = "/inApps/v1/notifications/history"
         if pagination:
             path += f"?paginationToken={requests.utils.quote(pagination, safe='')}"
+        # 2026-10-09: 운영 환경 알림 이력 조회가 15초 안에 안 끝나 4번 연속 끊겼다(샌드박스는 정상) —
+        # 백그라운드 점검이라 화면과 무관하므로 이 조회만 넉넉히 기다린다.
         status, data = _api(
-            "POST", path, env, body={"startDate": start_ms, "endDate": now_ms, "notificationType": "REFUND"}
+            "POST", path, env, body={"startDate": start_ms, "endDate": now_ms, "notificationType": "REFUND"},
+            timeout=HISTORY_TIMEOUT_SECONDS,
         )
         if status != 200 or not isinstance(data, dict):
             _log("apple_refund_poll_failed", f"env={env} status={status} msg={data}")

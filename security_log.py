@@ -73,6 +73,7 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "apple_refund_poll_failed",
         "apple_refund_points",
         "apple_refund_subscription",
+        "apple_purchase_ok",
         # 2026-10-08: 로딩 시간 실측(세션당 처음 3회) — 정상 트래픽이다.
         "render_timing",
     }

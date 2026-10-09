@@ -108,7 +108,7 @@ class FakeApple:
         self.calls: list[tuple[str, str, str]] = []
         self.fail_status = None
 
-    def api(self, method, path, env, *, body=None):
+    def api(self, method, path, env, *, body=None, timeout=15):
         self.calls.append((method, path, env))
         if self.fail_status:
             return self.fail_status, "stub failure"
@@ -213,6 +213,9 @@ def test_A2_points_credit_once():
         row = wdb.get_gplay_purchase("apple:1001")
         assert row["store"] == "apple" and int(row["finished"]) == 1 and int(row["is_test"]) == 0
         assert _q("SELECT 1 FROM wallet_ledger WHERE ref_id = ?", ("pg:gplay:apple:1001",))
+        logs = [r["detail"] for r in _q("SELECT detail FROM security_events WHERE event_type = 'apple_purchase_ok'")]
+        assert len(logs) == 2 and "new=1" in logs[0] and "new=0" in logs[1], f"성공 기록이 없다/틀렸다: {logs}"
+        assert "product=points_3000" in logs[0] and "env=Production" in logs[0]
 
 
 def test_A3_points_rejections():
@@ -354,6 +357,7 @@ def test_A9_refunds_from_notification_history():
         ]
         summary = ap.run_maintenance_once()
         assert summary["refunds"] == 2, summary
+        assert ap.HISTORY_TIMEOUT_SECONDS >= 60, "알림 이력 조회 대기 시간이 다시 짧아졌다(운영 조회가 15초에 끊겼던 일)"
         assert wdb.get_balance(mid) == 0, "잔액 한도까지 회수하지 않았다"
         assert not wdb.has_active_subscription(mid), "환불된 구독이 남았다"
         assert wdb.get_gplay_purchase("apple:9100")["voided_at"]
