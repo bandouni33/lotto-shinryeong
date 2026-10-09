@@ -42,7 +42,7 @@
 | O | 무료 지급 우회 판정 | `auth_providers._dev_mock_enabled()`(명시적으로 켤 때만 True) + `kakao_configured()`(env → st.secrets) → `wallet_ui._testing_period_active()` | 3650일 무료 구독 지급·조용한 자동 로그인 분기(`wallet_ui`), `.env`·`run_server.ps1`(개발용 켜기) | `tests/test_free_grant_hardening.py`(H1~H5), `scripts/preflight_review_build.py` |
 | P | 저장내역 2열 배치(5개 조각 짝짓기) | `combo_history_ui.py` (`CHUNK_SIZE`·`chunk_pairs()`·`chunk_is_from_newest()`) | `page_auto.py`(같은 함수를 import해 재사용 — 화면마다 사본을 만들지 않는다), 조각을 카드 함수가 먹는 모양으로 감싸는 `_chunk_batch`(회차 `draw_round`를 잃으면 당첨·보너스 동그라미가 조용히 사라진다), 화면별 강조 판정 | `tests/test_history_chunk_pairing.py`(C1~C16) |
 | Q | 로그인 수단(카카오·Apple) 앱 신호·검증 | `wallet_ui.NATIVE_LOGIN_TRIGGERS`(메시지·URL 신호 이름)·`wallet_ui.apple_login_available()`(`APPLE_LOGIN_CAPABILITY_PARAM`) + `auth_providers.verify_apple_identity_token`(`APPLE_BUNDLE_ID`·`APPLE_ISSUER`) + 버튼 문구 `login_gate.GATE_BUTTON_APPLE` | `LottoShinryeong/components/streamlit-webview.tsx`(수신부·`APPLE_LOGIN_CAPABILITY_PARAMS`·`WEBVIEW_ORIGIN_WHITELIST`), `app.json`(usesAppleSignIn·플러그인·번들 ID), `user_page`(native_apple_token·native_login_error 처리), `user_scope.internal_nav_href`(native_platform·apple_login 이어 보내기), `security_log`(계측 이벤트) | `tests/test_apple_login.py`(A1~A10), `tests/test_kakao_native_login_diag.py`, `tests/test_webview_origin_whitelist.py` |
-| R | 구글 결제 이후 수명주기(갱신·해지·보류·환불·승인 재시도) | 권한 규칙 `google_play_pg.subscription_entitlement`(상태→권한) + 저장 `wallet_db`의 `gplay_purchases` 표·`activate_gplay_subscription`·`update_gplay_subscription`·`reclaim_voided_gplay_points` | `user_page`(회원 확인 `refresh_member_subscriptions_if_due`·백그라운드 `maybe_run_maintenance_in_background`), 구독 행 `subscriptions.source_ref`, 앱 결제 전 고지 `legal_notices.IAP_CHARGE_NOTICE`·`IAP_SUBSCRIPTION_NOTICE` | `tests/test_gplay_lifecycle.py`(L1~L16, preflight R8이 실행) |
+| R | 구글 결제 이후 수명주기(갱신·해지·보류·환불·승인 재시도) | 권한 규칙 `google_play_pg.subscription_entitlement`(상태→권한) + 저장 `wallet_db`의 `gplay_purchases` 표·`activate_gplay_subscription`·`update_gplay_subscription`·`reclaim_voided_gplay_points` | `user_page`(회원 확인 `refresh_member_subscriptions_if_due`·백그라운드 `maybe_run_maintenance_in_background`), 구독 행 `subscriptions.source_ref`, 앱 결제 전 고지 `legal_notices.IAP_CHARGE_NOTICE`·`IAP_SUBSCRIPTION_NOTICE` | `tests/test_gplay_lifecycle.py`(L1~L19, preflight R8이 실행) |
 
 ### A(다이얼로그)에 등록된 재개 이름 — 이 목록이 정본이다
 
@@ -84,4 +84,6 @@
   상태를 들고 있는 모듈(db_turso·wallet_db·결제 모듈)은 넣지 말 것. 새 공용 모듈을 고쳤는데 반영이 안 되면 이 목록부터 본다.
 - 결제 승인은 서버 전담: 앱은 `finishTransaction`을 호출하지 않는다
   (`google_play_pg.py`가 검증→지급→consume/acknowledge). 구독 지급은
-  `wallet_db.activate_paid_advanced_sub_once`(멱등 마커 `pg_charges.pg_ref_id`).
+  `wallet_db.activate_gplay_subscription`(멱등 마커 `pg_charges.pg_ref_id`, 2026-10-09부터 — 이후 갱신·해지·환불은
+  §2 R행). 옛 `activate_paid_advanced_sub_once`는 테스트용으로만 남아 있다(결제 경로에서 쓰지 말 것).
+- 구글 결제 점검 이력·의도적으로 둔 항목은 `AI_STATUS.md` §8 — 재점검 때 그 표 기준으로 판정한다.

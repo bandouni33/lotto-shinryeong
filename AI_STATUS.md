@@ -2,7 +2,7 @@
 
 > 새 채팅은 **이 파일 → `git status`/`git log` → 관련 코드** 순서로 확인 후 작업한다.
 > 채팅 기억보다 이 파일과 실제 코드가 우선. 확인 안 된 내용은 적지 않는다.
-> 마지막 갱신: 2026-10-09 (구글 인앱결제 총점검·서버 보완) / 이전 2026-10-05 12:3x (PC↔GitHub 동기화·PC 서버 재시작 기록 / 이전: §0 작업 원칙, main.
+> 마지막 갱신: 2026-10-09 저녁 (구글 인앱결제 총점검·서버 보완·약관 환불정책·콘솔 확인·Cloud 재부팅 완료 → **§8 점검 기록 참고**) / 이전 2026-10-05 12:3x (PC↔GitHub 동기화·PC 서버 재시작 기록 / 이전: §0 작업 원칙, main.
 > PC 로컬은 미커밋분이 남아 있을 수 있음 → §6 참조)
 
 ## 0. 작업 원칙 (2026-10-05 사용자 지시 — 항상 명심)
@@ -88,7 +88,8 @@
 1. 토요일 실사용 관측 실행·결과 정리 (0원)
 2. 렌더당 DB 왕복 줄이기 — 캐시 후보 조사 (0원)
 3. iOS build 8 실기기 QA 진행 (+ 저장내역 한쪽 열 강조 모양, 로그인 후 화면 유지 4개 화면 실기기 확인)
-4. 네이티브 통합 빌드 (§1~§8 묶음) — 빌드 전 `TEST_CHARGE_ENABLED=False` 확인
+4. 네이티브 통합 빌드 (`네이티브_빌드_대기목록.md` §1~§12 묶음, **§12 구글 결제 앱 보완 반드시 포함**) — 테스터 사용 중이면 `TEST_CHARGE_ENABLED=True` 유지, 구글 결제 심사 신청 시점에 `False`
+4-1. 구글 인앱결제 심사 신청 순서: 빌드(§12 포함) → 라이선스 테스터 실결제 시험(충전·구독·5분 갱신·해지·환불·앱 강제종료 후 복구·결제 대기) → 콘솔 데이터 보안 '구매 내역' → 스위치(`IAP_CHARGE_ENABLED`·`IAP_SUBSCRIPTION_ENABLED`=True, `TEST_CHARGE_ENABLED`=False) → `preflight_review_build.py --cloud-secrets-confirmed` 전부 통과 → 신청 → 정식 판매 시작 때 라이선스 테스터 목록 교체(§8)
 5. VPS·진입점 분리는 **승인 후** 진행
 
 ## 6. 중요한 주의사항
@@ -129,3 +130,44 @@
 - 단위 테스트 통과만으로 끝내지 않고 **조립된 경로**(실제 진입점 `app.py?page=...`)를 한 번 띄워 결과를 확인한다.
 - **[해소 2026-10-05]** `tests/test_history_chunk_pairing.py` 러너가 실패를 PASS로 삼키던 결함 → `test.run(result)`로 판정하도록 수정, 실패 시 exit 1 확인. 다른 테스트 파일에는 같은 패턴 없음(저장소 전수 확인).
 - 교훈: `unittest.TestCase`를 직접 `test()`로 호출하는 러너를 만들지 말 것. 테스트 결과 숫자는 **실패를 일부러 내서 실제로 FAIL이 찍히는지** 한 번 확인한다.
+
+## 8. 구글 인앱결제 총점검 기록 (2026-10-09) — **다음 점검 때 이 표 기준으로 판정**
+다시 점검할 때 아래 항목은 "새 문제"로 다시 올리지 말고 상태만 확인한다(상태가 바뀌었으면 이 표를 고친다).
+커밋: `86520d35`(서버 보완) · `60d84f23`(환불 약관) · `b35d9798`·`9e2e71d3`(콘솔 확인 기록). **Cloud 재부팅 완료(10-09, 사용자)** → 결제 모듈 반영, 운영 DB에 `gplay_purchases` 표·`subscriptions.source_ref` 컬럼은 첫 지갑 초기화 때 자동 생성.
+검증 기준: `tests/test_gplay_lifecycle.py` 19/19 · `test_google_play_sub_once` 13/13 · `test_iap_native_branch` 16/16 · 전체 실패 목록 = 기존 기준선 9개(filter_sheet_validation·four_filters·history_chunk_pairing·kakao_login_lock_timeout·lucky_numbers·manual_privacy_notice P5·server_address_fix·step2_soak_artifacts·wallet_db).
+
+**서버 — 해결됨(재지적 금지, 회귀만 확인)**
+- B1 구독 갱신·해지·보류·만료 반영 → `google_play_pg.subscription_entitlement`(구글 subscriptionsv2 expiryTime 기준, 자동갱신 중 1일 여유) + `wallet_db.update_gplay_subscription` / L1~L5
+- 이월: 첫 결제 때 남아 있던 무료·포인트 구독 기간은 구글 만료일 뒤에 붙고, 구독이 끝나도 보존 / L5·L17
+- M2·M3 요금제 변경·기간 겹침 → linkedPurchaseToken 이면 옛 구독 행 종료·이월 승계, 대체된 옛 토큰은 되살리지 않음 / L6·L19
+- H1 소비·승인 실패 → 백그라운드 3일 재시도(`_retry_unfinished`), 지급 전 끊김도 1회만 이어서 지급 / L8
+- H2 환불·취소 → Voided Purchases API 1시간마다, 적립금은 잔액 한도 회수(실제 지급된 건만), 못 회수한 몫은 보안 로그 `gplay_voided_points` / L9·L10·L18
+- H4 결제 신호(iap_buy/iap_plan) 주소에서 제거 / L13
+- H5 표시 가격 위조 → 원화 표기·기본가 0.5~2배만 / L14
+- 결제 대기(pending) 미지급·대기 안내 / L12 · 다른 회원의 토큰 재사용 거절 / L7
+- 실패 안내는 공통 안내 칸(`wallet_toast_error`)에, 기술 메시지 숨김 / L13 · 로그에 토큰 앞 12자만 / L16
+- 화면이 구글 응답을 기다리지 않음(회원 확인·점검 모두 백그라운드, 첫 점검은 프로세스 시작 5분 뒤) / L11
+- 서비스 계정 없으면 아무 호출도 안 함 / L15
+- 구 판정 `acknowledgementState != 1`(문자열과 비교 오류) → 문자열·숫자 둘 다 인정으로 수정
+- 결제 운영 이벤트(gplay_*)는 침입 의심 배지에서 제외(`security_log`)
+- preflight: R6(자기충족) 수정, R7 Cloud Secrets 사람 확인(`--cloud-secrets-confirmed`), R8 수명주기 테스트 실행
+
+**고지·약관 — 해결됨**
+- 앱 충전창: 결제 전 청약철회 제한 고지 / 구독창: 자동갱신·해지 경로·해지 후 남은 기간·탈퇴해도 구독 유지·이월을 버튼 **위**에(`legal_notices.IAP_CHARGE_NOTICE`·`IAP_SUBSCRIPTION_NOTICE`), 기간 표기 "(30일)" → "(1개월마다 자동 갱신)"
+- 환불정책(사용자 결정): **유료 충전 적립금 미사용분 환불 가능**, 무료 지급분 불가, 무료분 먼저 사용 간주, Google Play 결제는 결제 취소로 환불·적립금 회수 — 이용약관·적립금정책·가입 안내·PG 환불정책·`docs/legal/MEMBER_NOTICES.md` 통일
+- 탈퇴 안내: Play 구독은 탈퇴·앱 삭제로 해지되지 않음 + 남은 적립금 소멸 → 탈퇴 전 환불 요청
+
+**의도적으로 그대로 둔 것(사용자 결정 — 지적 대상 아님)**
+- `TEST_CHARGE_ENABLED=True`: 테스터 사용 중. 구글 결제 심사 신청 시점에 False(preflight R3·R4b가 막음). 그때까지 브라우저 `?native=1`로도 테스트 충전이 보이는 것도 같은 스위치로 해결
+- 약관의 "적립금 유효기간 1년·만료 7일 전 알림" 문구: 미구현이지만 유지
+- 약관 버전 `NOTICE_VERSION = "v1.1-draft"`: 동의 기록과 연결돼 있어 미변경(올리려면 재동의 영향 확인 후)
+- 서비스 계정 키 없이 RTDN(실시간 알림) 대신 주기 확인 방식 사용(Streamlit 이 웹훅을 받을 수 없음)
+
+**앱 빌드 대기 — `네이티브_빌드_대기목록.md` §12 (다음 빌드에 반드시 포함)**
+- B2 미처리 결제 복구(getAvailablePurchases, Play 스토어에서 직접 재구독한 경우 포함) · B4 `iap=1`(옛 빌드 먹통 버튼 방지, 서버 `internal_nav_href`도 함께) · H3 pending 은 서버로 안 보냄 · M1 obfuscatedAccountId · 구독 관리 링크(Play 앱으로 열기) · 기본 오퍼 선택
+
+**콘솔 — 사용자 확인 완료(10-09)**
+- Cloud Secrets `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` 있음 · 상품 `points_1000` 10,000원·`points_3000` 30,000원(수량 1·디지털 콘텐츠·한국) · `premium`: `premium-monthly` 12,000원·`premium-quarterly` 30,000원, 혜택 없음, 유예 7일·계정 보류 자동·재신청 허용 · 서비스 계정 재무 데이터 보기+주문 및 구독 관리, Android Developer API 사용 설정됨 · 라이선스 테스터 '로또신령 비공개 테스터' 23명·RESPOND_NORMALLY
+- 남은 콘솔: 데이터 보안 '구매 내역' / 정식 판매 시작 때 라이선스 테스트에 본인만 든 새 목록 체크·기존 목록 체크 해제(목록에서 사람 삭제 금지)
+- 확인 필요(낮음): 운영 DB에 옛 코드로 지급된 구글 구독(`pg_charges.pg_ref_id LIKE 'pg:gplay:%'`)이 있으면 새 추적표에 안 잡힘 — 서비스 계정이 이번에 처음 설정돼 없을 것으로 보이나 PC 조회 도구로 한 번 확인
+
