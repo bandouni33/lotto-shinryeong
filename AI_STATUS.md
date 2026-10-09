@@ -89,7 +89,7 @@
 2. 렌더당 DB 왕복 줄이기 — 캐시 후보 조사 (0원)
 3. iOS build 8 실기기 QA 진행 (+ 저장내역 한쪽 열 강조 모양, 로그인 후 화면 유지 4개 화면 실기기 확인)
 4. 네이티브 통합 빌드 (`네이티브_빌드_대기목록.md` §1~§12 묶음, **§12 구글 결제 앱 보완 반드시 포함**) — 테스터 사용 중이면 `TEST_CHARGE_ENABLED=True` 유지, 구글 결제 심사 신청 시점에 `False`
-4-1. 구글 인앱결제 심사 신청 순서: 빌드(§12 포함) → 라이선스 테스터 실결제 시험(충전·구독·5분 갱신·해지·환불·앱 강제종료 후 복구·결제 대기) → 콘솔 데이터 보안 '구매 내역' → 스위치(`IAP_CHARGE_ENABLED`·`IAP_SUBSCRIPTION_ENABLED`=True, `TEST_CHARGE_ENABLED`=False) → `preflight_review_build.py --cloud-secrets-confirmed` 전부 통과 → 신청 → 정식 판매 시작 때 라이선스 테스터 목록 교체(§8)
+4-1. 구글 인앱결제 심사 신청 순서: 빌드(§12 포함) → 라이선스 테스터 실결제 시험(충전·구독·5분 갱신·해지·환불·앱 강제종료 후 복구·결제 대기) → 콘솔 데이터 보안 '구매 내역' → **라이선스 테스터를 본인만 든 새 목록으로 교체 → `reset_tester_balances.py` 미리보기·`--confirm`(테스트 충전·테스트 결제 회원 잔액 500P 초기화, `출시전_체크리스트.md` 1번)** → 스위치 → `preflight_review_build.py --cloud-secrets-confirmed` 전부 통과 → 신청
 5. VPS·진입점 분리는 **승인 후** 진행
 
 ## 6. 중요한 주의사항
@@ -134,7 +134,7 @@
 ## 8. 구글 인앱결제 총점검 기록 (2026-10-09) — **다음 점검 때 이 표 기준으로 판정**
 다시 점검할 때 아래 항목은 "새 문제"로 다시 올리지 말고 상태만 확인한다(상태가 바뀌었으면 이 표를 고친다).
 커밋: `86520d35`(서버 보완) · `60d84f23`(환불 약관) · `b35d9798`·`9e2e71d3`(콘솔 확인 기록). **Cloud 재부팅 완료(10-09, 사용자)** → 결제 모듈 반영, 운영 DB에 `gplay_purchases` 표·`subscriptions.source_ref` 컬럼은 첫 지갑 초기화 때 자동 생성.
-검증 기준: `tests/test_gplay_lifecycle.py` 19/19 · `test_google_play_sub_once` 13/13 · `test_iap_native_branch` 16/16 · 전체 실패 목록 = 기존 기준선 9개(filter_sheet_validation·four_filters·history_chunk_pairing·kakao_login_lock_timeout·lucky_numbers·manual_privacy_notice P5·server_address_fix·step2_soak_artifacts·wallet_db).
+검증 기준: `tests/test_gplay_lifecycle.py` 20/20 · `test_reset_tester_balances` 8/8 · `test_google_play_sub_once` 13/13 · `test_iap_native_branch` 16/16 · 전체 실패 목록 = 기존 기준선 9개(filter_sheet_validation·four_filters·history_chunk_pairing·kakao_login_lock_timeout·lucky_numbers·manual_privacy_notice P5·server_address_fix·step2_soak_artifacts·wallet_db).
 
 **서버 — 해결됨(재지적 금지, 회귀만 확인)**
 - B1 구독 갱신·해지·보류·만료 반영 → `google_play_pg.subscription_entitlement`(구글 subscriptionsv2 expiryTime 기준, 자동갱신 중 1일 여유) + `wallet_db.update_gplay_subscription` / L1~L5
@@ -157,8 +157,10 @@
 - 환불정책(사용자 결정): **유료 충전 적립금 미사용분 환불 가능**, 무료 지급분 불가, 무료분 먼저 사용 간주, Google Play 결제는 결제 취소로 환불·적립금 회수 — 이용약관·적립금정책·가입 안내·PG 환불정책·`docs/legal/MEMBER_NOTICES.md` 통일
 - 탈퇴 안내: Play 구독은 탈퇴·앱 삭제로 해지되지 않음 + 남은 적립금 소멸 → 탈퇴 전 환불 요청
 
+- 출시 전 적립금 초기화(사용자 기존 결정, `출시전_체크리스트.md` 1번): 라이선스 테스터의 테스트 결제가 '실결제'로 잡혀 초기화에서 빠지던 구멍 → 구글 테스트 표시를 `gplay_purchases.is_test`에 저장하고 `reset_tester_balances.select_targets()`가 테스트 결제만 한 회원도 대상에 포함 / L20, `tests/test_reset_tester_balances.py` S1~S8. **반영엔 Cloud 재부팅 필요(결제 모듈)** — 결제 스위치 켜기 전이면 언제든 무방
+
 **의도적으로 그대로 둔 것(사용자 결정 — 지적 대상 아님)**
-- `TEST_CHARGE_ENABLED=True`: 테스터 사용 중. 구글 결제 심사 신청 시점에 False(preflight R3·R4b가 막음). 그때까지 브라우저 `?native=1`로도 테스트 충전이 보이는 것도 같은 스위치로 해결
+- `TEST_CHARGE_ENABLED=True`: 테스터 사용 중. 구글 결제 심사 신청 시점에 False(preflight R3·R4b가 막음). 테스트 충전으로 쌓인 적립금은 그때 500P로 초기화(위 순서). 그때까지 브라우저 `?native=1`로도 테스트 충전이 보이는 것도 같은 스위치로 해결
 - 약관의 "적립금 유효기간 1년·만료 7일 전 알림" 문구: 미구현이지만 유지
 - 약관 버전 `NOTICE_VERSION = "v1.1-draft"`: 동의 기록과 연결돼 있어 미변경(올리려면 재동의 영향 확인 후)
 - 서비스 계정 키 없이 RTDN(실시간 알림) 대신 주기 확인 방식 사용(Streamlit 이 웹훅을 받을 수 없음)

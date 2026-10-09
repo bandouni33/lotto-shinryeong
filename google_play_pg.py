@@ -325,7 +325,8 @@ def _verify_and_credit_one_time(member_id: int, product_id: str, token: str) -> 
         return False, f"구매 상태가 유효하지 않음(purchaseState={purchase_state})"
 
     # 지급 전에 먼저 기록 — 아래 어디서 끊겨도 백그라운드 재시도가 이어서 처리한다.
-    record_gplay_points_purchase(member_id, token, product_id, points)
+    # purchaseType 0 = 라이선스 테스터의 테스트 결제(실제 청구 없음) — 출시 전 적립금 초기화가 구분한다.
+    record_gplay_points_purchase(member_id, token, product_id, points, is_test=data.get("purchaseType") == 0)
     if not charge_points(member_id, points, gplay_ref(token)):
         return False, "포인트 지급 실패(지갑 없음 등)"
     # 소모성 상품은 지급이 확실히 끝난 뒤에만 소비 처리한다(순서를 바꾸면 되살릴 방법이 없다).
@@ -403,6 +404,7 @@ def _verify_and_credit_subscription(member_id: int, token: str) -> tuple[bool, s
         access_until=access_until,
         next_check=ent["next_check"],
         linked_token=ent["linked_token"],
+        is_test="testPurchase" in data,  # 라이선스 테스터의 테스트 결제(실제 청구 없음)
     )
     if not activated:
         return False, "구독 활성화 실패"

@@ -921,6 +921,12 @@ def _init_gplay_purchases_table(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_gplay_unfinished ON gplay_purchases(finished, created_at);
         """
     )
+    # 2026-10-09: 라이선스 테스터의 테스트 결제(실제 청구 없음) 표시 — 출시 전 적립금 초기화
+    # (reset_tester_balances.py)가 테스트 결제만 한 회원을 "실결제자"로 잘못 빼지 않게 한다.
+    # 표가 이미 만들어진 운영 DB 호환을 위해 PRAGMA 확인 후 추가(기존 패턴).
+    gplay_cols = {row[1] for row in conn.execute("PRAGMA table_info(gplay_purchases)")}
+    if "is_test" not in gplay_cols:
+        conn.execute("ALTER TABLE gplay_purchases ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
 
 
 def _fmt_ts(value: datetime) -> str:
@@ -945,7 +951,9 @@ def get_gplay_purchase(token: str) -> dict | None:
     return dict(row) if row else None
 
 
-def record_gplay_points_purchase(member_id: int, token: str, product_id: str, points: int) -> None:
+def record_gplay_points_purchase(
+    member_id: int, token: str, product_id: str, points: int, is_test: bool = False
+) -> None:
     """구글이 '결제됨'으로 확인해 준 소모성 구매를 지급 전에 먼저 기록한다(이미 있으면 그대로).
     지급·소비 중 어디서 끊겨도 이 행(finished=0)이 남아 백그라운드 재시도가 이어서 처리한다."""
     now = _now_iso()
@@ -953,10 +961,10 @@ def record_gplay_points_purchase(member_id: int, token: str, product_id: str, po
     conn.execute(
         """
         INSERT OR IGNORE INTO gplay_purchases
-            (purchase_token, member_id, kind, product_id, points, finished, created_at, updated_at)
-        VALUES (?, ?, 'points', ?, ?, 0, ?, ?)
+            (purchase_token, member_id, kind, product_id, points, finished, is_test, created_at, updated_at)
+        VALUES (?, ?, 'points', ?, ?, 0, ?, ?, ?)
         """,
-        (token, member_id, product_id, int(points), now, now),
+        (token, member_id, product_id, int(points), 1 if is_test else 0, now, now),
     )
     conn.commit()
     conn.close()
@@ -1032,6 +1040,7 @@ def activate_gplay_subscription(
     access_until: datetime,
     next_check: datetime | None,
     linked_token: str | None = None,
+    is_test: bool = False,
 ) -> bool:
     """구글 정기결제 첫 지급 — 토큰당 한 번만(멱등). 구독 행 만료일 = 구글 만료일(+권한 여유) + 이월.
 
@@ -1086,12 +1095,13 @@ def activate_gplay_subscription(
                     """
                     INSERT INTO gplay_purchases
                         (purchase_token, member_id, kind, product_id, base_plan_id, finished,
-                         carry_seconds, state, google_expiry, next_check_at, created_at, updated_at)
-                    SELECT ?, ?, 'sub', ?, ?, 0, ?, ?, ?, ?, ?, ?
+                         carry_seconds, is_test, state, google_expiry, next_check_at, created_at, updated_at)
+                    SELECT ?, ?, 'sub', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?
                     WHERE EXISTS (SELECT 1 FROM pg_charges WHERE pg_ref_id = ?)
                     """,
                     (
                         token, member_id, products.SUBSCRIPTION_PRODUCT, base_plan_id, carry,
+                        1 if is_test else 0,
                         state, _fmt_ts(google_expiry), _fmt_ts(next_check) if next_check else None,
                         now_iso, now_iso, ref,
                     ),

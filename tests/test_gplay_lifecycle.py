@@ -24,6 +24,7 @@
   L17 구글 구독이 끝나도 처음 남아 있던 기존 구독 기간(이월)은 지킨다(보류 재확인에도 안 밀림)
   L18 지급 전에 끊긴 결제가 환불돼도 다른 적립금을 빼앗지 않는다
   L19 요금제 변경으로 대체된 옛 토큰은 되살아나지 않는다
+  L20 라이선스 테스터의 테스트 결제는 is_test=1 로 기록(출시 전 적립금 초기화 대상 구분)
 
 실행: venv312\\Scripts\\python.exe -X utf8 tests\\test_gplay_lifecycle.py
 """
@@ -485,6 +486,27 @@ def test_L16_token_not_logged_in_full():
     assert long_token not in gp._short(long_token) and len(gp._short(long_token)) < 30
     src = (ROOT / "google_play_pg.py").read_text(encoding="utf-8")
     assert "token={token}" not in src, "로그에 토큰 전체를 남기는 줄이 있다"
+
+
+def test_L20_test_purchase_flag_recorded():
+    """라이선스 테스터의 테스트 결제(실제 청구 없음)는 is_test=1 로 남는다 — 출시 전 적립금 초기화가 쓴다."""
+    with _db_isolation.isolated_db(), _google() as fake:
+        mid = _member("lc_l20")
+        _wallet(mid, 0)
+        fake.responses["purchases/products/points_1000/tokens/ptok_l20t"] = (
+            True, {"purchaseState": 0, "consumptionState": 0, "purchaseType": 0})
+        fake.responses["purchases/products/points_1000/tokens/ptok_l20r"] = (
+            True, {"purchaseState": 0, "consumptionState": 0})
+        assert gp._verify_and_credit_one_time(mid, "points_1000", "ptok_l20t")[0]
+        assert gp._verify_and_credit_one_time(mid, "points_1000", "ptok_l20r")[0]
+        assert int(wdb.get_gplay_purchase("ptok_l20t")["is_test"]) == 1
+        assert int(wdb.get_gplay_purchase("ptok_l20r")["is_test"]) == 0
+        test_sub = _sub_payload(days=30)
+        test_sub["testPurchase"] = {}
+        _grant(fake, mid, "tok_l20t", test_sub)
+        _grant(fake, mid, "tok_l20r", _sub_payload(days=30))
+        assert int(wdb.get_gplay_purchase("tok_l20t")["is_test"]) == 1
+        assert int(wdb.get_gplay_purchase("tok_l20r")["is_test"]) == 0
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_L")]
