@@ -8,6 +8,7 @@ TEST_CHARGE_ENABLED=True)는 "Mock 결제 (테스트) — 1,000P 충전" 버튼�
 
 사용법:
   venv312\\Scripts\\python.exe scripts\\preflight_review_build.py              # 심사용 검사
+  ... --cloud-secrets-confirmed   # Cloud Secrets 를 직접 확인한 뒤(R6·R7)
   venv312\\Scripts\\python.exe scripts\\preflight_review_build.py --phase tester  # 테스터용 검사
 
 exit 0 = 통과 / exit 1 = 실패(무엇을 어떻게 바꿔야 하는지 줄 단위로 출력).
@@ -42,6 +43,7 @@ TOSS_KEY = "toss_checkout_btn"
 _ENV_KEYS = ("KAKAO_REST_API_KEY", "TOSS_CLIENT_KEY", "TOSS_SECRET_KEY", "LOTTO_DEV_MOCK_AUTH")
 
 results: list[tuple[bool, str]] = []
+CLOUD_SECRETS_CONFIRMED = False
 
 
 def _out(text: str) -> None:
@@ -167,12 +169,36 @@ def run_review_checks() -> None:
                 f"그려진 키: {sub_keys}",
             )
 
-    # R6: 무료 우회(구독창을 건너뛰고 3650일 무료 구독)는 서버 환경변수에 달려 있다.
-    _key = os.environ.get("KAKAO_REST_API_KEY", "").strip()
+    # R6·R7: 운영 서버(Streamlit Cloud) 비밀값은 이 PC에서 볼 수 없다.
+    # 2026-10-09: 예전 R6 은 위 _prod_like_env 가 직접 넣은 값을 다시 읽어 항상 통과했다(자기충족 검사).
+    # 이제는 사람이 Cloud Secrets 화면에서 직접 확인했다는 표시(--cloud-secrets-confirmed)를 요구한다.
     check(
-        bool(_key),
-        "R6 카카오 키가 환경변수로 보인다(_testing_period_active 무료 우회 차단 조건)",
-        "서버(Streamlit Cloud) 환경에 KAKAO_REST_API_KEY가 있어야 무료 우회가 꺼진다",
+        CLOUD_SECRETS_CONFIRMED,
+        "R6 Cloud Secrets 에 KAKAO_REST_API_KEY 가 있다(무료 우회 차단 조건) - 사람이 확인함",
+        "Streamlit Cloud > Settings > Secrets 에서 확인 후 --cloud-secrets-confirmed 로 다시 실행",
+    )
+    check(
+        CLOUD_SECRETS_CONFIRMED,
+        "R7 Cloud Secrets 에 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON 이 있다(없으면 모든 구글 결제가 '확인 실패') - 사람이 확인함",
+        "Streamlit Cloud > Settings > Secrets 에서 확인 후 --cloud-secrets-confirmed 로 다시 실행",
+    )
+
+    # R8: 결제 "이후" 수명주기(갱신·해지·보류·환불·승인 재시도·가격 위조) — 2026-10-09 점검에서
+    # 첫 결제만 보던 검사가 놓친 구멍들이다. 테스트가 하나라도 실패하면 제출하지 않는다.
+    import subprocess
+
+    lifecycle = subprocess.run(
+        [sys.executable, "-X", "utf8", str(ROOT / "tests" / "test_gplay_lifecycle.py")],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    tail = (lifecycle.stdout or "").strip().splitlines()[-1:] or ["(출력 없음)"]
+    check(
+        lifecycle.returncode == 0,
+        f"R8 구글 결제 수명주기 테스트 통과(tests/test_gplay_lifecycle.py: {tail[0]})",
+        "tests/test_gplay_lifecycle.py 를 직접 실행해 FAIL 항목을 고칠 것",
     )
 
 
@@ -211,7 +237,14 @@ def run_tester_checks() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="심사/테스터 빌드 전 스위치 검사")
     parser.add_argument("--phase", choices=("review", "tester"), default="review")
+    parser.add_argument(
+        "--cloud-secrets-confirmed",
+        action="store_true",
+        help="Streamlit Cloud Secrets 에 KAKAO_REST_API_KEY·GOOGLE_PLAY_SERVICE_ACCOUNT_JSON 이 있음을 직접 확인했다",
+    )
     args = parser.parse_args()
+    global CLOUD_SECRETS_CONFIRMED
+    CLOUD_SECRETS_CONFIRMED = bool(args.cloud_secrets_confirmed)
 
     phase = "심사 제출용" if args.phase == "review" else "테스터용"
     _out(f"[preflight] {phase} 빌드 설정 검사 (phase={args.phase})")

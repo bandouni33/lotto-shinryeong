@@ -37,7 +37,7 @@ import os
 import sqlite3
 import sys
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
@@ -196,14 +196,37 @@ def _stub_google_apis(gplay, payload_factory, *, token: str):
     return state, restore
 
 
-def _subscription_payload(state, *, base_plan_id: str, sub_state: str = "SUBSCRIPTION_STATE_ACTIVE"):
+def _subscription_payload(
+    state,
+    *,
+    base_plan_id: str,
+    sub_state: str = "SUBSCRIPTION_STATE_ACTIVE",
+    linked: str | None = None,
+):
     """실제 subscriptionsv2 응답 형태(문서 기준) — acknowledgementState는 승인
-    호출 이후 1로 바뀌는 실제 동작을 흉내낸다."""
-    return {
+    호출 이후 ACKNOWLEDGED로 바뀌는 실제 동작을 흉내낸다.
+
+    2026-10-09(점검 B1): 만료 시각은 구글이 주는 expiryTime 을 따른다(요금제 일수만큼 뒤).
+    자동갱신을 끈(해지 예약 없는 단순) 형태로 두어 권한 여유(RENEWAL_BUFFER)가 붙지 않게 한다."""
+    days = {"premium-monthly": 30, "premium-quarterly": 90}.get(base_plan_id, 30)
+    expiry = datetime.now(timezone.utc) + timedelta(days=days)
+    payload = {
         "subscriptionState": sub_state,
-        "acknowledgementState": 1 if state["acked"] else 0,
-        "lineItems": [{"offerDetails": {"basePlanId": base_plan_id}}],
+        "acknowledgementState": (
+            "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED" if state["acked"] else "ACKNOWLEDGEMENT_STATE_PENDING"
+        ),
+        "lineItems": [
+            {
+                "productId": "premium",
+                "expiryTime": expiry.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                "autoRenewingPlan": {"autoRenewEnabled": False},
+                "offerDetails": {"basePlanId": base_plan_id},
+            }
+        ],
     }
+    if linked:
+        payload["linkedPurchaseToken"] = linked
+    return payload
 
 
 def _entry_app(gid: str, **extra_params) -> AppTest:
@@ -433,21 +456,25 @@ def test_W9_verification_wiring_credits_and_acknowledges_once():
         ], f"승인 호출이 정확히 1회가 아니다: {state['post_paths']}"
         assert _count(db_path, "pg_charges", mid) == 1, "멱등 마커가 정확히 1개가 아니다"
 
-        # 분기 요금제는 90일 — basePlanId → 일수 매핑이 살아있는지.
+        # 요금제 변경(월간 → 분기): 구글은 새 토큰에 linkedPurchaseToken(옛 토큰)을 실어 준다.
+        # 2026-10-09(점검 B1·M2): 만료일은 구글 expiryTime(90일)을 따르고, 옛 월간 구독 행은
+        # 지금 끝난다(같은 기간을 두 번 주지 않는다 — 예전엔 30+90=120일로 겹쳐 붙었다).
         token_q = "token_W9_quarterly"
         state_q, restore_q = _stub_google_apis(
-            gplay, lambda s: _subscription_payload(s, base_plan_id="premium-quarterly"), token=token_q
+            gplay,
+            lambda s: _subscription_payload(s, base_plan_id="premium-quarterly", linked=token),
+            token=token_q,
         )
         try:
             ok_q, msg_q = gplay._verify_and_credit_subscription(mid, token_q)
             assert ok_q, f"분기 구독 검증이 실패했다: {msg_q}"
         finally:
             restore_q()
-        paid_expiries = [e for e in _expiries(db_path, mid) if e > before + timedelta(days=29)]
-        assert abs((max(_expiries(db_path, mid)) - before).total_seconds() - 120 * 86400) < DAY_TOLERANCE_SEC, (
-            "분기(90일)가 기존 30일 위에 이어서 붙지 않았다"
+        assert abs((max(_expiries(db_path, mid)) - before).total_seconds() - 90 * 86400) < DAY_TOLERANCE_SEC, (
+            "요금제 변경 후 만료일이 구글 기준(90일)이 아니다"
         )
-        assert paid_expiries, "지급된 구독 구간이 없다"
+        active_after = [e for e in _expiries(db_path, mid) if e > datetime.now(wdb.KST) + timedelta(minutes=1)]
+        assert len(active_after) == 1, f"요금제 변경 후에도 옛 월간 구독이 살아 있다: {active_after}"
 
 
 def test_W10_wallet_db_import_contract_holds():

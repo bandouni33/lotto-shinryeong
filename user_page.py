@@ -332,6 +332,17 @@ from google_play_pg import handle_google_play_purchase_return
 if handle_google_play_purchase_return(current_member_id()):
     st.rerun()
 
+# 2026-10-09(구글 인앱결제 점검 B1·H1·H2): 구글 정기결제 갱신·해지·환불을 따라간다.
+# 서비스 계정이 없으면(현재 운영) 두 함수 모두 즉시 돌아온다. 결제 모듈은 Cloud 재부팅 전까지
+# 옛 코드로 남을 수 있어(AGENTS §4) 함수가 없으면 조용히 넘어간다.
+try:
+    import google_play_pg as _gplay
+
+    _gplay.refresh_member_subscriptions_if_due(current_member_id())
+    _gplay.maybe_run_maintenance_in_background()
+except Exception:
+    pass
+
 current_page = st.query_params.get("page", "main")
 
 st.markdown(

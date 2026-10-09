@@ -44,7 +44,7 @@ DELETED_ITEMS = (
 # **법정 보관**으로 남기는 항목(신원 파기 후 익명 상태로 보관).
 RETAINED_ITEMS = (
     "적립금 충전·차감·지급 기록",   # wallet_db.wallet_ledger
-    "결제 승인 기록",               # wallet_db.pg_charges (confirmed)
+    "결제 승인 기록",               # wallet_db.pg_charges (confirmed) + gplay_purchases(구글 결제 토큰·상태)
     "약관·동의 기록",               # wallet_db.consent_log
     "탈퇴 계정 식별자 해시",         # wallet_db.signup_blocklist (재가입 적립금 차단 목적)
 )

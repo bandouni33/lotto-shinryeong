@@ -17,6 +17,7 @@ _LOGOUT_EXACT_KEYS = frozenset(
         "oauth_provider",
         "oauth_hash_display",
         "wallet_toast",
+        "wallet_toast_error",
         "user_id",
         "user_email",
         "_user_scope_bound",

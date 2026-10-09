@@ -57,6 +57,15 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "apple_native_login_ok",
         "apple_native_login_fail",
         "native_login_error",
+        # 2026-10-09: 구글 결제 운영 기록(재시도·재확인·환불 회수) — 침입 시도가 아니다.
+        "gplay_consume_failed",
+        "gplay_acknowledge_failed",
+        "gplay_refresh_failed",
+        "gplay_member_refresh_error",
+        "gplay_maint_error",
+        "gplay_voided_poll_failed",
+        "gplay_voided_points",
+        "gplay_voided_subscription",
         # 2026-10-08: 로딩 시간 실측(세션당 처음 3회) — 정상 트래픽이다.
         "render_timing",
     }

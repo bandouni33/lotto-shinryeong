@@ -246,6 +246,13 @@ def init_wallet_tables() -> None:
     wallet_cols = {row[1] for row in conn.execute("PRAGMA table_info(wallets)")}
     if "toss_customer_key" not in wallet_cols:
         conn.execute("ALTER TABLE wallets ADD COLUMN toss_customer_key TEXT NULL")
+    # 2026-10-09(구글 인앱결제 점검 B1): 구글 정기결제로 생긴 구독 행이 어느 결제
+    # (purchaseToken)에서 왔는지 표시 — 갱신·해지·환불 때 이 행의 만료일을 구글
+    # 기준으로 다시 맞춘다. 기존 행(포인트 구독·무료 프로모)은 NULL 그대로다.
+    sub_cols = {row[1] for row in conn.execute("PRAGMA table_info(subscriptions)")}
+    if "source_ref" not in sub_cols:
+        conn.execute("ALTER TABLE subscriptions ADD COLUMN source_ref TEXT NULL")
+    _init_gplay_purchases_table(conn)
     conn.commit()
     conn.close()
     _WALLET_TABLES_READY = True
@@ -868,6 +875,374 @@ def activate_paid_advanced_sub_once(member_id: int, days: int, ref_id: str) -> b
         # 호출은 "이미 지급됨"으로 성공 처리한다(구독은 한 번만 연장됨).
         conn.close()
         return True
+
+
+# ── 구글 인앱결제 수명주기(2026-10-09 점검 B1·H1·H2) ────────────────────────
+# 첫 결제 한 번만 지급하던 구조를 "구글이 알려주는 만료일을 계속 따라가는" 구조로 바꾼다.
+#   - 결제 1건(purchaseToken)마다 gplay_purchases 행 하나: 회원·종류·승인 완료 여부·
+#     구독이면 구글 만료일·다음 확인 시각·이월 기간(carry).
+#   - 구독 권한 자체는 기존과 같이 subscriptions 행(source_ref = pg:gplay:<token>)으로 준다 —
+#     has_active_subscription 등 기존 판정은 그대로다.
+#   - carry_seconds: 첫 결제 때 남아 있던 기존 구독(무료 프로모·포인트 구독) 기간. 예전 동작
+#     ("남은 기간에 이어서 연장")을 유지하려고 구글 만료일 뒤에 그만큼 더 붙인다.
+#   - 판정 규칙(어떤 상태면 권한을 주는가)은 google_play_pg.py가 정하고, 여기는 저장만 한다.
+
+GPLAY_REF_PREFIX = "pg:gplay:"
+GPLAY_VOID_REF_PREFIX = "pg:gplay:void:"
+_TS_FMT = "%Y-%m-%d %H:%M:%S.%f"
+
+
+def gplay_ref(token: str) -> str:
+    return f"{GPLAY_REF_PREFIX}{token}"
+
+
+def _init_gplay_purchases_table(conn) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS gplay_purchases (
+            purchase_token TEXT PRIMARY KEY,
+            member_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,              -- 'points' | 'sub'
+            product_id TEXT NOT NULL,
+            base_plan_id TEXT,
+            points INTEGER NOT NULL DEFAULT 0,
+            finished INTEGER NOT NULL DEFAULT 0,  -- 구글 소비(consume)/승인(acknowledge) 완료
+            carry_seconds INTEGER NOT NULL DEFAULT 0,
+            state TEXT,
+            google_expiry TEXT,
+            next_check_at TEXT,
+            voided_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_gplay_member ON gplay_purchases(member_id, kind);
+        CREATE INDEX IF NOT EXISTS idx_gplay_next_check ON gplay_purchases(kind, next_check_at);
+        CREATE INDEX IF NOT EXISTS idx_gplay_unfinished ON gplay_purchases(finished, created_at);
+        """
+    )
+
+
+def _fmt_ts(value: datetime) -> str:
+    return value.astimezone(KST).strftime(_TS_FMT)
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value), _TS_FMT).replace(tzinfo=KST)
+    except ValueError:
+        return None
+
+
+def get_gplay_purchase(token: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM gplay_purchases WHERE purchase_token = ?", (token,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def record_gplay_points_purchase(member_id: int, token: str, product_id: str, points: int) -> None:
+    """구글이 '결제됨'으로 확인해 준 소모성 구매를 지급 전에 먼저 기록한다(이미 있으면 그대로).
+    지급·소비 중 어디서 끊겨도 이 행(finished=0)이 남아 백그라운드 재시도가 이어서 처리한다."""
+    now = _now_iso()
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO gplay_purchases
+            (purchase_token, member_id, kind, product_id, points, finished, created_at, updated_at)
+        VALUES (?, ?, 'points', ?, ?, 0, ?, ?)
+        """,
+        (token, member_id, product_id, int(points), now, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def mark_gplay_finished(token: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "UPDATE gplay_purchases SET finished = 1, updated_at = ? WHERE purchase_token = ?",
+        (_now_iso(), token),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_unfinished_gplay_purchases(newer_than: datetime, limit: int = 50) -> list[dict]:
+    """소비/승인이 아직 안 된 구매(구글은 3일 안에 승인이 없으면 자동 환불한다)."""
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT * FROM gplay_purchases
+        WHERE finished = 0 AND voided_at IS NULL AND created_at > ?
+        ORDER BY created_at LIMIT ?
+        """,
+        (_fmt_ts(newer_than), int(limit)),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_due_gplay_subscriptions(now: datetime, *, member_id: int | None = None, limit: int = 50) -> list[dict]:
+    """다시 확인할 때가 된 구글 구독(next_check_at이 지났거나 같은 것)."""
+    sql = (
+        "SELECT * FROM gplay_purchases WHERE kind = 'sub' AND next_check_at IS NOT NULL"
+        " AND next_check_at <= ?"
+    )
+    params: list = [_fmt_ts(now)]
+    if member_id is not None:
+        sql += " AND member_id = ?"
+        params.append(int(member_id))
+    sql += " ORDER BY next_check_at LIMIT ?"
+    params.append(int(limit))
+    conn = _connect()
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def _carry_seconds_for_new_gplay_sub(conn, member_id: int, now: datetime) -> int:
+    """구글이 관리하지 않는 기존 구독(무료 프로모·포인트 구독)의 남은 기간(초)."""
+    row = conn.execute(
+        """
+        SELECT expires_at FROM subscriptions
+        WHERE member_id = ? AND product = ? AND expires_at > ?
+          AND (source_ref IS NULL OR source_ref NOT LIKE ?)
+        ORDER BY expires_at DESC LIMIT 1
+        """,
+        (member_id, ADVANCED_PRODUCT, _fmt_ts(now), f"{GPLAY_REF_PREFIX}%"),
+    ).fetchone()
+    expiry = _parse_ts(row[0]) if row else None
+    if not expiry or expiry <= now:
+        return 0
+    return int((expiry - now).total_seconds())
+
+
+def activate_gplay_subscription(
+    member_id: int,
+    token: str,
+    base_plan_id: str,
+    *,
+    state: str,
+    google_expiry: datetime,
+    access_until: datetime,
+    next_check: datetime | None,
+    linked_token: str | None = None,
+) -> bool:
+    """구글 정기결제 첫 지급 — 토큰당 한 번만(멱등). 구독 행 만료일 = 구글 만료일(+권한 여유) + 이월.
+
+    linked_token(요금제 변경·재가입으로 새 토큰이 나온 경우)이 우리 기록에 있으면, 옛 토큰의
+    구독 행은 지금 끝내고 이월 기간만 물려받는다(같은 기간을 두 번 주지 않는다).
+    반환: True = 이번에 지급했거나 이미 지급됨 / False = 회원 없음(아무것도 남지 않음)."""
+    token = str(token).strip()
+    if not token:
+        raise ValueError("token must be non-empty")
+    ref = gplay_ref(token)
+    now = datetime.now(KST)
+    now_iso = _fmt_ts(now)
+    conn = _connect()
+    try:
+        if conn.execute("SELECT 1 FROM pg_charges WHERE pg_ref_id = ?", (ref,)).fetchone():
+            conn.close()
+            return True
+
+        linked = None
+        if linked_token:
+            row = conn.execute(
+                "SELECT * FROM gplay_purchases WHERE purchase_token = ? AND kind = 'sub'",
+                (linked_token,),
+            ).fetchone()
+            linked = dict(row) if row else None
+        if linked and int(linked["member_id"]) == int(member_id):
+            carry = int(linked.get("carry_seconds") or 0)
+        else:
+            carry = _carry_seconds_for_new_gplay_sub(conn, member_id, now)
+        expires = _fmt_ts(access_until + timedelta(seconds=carry))
+
+        results = _batch_execute(
+            conn,
+            [
+                (
+                    """
+                    INSERT INTO pg_charges (member_id, amount, pg_ref_id, status, created_at)
+                    SELECT ?, 0, ?, 'completed', ?
+                    FROM members WHERE id = ?
+                    """,
+                    (member_id, ref, now_iso, member_id),
+                ),
+                (
+                    """
+                    INSERT INTO subscriptions (member_id, product, starts_at, expires_at, is_free_promo, source_ref)
+                    SELECT ?, ?, ?, ?, 0, ?
+                    WHERE EXISTS (SELECT 1 FROM pg_charges WHERE pg_ref_id = ?)
+                    """,
+                    (member_id, ADVANCED_PRODUCT, now_iso, expires, ref, ref),
+                ),
+                (
+                    """
+                    INSERT INTO gplay_purchases
+                        (purchase_token, member_id, kind, product_id, base_plan_id, finished,
+                         carry_seconds, state, google_expiry, next_check_at, created_at, updated_at)
+                    SELECT ?, ?, 'sub', ?, ?, 0, ?, ?, ?, ?, ?, ?
+                    WHERE EXISTS (SELECT 1 FROM pg_charges WHERE pg_ref_id = ?)
+                    """,
+                    (
+                        token, member_id, products.SUBSCRIPTION_PRODUCT, base_plan_id, carry,
+                        state, _fmt_ts(google_expiry), _fmt_ts(next_check) if next_check else None,
+                        now_iso, now_iso, ref,
+                    ),
+                ),
+            ],
+        )
+        marker_inserted = results[0].rowcount if results else 0
+        conn.commit()
+        if marker_inserted and linked:
+            # 옛 토큰은 구글이 무효화했다 — 그 구독 행을 지금 끝내고 더는 확인하지 않는다.
+            linked_ref = gplay_ref(linked["purchase_token"])
+            conn.execute(
+                "UPDATE subscriptions SET expires_at = ? WHERE source_ref = ? AND expires_at > ?",
+                (now_iso, linked_ref, now_iso),
+            )
+            conn.execute(
+                """
+                UPDATE gplay_purchases SET state = 'REPLACED', next_check_at = NULL, updated_at = ?
+                WHERE purchase_token = ?
+                """,
+                (now_iso, linked["purchase_token"]),
+            )
+            conn.commit()
+        conn.close()
+        return bool(marker_inserted)
+    except sqlite3.IntegrityError:
+        conn.close()
+        return True
+
+
+def update_gplay_subscription(
+    token: str,
+    *,
+    state: str,
+    google_expiry: datetime | None,
+    access_until: datetime | None,
+    next_check: datetime | None,
+    keep_access: bool = False,
+) -> bool:
+    """다시 확인한 구글 상태를 반영한다. access_until=None 이면 권한을 지금 끊는다
+    (보류·일시중지·만료·환불). 값이 있으면 그 시각 + 이월 기간까지 권한을 준다.
+    keep_access=True 면 권한(만료일)은 건드리지 않고 상태·다음 확인 시각만 적는다
+    (구글 응답을 해석할 수 없을 때)."""
+    row = get_gplay_purchase(token)
+    if not row or row.get("kind") != "sub":
+        return False
+    now = datetime.now(KST)
+    now_iso = _fmt_ts(now)
+    ref = gplay_ref(token)
+    conn = _connect()
+    carry = timedelta(seconds=int(row.get("carry_seconds") or 0))
+    if keep_access:
+        pass
+    elif access_until is None:
+        # 권한 차단 — 구글 결제 몫은 끝내되, 처음 결제 때 남아 있던 기존 구독 기간(이월)은
+        # 지켜 준다(그 기간은 무료 프로모·포인트로 이미 받은 것이다). 기준은 구글 만료 시각
+        # (보류 중 6시간마다 다시 봐도 날짜가 밀리지 않게) — 없거나 미래면 지금.
+        base = min(google_expiry, now) if google_expiry else now
+        cut = _fmt_ts(base + carry)
+        conn.execute(
+            "UPDATE subscriptions SET expires_at = ? WHERE source_ref = ? AND expires_at > ?",
+            (cut, ref, cut),
+        )
+    else:
+        expires = _fmt_ts(access_until + carry)
+        conn.execute("UPDATE subscriptions SET expires_at = ? WHERE source_ref = ?", (expires, ref))
+    conn.execute(
+        """
+        UPDATE gplay_purchases
+        SET state = ?, google_expiry = COALESCE(?, google_expiry), next_check_at = ?, updated_at = ?
+        WHERE purchase_token = ?
+        """,
+        (
+            state,
+            _fmt_ts(google_expiry) if google_expiry else None,
+            _fmt_ts(next_check) if next_check else None,
+            now_iso,
+            token,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def reclaim_voided_gplay_points(member_id: int, token: str, points: int) -> tuple[int, int, bool]:
+    """구글에서 환불·취소된 적립금 구매를 회수한다 — 토큰당 한 번(멱등).
+    실제로 지급된 적(원장에 pg:gplay:<token> 행)이 있을 때만 회수한다 — 지급 전에 끊겨
+    구글이 자동 환불한 건에서 다른 적립금을 빼앗지 않게.
+
+    잔액보다 많이는 빼지 않는다(잔액이 음수가 되지 않게). 이미 써버린 몫(shortfall)은
+    호출부가 운영 기록으로 남긴다. 반환: (회수한 P, 못 회수한 P, 이미 처리된 건이었나)."""
+    if points <= 0:
+        raise ValueError("points must be positive")
+    ref = f"{GPLAY_VOID_REF_PREFIX}{token}"
+    now_iso = _now_iso()
+    conn = _connect()
+    try:
+        dup = conn.execute(
+            "SELECT delta FROM wallet_ledger WHERE ref_id = ?", (ref,)
+        ).fetchone()
+        if dup:
+            conn.close()
+            taken = -int(dup[0])
+            return taken, int(points) - taken, True
+        _batch_execute(
+            conn,
+            [
+                (
+                    """
+                    INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
+                    SELECT ?, -MIN(balance, ?), balance - MIN(balance, ?), 'pg_void', ?, ?
+                    FROM wallets WHERE member_id = ?
+                      AND EXISTS (SELECT 1 FROM wallet_ledger WHERE ref_id = ?)
+                    """,
+                    (member_id, int(points), int(points), ref, now_iso, member_id, gplay_ref(token)),
+                ),
+                (
+                    """
+                    UPDATE wallets SET balance = balance + (
+                        SELECT delta FROM wallet_ledger WHERE ref_id = ?
+                    )
+                    WHERE member_id = ? AND EXISTS (SELECT 1 FROM wallet_ledger WHERE ref_id = ?)
+                    """,
+                    (ref, member_id, ref),
+                ),
+                (
+                    "UPDATE gplay_purchases SET voided_at = ?, updated_at = ? WHERE purchase_token = ?",
+                    (now_iso, now_iso, token),
+                ),
+            ],
+        )
+        conn.commit()
+        row = conn.execute("SELECT delta FROM wallet_ledger WHERE ref_id = ?", (ref,)).fetchone()
+        conn.close()
+        taken = -int(row[0]) if row else 0
+        return taken, int(points) - taken, False
+    except sqlite3.IntegrityError:
+        conn.close()
+        return 0, 0, True
+
+
+def mark_gplay_voided(token: str) -> None:
+    now_iso = _now_iso()
+    conn = _connect()
+    conn.execute(
+        "UPDATE gplay_purchases SET voided_at = COALESCE(voided_at, ?), updated_at = ? WHERE purchase_token = ?",
+        (now_iso, now_iso, token),
+    )
+    conn.commit()
+    conn.close()
 
 
 THUNDER_COST_PER_GAME = 10

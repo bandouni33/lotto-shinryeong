@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 import uuid
 
 import streamlit as st
@@ -23,6 +24,8 @@ from legal_notices import (
     ACCOUNT_DELETION_BODY,
     ACCOUNT_DELETION_DONE,
     AUTH_CONSENT_ITEMS,
+    IAP_CHARGE_NOTICE,
+    IAP_SUBSCRIPTION_NOTICE,
     NOTICE_VERSION,
     PRICING,
     format_advanced_points_notice,
@@ -898,6 +901,28 @@ CHARGE_PENDING_NOTICE = "결제 연동 준비 중입니다. 조금만 기다려�
 # 값은 위에서 products.py로부터 파생시켰다 — 여기에 문자열을 다시 쓰지 말 것.
 
 
+def _won_value(text: str) -> int | None:
+    digits = re.sub(r"[^0-9]", "", str(text or ""))
+    return int(digits) if digits else None
+
+
+_STORE_PRICE_RE = re.compile(r"^(₩|KRW)?\s?[0-9]{1,3}(,[0-9]{3})*(\.[0-9]{1,2})?\s?(원)?$")
+
+
+def _plausible_store_price(key: str, value: str) -> bool:
+    """2026-10-09(점검 H5): 주소로 들어온 가격은 누구나 꾸며 보낼 수 있고, 저장되면 모든 이용자
+    화면에 보인다. 한국 원화 표기 모양이고, 기본 가격의 절반~두 배 안일 때만 받아들인다
+    (실제 결제 금액은 항상 구글 결제창이 보여주므로, 이 값은 버튼 표시용일 뿐이다)."""
+    text = str(value or "").strip()
+    if not text or len(text) > 20 or not _STORE_PRICE_RE.match(text):
+        return False
+    fallback = _won_value(IAP_PRICE_FALLBACK.get(key, ""))
+    amount = _won_value(text.split(".")[0])
+    if not fallback or not amount:
+        return False
+    return fallback // 2 <= amount <= fallback * 2
+
+
 def iap_prices() -> dict:
     """화면 표시용 가격 {키: 표시 문자열}.
 
@@ -917,7 +942,7 @@ def iap_prices() -> dict:
 
         saved = app_settings.get_store_prices() or {}
         for key, value in saved.items():
-            if key in prices:
+            if key in prices and _plausible_store_price(key, value):
                 prices[key] = value
     except Exception:
         saved = {}
@@ -929,7 +954,7 @@ def iap_prices() -> dict:
             if isinstance(raw, (list, tuple)):
                 raw = raw[0] if raw else ""
             raw = str(raw or "").strip()
-            if raw:
+            if raw and _plausible_store_price(key, raw):
                 fresh[key] = raw
     except Exception:
         fresh = {}
@@ -1088,7 +1113,8 @@ def _render_iap_charge_options() -> None:
     실제 지급은 서버가 purchaseToken을 검증한 뒤에만 일어난다(google_play_pg.py)."""
     products = _iap_points_products()
     prices = iap_prices()
-    st.caption("Google Play 계정으로 결제됩니다. 카드정보는 앱과 서버에 저장되지 않습니다.")
+    # 2026-10-09: 결제 전 고지(청약철회 제한 포함)는 legal_notices 가 기준점이다.
+    st.caption(IAP_CHARGE_NOTICE)
     for index, product_id in enumerate(IAP_POINTS_PRODUCT_IDS):
         points = products.get(product_id)
         if not points:
@@ -1427,22 +1453,20 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
     costs = {"monthly": ADVANCED_MONTHLY_COST, "3month": ADVANCED_3MONTH_COST}
     labels = {"monthly": "1개월", "3month": "3개월"}
     prices = iap_prices()
-    st.markdown("**구독 기간**")
+    # 2026-10-09(구글 정기결제 정책): 자동갱신·해지 방법을 결제 버튼 **위**에서 먼저 알린다.
+    # 기간 표시는 구글 요금제 단위(1개월·3개월)로 — 실제 갱신은 달 단위라 "30일" 표기는 부정확했다.
+    st.markdown("**구독 기간** (Google Play 정기 결제)")
+    st.caption(IAP_SUBSCRIPTION_NOTICE)
     for index, (plan_key, base_plan_id) in enumerate(IAP_SUBSCRIPTION_PLANS):
-        days = FREE_SUB_DAYS if plan_key == "monthly" else ADVANCED_3MONTH_DAYS
         # 표시 가격은 앱이 읽어온 스토어 가격(기본요금제별)이 우선이다.
         label_price = prices.get(base_plan_id) or f"{int(costs[plan_key]) * WON_PER_POINT:,}원"
         if st.button(
-            f"{labels[plan_key]} · {label_price} ({days}일)",
+            f"{labels[plan_key]} · {label_price} ({labels[plan_key]}마다 자동 갱신)",
             type="primary" if index == 0 else "secondary",
             use_container_width=True,
             key=f"iap_sub_{plan_key}",
         ):
             _fire_iap_purchase_trigger(IAP_SUBSCRIPTION_PRODUCT, base_plan_id)
-    st.caption(
-        "Google Play 계정으로 결제되고 매 기간 자동 갱신됩니다. "
-        "해지·환불은 Google Play 앱 → 결제 및 정기결제에서 하실 수 있습니다."
-    )
     if st.button("취소", use_container_width=True, key="iap_sub_cancel"):
         on_close()
         st.rerun()
@@ -1688,9 +1712,15 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
         + "</style>"
     )
     toast = st.session_state.pop("wallet_toast", None)
-    if toast:
+    # 2026-10-09: 실패 안내(결제 확인 실패 등)도 같은 칸을 쓴다 — st.toast 는 바로 뒤 st.rerun()에
+    # 묻혀 안 보일 수 있어서, 완료 안내와 같은 "세션에 세워 두고 다음 실행에서 한 번 보여주기"로 통일.
+    toast_error = st.session_state.pop("wallet_toast_error", None)
+    if toast or toast_error:
         with st.container(key=WALLET_TOAST_BOX_KEY):
-            st.success(toast)
+            if toast:
+                st.success(toast)
+            if toast_error:
+                st.error(toast_error)
 
     render_auth_banner()
 
