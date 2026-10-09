@@ -98,6 +98,18 @@ function isPlayStoreUrl(url: string): boolean {
   return Platform.OS === 'android' && PLAY_STORE_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
 }
 
+// 2026-10-09(테스터 신고 "앱인데 크롬 화면이 뜬다·QR 안 됨" — 서버 기록으로 확인): 새 창으로 여는 링크
+// (target=_blank·window.open)는 안드로이드 웹뷰 기본값이 "기기 기본 브라우저로 열기"라, 앱 주소(native=1·gid
+// 포함)가 그대로 크롬에서 열렸다. 크롬에는 앱 기능(QR 카메라·카카오 앱 로그인)이 없어 눌러도 반응이 없었다.
+// 우리 서버 주소면 앱 안에서 열고, Play 스토어는 Play 앱으로, 그 밖의 외부 사이트만 기본 브라우저로 넘긴다.
+function isOwnServerUrl(url: string): boolean {
+  try {
+    return new URL(url).host === new URL(getStreamlitBaseUrl()).host;
+  } catch {
+    return false;
+  }
+}
+
 // 2026-10-08(이용자 평가 "로딩이 길고 화면 이동이 끊긴다" — 실기기 영상 실측): 예전엔 문서
 // 로드가 끝나면(onLoadEnd) 바로 "불러오는 중" 화면을 내렸는데, Streamlit 은 그 뒤에 자바스크립트로
 // 화면을 그리기 시작해서 흰 화면(약 3.5초) → 빈 어두운 화면(약 9.5초)이 그대로 보였다.
@@ -949,6 +961,30 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     [goToQrScan, triggerKakaoNativeLoginOnce, triggerAppleNativeLoginOnce, triggerIapPurchaseOnce]
   );
 
+  // 새 창 요청(target=_blank·window.open) — 위 isOwnServerUrl 설명 참고. 안드로이드 전용 이벤트.
+  const onOpenWindow = useCallback(
+    (event: { nativeEvent: { targetUrl: string } }) => {
+      const url = event.nativeEvent.targetUrl;
+      if (!url) {
+        return;
+      }
+      if (isOwnServerUrl(url)) {
+        // 앱 신호(native·플랫폼·수신부 표시)를 다시 실어 같은 웹뷰에서 연다.
+        setWebViewUri(
+          withParams(url, {
+            native: '1',
+            native_platform: Platform.OS,
+            ...APPLE_LOGIN_CAPABILITY_PARAMS,
+            ...IAP_CAPABILITY_PARAMS,
+          })
+        );
+        return;
+      }
+      Linking.openURL(url).catch(() => {});
+    },
+    []
+  );
+
   const goToStreamlitHome = useCallback(() => {
     router.replace('/');
   }, []);
@@ -1067,6 +1103,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
           onNavigationStateChange={onNavigationStateChange}
           onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+          onOpenWindow={onOpenWindow}
           onMessage={onMessage}
           injectedJavaScript={PAGE_READY_INJECTED_JS}
           onLoadStart={() => {

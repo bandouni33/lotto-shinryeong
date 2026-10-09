@@ -189,6 +189,7 @@ def test_hedge_qr_click_does_not_request_scan_when_logged_out() -> None:
     """안티·액땜 QR스캔 — 미로그인이면 스캐너 요청이 세워지지 않는다."""
     with _mock_auth_off():
         at = AppTest.from_file(HEDGE_PAGE, default_timeout=TIMEOUT_SEC)
+        at.query_params["native"] = "1"  # 2026-10-09: QR 은 앱 기능 — 앱 밖이면 안내만 뜬다(test_outside_app_notice O2)
         at.run()
         assert len(at.exception) == 0, f"page render raised: {at.exception}"
         assert any(b.key == HEDGE_QR_BTN for b in at.button), "QR button not mounted"
@@ -207,6 +208,7 @@ def test_hedge_qr_click_does_not_request_scan_when_logged_out() -> None:
 def test_hedge_qr_request_fires_exactly_once() -> None:
     """QR스캔(로그인 상태) — 콜백이 요청을 세우고 소비부가 한 번만 집어간다."""
     at = AppTest.from_file(HEDGE_PAGE, default_timeout=TIMEOUT_SEC)
+    at.query_params["native"] = "1"  # 앱 안 경로(앱 밖이면 요청 자체가 안 세워져 이 검사가 무의미해진다)
     at.run()
     assert len(at.exception) == 0, f"page render raised: {at.exception}"
     assert any(b.key == HEDGE_QR_BTN for b in at.button), "QR button not mounted"

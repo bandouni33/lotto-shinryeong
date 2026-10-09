@@ -772,8 +772,13 @@ def render():
         rerun은 하지 않는다(안내창은 이번 렌더에서 render_wallet_bar가 그린다).
         로그인이 돼 있으면 스캐너 트리거 요청만 세우고, 아래 소비부가 이번
         렌더에서 한 번만 집어가 실행한다."""
-        from wallet_ui import login_gate
+        from wallet_ui import APP_ONLY_FEATURE_NOTICE, login_gate, outside_app_browser
 
+        if outside_app_browser():
+            # 2026-10-09: QR 카메라는 앱 기능이라 브라우저에서는 무반응이었다 — 안내만 띄운다
+            # (공통 안내 칸 wallet_toast_error 를 쓴다 — render_wallet_bar 가 이번 렌더에 보여준다).
+            st.session_state["wallet_toast_error"] = APP_ONLY_FEATURE_NOTICE
+            return
         if login_gate(resume="open_hedge_qr_scan"):
             st.session_state["hedge_qr_request"] = True
 

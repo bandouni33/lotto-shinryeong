@@ -508,6 +508,10 @@ def _fire_native_login_trigger(provider: str) -> None:
     참고) 브릿지가 성공했을 때도 URL 이동이 같이 걸려 화면이 깜빡이며
     되돌아오는 문제가 생길 수 있어 피한다."""
     message_type, url_param = NATIVE_LOGIN_TRIGGERS[provider]
+    if outside_app_browser():
+        # 앱 밖(브라우저)에서는 이 신호를 받을 앱이 없다 — 무반응 대신 안내.
+        st.warning(APP_ONLY_FEATURE_NOTICE)
+        return
     components.html(
         """<script>
         (function () {
@@ -1010,6 +1014,38 @@ def native_platform() -> str:
     if isinstance(value, (list, tuple)):
         value = value[0] if value else ""
     return str(value or "").strip().lower()
+
+
+# 2026-10-09(테스터 신고 — 앱 주소가 크롬에서 열려 QR·카카오 로그인이 무반응): 앱 전용 기능을 앱 밖에서
+# 눌렀을 때 조용히 아무 일도 안 일어나는 대신 이 안내를 보인다.
+APP_ONLY_FEATURE_NOTICE = (
+    "이 기능은 로또신령 앱에서 이용할 수 있어요. 지금은 인터넷 브라우저로 열려 있습니다 — "
+    "휴대폰 홈 화면의 로또신령 앱 아이콘으로 실행해 주세요."
+)
+
+
+def _user_agent() -> str:
+    try:
+        ua = st.context.headers.get("User-Agent") or ""
+    except Exception:
+        return ""
+    return ua if isinstance(ua, str) else ""
+
+
+def outside_app_browser() -> bool:
+    """앱 웹뷰가 아니라 인터넷 브라우저로 열린 화면인가(앱 전용 기능이 동작하지 않는 곳).
+
+    - native=1 이 없으면 브라우저(웹 접속).
+    - native=1 인데 안드로이드 UA 에 웹뷰 표시('; wv)')가 없으면, 앱 주소가 크롬 등에서 열린 것이다
+      (10-09 서버 기록: native_param='1' wv=0 으로 카카오 로그인 신호만 6번, 응답 0).
+    - iOS 는 웹뷰·사파리 UA 를 확실히 가를 표시가 없어 native=1 이면 앱으로 본다(오판으로 앱을 막지 않게).
+    UA 를 못 읽으면 앱으로 본다(같은 이유)."""
+    if not in_native_app():
+        return True
+    ua = _user_agent()
+    if not ua or "Android" not in ua:
+        return False
+    return "; wv)" not in ua
 
 
 def in_ios_native_app() -> bool:
