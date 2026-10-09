@@ -114,8 +114,11 @@ def _render_probe(mode: str, member_id: int, *, native: bool, **extra_params) ->
     at.query_params["probe"] = mode
     if native:
         at.query_params["native"] = "1"
+        # 2026-10-09: 결제 수신부가 있는 새 빌드(iap=1)를 기본으로 흉내 낸다. 옛 빌드는 iap=None.
+        extra_params.setdefault("iap", "1")
     for key, value in extra_params.items():
-        at.query_params[key] = value
+        if value is not None:
+            at.query_params[key] = value
     at.session_state["member_id"] = member_id
     at.run()
     return at
@@ -560,6 +563,69 @@ def test_N11_resume_reopens_subscription_dialog_after_login():
         )
 
 
+def test_N12_old_build_gets_update_notice_not_dead_buttons():
+    """2026-10-09(점검 B4): 결제 스위치를 켜도 수신부 없는 옛 앱(iap 표시 없음)에는 결제 버튼 대신
+    업데이트 안내만 나간다(충전·구독 모두)."""
+    with _prod_like_env(), _db_isolation.isolated_db(), _switches(
+        IAP_CHARGE_ENABLED=True, IAP_SUBSCRIPTION_ENABLED=True, TEST_CHARGE_ENABLED=False
+    ):
+        import wallet_ui
+
+        mid = _member("iap_n12")
+        wdb.activate_free_advanced_sub(mid)
+        at = _render_probe("charge", mid, native=True, iap=None)
+        assert not at.exception, at.exception
+        assert not any(k.startswith("iap_buy_") for k in _keys(at)), f"옛 앱에 결제 버튼: {_keys(at)}"
+        infos = "\n".join((m.value or "") for m in at.info)
+        assert wallet_ui.APP_UPDATE_FOR_IAP_NOTICE in infos, f"업데이트 안내가 없다: {infos!r}"
+        at_sub = _render_probe("sub", mid, native=True, iap=None)
+        assert not at_sub.exception, at_sub.exception
+        keys = _keys(at_sub)
+        assert not [k for k in keys if k in IAP_SUB_KEYS], f"옛 앱에 요금제 버튼: {keys}"
+        assert "iap_sub_update_close" in keys, f"업데이트 안내에 닫기가 없다: {keys}"
+        # 새 빌드(iap=1)에는 요금제 버튼 + 구독 관리 링크가 나온다.
+        at_new = _render_probe("sub", mid, native=True)
+        assert all(k in _keys(at_new) for k in IAP_SUB_KEYS), _keys(at_new)
+        links = [getattr(b, "url", "") for b in getattr(at_new, "link_button", [])]
+        if links:  # AppTest 버전에 따라 link_button 접근이 없을 수 있다
+            assert any("play.google.com/store/account/subscriptions" in (u or "") for u in links), links
+
+
+def test_N13_internal_nav_keeps_iap_capability():
+    """하위 화면 이동에서도 iap=1 이 이어져야 한다(안 이으면 하위 화면에서 업데이트 안내가 뜬다)."""
+    from streamlit.testing.v1 import AppTest as _AT
+
+    at = _AT.from_string(
+        "import streamlit as st, user_scope\nst.session_state['href'] = user_scope.internal_nav_href('thunder')",
+        default_timeout=TIMEOUT_SEC,
+    )
+    at.query_params["native"] = "1"
+    at.query_params["iap"] = "1"
+    at.query_params["gid"] = "n13"
+    at.run()
+    assert "iap=1" in at.session_state["href"], at.session_state["href"]
+
+
+def test_N14_app_code_has_iap_followups():
+    """앱 쪽 보완(§12)이 소스에 있는지 — 수신부 표시·미처리 결제 복구·결제 대기·Play 스토어 링크·
+    계정 식별값·기본 혜택 선택. 서버 이름과 한 쌍인 값은 서버 상수와 대조한다."""
+    import products
+    import wallet_ui
+
+    tsx = TSX.read_text(encoding="utf-8")
+    assert f"{{ {wallet_ui.IAP_CAPABILITY_PARAM}: '1' }}" in tsx, "앱이 iap=1 을 보내지 않는다"
+    assert tsx.count("...IAP_CAPABILITY_PARAMS") >= 2, "첫 주소·복귀 주소 둘 다 iap 를 실어야 한다"
+    assert "getAvailablePurchases()" in tsx and "isAcknowledgedAndroid === false" in tsx, "미처리 결제 복구가 없다"
+    assert "...recoveryParamsRef.current" in tsx, "복구 결제를 첫 주소에 싣지 않는다"
+    assert "purchase.purchaseState === 'pending'" in tsx, "결제 대기를 서버로 보내지 않는 처리가 없다"
+    assert "isPlayStoreUrl(request.url)" in tsx and "Linking.openURL" in tsx, "Play 스토어 링크를 앱 밖으로 넘기지 않는다"
+    assert "https://play.google.com/" in tsx and products.play_subscription_manage_url().startswith(
+        "https://play.google.com/"
+    ), "구독 관리 주소가 앱의 Play 스토어 판정에 걸리지 않는다"
+    assert tsx.count("obfuscatedAccountId: guestId") == 2, "충전·구독 모두 계정 식별값을 넘겨야 한다"
+    assert "planOffers.find(" in tsx, "기본 혜택(할인 없는 요금) 선택이 없다"
+
+
 def _main() -> int:
     tests = [
         test_N1_native_charge_offers_test_charge_not_dead_buttons,
@@ -578,6 +644,9 @@ def _main() -> int:
         test_N9_store_price_is_shown_and_persists_across_navigation,
         test_N10_price_params_and_reload_contract_match_app_code,
         test_N11_resume_reopens_subscription_dialog_after_login,
+        test_N12_old_build_gets_update_notice_not_dead_buttons,
+        test_N13_internal_nav_keeps_iap_capability,
+        test_N14_app_code_has_iap_followups,
     ]
     failed = 0
     for t in tests:

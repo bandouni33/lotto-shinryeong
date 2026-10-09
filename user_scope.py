@@ -218,6 +218,10 @@ def internal_nav_href(page: str, **extra_params: str) -> str:
     # Apple 로그인 수신부가 있는 빌드 표시(wallet_ui.APPLE_LOGIN_CAPABILITY_PARAM)도 같은 이유로 잇는다.
     if st.query_params.get("apple_login"):
         params["apple_login"] = st.query_params.get("apple_login")
+    # 2026-10-09: 구글 결제 수신부가 있는 빌드 표시(wallet_ui.IAP_CAPABILITY_PARAM)도 같은 이유로 잇는다 —
+    # 안 이으면 하위 화면에서 결제 버튼 대신 "앱 업데이트" 안내가 나간다.
+    if st.query_params.get("iap"):
+        params["iap"] = st.query_params.get("iap")
     params.update(extra_params)
     query = urllib.parse.urlencode(params)
     return f"?{query}"

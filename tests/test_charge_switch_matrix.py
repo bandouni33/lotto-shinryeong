@@ -67,6 +67,7 @@ def _render(native: bool, mid: int, gid: str) -> AppTest:
     at.query_params["gid"] = gid
     if native:
         at.query_params["native"] = "1"
+        at.query_params["iap"] = "1"  # 2026-10-09: 결제 수신부가 있는 빌드(옛 빌드는 test_iap_native_branch N12)
     at.session_state["member_id"] = mid
     at.session_state["_guest_id"] = gid
     at.session_state["wallet_show_charge"] = True  # render_wallet_bar가 충전창을 띄운다

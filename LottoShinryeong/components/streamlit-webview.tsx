@@ -4,6 +4,7 @@ import {
   Alert,
   AppState,
   BackHandler,
+  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -13,6 +14,7 @@ import {
 import { WebView } from 'react-native-webview';
 import {
   fetchProducts,
+  getAvailablePurchases,
   initConnection,
   isUserCancelledError,
   purchaseErrorListener,
@@ -82,6 +84,19 @@ const WEBVIEW_ORIGIN_WHITELIST = ['http://*', 'https://*', 'about:srcdoc'];
 // 수신부가 없는 이전 빌드(심사 중 1.0.2 build 8 등)에 눌러도 반응 없는 버튼이 생기지 않게.
 const APPLE_LOGIN_CAPABILITY_PARAMS: Record<string, string> =
   Platform.OS === 'ios' ? { apple_login: '1' } : {};
+
+// 2026-10-09(구글 인앱결제 점검 B4): 이 빌드가 구글 결제 수신부(아래 expo-iap 배선)를 갖고 있음을
+// 서버에 알리는 표시. 서버(wallet_ui.IAP_CAPABILITY_PARAM)는 이 값이 있을 때만 결제 버튼을 그린다 —
+// 결제 스위치를 켠 뒤에도 수신부 없는 옛 빌드에는 먹통 버튼 대신 "앱 업데이트" 안내가 나간다.
+const IAP_CAPABILITY_PARAMS: Record<string, string> =
+  Platform.OS === 'android' ? { iap: '1' } : {};
+
+// 2026-10-09(구독 관리 링크): Play 스토어 주소(정기 결제 관리·스토어 페이지)는 웹뷰 안이 아니라
+// Play 스토어 앱으로 넘긴다 — 웹뷰 안에서 열면 앱으로 돌아올 길이 없어진다.
+const PLAY_STORE_URL_PREFIXES = ['https://play.google.com/', 'market://'];
+function isPlayStoreUrl(url: string): boolean {
+  return Platform.OS === 'android' && PLAY_STORE_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
 
 // 2026-10-08(이용자 평가 "로딩이 길고 화면 이동이 끊긴다" — 실기기 영상 실측): 예전엔 문서
 // 로드가 끝나면(onLoadEnd) 바로 "불러오는 중" 화면을 내렸는데, Streamlit 은 그 뒤에 자바스크립트로
@@ -342,6 +357,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         // 그대로 쓴다(ios/android가 그대로 내려간다).
         native_platform: Platform.OS,
         ...APPLE_LOGIN_CAPABILITY_PARAMS,
+        ...IAP_CAPABILITY_PARAMS,
         ...priceParamsRef.current,
         ...(overrides || {}),
       }),
@@ -354,6 +370,11 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   //   Play Console에서 가격을 바꾸면 다음 앱 실행에 자동 반영되고 코드 수정이 필요 없다.
   //   ref로 두는 이유: state로 두면 buildUri 신원이 계속 바뀌어 다른 effect가 다시 돈다.
   const priceParamsRef = useRef<Record<string, string>>({});
+  // 2026-10-09(점검 B2): 앱 시작 때 찾은 "결제는 됐는데 서버 처리(소비·승인)가 안 끝난" 구매 1건 —
+  // 첫 화면 주소에 함께 실어 보내 서버가 마저 처리하게 한다(따로 다시 로드하지 않는다).
+  // 구글은 3일 안에 승인이 없으면 자동 환불하므로, 결제 직후 앱이 꺼졌거나 Play 스토어에서
+  // 직접 재구독한 경우도 다음 실행 때 여기서 이어진다. 여러 건이면 다음 실행 때 다음 건.
+  const recoveryParamsRef = useRef<Record<string, string>>({});
   const [pricesReady, setPricesReady] = useState(Platform.OS !== 'android');
   // 지금 웹뷰가 실제로 보고 있는 주소 — 로그인 성공·결제 완료 후 이 자리로 돌아온다.
   const currentUrlRef = useRef<string | null>(null);
@@ -370,6 +391,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
       withParams(currentUrlRef.current ?? buildUri(), {
         native_platform: Platform.OS,
         ...APPLE_LOGIN_CAPABILITY_PARAMS,
+        ...IAP_CAPABILITY_PARAMS,
         ...params,
       }),
     [buildUri]
@@ -418,6 +440,23 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           }
         }
         priceParamsRef.current = params;
+        try {
+          const owned = (await getAvailablePurchases()) as Purchase[];
+          const unfinished = (Array.isArray(owned) ? owned : []).find(
+            (item) =>
+              item.purchaseState === 'purchased' &&
+              !!item.purchaseToken &&
+              (item as { isAcknowledgedAndroid?: boolean | null }).isAcknowledgedAndroid === false
+          );
+          if (unfinished?.purchaseToken) {
+            recoveryParamsRef.current = {
+              iap_purchase_token: unfinished.purchaseToken,
+              iap_product_id: unfinished.productId,
+            };
+          }
+        } catch {
+          // 조회 실패 — 다음 실행 때 다시 본다(구글 3일 기한 안에 여러 번 기회가 있다).
+        }
       } catch {
         // 스토어 연결 실패 — 서버 기본값(상수)으로 표시된다. 결제 시점에 다시 안내된다.
       } finally {
@@ -488,9 +527,21 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     // 올라오므로, 그걸 그대로 서버에 넘기는 것이 곧 재전송 안전장치가 된다
     // (서버 멱등성이 중복 지급을 막는다).
     const updated = purchaseUpdatedListener((purchase) => {
-      if (!cancelled) {
-        deliverRef.current(purchase);
+      if (cancelled) {
+        return;
       }
+      // 2026-10-09(점검 H3): 결제 대기(편의점·계좌 등 승인이 늦는 수단)는 아직 돈이 안 들어온
+      // 상태라 서버로 보내지 않는다 — 완료되면 이 리스너가 다시 불리거나(앱 실행 중), 다음 실행 때
+      // 미처리 결제 복구(recoveryParamsRef)로 이어진다.
+      if (purchase.purchaseState === 'pending') {
+        setIapRequest(null);
+        Alert.alert(
+          '결제 승인 대기 중',
+          '결제가 아직 승인되지 않았습니다. 승인이 완료되면 자동으로 지급됩니다.'
+        );
+        return;
+      }
+      deliverRef.current(purchase);
     });
     const failed = purchaseErrorListener((error) => {
       if (cancelled || isUserCancelledError(error) || error.code === 'user-cancelled') {
@@ -532,8 +583,17 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             (product as ProductSubscription).subscriptionOffers?.filter(
               (offer) => !!offer.offerTokenAndroid
             ) ?? [];
+          // 2026-10-09: 같은 기본요금제에 할인·체험 혜택이 생겨도 기본 가격(혜택 없는 것)을 고른다 —
+          // 서버 고지·화면 가격과 실제 결제가 어긋나지 않게. 기본 혜택은 id(=offerId)가 비어 있거나
+          // 기본요금제 ID 와 같고, 가격 단계가 1개다.
+          const planOffers = offers.filter((item) => item.basePlanIdAndroid === request.basePlanId);
           const offer =
-            offers.find((item) => item.basePlanIdAndroid === request.basePlanId) ?? null;
+            planOffers.find(
+              (item) => !item.id || item.id === request.basePlanId
+            ) ??
+            planOffers.find((item) => (item.pricingPhasesAndroid?.pricingPhaseList?.length ?? 0) === 1) ??
+            planOffers[0] ??
+            null;
           if (!offer?.offerTokenAndroid) {
             throw new Error('선택하신 구독 요금제를 찾지 못했습니다.');
           }
@@ -543,6 +603,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
                 google: {
                   skus: [request.sku],
                   subscriptionOffers: [{ sku: request.sku, offerToken: offer.offerTokenAndroid }],
+                  // 2026-10-09(점검 M1): 기기 식별자(무작위값, 개인정보 아님)를 구글 부정결제 탐지에 함께 넘긴다.
+                  obfuscatedAccountId: guestId ?? undefined,
                 },
               },
               type: 'subs',
@@ -553,7 +615,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         } else {
           await withTimeout(
             requestPurchase({
-              request: { google: { skus: [request.sku] } },
+              request: { google: { skus: [request.sku], obfuscatedAccountId: guestId ?? undefined } },
               type: 'in-app',
             }),
             IAP_DISPATCH_TIMEOUT_MS,
@@ -577,6 +639,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     return () => {
       cancelled = true;
     };
+    // guestId 는 첫 화면 전에 이미 정해져 바뀌지 않는다(결제 요청이 올 때 최신값을 쓴다).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [iapRequest]);
 
   const parseIapRequestFromUrl = useCallback((url?: string): IapRequest | null => {
@@ -608,8 +672,12 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
     initialUriSetRef.current = true;
     lastSentTimeoutTriggerRef.current = timeoutLogoutTrigger;
     setWebViewUri(
-      buildUri(shouldSendFreshStart ? { fresh_start: '1', _cb: String(Date.now()) } : {})
+      buildUri({
+        ...recoveryParamsRef.current,
+        ...(shouldSendFreshStart ? { fresh_start: '1', _cb: String(Date.now()) } : {}),
+      })
     );
+    recoveryParamsRef.current = {};
     // guestId가 처음 채워지는 순간과 스토어 가격 조회가 끝난 순간(pricesReady)
     // 중 늦은 쪽에서 한 번만 실행한다 — 첫 주소에 가격 파라미터를 함께 실어 보내
     // 서버가 저장하게 하려는 것(pricesReady가 안 오면 타임아웃으로 먼저 진행한다).
@@ -810,6 +878,10 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 빠르게(실제 로드 자체를 막으면서) 넘어가므로 그대로 둔다.
   const onShouldStartLoadWithRequest = useCallback(
     (request: { url: string }) => {
+      if (isPlayStoreUrl(request.url)) {
+        Linking.openURL(request.url).catch(() => {});
+        return false;
+      }
       if (request.url.includes('qrscan=1')) {
         goToQrScan();
         return false;
@@ -978,6 +1050,8 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
           <Text style={styles.loadingText}>로또신령 불러오는 중…</Text>
         </View>
       ) : (
+        // 2026-10-09: Play 스토어 주소(업데이트 안내 "지금 업데이트"·구독 관리)는 이제
+        // onShouldStartLoadWithRequest 의 isPlayStoreUrl 이 Play 스토어 앱으로 넘긴다. 아래는 그 밖의 외부 주소 이야기.
         // TODO(update-banner-link): target="_blank" 링크(예: user_page.py의 업데이트 안내
         // 배너 "지금 업데이트" st.link_button)가 새 탭이 아니라 이 웹뷰 안에서 그대로 열림 —
         // setSupportMultipleWindows/onOpenWindow 핸들러가 없기 때문. update_url이 스토어

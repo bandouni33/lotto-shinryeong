@@ -893,6 +893,8 @@ TEST_CHARGE_ENABLED = True
 # 충전을 못 하는 상황의 공통 안내 문구(웹 미연동 분기와 앱 준비중 분기가 같이 쓴다 —
 # 문구가 두 곳에 복사되면 한쪽만 바뀐다).
 CHARGE_PENDING_NOTICE = "결제 연동 준비 중입니다. 조금만 기다려주세요."
+# 2026-10-09(점검 B4): 결제 스위치는 켜졌는데 결제 수신부가 없는 옛 앱 — 먹통 버튼 대신 이 안내.
+APP_UPDATE_FOR_IAP_NOTICE = "결제를 이용하려면 Play 스토어에서 로또신령 앱을 최신 버전으로 업데이트해 주세요."
 
 # 앱(streamlit-webview.tsx)이 스토어에서 읽은 실제 가격을 실어 보내는 파라미터 이름과,
 # 그 값이 아직 없을 때 쓸 기본값(2026-09-26). 실제 표시는 항상 앱이 보내온 값이
@@ -1040,6 +1042,26 @@ def apple_login_available() -> bool:
     return str(value or "") == "1"
 
 
+# 2026-10-09(점검 B4): 앱 빌드가 구글 결제 수신부를 가졌다는 표시. 앱(streamlit-webview.tsx
+# IAP_CAPABILITY_PARAMS)이 안드로이드에서만 iap=1 을 싣고, 내부이동 링크(user_scope.internal_nav_href)가
+# 이어 보낸다(apple_login 과 같은 방식).
+IAP_CAPABILITY_PARAM = "iap"
+
+
+def iap_available() -> bool:
+    """구글 결제 버튼을 그려도 되는가 — 안드로이드 앱이면서 수신부가 있는 빌드일 때만.
+    수신부 없는 옛 빌드에 결제 버튼을 띄우면 눌러도 반응이 없다(심사 반려·이용자 혼란)."""
+    if not in_native_app() or in_ios_native_app():
+        return False
+    try:
+        value = st.query_params.get(IAP_CAPABILITY_PARAM)
+    except Exception:
+        return False
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else ""
+    return str(value or "") == "1"
+
+
 def _iap_points_products() -> dict:
     """상품 ID → 지급 포인트. 기준점은 products.py다(여기서 새로 만들지 말 것)."""
     return dict(products.POINTS_PRODUCTS)
@@ -1154,7 +1176,10 @@ def _render_charge_actions(member_id: int) -> None:
             st.info(CHARGE_PENDING_NOTICE)
             return
         if IAP_CHARGE_ENABLED:
-            _render_iap_charge_options()
+            if iap_available():
+                _render_iap_charge_options()
+            else:
+                st.info(APP_UPDATE_FOR_IAP_NOTICE)
             return
         if not TEST_CHARGE_ENABLED:
             st.info(CHARGE_PENDING_NOTICE)
@@ -1449,6 +1474,13 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
             on_close()
             st.rerun()
         return
+    if not iap_available():
+        # 2026-10-09(점검 B4): 결제 수신부가 없는 옛 앱 — 먹통 요금제 버튼 대신 업데이트 안내.
+        st.info(APP_UPDATE_FOR_IAP_NOTICE)
+        if st.button("닫기", use_container_width=True, key="iap_sub_update_close"):
+            on_close()
+            st.rerun()
+        return
 
     costs = {"monthly": ADVANCED_MONTHLY_COST, "3month": ADVANCED_3MONTH_COST}
     labels = {"monthly": "1개월", "3month": "3개월"}
@@ -1467,6 +1499,9 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
             key=f"iap_sub_{plan_key}",
         ):
             _fire_iap_purchase_trigger(IAP_SUBSCRIPTION_PRODUCT, base_plan_id)
+    # 구글 정기결제 정책: 앱 안에서 구독 관리(해지) 화면으로 가는 길을 준다. 앱이 Play 스토어 앱으로 연다.
+    # 주소의 기준점은 products.play_subscription_manage_url(); 앱(streamlit-webview.tsx isPlayStoreUrl)이 Play 스토어 앱으로 연다.
+    st.link_button("구독 관리·해지 (Google Play)", products.play_subscription_manage_url(), use_container_width=True)
     if st.button("취소", use_container_width=True, key="iap_sub_cancel"):
         on_close()
         st.rerun()

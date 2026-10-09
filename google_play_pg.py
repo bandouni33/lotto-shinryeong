@@ -51,9 +51,9 @@ from wallet_db import (
 
 # 2026-09-26: 상품 ID·구독 기간의 기준점은 products.py다(여기서 숫자를 새로 쓰지 말 것).
 # 이름을 그대로 다시 내보내므로 기존 import(POINTS_PRODUCTS 등)는 그대로 동작한다.
-from products import POINTS_PRODUCTS, SUBSCRIPTION_BASE_PLAN_DAYS, SUBSCRIPTION_PRODUCT
+from products import ANDROID_PACKAGE_NAME, POINTS_PRODUCTS, SUBSCRIPTION_BASE_PLAN_DAYS, SUBSCRIPTION_PRODUCT
 
-PACKAGE_NAME = "com.bandouni.lottoshinryeong"
+PACKAGE_NAME = ANDROID_PACKAGE_NAME  # 기준점 products.py
 ANDROID_PUBLISHER_SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 API_BASE = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications"
 

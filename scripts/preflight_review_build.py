@@ -86,6 +86,7 @@ def _render(mode: str, mid: int) -> AppTest:
     at = AppTest.from_file(PROBE, default_timeout=TIMEOUT_SEC)
     at.query_params["probe"] = mode
     at.query_params["native"] = "1"
+    at.query_params["iap"] = "1"  # 2026-10-09: 제출할 새 빌드는 결제 수신부 표시(iap=1)를 보낸다
     at.session_state["member_id"] = mid
     at.run()
     return at
@@ -181,6 +182,15 @@ def run_review_checks() -> None:
         CLOUD_SECRETS_CONFIRMED,
         "R7 Cloud Secrets 에 GOOGLE_PLAY_SERVICE_ACCOUNT_JSON 이 있다(없으면 모든 구글 결제가 '확인 실패') - 사람이 확인함",
         "Streamlit Cloud > Settings > Secrets 에서 확인 후 --cloud-secrets-confirmed 로 다시 실행",
+    )
+
+    # R9: 제출할 앱 소스에 2026-10-09 점검 §12 보완(수신부 표시·미처리 결제 복구·결제 대기)이 있는가 —
+    # 이게 빠진 빌드에 결제 스위치를 켜면 결제 유실(3일 뒤 자동 환불)·옛 앱 먹통 버튼이 생긴다.
+    tsx = (ROOT / "LottoShinryeong" / "components" / "streamlit-webview.tsx").read_text(encoding="utf-8")
+    check(
+        "IAP_CAPABILITY_PARAMS" in tsx and "getAvailablePurchases()" in tsx and "purchaseState === 'pending'" in tsx,
+        "R9 앱 소스에 결제 보완(§12: iap=1·미처리 결제 복구·결제 대기)이 들어 있다",
+        "네이티브_빌드_대기목록.md §12 를 반영한 소스로 빌드할 것",
     )
 
     # R8: 결제 "이후" 수명주기(갱신·해지·보류·환불·승인 재시도·가격 위조) — 2026-10-09 점검에서

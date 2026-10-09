@@ -17,6 +17,9 @@
 
 from __future__ import annotations
 
+# 앱 패키지(번들) 이름 — Play 결제 검증 API·구독 관리 링크가 같이 쓴다(2026-10-09).
+ANDROID_PACKAGE_NAME = "com.bandouni.lottoshinryeong"
+
 # 10원 = 1P. 이 값이 돈↔포인트 환산의 유일한 기준이다(예전 wallet_db에서 이사).
 WON_PER_POINT = 10
 
@@ -101,3 +104,11 @@ def points_product_price_label(product_id: str) -> str:
 def subscription_price_label(base_plan_id: str) -> str:
     """구독 요금제의 기본 표시 금액(포인트 가격을 원으로 환산)."""
     return f"{points_to_won(SUBSCRIPTION_POINTS_COST[base_plan_id]):,}원"
+
+
+def play_subscription_manage_url() -> str:
+    """구글 정기 결제 관리(해지·결제수단 변경) 화면 주소 — 구글 정기결제 정책상 앱 안에 이 길을 둔다."""
+    return (
+        "https://play.google.com/store/account/subscriptions"
+        f"?sku={SUBSCRIPTION_PRODUCT}&package={ANDROID_PACKAGE_NAME}"
+    )

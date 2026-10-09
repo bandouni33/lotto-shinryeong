@@ -140,6 +140,7 @@ const requestPurchase = (args) => {
   return runtime.request(args);
 };
 const purchaseInFlightRef = useRef(false);
+const guestId = 'test-guest';  // 2026-10-09: 결제 요청에 계정 식별값(obfuscatedAccountId)으로 실린다
 let iapRequest = null;
 const setIapRequest = (value) => { iapRequest = value; };
 

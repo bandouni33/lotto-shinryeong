@@ -32,7 +32,7 @@
 | E | 화면 틀(폭·상단여백·헤더 숨김) | **보류**(P1, 심사 제출 후) — 현재는 화면별 CSS | `.block-container` 덮어쓰기, `header[data-testid="stHeader"]` 숨김 | 보류 중에는 손대지 말 것 |
 | F | 디자인 토큰(색·글자크기·여백·z-index) | **보류**(P1) | 모든 화면 CSS(`!important` 다수) | 보류 |
 | G | 테마(다크/라이트) | `.streamlit/config.toml` (한 곳) | 화면 CSS의 배경·글자색 전제 | 보류 — 지금은 라이트 테마 + 다크 전제 CSS가 섞여 있다 |
-| H | 네이티브 앱 여부 판정 | `wallet_ui.in_native_app()` | `native=1` 판정이 필요한 모든 곳(카카오 배너, IAP 분기) | `tests/test_iap_native_branch.py` |
+| H | 네이티브 앱 여부 판정 | `wallet_ui.in_native_app()` (결제 버튼은 `wallet_ui.iap_available()` — 수신부 있는 안드로이드 빌드만) | `native=1` 판정이 필요한 모든 곳(카카오 배너, IAP 분기) | `tests/test_iap_native_branch.py` |
 | I | 서버↔앱 파라미터·프로토콜 이름 | 파이썬 쪽 상수(`wallet_ui.IAP_PRICE_PARAMS` 등) + TS 상수(`IAP_PRICE_PARAMS`) | `streamlit-webview.tsx`, `google_play_pg.py` | `tests/test_iap_native_branch.py` |
 | J | 화면 문구·라벨 | `legal_notices.py`(고지·가격 안내) / 기능별 상수 | 화면에 직접 박힌 한글 라벨 | 심사 문구 정리 커밋 참고 — 라벨이 여러 곳에 복사되면 제로폭 공백 사건처럼 일부만 바뀐다 |
 | K | 적립금 안내창(구매 전 확인창) | `wallet_ui.points_notice_dialog` + **열림 플래그는 `dialog_registry.DIALOGS`에 `points_notice_trigger=True`로 등록**(자동구매·번개·안티액땜·타로) | 네 화면의 열림 플래그·X닫기 정리(`_points_notice_on_dismiss`)·로그아웃 정리 키 | `tests/test_dialog_registry.py`(D9), `tests/test_tarot_gate_flow.py`(T1) |
@@ -76,7 +76,7 @@
 - `@st.cache_data` 함수의 인자 이름이 밑줄로 시작하면 캐시 키에서 제외된다 → 무효화용
   인자에 `_`를 붙이면 캐시 무효화가 통째로 무력해진다.
 - Streamlit 내부이동 링크(`user_scope.internal_nav_href`)는 `page`·`gid`·`native`·`native_platform`·
-  `apple_login`만 실어 보낸다 → 그 밖에 주소에 실어 보낸 값(예: 앱이 보낸 스토어 가격)은 화면 이동에서 사라진다.
+  `apple_login`·`iap`(구글 결제 수신부 있는 빌드, 2026-10-09)만 실어 보낸다 → 그 밖에 주소에 실어 보낸 값(예: 앱이 보낸 스토어 가격)은 화면 이동에서 사라진다.
   그래서 가격은 앱이 보낸 값을 서버가 저장해두고 재사용한다(`wallet_ui.iap_prices`).
 - Cloud 는 git push 후 프로세스를 재시작하지 않을 수 있다 → 이미 import 된 모듈은 옛 코드로 남는다.
   화면 모듈은 `user_page._reload_if_stale`, 공용 모듈(로그인 창·로그인 처리·링크 등)은
