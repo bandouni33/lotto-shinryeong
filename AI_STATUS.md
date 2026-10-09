@@ -69,7 +69,7 @@
   - §1 카카오 로그인 WebView 재생성 2회→1회 / §2 로그인 후 보던 화면 복귀 / §3 안드로이드 뒤로가기로 다이얼로그 닫기 / §4 로딩 오버레이 불투명 / §5 R8 난독화 / §6 카카오 로그인 멈춤 영구잠금 / §7 IAP 결제 멈춤 영구잠금 / §8 eas.json 빌드 URL Cloud→PC서버(DDNS) 전환
   - OTA(EAS Update) 미설정 → **JS 변경도 전부 재빌드 필요**
 - **`wallet_ui.TEST_CHARGE_ENABLED = True`** — 테스터 사용 중이라 유지(사용자 결정). **구글 결제 심사 신청 시점에 `False`**(preflight R3·R4b가 막음). 참고: 브라우저에서 주소에 `?native=1`을 붙여도 테스트 충전이 보임 — 스위치를 끄면 함께 해결
-- **구글 결제 심사 전 남은 것(10-09 점검)** — ① 앱 빌드 §12(B2 미처리 결제 복구·B4 `iap=1`·H3 pending·M1·구독 관리 링크) ② 약관 정리 **사용자 결정 필요**: '현금 환불 불가'(이용약관·적립금정책) ↔ '미사용 잔액 환불 가능'(PG 환불정책) 충돌, '적립금 유효기간 1년·만료 7일 전 알림'은 미구현 ③ Cloud Secrets에 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` 등록 확인 ④ Play 콘솔: 상품 ID 일치·서비스 계정 권한·라이선스 테스터·데이터 보안(구매 내역) ⑤ 라이선스 테스터 실결제 시험 ⑥ preflight `--cloud-secrets-confirmed` 전부 통과
+- **구글 결제 심사 전 남은 것(10-09 점검)** — ① 앱 빌드 §12(B2 미처리 결제 복구·B4 `iap=1`·H3 pending·M1·구독 관리 링크) ② (10-09 완료) 약관 정리 — 사용자 결정: **유료 충전 적립금 미사용분 환불 가능**(무료 지급분 불가, 무료분 먼저 사용 간주, Google Play 결제는 결제 취소로 환불·적립금 회수, 탈퇴 시 잔액 소멸 → 탈퇴 전 환불 요청 안내)으로 이용약관·적립금정책·가입 안내·PG 환불정책·탈퇴 안내·MEMBER_NOTICES 통일. '적립금 유효기간 1년·만료 7일 전 알림' 문구는 사용자 지시로 그대로 둠(미구현) ③ Cloud Secrets에 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` 등록 확인 ④ Play 콘솔: 상품 ID 일치·서비스 계정 권한·라이선스 테스터·데이터 보안(구매 내역) ⑤ 라이선스 테스터 실결제 시험 ⑥ preflight `--cloud-secrets-confirmed` 전부 통과
 - iOS 결제(StoreKit) 미구현 — 현재 "준비중"으로 가림
 - 기술부채: `st.components.v1.html` deprecation — **Streamlit 버전 올리기 전 `st.iframe` 전환 선행 필수** (`기술부채_추적.md`)
 - 동시접속: 병목은 코어가 아니라 **DB 왕복(도쿄 ~75ms × 렌더당 10~28회)** — 운영 부하·VPS 실측 미검증
