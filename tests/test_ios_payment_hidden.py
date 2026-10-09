@@ -266,6 +266,20 @@ def test_S6_ios_with_apple_receiver_shows_only_apple_buttons():
         for key in FORBIDDEN_SUB:
             assert key not in keys, f"iOS 구독에 {key} 가 떴다: {keys}"
         assert {"apple_sub_monthly", "apple_sub_3month", "apple_restore"} <= set(keys), keys
+        # 2026-10-09(결정 A): 첫 구독 무료 대상이어도 iOS 는 애플 유료 요금제를 함께 보여 준다(심사관이 찾을 수 있게).
+        with _switches(ADVANCED_FILTER_FIRST_SUB_FREE=True):
+            eligible = bool(wallet_ui.eligible_free_advanced_sub(mid))
+            at = _render("sub", mid, platform="ios", iap=True)
+        assert not at.exception, at.exception
+        keys = _keys(at)
+        if eligible:
+            assert "iap_free_sub_confirm" in keys, f"무료 시작 버튼이 사라졌다: {keys}"
+        assert {"apple_sub_monthly", "apple_sub_3month", "apple_restore"} <= set(keys), (
+            f"무료 대상 iOS 화면에 유료 요금제가 없다(심사관이 구독 상품을 못 찾음): {keys}"
+        )
+        for key in FORBIDDEN_SUB:
+            assert key not in keys, f"iOS 구독에 {key} 가 떴다: {keys}"
+        assert len([k for k in keys if k in ("iap_free_sub_cancel", "iap_sub_cancel")]) == 1, f"취소 버튼이 겹친다: {keys}"
         with _switches(APPLE_IAP_ENABLED=False):
             at = _render("charge", mid, platform="ios", iap=True)
         assert wallet_ui.CHARGE_PENDING_NOTICE in _infos(at), "iOS 스위치를 끄면 준비중 안내로 돌아가야 한다"

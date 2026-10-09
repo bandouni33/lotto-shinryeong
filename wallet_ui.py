@@ -1574,6 +1574,12 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
                     st.error("구독 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.")
                 on_close()
                 st.rerun()
+        # 2026-10-09(사용자 결정 A): iOS 는 무료 시작 아래에 애플 유료 요금제도 같이 보인다 — 새 계정은
+        # 첫 구독이 무료라 심사관이 유료 구독 상품(심사 대상 앱 내 구입)을 찾지 못해 반려될 수 있다.
+        if in_ios_native_app() and APPLE_IAP_ENABLED and apple_iap_available():
+            st.divider()
+            st.caption("또는 유료 구독으로 바로 시작할 수 있습니다.")
+            _render_apple_subscription_options(on_close=on_close, show_cancel=False)
         return
 
     if in_ios_native_app():
@@ -1632,7 +1638,7 @@ def _render_iap_subscription_options(member_id: int, *, on_close) -> None:
         st.rerun()
 
 
-def _render_apple_subscription_options(*, on_close) -> None:
+def _render_apple_subscription_options(*, on_close, show_cancel: bool = True) -> None:
     """iOS 앱 구독 화면 — App Store 자동 갱신 구독(1개월·3개월). App Store 심사 지침 3.1.2에 따라
     결제 버튼 위에 기간·가격·자동 갱신·해지 방법을, 아래에 이용약관·개인정보 처리방침 링크와
     구독 관리·구매 복원을 둔다. 기간은 서버가 애플 응답의 제품 ID 로만 정한다(apple_iap)."""
@@ -1662,6 +1668,13 @@ def _render_apple_subscription_options(*, on_close) -> None:
     )
     # 앱(streamlit-webview.tsx isAppStoreUrl)이 App Store 앱의 구독 관리 화면으로 연다.
     st.link_button("구독 관리·해지 (App Store)", products.APPLE_SUBSCRIPTION_MANAGE_URL, use_container_width=True)
+    if not show_cancel:
+        # 무료 시작 화면 아래에 붙을 때 — 취소 버튼은 위(무료 시작 줄)에 이미 있다.
+        if st.button("구매 복원", use_container_width=True, key="apple_restore"):
+            import apple_iap
+
+            apple_iap.fire_restore_trigger()
+        return
     c1, c2 = st.columns(2)
     with c1:
         if st.button("구매 복원", use_container_width=True, key="apple_restore"):
