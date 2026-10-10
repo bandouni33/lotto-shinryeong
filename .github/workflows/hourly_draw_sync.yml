@@ -7,6 +7,9 @@ on:
     # 확인한다. 그래도 이미 최신이면 sync_latest_from_dhlottery()가 아무
     # 일도 안 하고 조용히 끝나는 건 동일.
     - cron: "0 13,14 * * 6"
+    # 2026-10-10(사용자 지시 — 추첨 1시간쯤 뒤 결과 발표, 등수를 일요일까지 기다리지 않게):
+    # 토요일 21:10 KST(=12:10 UTC)에도 한 번 확인한다.
+    - cron: "10 12 * * 6"
   workflow_dispatch: {}
 
 jobs:
@@ -17,7 +20,8 @@ jobs:
     # os._exit()로 근본 수정) — 그래도 앞으로 비슷한 원인의 행(hang)이 또
     # 생기더라도 무한정 자원을 붙잡고 있지 않도록 안전장치로 상한을 둔다.
     # 정상 실행은 재시도 3회 포함해도 보통 2분 안쪽이라 10분이면 넉넉하다.
-    timeout-minutes: 10
+    # 2026-10-10: 등수 확정 단계(830만 조합 재현, 보통 수 분)가 붙어 10분 → 40분.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -47,4 +51,22 @@ jobs:
             sleep 30
           done
           echo "3회 모두 실패"
+          exit 1
+
+      - name: 방금 추첨된 회차 등수 확정 (round_result_finalize.py) — 최대 2회 재시도
+        # 2026-10-10(사용자 지시): 자동조합 '회차별 당첨번호 배출' 표의 최신 회차 등수를 일요일 조합 생성까지
+        # 기다리지 않고 당첨번호가 들어오자마자 확정한다. 이미 했으면 계산 없이 바로 끝난다(멱등).
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          for attempt in 1 2; do
+            echo "── 시도 $attempt/2 ──"
+            if python round_result_finalize.py; then
+              exit 0
+            fi
+            echo "시도 $attempt 실패 — 30초 후 재시도"
+            sleep 30
+          done
+          echo "2회 모두 실패 — 일요일 조합 생성 작업이 같은 계산으로 다시 확정한다"
           exit 1

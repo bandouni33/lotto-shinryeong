@@ -465,6 +465,15 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     # 숫자가 더 커서 1위를 차지해버려 next_round가 이미 존재해도 중복으로
     # 미리보기 행이 또 끼워 넣어졌다(실제로 발생 확인, 2026-09-05) — "1위
     # 행"이 아니라 "목록 전체에 next_round가 있는지"로 판단하도록 수정.
+    # 2026-10-10(사용자 지시): 다음 회차 조합이 아직 생성되지 않았으면(일요일 13:30 전) 미리보기 행을 넣지 않는다 —
+    # 추첨 직후 다음 회차 행이 먼저 보여 "벌써 조합이 만들어졌다"로 보였다. 풀이 생성된 뒤 스냅샷 행이 아직
+    # 없을 때만(드문 경우) 예전처럼 미리보기 행을 넣는다.
+    if next_round is not None:
+        try:
+            if mdb.get_combination_count_by_draw(next_round) <= 0:
+                next_round = None
+        except Exception:
+            next_round = None
     if next_round is not None and not any(s["draw_round"] == next_round for s in stats):
         live_count = _load_latest_filter_pattern_count()
         stats.insert(
