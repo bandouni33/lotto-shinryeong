@@ -99,8 +99,48 @@ def test_S1_to_S4_save_path_through_the_entry_point():
         print("  (진입점 ?th_save=... → DB 저장 · 저장내역 열림 · 완료 안내 · 파라미터 소비)")
 
 
+def test_S5_in_session_save_through_hidden_input():
+    """2026-10-10: 보드가 주소 이동 대신 숨은 입력칸으로 넘기는 같은 세션 저장 — 새로고침 없이
+    같은 결과(DB 저장·저장내역 열림·완료 안내), 같은 값이 다시 들어와도 한 번만 저장."""
+    import page_thunder
+
+    with _db_isolation.isolated_db():
+        wdb.init_wallet_tables()
+        mdb.init_marketing_tables()
+        mid, _new = wdb.get_or_create_member("kakao", "thsave_s5")
+        mid = int(mid)
+        gid = "thsave05"
+
+        at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=TIMEOUT_SEC)
+        at.query_params["page"] = "thunder"
+        at.query_params["gid"] = gid
+        at.query_params["native"] = "1"
+        at.session_state["member_id"] = mid
+        at.session_state["_guest_id"] = gid
+        at.run()
+        assert not at.exception, f"S5: 첫 화면 예외: {at.exception}"
+        assert not mdb.list_guest_generated_combos(gid, "thunder"), "S5: 저장 전인데 저장내역이 있다"
+
+        box = at.text_input(key=page_thunder.TH_SAVE_INPUT_KEY)
+        box.input("13-14-15-16-17-18").run()
+        assert not at.exception, f"S5: 저장 실행 예외: {at.exception}"
+
+        batches = mdb.list_guest_generated_combos(gid, "thunder")
+        combos = sorted(tuple(c["combo"]) for b in batches for c in (b.get("combos") or []))
+        assert combos == [(13, 14, 15, 16, 17, 18)], f"S5: 숨은 입력칸 저장 결과가 다르다: {combos}"
+        assert at.session_state["thunder_history_blink_panel_open"] is True, "S5: 저장내역 패널이 안 펼쳐졌다"
+        assert "완료" in _messages(at), "S5: 생성 완료 안내가 안 떴다"
+        assert at.text_input(key=page_thunder.TH_SAVE_INPUT_KEY).value == "", "S5: 입력칸이 비워지지 않았다"
+
+        at.run()  # 다시 실행해도 같은 조합이 또 저장되지 않는다
+        again = mdb.list_guest_generated_combos(gid, "thunder")
+        n = sum(len(b.get("combos") or []) for b in again)
+        assert n == 1, f"S5: 다시 실행했는데 조합 수가 바뀌었다: {n}"
+        print("  (숨은 입력칸 → 같은 세션 저장 · 저장내역 열림 · 완료 안내 · 1회만)")
+
+
 def _main() -> int:
-    tests = [test_S1_to_S4_save_path_through_the_entry_point]
+    tests = [test_S1_to_S4_save_path_through_the_entry_point, test_S5_in_session_save_through_hidden_input]
     failed = 0
     for test in tests:
         try:

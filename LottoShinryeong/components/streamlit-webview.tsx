@@ -112,6 +112,11 @@ const APPLE_LOGIN_CAPABILITY_PARAMS: Record<string, string> =
 // 같은 날 iOS 도 애플 결제 수신부가 생겨 두 플랫폼 모두 보낸다(서버는 native_platform 으로 스토어를 가른다).
 const IAP_CAPABILITY_PARAMS: Record<string, string> = { iap: '1' };
 
+// 2026-10-10(같은 세션 화면 이동 — 서버 in_session_nav.APP_CAPABILITY_PARAM): 이 빌드는 주소만 바뀌는
+// 이동(history.pushState/replaceState)에도 "불러오는 중"을 바로 내린다(아래 PAGE_READY_INJECTED_JS 의
+// history 감시). 이 표시가 없는 옛 빌드에는 서버가 같은 세션 이동을 켜지 않는다(옛 빌드는 6초 가렸다).
+const SPA_NAV_CAPABILITY_PARAMS: Record<string, string> = { spa_nav: '1' };
+
 // 2026-10-09(구독 관리 링크): Play 스토어 주소(정기 결제 관리·스토어 페이지)는 웹뷰 안이 아니라
 // Play 스토어 앱으로 넘긴다 — 웹뷰 안에서 열면 앱으로 돌아올 길이 없어진다.
 const PLAY_STORE_URL_PREFIXES = ['https://play.google.com/', 'market://'];
@@ -180,10 +185,25 @@ const PAGE_READY_INJECTED_JS = `
     if (typeof orig !== 'function') { return; }
     history[name] = function () {
       var r = orig.apply(this, arguments);
-      if (sent && state() === 'notRunning') { post(); }
+      if (sent) { postWhenSettled(); }
       return r;
     };
   });
+  // 2026-10-10(실기기 영상): 예전엔 주소가 바뀌는 그 순간에 바로 알렸는데, 웹뷰의 '로드 시작'(onLoadStart)이
+  // 그보다 늦게 와서 "불러오는 중"이 다시 켜진 채 안전장치 시간까지 남았다(같은 세션 이동·로그인 뒤 토큰 지우기·
+  // 번개조합 저장 등). 이제 잠깐 뒤(로드 시작 신호 다음)에, 그리고 Streamlit 실행이 끝났을 때 알린다.
+  var settleTimer = null;
+  function postWhenSettled() {
+    if (settleTimer) { clearInterval(settleTimer); }
+    var startedAt = Date.now();
+    settleTimer = setInterval(function () {
+      var waited = Date.now() - startedAt;
+      if (waited < 250) { return; }
+      if (state() === 'notRunning' || waited > 12000) {
+        clearInterval(settleTimer); settleTimer = null; post();
+      }
+    }, 100);
+  }
 })();
 true;
 `;
@@ -391,6 +411,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         native_platform: Platform.OS,
         ...APPLE_LOGIN_CAPABILITY_PARAMS,
         ...IAP_CAPABILITY_PARAMS,
+        ...SPA_NAV_CAPABILITY_PARAMS,
         ...priceParamsRef.current,
         ...(overrides || {}),
       }),
@@ -426,6 +447,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         native_platform: Platform.OS,
         ...APPLE_LOGIN_CAPABILITY_PARAMS,
         ...IAP_CAPABILITY_PARAMS,
+        ...SPA_NAV_CAPABILITY_PARAMS,
         ...params,
       }),
     [buildUri]
@@ -1187,6 +1209,7 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
             native_platform: Platform.OS,
             ...APPLE_LOGIN_CAPABILITY_PARAMS,
             ...IAP_CAPABILITY_PARAMS,
+            ...SPA_NAV_CAPABILITY_PARAMS,
           })
         );
         return;

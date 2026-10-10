@@ -36,6 +36,18 @@ THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
 THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
 THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
 
+
+# 번개조합 같은 세션 저장 통로(2026-10-10) — 보드 iframe 이 다 만든 조합을 이 숨은 입력칸에 넣으면
+# _on_th_save_input 이 TH_SAVE_PENDING_KEY 로 옮기고, render() 맨 앞의 저장 처리(예전 ?th_save= 와 같은 코드)가 쓴다.
+TH_SAVE_BRIDGE_KEY = "th_save_bridge_6n36s5"
+TH_SAVE_INPUT_KEY = "th_save_payload_6n36s5"
+TH_SAVE_PENDING_KEY = "th_save_pending"
+
+
+def _on_th_save_input() -> None:
+    st.session_state[TH_SAVE_PENDING_KEY] = st.session_state.get(TH_SAVE_INPUT_KEY, "") or ""
+    st.session_state[TH_SAVE_INPUT_KEY] = ""  # 같은 조합이 다시 들어와도 또 저장되지 않게 비운다
+
 def render():
     init_guest_scope()
     # 게스트 식별자를 쿠키로도 남겨둔다(자동구매/타로 페이지엔 이미 있던 동기화인데
@@ -144,8 +156,13 @@ def render():
     # 다 생성된 후에도 href가 계속 빈 상태(?page=thunder)로 멈춰 있었던 것 — 그래서
     # 클릭해도 아무것도 저장되지 않은 채 그냥 재로딩만 됐다. 아래에서는 이 폴링
     # iframe이 새로 만들어질 때마다 매번 자기 인터벌을 새로 건다.
-    if st.query_params.get("th_save"):
-        raw = st.query_params.get("th_save") or ""
+    # 2026-10-10(실기기 영상·서버 기록 11:42:41 — 생성 완료 뒤 흰 화면 + "불러오는 중" 약 4.5초 + 새 세션):
+    # 자동저장이 주소 이동(전체 새로고침)이라 새 세션·로그인 복원·전체 실행을 다시 했다. 이제 숨은 입력칸
+    # (TH_SAVE_INPUT_KEY)에 조합을 넣어 같은 세션 안에서 저장한다 — 아래 처리 로직은 그대로이고, 주소의
+    # ?th_save=... 는 '저장 안 되면 여기를 눌러주세요' 링크·옛 경로 폴백으로 계속 받는다.
+    _th_save_from_input = st.session_state.pop(TH_SAVE_PENDING_KEY, "")
+    if st.query_params.get("th_save") or _th_save_from_input:
+        raw = st.query_params.get("th_save") or _th_save_from_input or ""
         if "th_save" in st.query_params:
             del st.query_params["th_save"]
         combos = []
@@ -1866,6 +1883,20 @@ def render():
     # (저장내역 버튼 밑, 실제 저장된 뒤에만 표시)와 내용이 겹치는 상시 클러터라
     # 제거한다. 아래 링크(th_save_real_link)는 자동저장 폴백으로 계속 기능해야
     # 하므로 DOM은 그대로 두고 눈에 덜 띄게만 유지한다.
+    # 같은 세션 저장 통로(위 TH_SAVE_INPUT_KEY 설명). 칸은 통째로 숨긴다 — 1.64 의 stLayoutWrapper 겉껍데기까지
+    # 숨겨야 요소 간격이 생기지 않는다(in_session_nav 와 같은 방식).
+    with st.container(key=TH_SAVE_BRIDGE_KEY):
+        st.markdown(
+            f"<style>.st-key-{TH_SAVE_BRIDGE_KEY},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{TH_SAVE_BRIDGE_KEY}){{display:none !important;}}</style>',
+            unsafe_allow_html=True,
+        )
+        st.text_input(
+            "th_save",
+            key=TH_SAVE_INPUT_KEY,
+            on_change=_on_th_save_input,
+            label_visibility="collapsed",
+        )
     st.markdown(
         f'<a id="th_save_real_link" class="th-save-real-btn" style="opacity:0.55;font-size:13px;height:36px;'
         f'background:linear-gradient(180deg,#475569 0%,#334155 55%,#1e293b 100%);'
@@ -1913,6 +1944,19 @@ def render():
                 if (link.dataset.autoSaveArmed === saveParam) return;
                 link.dataset.autoSaveArmed = saveParam;
                 setTimeout(function() {
+                    // 2026-10-10: 먼저 같은 세션 저장 통로(숨은 입력칸)로 넘긴다 — 새로고침 없음.
+                    // 입력칸이 없으면(옛 화면 등) 아래 주소 이동 방식으로 그대로 저장한다.
+                    try {
+                        const inp = doc.querySelector('.st-key-th_save_bridge_6n36s5 input');
+                        if (inp) {
+                            const win = doc.defaultView || window.parent;
+                            const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+                            setter.call(inp, saveParam);
+                            inp.dispatchEvent(new win.Event('input', { bubbles: true }));
+                            inp.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                            return;
+                        }
+                    } catch (e) {}
                     try {
                         const s = doc.createElement('script');
                         s.textContent =
