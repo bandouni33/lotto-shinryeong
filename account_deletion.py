@@ -39,6 +39,7 @@ DELETED_ITEMS = (
     "연락처",              # wallet_db.auto_orders.phone
     "결제 고객 식별키",     # wallet_db.wallets.toss_customer_key
     "개선 의견",           # feedback_db.improvement_feedback
+    "고급필터 설정",       # af_settings_db.af_user_settings (2026-10-10 — 회원별 고급필터 세팅)
 )
 
 # **법정 보관**으로 남기는 항목(신원 파기 후 익명 상태로 보관).
@@ -86,6 +87,9 @@ def delete_account(member_id: int) -> dict:
 
     summary["birthdays"] = int(birthday_db.delete_all_birthdays(birthday_scope_for(mid)))
     summary["feedback"] = int(feedback_db.delete_member_feedback(mid))
+    import af_settings_db
+
+    summary["af_settings"] = int(af_settings_db.delete_member_settings(mid))
 
     import auth_providers
 

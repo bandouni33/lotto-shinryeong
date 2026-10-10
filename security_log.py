@@ -32,6 +32,8 @@ EVENT_LABELS = {
     "apple_native_login_fail": "Apple 로그인 실패(계측)",
     "native_login_error": "앱 로그인 SDK 오류 보고(계측)",
     "render_timing": "화면 그리기 소요 시간(계측)",
+    "af_subscribe_click": "고급필터 구독하기 누름(계측)",
+    "af_subscribe_dialog": "고급필터 구독창 그림(계측)",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용
@@ -76,6 +78,9 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "apple_purchase_ok",
         # 2026-10-08: 로딩 시간 실측(세션당 처음 3회) — 정상 트래픽이다.
         "render_timing",
+        # 2026-10-10: 고급필터 구독하기 실기기 먹통 추적(누름·창 열림) — 정상 트래픽이다.
+        "af_subscribe_click",
+        "af_subscribe_dialog",
     }
 )
 

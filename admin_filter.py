@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import json
 import os
 import pickle
 import time
@@ -153,10 +154,9 @@ def get_user_premium_settings_path(email: str | None = None) -> str:
 
 def _load_premium_settings_from_disk() -> dict | None:
     """디스크에 저장된 프리미엄 세팅 불러오기."""
-    candidates = [
-        get_user_premium_settings_path(),
-        os.path.join(USERS_DATA_ROOT, "_guest@local", PREMIUM_SETTINGS_FILENAME),
-    ]
+    # 2026-10-10: 예전엔 두 번째 후보로 비로그인 공용 폴더(_guest@local)의 세팅을 읽어, 세팅을 저장한 적
+    # 없는 회원에게 남의 세팅이 채워질 수 있었다 — 자기 폴더만 본다.
+    candidates = [get_user_premium_settings_path()]
     seen = set()
     for path in candidates:
         if path in seen or not os.path.exists(path):
@@ -206,17 +206,101 @@ def _apply_premium_settings_to_session(settings: dict) -> None:
             st.session_state[key] = int(settings[key])
 
 
+# ── 2026-10-10(사용자 승인): 고급필터 세팅 회원별 DB 영구 저장(af_settings_db) ─────────────
+# 서버 파일은 Cloud 재부팅·재배포 때 지워져 재접속하면 세팅이 사라졌다. 회원이면 DB 를 먼저 보고,
+# 1단계 세팅은 '지금 상태(draft)'를 바뀔 때마다 자동 저장해 '세팅완료 저장'을 안 눌러도 유지된다.
+# DB 가 실패해도 화면은 예전(파일) 방식으로 계속 동작한다.
+_AF_RANGE_KEYS = ("소수", "자연수", "3배수", *_PREMIUM_RANGE_PREFIXES)
+
+
+def _af_member_id():
+    try:
+        from auth_providers import current_member_id
+
+        return current_member_id()
+    except Exception:
+        return None
+
+
+def _af_settings_from_json(settings):
+    """JSON 으로 다녀온 세팅의 범위값(list)을 화면 스냅샷과 같은 tuple 로 되돌린다(비교가 맞도록)."""
+    if not isinstance(settings, dict):
+        return None
+    out = dict(settings)
+    for key in _AF_RANGE_KEYS:
+        val = out.get(key)
+        if isinstance(val, list) and len(val) == 2:
+            out[key] = (val[0], val[1])
+    return out
+
+
 def _hydrate_premium_settings_from_disk() -> None:
-    """페이지 로드 시 디스크 세팅 → session_state + UI 위젯 동기화."""
-    if st.session_state.get("_premium_settings_hydrated"):
+    """페이지 로드 시 저장된 세팅 → session_state + UI 위젯 동기화(회원별로 한 번).
+
+    순서: DB(회원) → 서버 파일. DB 의 draft(마지막으로 만지던 상태)가 있으면 그 값으로 위젯을 채우고,
+    '저장됨' 표시는 saved 와 같을 때만 켠다(_sync_settings_saved_state 가 이어서 판정)."""
+    mid = _af_member_id()
+    scope = f"m{mid}" if mid else "guest"
+    # 위젯 값은 이 화면을 안 그린 실행이 있으면 Streamlit 이 지운다(같은 세션 안 화면 이동 등) — 그때는
+    # 다시 채워야 한다. 안 채우면 기본값이 그려지고 자동 저장이 그 기본값으로 덮어쓴다.
+    if st.session_state.get("_premium_settings_hydrated") == scope and "최소총합" in st.session_state:
         return
+    st.session_state["_premium_settings_hydrated"] = scope
+    if mid:
+        try:
+            import af_settings_db
+
+            row = af_settings_db.get_member_settings(mid)
+            draft = _af_settings_from_json(row.get("draft"))
+            saved = _af_settings_from_json(row.get("saved"))
+            if draft or saved:
+                _apply_premium_settings_to_session(draft or saved)
+                st.session_state["_af_draft_persisted"] = draft or saved
+                if saved:
+                    st.session_state.saved_settings = saved
+                    st.session_state.settings_saved = True
+                return
+        except Exception:
+            pass
     payload = _load_premium_settings_from_disk()
     if payload and payload.get("settings_saved") and payload.get("saved_settings"):
         settings = payload["saved_settings"]
         _apply_premium_settings_to_session(settings)
         st.session_state.saved_settings = settings
         st.session_state.settings_saved = True
-    st.session_state["_premium_settings_hydrated"] = True
+
+
+def _autosave_premium_draft() -> None:
+    """위젯을 다 그린 뒤 호출 — 1단계 세팅이 마지막 저장값과 다르면 DB 에 '지금 상태'를 저장."""
+    mid = _af_member_id()
+    if not mid:
+        return
+    snapshot = _collect_premium_settings()
+    if st.session_state.get("_af_draft_persisted") == snapshot:
+        return
+    try:
+        import af_settings_db
+
+        af_settings_db.save_draft(mid, snapshot)
+        st.session_state["_af_draft_persisted"] = snapshot
+    except Exception:
+        pass
+
+
+def _persist_saved_premium_settings(snapshot: dict) -> None:
+    """'세팅완료 저장'·1단계 실행 때 — 파일과 함께 DB 에도 저장값·지금 상태를 남긴다."""
+    _save_premium_settings_to_disk(snapshot)
+    mid = _af_member_id()
+    if not mid:
+        return
+    try:
+        import af_settings_db
+
+        af_settings_db.save_saved(mid, snapshot)
+        af_settings_db.save_draft(mid, snapshot)
+        st.session_state["_af_draft_persisted"] = snapshot
+    except Exception:
+        pass
 
 
 def get_advanced_filter_cache_path(email: str | None = None) -> str:
@@ -263,14 +347,64 @@ def _save_advanced_filter_to_disk(df: pd.DataFrame) -> None:
     df.to_csv(path, index=False, encoding="utf-8-sig")
 
 
-def _hydrate_advanced_filter_from_disk() -> None:
-    """페이지 로드 시 디스크 고급필터 → session_state 복구."""
-    if st.session_state.get("_advanced_filter_hydrated"):
+def _k295_df_from_records(records) -> pd.DataFrame | None:
+    try:
+        df = pd.DataFrame(records, columns=["패턴이름", "해당숫자", "최소", "최대"])
+        if df.empty:
+            return None
+        df["패턴이름"] = df["패턴이름"].astype(str)
+        df["해당숫자"] = df["해당숫자"].astype(str)
+        df["최소"] = pd.to_numeric(df["최소"], errors="coerce").fillna(0).astype(int)
+        df["최대"] = pd.to_numeric(df["최대"], errors="coerce").fillna(0).astype(int)
+        return df.reset_index(drop=True)
+    except Exception:
+        return None
+
+
+def _k295_records(df: pd.DataFrame) -> list:
+    return json.loads(df.to_json(orient="values", force_ascii=False))
+
+
+def _persist_k295(df: pd.DataFrame) -> None:
+    """2단계 규칙표 — 파일과 함께 회원이면 DB 에도(바뀌었을 때만) 저장(2026-10-10)."""
+    _save_advanced_filter_to_disk(df)
+    mid = _af_member_id()
+    if not mid or df is None:
         return
+    try:
+        records = _k295_records(df)
+        if st.session_state.get("_af_k295_persisted") == records:
+            return
+        import af_settings_db
+
+        af_settings_db.save_k295(mid, records)
+        st.session_state["_af_k295_persisted"] = records
+    except Exception:
+        pass
+
+
+def _hydrate_advanced_filter_from_disk() -> None:
+    """페이지 로드 시 저장된 고급필터 → session_state 복구(회원이면 DB 먼저, 회원별로 한 번)."""
+    mid = _af_member_id()
+    scope = f"m{mid}" if mid else "guest"
+    if st.session_state.get("_advanced_filter_hydrated") == scope:
+        return
+    st.session_state["_advanced_filter_hydrated"] = scope
+    if mid:
+        try:
+            import af_settings_db
+
+            records = af_settings_db.get_member_settings(mid).get("k295")
+            df = _k295_df_from_records(records) if records else None
+            if df is not None:
+                st.session_state["af_advanced_filter_df"] = df
+                st.session_state["_af_k295_persisted"] = records
+                return
+        except Exception:
+            pass
     cached = _load_advanced_filter_from_disk()
     if cached is not None and not cached.empty:
         st.session_state["af_advanced_filter_df"] = cached
-    st.session_state["_advanced_filter_hydrated"] = True
 
 
 def _get_icon_base64(file_path: str = "K-325.jpg") -> str:
@@ -1076,6 +1210,15 @@ st.markdown("""
     div[data-testid="stNotificationContentInfo"] {
         color: #93C5FD !important;
     }
+    /* 2026-10-10(실기기 신고 "1단계 연산실행 먹통"): 구독 전엔 이 버튼들이 비활성인데 모양이 활성과 똑같아
+       눌러도 반응 없는 버튼으로 보였다 — 비활성일 때만 흐리게(위치·크기 그대로). */
+    .st-key-af_step1_run_6n36s5 button:disabled,
+    .st-key-af_step2_apply_6n36s5 button:disabled {
+        opacity: 0.42 !important;
+        filter: grayscale(0.5) !important;
+        cursor: not-allowed !important;
+        box-shadow: none !important;
+    }
     /* 1단계 실행 버튼 — af_bottom_center 내부 100% 폭, 텍스트 왼쪽 정렬 */
     .af-step1-run-wrap { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
     div[data-testid="stVerticalBlock"][class*="af_bottom_center"]:has(.af-step1-run-wrap) div[data-testid="stButton"]:has(button[data-testid="stBaseButton-primary"]) {
@@ -1710,6 +1853,7 @@ with col3:
         rc4.number_input("최대 총합", 70, 205, 205, key="최대총합")
 
 _sync_settings_saved_state()
+_autosave_premium_draft()
 
 st.markdown("""
 <style>
@@ -1757,7 +1901,7 @@ with _save_mid:
         snapshot = _collect_premium_settings()
         st.session_state.saved_settings = snapshot
         st.session_state.settings_saved = True
-        _save_premium_settings_to_disk(snapshot)
+        _persist_saved_premium_settings(snapshot)
         st.rerun()
 
 # admin_dashboard.py style_dataframe 재사용
@@ -1849,6 +1993,20 @@ with st.container(key="af_bottom_center"):
             unsafe_allow_html=True,
         )
         if st.button("💎 구독하기", use_container_width=True, type="primary", key="af_subscribe_btn_6n36s5"):
+            # 2026-10-10(실기기 신고 "로그인 상태인데 구독하기 먹통" — 로컬 시뮬레이션은 정상): 실기기에서
+            # 누름이 서버까지 오는지·어느 분기로 가는지 남긴다(계측, 경고 배지 제외 이벤트).
+            try:
+                import security_log
+                from wallet_db import eligible_free_advanced_sub
+
+                security_log.log_event(
+                    "af_subscribe_click",
+                    f"mid={_af_mid} free_ok={bool(_af_mid) and eligible_free_advanced_sub(_af_mid)} "
+                    f"native={st.query_params.get('native')} plat={st.query_params.get('native_platform')} "
+                    f"iap={st.query_params.get('iap')}",
+                )
+            except Exception:
+                pass
             from wallet_ui import ensure_member_or_banner
 
             if ensure_member_or_banner(
@@ -1864,6 +2022,12 @@ with st.container(key="af_bottom_center"):
             def _af_subscribe_close() -> None:
                 st.session_state["af_show_subscribe"] = False
 
+            try:
+                import security_log
+
+                security_log.log_event("af_subscribe_dialog", f"mid={_af_mid}")
+            except Exception:
+                pass
             advanced_subscription_dialog(on_close=_af_subscribe_close)
 
     if not st.session_state.get("settings_saved"):
@@ -1893,7 +2057,7 @@ with st.container(key="af_bottom_center"):
         snapshot = _collect_premium_settings()
         st.session_state.saved_settings = snapshot
         st.session_state.settings_saved = True
-        _save_premium_settings_to_disk(snapshot)
+        _persist_saved_premium_settings(snapshot)
         st.session_state["trigger_step1"] = True
         st.rerun()
 
@@ -1939,7 +2103,7 @@ with st.container(key="af_bottom_center"):
         if st.session_state.get("_af_upload_key") != upload_key:
             try:
                 df_filter = _parse_k295_excel(uploaded_file)
-                _save_advanced_filter_to_disk(df_filter)
+                _persist_k295(df_filter)
                 st.session_state["af_advanced_filter_df"] = df_filter
                 st.session_state["_af_upload_key"] = upload_key
                 if "af_k295_filter_editor_6n36s5" in st.session_state:
@@ -1969,7 +2133,7 @@ with st.container(key="af_bottom_center"):
             hide_index=True,
             key="af_k295_filter_editor_6n36s5",
         )
-        _save_advanced_filter_to_disk(edited_df)
+        _persist_k295(edited_df)
         st.session_state["af_advanced_filter_df"] = edited_df
 
         if st.button(
