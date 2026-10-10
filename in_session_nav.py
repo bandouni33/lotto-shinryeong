@@ -23,7 +23,7 @@ import streamlit.components.v1 as components
 # 켜고 끄는 스위치 — False 면 아무것도 그리지 않아 예전 방식(새로 불러오기)으로 동작한다.
 IN_SESSION_NAV_ENABLED = True
 # 같은 세션 안에서 오갈 화면(시험판). 늘릴 때는 여기만 고친다.
-ENABLED_PAGES = ("main", "auto")
+ENABLED_PAGES = ("main", "auto", "thunder", "hedge", "advanced", "stats", "tarot", "birthday")
 # 2026-10-10(실기기 영상 11:13·서버 기록 대조): 지금 깔린 안드로이드 빌드는 주소만 바뀌어도(pushState)
 # 웹뷰가 '로드 시작'으로 보고 "불러오는 중" 화면을 띄운 뒤, 문서 로드 끝 신호가 안 와서 안전장치(6초)까지
 # 그대로 덮어 둔다 — 같은 세션 이동은 1.7초에 끝났는데 화면은 6초 가려졌다. 그래서 앱 안에서는 이 처리를
@@ -37,7 +37,35 @@ def button_key(page: str) -> str:
     return f"{_BUTTON_KEY_PREFIX}{page}"
 
 
+def _transient_keys() -> tuple[str, ...]:
+    """화면을 옮길 때 지울 '한 화면용' 상태 — 예전 새로 불러오기(새 세션)에서는 저절로 없던 값들.
+
+    2026-10-10(전 메뉴 확대 시험): 같은 세션으로 옮기면 이 값들이 다음 화면으로 따라가 ⓐ 타로(비로그인)에서
+    뜬 로그인 안내가 메인에 그대로 남고 ⓑ 한 화면에서 남긴 재개 의도·창 열림 플래그가 엉뚱한 화면·나중
+    로그인에서 실행될 수 있었다. 로그인 상태(member_id 등)·저장내역·세팅은 건드리지 않는다.
+    창 플래그 목록은 dialog_registry(기준점)에서 받는다."""
+    import dialog_registry
+    import wallet_ui
+
+    banner = (
+        wallet_ui.AUTH_BANNER_OPEN,
+        wallet_ui.AUTH_BANNER_REASON,
+        wallet_ui.AUTH_RESUME_FLAG,
+        wallet_ui.AUTH_RESUME_DATA,
+        wallet_ui.AUTH_BANNER_DISMISS_REDIRECT,
+        wallet_ui.AUTH_BANNER_DISMISSED,
+        wallet_ui.AUTH_BANNER_JUST_DISMISSED,
+        "_auth_banner_scroll_pending",
+    )
+    return banner + tuple(sorted(dialog_registry.logout_keys()))
+
+
 def _go(page: str) -> None:
+    try:
+        for key in _transient_keys():
+            st.session_state.pop(key, None)
+    except Exception:
+        pass
     st.query_params["page"] = page
 
 
@@ -141,13 +169,15 @@ def _installer_html() -> str:
     if (PAGES.indexOf(target) < 0 || PAGES.indexOf(here) < 0 || target === here) return;
     if (!btnFor(target)) return;
     e.preventDefault();
-    try { history.pushState({ lnNav: target }, '', u.pathname + u.search); } catch (err) {}
+    // 기록 한 칸은 Streamlit 이 page 값을 바꿀 때 스스로 쌓는다(handlePageInfoChanged → pushState).
+    // 여기서 또 쌓으면 같은 화면 기록이 두 칸이 되어 뒤로가기 한 번에 이전 화면으로 못 간다(2026-10-10 실측).
     go(target);
   }, false);
   window.addEventListener('popstate', function(){
     var target = pageOf(window.location.search);
     if (PAGES.indexOf(target) < 0) { window.location.reload(); return; }
-    if (!go(target)) window.location.reload();
+    // 버튼이 없으면 지금 그려진 화면이 곧 그 화면이다 — Streamlit 도 popstate 때 주소 기준으로 다시 그린다.
+    go(target);
   });
 })();
 """

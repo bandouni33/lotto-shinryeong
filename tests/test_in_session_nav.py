@@ -1,11 +1,13 @@
 """같은 세션 안 화면 이동 시험판(in_session_nav) 잠금 테스트 — 2026-10-10.
 
   N1 스위치를 끄면 아무것도 그리지 않는다(예전 새로 불러오기 방식 그대로).
-  N2 대상 화면(메인·자동조합)에서만 숨은 버튼을 그리고, 자기 화면 버튼은 안 그린다.
+  N2 대상 화면(이용자 메뉴 8개)에서만 숨은 버튼을 그리고, 자기 화면 버튼은 안 그린다.
   N3 숨은 버튼을 누르면 page 값만 바뀐다(다른 주소 값은 그대로).
   N4 user_page 가 current_page 확정 직후 한 곳에서만 부르고, 공용 새로 읽기 목록에 있다.
   N6 옛 앱 빌드(표시 없음)는 예전처럼 새로 불러오기 — 표시는 내부 이동 링크에 이어 실린다.
-  N5 클릭 가로채기 스크립트의 안전장치(버튼 없으면 그냥 링크, 뒤로가기 처리, 12초 해제, stMain 맨 위로).
+  N5 클릭 가로채기 스크립트의 안전장치(버튼 없으면 그냥 링크, 뒤로가기 처리, 12초 해제, stMain 맨 위로)
+     + 기록을 스스로 쌓지 않는다(Streamlit 이 쌓음 — 두 칸이면 뒤로가기 한 번에 이전 화면으로 못 감).
+  N7 화면을 옮기면 한 화면용 상태(로그인 안내·재개 의도·창 플래그)는 지우고 로그인 상태는 남긴다.
 
 실행: python tests/test_in_session_nav.py
 """
@@ -22,6 +24,12 @@ sys.path.insert(0, ROOT)
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 import in_session_nav  # noqa: E402
+
+_ALL = ("main", "auto", "thunder", "hedge", "advanced", "stats", "tarot", "birthday")
+
+
+def _others(page: str) -> set:
+    return {in_session_nav.button_key(p) for p in _ALL if p != page}
 
 _SCRIPT = """
 import sys
@@ -53,23 +61,23 @@ class InSessionNavTest(unittest.TestCase):
         self.assertEqual(_button_keys(at), set())
 
     def test_N2_only_target_pages(self):
-        self.assertEqual(_button_keys(_app("main")), {in_session_nav.button_key("auto")})
-        self.assertEqual(_button_keys(_app("auto")), {in_session_nav.button_key("main")})
-        self.assertEqual(_button_keys(_app("thunder")), set())
-        self.assertEqual(in_session_nav.ENABLED_PAGES, ("main", "auto"))
+        self.assertEqual(in_session_nav.ENABLED_PAGES, _ALL)
+        self.assertEqual(_button_keys(_app("main")), _others("main"))
+        self.assertEqual(_button_keys(_app("tarot")), _others("tarot"))
+        self.assertEqual(_button_keys(_app("privacy")), set())
 
     def test_N3_click_changes_only_page(self):
         at = _app("main")
         at.button(key=in_session_nav.button_key("auto")).click().run()
         self.assertEqual(at.query_params["page"], ["auto"])
         self.assertEqual(at.query_params["gid"], ["g-nav-test"])
-        self.assertEqual(_button_keys(at), {in_session_nav.button_key("main")})
+        self.assertEqual(_button_keys(at), _others("auto"))
 
     def test_N6_old_app_build_keeps_full_reload(self):
         # 앱(native=1)인데 표시가 없는 빌드 → 그리지 않는다(실기기에서 6초 가림 사고).
         self.assertEqual(_button_keys(_app("main", native="1")), set())
         on = _app("main", native="1", **{in_session_nav.APP_CAPABILITY_PARAM: "1"})
-        self.assertEqual(_button_keys(on), {in_session_nav.button_key("auto")})
+        self.assertEqual(_button_keys(on), _others("main"))
         src = open(os.path.join(ROOT, "user_scope.py"), encoding="utf-8").read()
         body = src[src.index("def internal_nav_href"):][:3000]
         self.assertIn(f'"{in_session_nav.APP_CAPABILITY_PARAM}"', body)
@@ -87,12 +95,29 @@ class InSessionNavTest(unittest.TestCase):
         for needle in (
             "if (!btnFor(target)) return;",  # 버튼 없으면 링크 그대로
             "popstate",  # 뒤로가기
-            "history.pushState",  # 웹뷰 canGoBack 유지
             "setTimeout(finish, 12000)",  # 끝 신호를 못 받아도 화면 복구
             'stMain\\"]\'); if (m) m.scrollTop = 0',
             "__lnInSessionNavInjected",  # 한 페이지에 한 번만 설치
         ):
             self.assertIn(needle, html, needle)
+        self.assertNotIn("history.pushState(", html)
+
+    def test_N7_transient_state_cleared_login_kept(self):
+        import dialog_registry
+        import wallet_ui
+
+        at = _app("main")
+        at.session_state["member_id"] = 77
+        at.session_state[wallet_ui.AUTH_BANNER_OPEN] = True
+        at.session_state[wallet_ui.AUTH_RESUME_FLAG] = "af_show_subscribe"
+        flag = sorted(dialog_registry.logout_keys())[0]
+        at.session_state[flag] = True
+        at.run()
+        at.button(key=in_session_nav.button_key("tarot")).click().run()
+        self.assertEqual(at.query_params["page"], ["tarot"])
+        self.assertEqual(at.session_state["member_id"], 77)
+        for k in (wallet_ui.AUTH_BANNER_OPEN, wallet_ui.AUTH_RESUME_FLAG, flag):
+            self.assertNotIn(k, at.session_state, k)
 
 
 if __name__ == "__main__":
