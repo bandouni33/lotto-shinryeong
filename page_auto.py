@@ -187,8 +187,8 @@ html, body {{
 </html>"""
 
 
-# 2026-10-10(사용자 지시): 조합시작(적립금 확인 후) 때 신령 이미지가 3초 움직이고(1.5초 출렁 → 1.5초 복귀),
-# 그 뒤에 조합 완료(저장내역·완료 안내)가 보인다. 인물은 고정, 주위·뒷배경만 바람에 밀린 물결처럼 출렁인다 —
+# 2026-10-10(사용자 지시): 조합시작(적립금 확인 후) 때 신령 이미지가 3초 동안 움직이고(배경 전체가 지진처럼 요동,
+# 3초 내내 같은 세기), 그 뒤에 조합 완료(저장내역·완료 안내)가 보인다. 인물은 고정 —
 # 인물만 오려낸 이미지(로또신령2_인물.webp, 배경 제거)를 출렁이는 배경 위에 그대로 겹친다.
 # 결제(적립금 차감·조합 배정)는 예전처럼 확인 즉시 끝나고, 이 3초는 화면 표시만 늦춘다.
 AUTO_GEN_ANIM_SECONDS = 3.0
@@ -208,30 +208,30 @@ def _file_base64(path: str) -> str:
 
 def _spirit2_gen_layer(base64: str, token: str) -> str:
     """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
+    2026-10-10(사용자 지시 수정): 물결 왜곡이 아니라 **배경 전체가 지진처럼 요동** — 3초 내내 같은 세기로 흔들린다.
+    인물(오려낸 이미지)은 고정. 배경판은 살짝 키워 흔들려도 가장자리가 비지 않게 한다.
     애니메이션은 이 층이 새로 그려질 때 시작한다(클릭마다 token 이 달라 다시 시작)."""
     person = _file_base64(_SPIRIT2_PERSON_FILE)
     plate = _file_base64(_SPIRIT2_PLATE_FILE)
     if not person or not plate:
         return ""
-    fid = f"auto-spirit-gen-{token}"
-    dur = f"{AUTO_GEN_ANIM_SECONDS:g}s"
-    spline = 'calcMode="spline" keyTimes="0;0.5;1" keySplines=".42 0 .58 1;.42 0 .58 1" fill="freeze"'
+    name = f"autoSpiritQuake{token}"
+    # 0.3초 한 묶음(불규칙 흔들림)을 3초 동안 10번 — 세기 일정.
+    steps = (
+        (0, 0, 0), (-10, 4, -1.6), (9, -6, 1.4), (-7, -8, 0.9), (11, 3, -1.2), (-9, 7, 1.6),
+        (7, -4, -1.4), (-11, -3, 1.1), (6, 9, -0.9), (-4, -9, 1.4), (0, 0, 0),
+    )
+    frames = "".join(
+        f"{round(i * 10)}%{{transform:scale(1.12) translate({x}px,{y}px) rotate({r}deg);}}"
+        for i, (x, y, r) in enumerate(steps)
+    )
+    loops = max(1, round(AUTO_GEN_ANIM_SECONDS / 0.3))
     return f"""
-          <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden;">
-            <filter id="{fid}" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-              <feTurbulence type="fractalNoise" baseFrequency="0.012 0.03" numOctaves="2" seed="3">
-                <animate attributeName="baseFrequency" dur="{dur}" values="0.012 0.03;0.02 0.05;0.012 0.03" {spline}/>
-              </feTurbulence>
-              <feDisplacementMap in="SourceGraphic" scale="0" xChannelSelector="R" yChannelSelector="G">
-                <animate attributeName="scale" dur="{dur}" values="0;46;0" {spline}/>
-              </feDisplacementMap>
-            </filter>
-          </svg>
           <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
-            <img src="data:image/jpeg;base64,{plate}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;filter:url(#{fid});-webkit-filter:url(#{fid});transform-origin:50% 60%;animation:autoSpiritGenWind {dur} ease-in-out both;">
+            <img src="data:image/jpeg;base64,{plate}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;transform:scale(1.12);animation:{name} 0.3s linear {loops};">
             <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
           </div>
-          <style>@keyframes autoSpiritGenWind{{0%,100%{{transform:translateX(0) skewX(0deg);}}50%{{transform:translateX(-7px) skewX(-4deg) scale(1.03);}}}}</style>"""
+          <style>@keyframes {name}{{{frames}}}</style>"""
 
 
 def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None) -> str:
