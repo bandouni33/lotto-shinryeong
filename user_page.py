@@ -149,12 +149,26 @@ st.set_page_config(page_title="로또신령", page_icon="K-325.jpg", layout="cen
 
 # 2026-10-08: 다시 그리는 동안 화면이 흐려지는 효과를 모든 화면에서 끈다(shared_ui_styles 설명).
 # 배포 직후 옛 shared_ui_styles 가 캐시돼 함수가 없어도 화면은 그대로 뜨게 감싼다.
+# 2026-10-10(사용자 승인 수정안 A — 57 영상 앱 시작 흰 화면): 화면 CSS(아래쪽 수백 줄 뒤)가 오기 전까지
+# 기본 라이트 테마 배경(#FAF8FF)이 먼저 칠해져 하얗게 번쩍였다. 최종 배경이 어두운(#12182b) 화면만
+# 같은 색을 맨 먼저 칠해 둔다(색은 각 화면 CSS 와 같은 값 — 최종 모습은 그대로). 타로(라이트)·고급필터
+# (자체 배경)는 최종 모습이 달라 넣지 않는다. 테마 자체(.streamlit/config.toml)는 §3 보류라 건드리지 않는다.
+_EARLY_DARK_BG_PAGES = (
+    "main", "thunder", "auto", "stats", "birthday", "hedge",
+    "privacy", "terms", "pricing", "delete_account",
+)
+_EARLY_DARK_BG_CSS = (
+    "<style>.stApp{background-color:#12182b;}</style>"
+    if st.query_params.get("page", "main") in _EARLY_DARK_BG_PAGES
+    else ""
+)
 try:
     from shared_ui_styles import no_stale_dim_css
 
-    st.html(no_stale_dim_css())
+    st.html(_EARLY_DARK_BG_CSS + no_stale_dim_css())
 except Exception:
-    pass
+    if _EARLY_DARK_BG_CSS:
+        st.html(_EARLY_DARK_BG_CSS)
 
 from wallet_db import init_wallet_tables
 from zero_phone_db import init_zero_phone_tables
