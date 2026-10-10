@@ -597,25 +597,6 @@ def _mark_guest_seen(guest_id, now: float) -> None:
         _GUEST_SEEN[str(guest_id)] = now
 
 
-def _restore_diag(reason: str) -> None:
-    """2026-10-10(실기기 영상 16:19 — 메인에선 로그인돼 있는데 번개·번호검증으로 옮기면 로그인 안내가 다시 뜸):
-    자동 재로그인이 왜 안 됐는지 이유만 세션당 1회 남긴다(계측 — 동작은 바꾸지 않는다, 경고 배지 제외).
-    앱(native=1) 세션만 기록한다."""
-    try:
-        if st.query_params.get("native") != "1" or st.session_state.get("_restore_diag_logged"):
-            return
-        st.session_state["_restore_diag_logged"] = True
-        import security_log
-        from user_scope import get_or_create_guest_id
-
-        security_log.log_event(
-            "restore_diag",
-            f"{reason} page={st.query_params.get('page', 'main')} guest={str(get_or_create_guest_id())[:8]}",
-        )
-    except Exception:
-        pass
-
-
 def restore_member_from_guest() -> int | None:
     """세션이 끊겼다 재연결됐을 때(백그라운드 전환·네트워크 끊김 등) member_id가
     사라져 매번 간편인증 배너가 다시 뜨는 문제 — 이 기기(guest_id)가 이미 로그인한
@@ -678,7 +659,6 @@ def restore_member_from_guest() -> int | None:
             idle_seconds = None
 
         if idle_seconds is not None and idle_seconds >= IDLE_LOGOUT_SECONDS:
-            _restore_diag(f"idle_logout idle={int(idle_seconds)}")
             logout()
             return None
 
@@ -703,10 +683,8 @@ def restore_member_from_guest() -> int | None:
         # 이 조회가 실패하면 이미 연결된 회원인지 알 수 없다 — 로그인
         # 배너가 한 번 더 뜨는 게 최악의 경우이고(로그인 상태를 잃지는
         # 않음), 예외를 그대로 흘려서 페이지 자체가 죽는 것보단 안전하다.
-        _restore_diag("lookup_error")
         return None
     if not member_id:
-        _restore_diag("no_link cached=" + ("1" if _link_hit is not None and 0 <= _now - _link_hit[0] < RESTORE_RECHECK_SECONDS else "0"))
         if not _recently_seen:
             _mark_guest_seen(guest_id, _now)
         return None
@@ -755,7 +733,6 @@ def restore_member_from_guest() -> int | None:
                     )
                 except Exception:
                     pass
-            _restore_diag("ua_mismatch")
             return None
 
     bind_identity_on_login(member_id)
