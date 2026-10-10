@@ -1752,6 +1752,79 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 2026-10-10(사용자 지시): 구독 안내·구독하기 버튼을 화면 맨 위(제목 바로 아래)로 옮겼다 — 예전엔 맨 아래(1단계 연산
+# 버튼 위)에 있어, 이용자가 위에서 세팅을 다 한 뒤에야 구독이 필요한 걸 알고 로그인·구독하는 사이 세팅이
+# 날아갔다. 구독 여부(_af_mid·_af_subscribed)는 아래 1·2단계 버튼이 그대로 쓴다.
+# 칸 이름에 일부러 "af_bottom_center"를 넣었다 — 하단 영역 CSS([class*="af_bottom_center"]: 75% 폭·가운데·
+# 버튼/안내 100%·구독 중 success 글씨)를 그대로 받아, 옮기기 전과 같은 모양을 유지한다(CSS 사본을 만들지 않음).
+with st.container(key="af_bottom_center_subscribe_top"):
+    from auth_kakao import current_member_id
+    from wallet_db import get_subscription_expiry, has_active_subscription
+
+    _af_mid = current_member_id()
+    _af_subscribed = bool(_af_mid) and has_active_subscription(_af_mid)
+
+    if _af_subscribed:
+        _af_expiry = get_subscription_expiry(_af_mid)
+        _af_expiry_label = _af_expiry.split(" ")[0] if _af_expiry else "-"
+        st.success(f"✅ 고급필터 구독 중 (만료: {_af_expiry_label})")
+    else:
+        st.markdown(
+            """
+            <div style="
+                background-color: rgba(139, 92, 246, 0.12);
+                border: 1px solid rgba(139, 92, 246, 0.4);
+                padding: 15px;
+                border-radius: 8px;
+                color: #FFFFFF !important;
+                font-size: 15px !important;
+                font-weight: 700 !important;
+                text-align: center;
+                margin-bottom: 10px;
+            ">
+                🔒 고급필터는 구독 후 이용 가능합니다 (월 1,200P · 3개월 3,000P)
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("💎 구독하기", use_container_width=True, type="primary", key="af_subscribe_btn_6n36s5"):
+            # 2026-10-10(실기기 신고 "로그인 상태인데 구독하기 먹통" — 로컬 시뮬레이션은 정상): 실기기에서
+            # 누름이 서버까지 오는지·어느 분기로 가는지 남긴다(계측, 경고 배지 제외 이벤트).
+            try:
+                import security_log
+                from wallet_db import eligible_free_advanced_sub
+
+                security_log.log_event(
+                    "af_subscribe_click",
+                    f"mid={_af_mid} free_ok={bool(_af_mid) and eligible_free_advanced_sub(_af_mid)} "
+                    f"native={st.query_params.get('native')} plat={st.query_params.get('native_platform')} "
+                    f"iap={st.query_params.get('iap')}",
+                )
+            except Exception:
+                pass
+            from wallet_ui import ensure_member_or_banner
+
+            if ensure_member_or_banner(
+                resume="af_show_subscribe",
+                reason="고급필터 구독을 위해 간편인증이 필요합니다.",
+            ):
+                st.session_state["af_show_subscribe"] = True
+                st.rerun()
+
+        if st.session_state.get("af_show_subscribe"):
+            from wallet_ui import advanced_subscription_dialog
+
+            def _af_subscribe_close() -> None:
+                st.session_state["af_show_subscribe"] = False
+
+            try:
+                import security_log
+
+                security_log.log_event("af_subscribe_dialog", f"mid={_af_mid}")
+            except Exception:
+                pass
+            advanced_subscription_dialog(on_close=_af_subscribe_close)
+
 _hydrate_premium_settings_from_disk()
 _hydrate_advanced_filter_from_disk()
 
@@ -1968,73 +2041,6 @@ with st.container(key="af_bottom_center"):
     st.markdown('<div class="af-results-zone" aria-hidden="true"></div>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="af-step1-run-wrap" aria-hidden="true"></div>', unsafe_allow_html=True)
-
-    from auth_kakao import current_member_id
-    from wallet_db import get_subscription_expiry, has_active_subscription
-
-    _af_mid = current_member_id()
-    _af_subscribed = bool(_af_mid) and has_active_subscription(_af_mid)
-
-    if _af_subscribed:
-        _af_expiry = get_subscription_expiry(_af_mid)
-        _af_expiry_label = _af_expiry.split(" ")[0] if _af_expiry else "-"
-        st.success(f"✅ 고급필터 구독 중 (만료: {_af_expiry_label})")
-    else:
-        st.markdown(
-            """
-            <div style="
-                background-color: rgba(139, 92, 246, 0.12);
-                border: 1px solid rgba(139, 92, 246, 0.4);
-                padding: 15px;
-                border-radius: 8px;
-                color: #FFFFFF !important;
-                font-size: 15px !important;
-                font-weight: 700 !important;
-                text-align: center;
-                margin-bottom: 10px;
-            ">
-                🔒 고급필터는 구독 후 이용 가능합니다 (월 1,200P · 3개월 3,000P)
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button("💎 구독하기", use_container_width=True, type="primary", key="af_subscribe_btn_6n36s5"):
-            # 2026-10-10(실기기 신고 "로그인 상태인데 구독하기 먹통" — 로컬 시뮬레이션은 정상): 실기기에서
-            # 누름이 서버까지 오는지·어느 분기로 가는지 남긴다(계측, 경고 배지 제외 이벤트).
-            try:
-                import security_log
-                from wallet_db import eligible_free_advanced_sub
-
-                security_log.log_event(
-                    "af_subscribe_click",
-                    f"mid={_af_mid} free_ok={bool(_af_mid) and eligible_free_advanced_sub(_af_mid)} "
-                    f"native={st.query_params.get('native')} plat={st.query_params.get('native_platform')} "
-                    f"iap={st.query_params.get('iap')}",
-                )
-            except Exception:
-                pass
-            from wallet_ui import ensure_member_or_banner
-
-            if ensure_member_or_banner(
-                resume="af_show_subscribe",
-                reason="고급필터 구독을 위해 간편인증이 필요합니다.",
-            ):
-                st.session_state["af_show_subscribe"] = True
-                st.rerun()
-
-        if st.session_state.get("af_show_subscribe"):
-            from wallet_ui import advanced_subscription_dialog
-
-            def _af_subscribe_close() -> None:
-                st.session_state["af_show_subscribe"] = False
-
-            try:
-                import security_log
-
-                security_log.log_event("af_subscribe_dialog", f"mid={_af_mid}")
-            except Exception:
-                pass
-            advanced_subscription_dialog(on_close=_af_subscribe_close)
 
     if not st.session_state.get("settings_saved"):
         warning_html = """
