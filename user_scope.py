@@ -22,6 +22,11 @@ _LOGOUT_EXACT_KEYS = frozenset(
         "user_email",
         "_user_scope_bound",
         "_premium_settings_hydrated",
+        # 2026-10-10: 로그인 전 고급필터 세팅 이어받기(admin_filter._autosave_guest_draft) 기준값 — 로그아웃하면
+        # 새로 잡아야 회원이 보던 세팅이 게스트 세팅으로 저장되지 않는다.
+        "_af_guest_baseline",
+        "_af_guest_persisted",
+        "_af_draft_persisted",
         "_advanced_filter_hydrated",
         "saved_settings",
         "settings_saved",

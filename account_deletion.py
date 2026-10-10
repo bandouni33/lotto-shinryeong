@@ -95,6 +95,11 @@ def delete_account(member_id: int) -> dict:
 
     for gid in guest_ids:
         auth_providers.forget_pending_resume_for(gid)
+        # 2026-10-10: 그 기기에 남은 로그인 전 고급필터 세팅(af_guest_drafts)도 함께 지운다.
+        try:
+            af_settings_db.delete_guest_draft(gid)
+        except Exception:
+            pass
 
     # 4) 신원·연결·연락처 파기(+ 보관 증빙은 그대로)
     summary.update(wallet_db.anonymize_member_account(mid))

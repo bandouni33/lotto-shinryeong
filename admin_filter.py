@@ -222,6 +222,46 @@ def _af_member_id():
         return None
 
 
+def _af_guest_id():
+    try:
+        from user_scope import get_or_create_guest_id
+
+        return get_or_create_guest_id()
+    except Exception:
+        return None
+
+
+def _af_adopt_guest_draft(mid) -> bool:
+    """2026-10-10(사용자 승인): 같은 기기에서 로그인 직전에 게스트로 만지던 세팅을 회원 세팅으로 옮긴다.
+    게스트 세팅이 회원 세팅보다 나중 것이고 GUEST_DRAFT_ADOPT_HOURS 안일 때만. 옮기면 게스트 행은 지운다."""
+    try:
+        import af_settings_db
+
+        gid = _af_guest_id()
+        hit = af_settings_db.get_guest_draft(gid, af_settings_db.GUEST_DRAFT_ADOPT_HOURS)
+        if not hit:
+            return False
+        guest_draft, guest_at = hit
+        member_at = af_settings_db.member_settings_updated_at(mid)
+        if member_at and member_at >= guest_at:
+            af_settings_db.delete_guest_draft(gid)
+            return False
+        draft = _af_settings_from_json(guest_draft)
+        if not draft:
+            return False
+        af_settings_db.save_draft(mid, draft)
+        af_settings_db.delete_guest_draft(gid)
+        _apply_premium_settings_to_session(draft)
+        st.session_state["_af_draft_persisted"] = draft
+        saved = _af_settings_from_json(af_settings_db.get_member_settings(mid).get("saved"))
+        if saved:
+            st.session_state.saved_settings = saved
+            st.session_state.settings_saved = True  # 값이 다르면 _sync_settings_saved_state 가 끈다
+        return True
+    except Exception:
+        return False
+
+
 def _af_settings_from_json(settings):
     """JSON 으로 다녀온 세팅의 범위값(list)을 화면 스냅샷과 같은 tuple 로 되돌린다(비교가 맞도록)."""
     if not isinstance(settings, dict):
@@ -246,6 +286,21 @@ def _hydrate_premium_settings_from_disk() -> None:
     if st.session_state.get("_premium_settings_hydrated") == scope and "최소총합" in st.session_state:
         return
     st.session_state["_premium_settings_hydrated"] = scope
+    if mid and _af_adopt_guest_draft(mid):
+        return
+    if not mid:
+        # 2026-10-10: 게스트도 같은 기기의 최근 세팅(af_guest_drafts)으로 채운다 — 앱이 새로 불러와도 유지.
+        try:
+            import af_settings_db
+
+            hit = af_settings_db.get_guest_draft(_af_guest_id())
+            draft = _af_settings_from_json(hit[0]) if hit else None
+            if draft:
+                _apply_premium_settings_to_session(draft)
+                st.session_state["_af_guest_persisted"] = draft
+                return
+        except Exception:
+            pass
     if mid:
         try:
             import af_settings_db
@@ -274,6 +329,7 @@ def _autosave_premium_draft() -> None:
     """위젯을 다 그린 뒤 호출 — 1단계 세팅이 마지막 저장값과 다르면 DB 에 '지금 상태'를 저장."""
     mid = _af_member_id()
     if not mid:
+        _autosave_guest_draft()
         return
     snapshot = _collect_premium_settings()
     if st.session_state.get("_af_draft_persisted") == snapshot:
@@ -283,6 +339,26 @@ def _autosave_premium_draft() -> None:
 
         af_settings_db.save_draft(mid, snapshot)
         st.session_state["_af_draft_persisted"] = snapshot
+    except Exception:
+        pass
+
+
+def _autosave_guest_draft() -> None:
+    """게스트: 이번 접속에서 처음 그린 상태(기본값 또는 불러온 값)에서 바뀐 적이 있을 때만 기기별로 저장한다
+    (그냥 둘러본 게스트마다 DB 에 행이 생기지 않게). 로그인하면 _af_adopt_guest_draft 가 회원 세팅으로 옮긴다."""
+    snapshot = _collect_premium_settings()
+    baseline = st.session_state.get("_af_guest_baseline")
+    if baseline is None:
+        st.session_state["_af_guest_baseline"] = snapshot
+        return
+    persisted = st.session_state.get("_af_guest_persisted")
+    if snapshot == persisted or (persisted is None and snapshot == baseline):
+        return
+    try:
+        import af_settings_db
+
+        af_settings_db.save_guest_draft(_af_guest_id(), snapshot)
+        st.session_state["_af_guest_persisted"] = snapshot
     except Exception:
         pass
 

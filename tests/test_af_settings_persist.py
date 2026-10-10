@@ -5,6 +5,10 @@
   P3. '세팅완료 저장'을 누르면 재접속 뒤에도 '저장됨'으로 이어진다(1단계 실행 안내가 사라진 상태).
   P4. 다른 회원에게는 내 세팅이 보이지 않는다(공용 폴더 대체 읽기 제거).
   P5. 계정 삭제 때 세팅 행이 지워진다.
+  G1. 게스트가 바꾼 세팅은 같은 기기(guest_id)로 다시 열어도 유지된다.
+  G2. 같은 기기에서 로그인하면 게스트 세팅이 회원 세팅으로 옮겨지고(G3) 게스트 행은 지워진다.
+  G4. 둘러보기만 한 게스트(안 바꿈)는 DB 에 행이 생기지 않는다.
+  G5. 회원 세팅이 게스트 세팅보다 나중 것이면 덮어쓰지 않는다. G6 로그아웃 때 기준값을 지운다.
 
 DB 는 _db_isolation.isolated_db() 로만 만진다.
 """
@@ -111,8 +115,69 @@ def test_P1_to_P5():
         print("  (저장 안 눌러도 유지 · 파일 삭제 뒤 DB 복원 · 저장됨 유지 · 회원 분리 · 탈퇴 파기)")
 
 
+def _open_guest(gid: str) -> AppTest:
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=TIMEOUT)
+    at.query_params["page"] = "advanced"
+    at.query_params["gid"] = gid
+    at.session_state["_guest_id"] = gid
+    return at.run()
+
+
+def test_G1_to_G6():
+    with _db_isolation.isolated_db():
+        import wallet_db as wdb
+        import af_settings_db
+
+        wdb.init_wallet_tables()
+        mid, _ = wdb.get_or_create_member("kakao", "af_guest_g2")
+        mid = int(mid)
+        _wipe_files(mid)
+
+        # G4: 둘러보기만 — 행 없음
+        at0 = _open_guest("afg_browse")
+        assert not at0.exception, at0.exception
+        at0.run()
+        assert af_settings_db.get_guest_draft("afg_browse") is None, "G4: 안 바꿨는데 게스트 행이 생겼다"
+
+        # G1: 게스트가 바꾸고 다시 열기
+        at = _open_guest("afg1")
+        assert not at.exception, at.exception
+        at.number_input(key="최소총합").set_value(110).run()
+        at.checkbox(key="홀짝 비율_3:3").check().run()
+        assert af_settings_db.get_guest_draft("afg1") is not None, "G1: 게스트 세팅이 저장되지 않았다"
+        at1 = _open_guest("afg1")
+        assert _num(at1, "최소총합") == 110, f"G1: 게스트 세팅이 다시 열면 사라졌다: {_num(at1, '최소총합')}"
+
+        # G2·G3: 같은 기기로 로그인 → 회원 세팅으로 이어받음, 게스트 행 삭제
+        at2 = _open(mid, "afg1")
+        assert not at2.exception, at2.exception
+        assert _num(at2, "최소총합") == 110, f"G2: 로그인 뒤 게스트 세팅을 못 이어받았다: {_num(at2, '최소총합')}"
+        assert at2.checkbox(key="홀짝 비율_3:3").value is True
+        assert af_settings_db.get_member_settings(mid)["draft"]["최소총합"] == 110
+        assert af_settings_db.get_guest_draft("afg1") is None, "G3: 옮긴 뒤에도 게스트 행이 남았다"
+
+        # G5: 회원 세팅이 더 나중이면 오래된 게스트 세팅이 덮지 않음
+        af_settings_db.save_guest_draft("afg5", {"최소총합": 90})
+        import time as _t
+
+        _t.sleep(1.1)
+        snap = dict(af_settings_db.get_member_settings(mid)["draft"])
+        snap["최소총합"] = 120
+        af_settings_db.save_draft(mid, snap)
+        at5 = _open(mid, "afg5")
+        assert _num(at5, "최소총합") == 120, f"G5: 오래된 게스트 세팅이 회원 세팅을 덮었다: {_num(at5, '최소총합')}"
+
+        # G6: 로그아웃 정리 목록
+        import user_scope
+
+        for k in ("_af_guest_baseline", "_af_guest_persisted", "_af_draft_persisted"):
+            assert k in user_scope._LOGOUT_EXACT_KEYS, f"G6: 로그아웃 정리에 {k} 없음"
+        _wipe_files(mid)
+        print("  (게스트 유지 · 로그인 이어받기 · 게스트 행 삭제 · 둘러보기 무기록 · 최신 회원 세팅 우선)")
+
+
 def _main() -> int:
-    tests = [test_P1_to_P5]
+    tests = [test_P1_to_P5, test_G1_to_G6]
     failed = 0
     for t in tests:
         try:

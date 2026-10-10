@@ -1991,6 +1991,9 @@ def get_combination_count_by_draw(draw_round: int) -> int:
     return int(row[0]) if row else 0
 
 
+_EXTRACTION_STATS_FETCH = 100
+
+
 def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
     """회차별 추출 수량 및 1~5등 당첨 건수 (draw_round DESC).
 
@@ -2000,6 +2003,11 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
     # 2026-10-08(로딩 시간): 조합 테이블 전체를 집계하는 무거운 조회를 자동조합 화면마다 하던 것을
     # 2분 재사용(조합은 주 1회 생성). 관리자 화면도 같은 값을 최대 2분 늦게 볼 수 있다.
     import ttl_cache
+
+    # 2026-10-10(사용자 승인 — 자동조합 첫 화면에서 같은 무거운 집계를 limit 만 달리해 2번 했다: 등수 동기화
+    # limit=100, 다음 회차 확인 limit=1): limit 이 _EXTRACTION_STATS_FETCH 이하면 한 번(최대치)만 조회해
+    # 같은 캐시 칸을 쓰고 앞에서 잘라 준다. 집계 비용은 GROUP BY 전체라 LIMIT 크기와 거의 무관하다.
+    fetch = _EXTRACTION_STATS_FETCH if int(limit) <= _EXTRACTION_STATS_FETCH else int(limit)
 
     def _load() -> list[dict]:
         conn = _connect()
@@ -2022,7 +2030,7 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
             ORDER BY lc.draw_round DESC
             LIMIT ?
             """,
-            (MIN_DISPLAY_DRAW_ROUND, int(limit)),
+            (MIN_DISPLAY_DRAW_ROUND, fetch),
         ).fetchall()
         conn.close()
         return [
@@ -2039,7 +2047,8 @@ def get_draw_extraction_stats(limit: int = 20) -> list[dict]:
             for row in rows
         ]
 
-    return [dict(r) for r in ttl_cache.cached("marketing:extraction_stats", 120, _load, int(limit))]
+    rows = ttl_cache.cached("marketing:extraction_stats", 120, _load, fetch)
+    return [dict(r) for r in rows[: int(limit)]]
 
 
 def snapshot_round_stats(draw_round: int, pattern_count: int | None) -> bool:
