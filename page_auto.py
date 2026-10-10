@@ -187,19 +187,123 @@ html, body {{
 </html>"""
 
 
-def _spirit2_image_block(base64: str, slot_class: str) -> str:
-    """정적 원형 크롭 이미지 (물결 애니메이션은 추후 원형 비율에 맞게 재조정해서 복원 예정)."""
+# 2026-10-10(사용자 지시): 조합시작(적립금 확인 후) 때 신령 이미지가 3초 움직이고(1.5초 출렁 → 1.5초 복귀),
+# 그 뒤에 조합 완료(저장내역·완료 안내)가 보인다. 인물은 고정, 주위·뒷배경만 바람에 밀린 물결처럼 출렁인다 —
+# 인물만 오려낸 이미지(로또신령2_인물.webp, 배경 제거)를 출렁이는 배경 위에 그대로 겹친다.
+# 결제(적립금 차감·조합 배정)는 예전처럼 확인 즉시 끝나고, 이 3초는 화면 표시만 늦춘다.
+AUTO_GEN_ANIM_SECONDS = 3.0
+AUTO_GEN_PENDING_KEY = "auto_gen_pending"
+# 인물 오려낸 이미지 + 인물 자리를 주변 색으로 메운 배경판(출렁일 때 뒤쪽에 인물이 한 번 더 비치지 않게).
+_SPIRIT2_PERSON_FILE = "로또신령2_인물.webp"
+_SPIRIT2_PLATE_FILE = "로또신령2_배경.jpg"
+
+
+def _file_base64(path: str) -> str:
+    try:
+        with open(path, "rb") as fh:
+            return base64.b64encode(fh.read()).decode()
+    except OSError:
+        return ""
+
+
+def _spirit2_gen_layer(base64: str, token: str) -> str:
+    """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
+    애니메이션은 이 층이 새로 그려질 때 시작한다(클릭마다 token 이 달라 다시 시작)."""
+    person = _file_base64(_SPIRIT2_PERSON_FILE)
+    plate = _file_base64(_SPIRIT2_PLATE_FILE)
+    if not person or not plate:
+        return ""
+    fid = f"auto-spirit-gen-{token}"
+    dur = f"{AUTO_GEN_ANIM_SECONDS:g}s"
+    spline = 'calcMode="spline" keyTimes="0;0.5;1" keySplines=".42 0 .58 1;.42 0 .58 1" fill="freeze"'
+    return f"""
+          <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden;">
+            <filter id="{fid}" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+              <feTurbulence type="fractalNoise" baseFrequency="0.012 0.03" numOctaves="2" seed="3">
+                <animate attributeName="baseFrequency" dur="{dur}" values="0.012 0.03;0.02 0.05;0.012 0.03" {spline}/>
+              </feTurbulence>
+              <feDisplacementMap in="SourceGraphic" scale="0" xChannelSelector="R" yChannelSelector="G">
+                <animate attributeName="scale" dur="{dur}" values="0;46;0" {spline}/>
+              </feDisplacementMap>
+            </filter>
+          </svg>
+          <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
+            <img src="data:image/jpeg;base64,{plate}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;filter:url(#{fid});-webkit-filter:url(#{fid});transform-origin:50% 60%;animation:autoSpiritGenWind {dur} ease-in-out both;">
+            <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
+          </div>
+          <style>@keyframes autoSpiritGenWind{{0%,100%{{transform:translateX(0) skewX(0deg);}}50%{{transform:translateX(-7px) skewX(-4deg) scale(1.03);}}}}</style>"""
+
+
+def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None) -> str:
+    """정적 원형 크롭 이미지. gen_token 이 있으면(조합 생성 중) 위에 출렁이는 층을 겹친다."""
+    gen = _spirit2_gen_layer(base64, gen_token) if gen_token else ""
+    ripple_style = ' style="position:relative;"' if gen else ""
     return f"""
     <div class="{slot_class}">
       <div class="auto-spirit2-wrap">
-        <div class="auto-spirit2-ripple">
+        <div class="auto-spirit2-ripple"{ripple_style}>
           <img class="auto-spirit2-img auto-spirit2-img-base"
                src="data:image/jpeg;base64,{base64}"
-               alt="로또신령2">
+               alt="로또신령2">{gen}
         </div>
       </div>
     </div>
     """
+
+
+def _finish_auto_generation_if_due() -> str | None:
+    """조합 생성 표시 단계 관리. 3초가 지났으면 미뤄 둔 결과(저장내역 추가·깜빡임·완료 안내)를 반영하고
+    None, 진행 중이면 애니메이션 token 을 돌려준다. 화면 맨 앞에서 부른다(결과 칸들이 위쪽에 있으므로)."""
+    import time as _t
+
+    pending = st.session_state.get(AUTO_GEN_PENDING_KEY)
+    if not pending:
+        return None
+    started = pending.get("started")
+    if started is None:
+        pending["started"] = _t.time()
+        pending["token"] = str(int(pending["started"] * 1000))
+        return pending["token"]
+    if _t.time() - started < AUTO_GEN_ANIM_SECONDS:
+        return pending.get("token")
+    st.session_state.pop(AUTO_GEN_PENDING_KEY, None)
+    entry = pending.get("entry")
+    if entry:
+        _append_purchase_history(entry)
+    st.session_state["auto_history_blink"] = True
+    st.session_state["auto_generation_complete"] = True
+    return None
+
+
+def _render_auto_generation_timer() -> None:
+    """화면 맨 끝에서 부른다 — 생성 표시 중이면 남은 시간 뒤에 숨은 버튼을 눌러 다시 그리게 한다(결과 표시).
+
+    서버에서 기다렸다 st.rerun() 하면 그 실행이 정상 종료되지 않아, 방금 닫힌 적립금 안내창이 결과 화면 직전에
+    잠깐 다시 보였다(로컬 녹화 확인). 그래서 이번 실행은 정상으로 끝내고, 브라우저가 시간 맞춰 다시 그리게 한다.
+    버튼 칸은 맨 끝에 두고 겉껍데기까지 숨겨 위쪽 배치에 영향이 없다. 스크립트가 안 돌아도 다음 조작 때 끝난다."""
+    import json as _json
+    import time as _t
+
+    pending = st.session_state.get(AUTO_GEN_PENDING_KEY)
+    if not pending or pending.get("started") is None:
+        return
+    remaining_ms = max(0, int((AUTO_GEN_ANIM_SECONDS - (_t.time() - pending["started"])) * 1000))
+    wrap = "auto_gen_timer_wrap"
+    with st.container(key=wrap):
+        st.markdown(
+            f"<style>.st-key-{wrap},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
+            unsafe_allow_html=True,
+        )
+        st.button("auto-gen-done", key="auto_gen_done_btn")
+        components.html(
+            "<script>setTimeout(function(){try{var b=window.parent.document.querySelector("
+            + _json.dumps(".st-key-auto_gen_done_btn button")
+            + ");if(b)b.click();}catch(e){}}, "
+            + str(remaining_ms)
+            + ");</script>",
+            height=0,
+        )
 
 
 def _marketing_db():
@@ -1265,6 +1369,8 @@ def render():
         # (tarot_page.py의 쿠키 동기화 버그와 동일한 원인). 매번 다시 쓰면, 그런
         # 렌더를 하나 놓치더라도 바로 다음 렌더에서 다시 시도돼 결국은 저장된다.
         _sync_guest_id_cookie(guest_id)
+
+    _auto_gen_token = _finish_auto_generation_if_due()
 
     # 조합시작(구매) 직후 1회: 화면을 최상단으로 되돌린다 — 예전엔 구매 후
     # 저장내역 패널 하단으로 화면이 밀려 내려가 홈 버튼이 안 보였다(사용자 신고
@@ -3151,13 +3257,13 @@ def render():
                                     purchase_method,
                                     st.session_state.get("auto_sms_days", []),
                                 )
-                                _append_purchase_history(entry)
-                                st.session_state["auto_history_blink"] = True
+                                # 2026-10-10(사용자 지시): 저장내역 추가·깜빡임·완료 안내는 신령 이미지가
+                                # 3초 움직인 뒤에 보인다(_finish_auto_generation_if_due). 결제는 이미 끝났다.
+                                st.session_state[AUTO_GEN_PENDING_KEY] = {"entry": entry, "started": None}
                                 # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역
                                 # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
                                 # 다음 렌더에서 최상단으로 한 번 스크롤한다.
                                 st.session_state["auto_scroll_top"] = True
-                                st.session_state["auto_generation_complete"] = True
                             elif outcome.get("error") == "insufficient_balance":
                                 # 2026-09-08(사용자 지시): 번개조합·안티·액땜조합과
                                 # 동일 — "부족합니다" 문구만 띄우지 않고 그 자리에서
@@ -3203,6 +3309,7 @@ def render():
                     _spirit2_image_block(
                         spirit2_base64,
                         "auto-spirit2-slot-right",
+                        _auto_gen_token,
                     ),
                     unsafe_allow_html=True,
                 )
@@ -3233,3 +3340,6 @@ def render():
     # 문제가 있었다. 페이지 렌더링 맨 마지막에 한 번 더(동일 규칙을) 주입해서
     # 캐스케이드 순서상 항상 이기도록 한다.
     st.markdown(_AUTO_FINAL_LAYOUT_CSS, unsafe_allow_html=True)
+
+    # 조합 생성 표시 중이면 남은 시간 뒤 다시 그려 결과를 보인다(맨 끝 — 위쪽 배치 불변).
+    _render_auto_generation_timer()
