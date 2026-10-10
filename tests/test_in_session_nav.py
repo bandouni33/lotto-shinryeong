@@ -4,6 +4,7 @@
   N2 대상 화면(메인·자동조합)에서만 숨은 버튼을 그리고, 자기 화면 버튼은 안 그린다.
   N3 숨은 버튼을 누르면 page 값만 바뀐다(다른 주소 값은 그대로).
   N4 user_page 가 current_page 확정 직후 한 곳에서만 부르고, 공용 새로 읽기 목록에 있다.
+  N6 옛 앱 빌드(표시 없음)는 예전처럼 새로 불러오기 — 표시는 내부 이동 링크에 이어 실린다.
   N5 클릭 가로채기 스크립트의 안전장치(버튼 없으면 그냥 링크, 뒤로가기 처리, 12초 해제, stMain 맨 위로).
 
 실행: python tests/test_in_session_nav.py
@@ -33,9 +34,11 @@ st.write("PAGE=" + st.query_params.get("page", "main"))
 """
 
 
-def _app(page: str, enabled: bool = True) -> AppTest:
+def _app(page: str, enabled: bool = True, **params) -> AppTest:
     at = AppTest.from_string(_SCRIPT.format(root=ROOT, enabled=enabled), default_timeout=30)
     at.query_params["page"] = page
+    for k, v in params.items():
+        at.query_params[k] = v
     at.query_params["gid"] = "g-nav-test"
     return at.run()
 
@@ -61,6 +64,15 @@ class InSessionNavTest(unittest.TestCase):
         self.assertEqual(at.query_params["page"], ["auto"])
         self.assertEqual(at.query_params["gid"], ["g-nav-test"])
         self.assertEqual(_button_keys(at), {in_session_nav.button_key("main")})
+
+    def test_N6_old_app_build_keeps_full_reload(self):
+        # 앱(native=1)인데 표시가 없는 빌드 → 그리지 않는다(실기기에서 6초 가림 사고).
+        self.assertEqual(_button_keys(_app("main", native="1")), set())
+        on = _app("main", native="1", **{in_session_nav.APP_CAPABILITY_PARAM: "1"})
+        self.assertEqual(_button_keys(on), {in_session_nav.button_key("auto")})
+        src = open(os.path.join(ROOT, "user_scope.py"), encoding="utf-8").read()
+        body = src[src.index("def internal_nav_href"):][:3000]
+        self.assertIn(f'"{in_session_nav.APP_CAPABILITY_PARAM}"', body)
 
     def test_N4_single_call_site(self):
         src = open(os.path.join(ROOT, "user_page.py"), encoding="utf-8").read()

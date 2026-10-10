@@ -222,6 +222,9 @@ def internal_nav_href(page: str, **extra_params: str) -> str:
     # 안 이으면 하위 화면에서 결제 버튼 대신 "앱 업데이트" 안내가 나간다.
     if st.query_params.get("iap"):
         params["iap"] = st.query_params.get("iap")
+    # 2026-10-10: 같은 세션 화면 이동을 아는 앱 빌드 표시(in_session_nav.APP_CAPABILITY_PARAM)도 잇는다.
+    if st.query_params.get("spa_nav"):
+        params["spa_nav"] = st.query_params.get("spa_nav")
     params.update(extra_params)
     query = urllib.parse.urlencode(params)
     return f"?{query}"

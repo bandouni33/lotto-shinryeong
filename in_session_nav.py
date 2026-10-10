@@ -24,6 +24,11 @@ import streamlit.components.v1 as components
 IN_SESSION_NAV_ENABLED = True
 # 같은 세션 안에서 오갈 화면(시험판). 늘릴 때는 여기만 고친다.
 ENABLED_PAGES = ("main", "auto")
+# 2026-10-10(실기기 영상 11:13·서버 기록 대조): 지금 깔린 안드로이드 빌드는 주소만 바뀌어도(pushState)
+# 웹뷰가 '로드 시작'으로 보고 "불러오는 중" 화면을 띄운 뒤, 문서 로드 끝 신호가 안 와서 안전장치(6초)까지
+# 그대로 덮어 둔다 — 같은 세션 이동은 1.7초에 끝났는데 화면은 6초 가려졌다. 그래서 앱 안에서는 이 처리를
+# 아는 빌드(이 표시를 주소에 싣는 빌드)에서만 켠다. 일반 브라우저는 그대로 켠다.
+APP_CAPABILITY_PARAM = "spa_nav"
 _BUTTON_KEY_PREFIX = "ln_nav_go_"
 _WRAP_KEY = "ln_nav_hidden_wrap"
 
@@ -40,6 +45,8 @@ def render(current_page: str) -> None:
     """현재 화면이 대상이면 숨은 이동 버튼들과 클릭 가로채기 스크립트를 그린다."""
     if not IN_SESSION_NAV_ENABLED or current_page not in ENABLED_PAGES:
         return
+    if st.query_params.get("native") == "1" and st.query_params.get(APP_CAPABILITY_PARAM) != "1":
+        return  # 옛 앱 빌드 — 예전처럼 새로 불러오기(위 APP_CAPABILITY_PARAM 설명)
     with st.container(key=_WRAP_KEY):
         # 이 컨테이너는 통째로 숨긴다. 1.64 는 컨테이너를 stLayoutWrapper 로 한 겹 더 감싸므로
         # 그 겉껍데기까지 숨겨야 요소 간격(16px)이 생기지 않는다(로컬 실측).
