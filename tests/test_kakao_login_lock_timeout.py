@@ -42,7 +42,8 @@ TSX_REL = "LottoShinryeong/components/streamlit-webview.tsx"
 TSX = ROOT / TSX_REL
 
 HANDLE_START = "const handleKakaoNativeLogin = useCallback(async () => {"
-HANDLE_END = "}, [reloadWith]);"
+# 2026-10-07 Apple 로그인 커밋에서 의존성(reportNativeLoginError)이 추가됐다 — 옛 대조군 소스는 앞의 것.
+HANDLE_ENDS = ("}, [reloadWith]);", "}, [reloadWith, reportNativeLoginError]);")
 TRIGGER_START = "const triggerKakaoNativeLoginOnce = useCallback(() => {"
 TRIGGER_END = "}, [handleKakaoNativeLogin]);"
 WITH_TIMEOUT_HEAD = "function withTimeout<T>("
@@ -55,11 +56,14 @@ def _tsx() -> str:
     return TSX.read_text(encoding="utf-8")
 
 
-def _span(text: str, start: str, end: str) -> str:
+def _span(text: str, start: str, end) -> str:
     assert start in text, f"원문에서 시작 앵커를 못 찾았다: {start!r}"
     i = text.index(start)
-    j = text.index(end, i)
-    return text[i : j + len(end)]
+    ends = (end,) if isinstance(end, str) else tuple(end)
+    found = [(text.index(e, i), e) for e in ends if e in text[i:]]
+    assert found, f"원문에서 끝 앵커를 못 찾았다: {ends!r}"
+    j, e = min(found)
+    return text[i : j + len(e)]
 
 
 def _block(text: str, start: str) -> str:
@@ -99,7 +103,7 @@ def _with_timeout_js(source: str) -> str:
 def _previous_source() -> str:
     """이 수정 커밋의 직전 소스 — '수정 전에는 이 계약이 실패한다'를 보이기 위한 대조군."""
     found = subprocess.run(
-        ["git", "log", "-S", "KAKAO_NATIVE_LOGIN_TIMEOUT_MS", "--format=%H", "-1", "--", TSX_REL],
+        ["git", "log", "-S", "KAKAO_NATIVE_LOGIN_TIMEOUT_MS", "--format=%H", "--reverse", "--", TSX_REL],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
@@ -130,6 +134,7 @@ const useRef = (initial) => ({ current: initial });
 const state = { uri: null, loads: 0, sdkCalls: 0, sdk: () => new Promise(() => {}) };
 const setWebViewUri = (u) => { state.uri = u; state.loads += 1; };
 const reloadWith = (params) => 'url?' + Object.keys(params).map((k) => k + '=' + params[k]).join('&');
+const reportNativeLoginError = () => {};
 const kakaoNativeLogin = () => { state.sdkCalls += 1; return state.sdk(); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -215,7 +220,7 @@ def _build_harness(source: str) -> str:
     return (
         HARNESS.replace("__CONST__", const_js)
         .replace("__WITHTIMEOUT__", with_timeout_js)
-        .replace("__HANDLE__", _span(source, HANDLE_START, HANDLE_END))
+        .replace("__HANDLE__", _span(source, HANDLE_START, HANDLE_ENDS))
         .replace("__TRIGGER__", _span(source, TRIGGER_START, TRIGGER_END))
     )
 
@@ -343,7 +348,7 @@ def test_K7_static_wiring_and_bounds() -> None:
     assert "await withTimeout(kakaoNativeLogin(), KAKAO_NATIVE_LOGIN_TIMEOUT_MS)" in text, (
         "SDK 호출이 타임아웃으로 감싸지지 않았다 — 멈추면 다시 락이 고착된다"
     )
-    handle = _span(text, HANDLE_START, HANDLE_END)
+    handle = _span(text, HANDLE_START, HANDLE_ENDS)
     assert "throw" not in handle, "실패를 다시 던지면 .finally() 전에 거절이 새어 나간다"
     assert "handleKakaoNativeLogin().finally(" in text, "락 해제가 .finally()에서 사라졌다"
     assert text.index("kakaoLoginLockRef.current = false;") > text.index("handleKakaoNativeLogin().finally("), (
