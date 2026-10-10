@@ -1540,6 +1540,12 @@ st.markdown("""
         font-weight: 700 !important;
         color: #FFFFFF !important;
     }
+    /* 2026-10-10(사용자 승인 — iOS 영상): 위 흰 굵은 글씨 규칙이 흰 배경 팝업(구독창 등)에도 걸려
+       "첫 구독 1회 무료"·잔액·"구독 기간"이 안 보였다. 팝업 안에서만 원래 글씨(색·크기)로 되돌린다. */
+    div[data-testid="stDialog"] div[data-testid="stMarkdownContainer"] p strong {
+        font-size: inherit !important;
+        color: inherit !important;
+    }
     div[data-testid="stCheckbox"] label span {
         font-size: 18px !important;
         font-weight: 600 !important;
