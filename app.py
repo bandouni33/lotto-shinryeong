@@ -36,7 +36,14 @@ feedback_view = st.Page("admin_feedback.py", title="고객불만/개선요구사
 # 페이지(admin_dashboard.py/admin_feedback.py) 맨 앞의 is_admin 확인으로
 # 옮겼다 — 사이드바 자체가 모든 화면에서 collapsed·CSS로 숨겨져 있어 등록해둬도
 # 일반 이용자에게 메뉴로 노출되지는 않는다.
-pg = st.navigation([user_view, admin_view, feedback_view])
+# 2026-10-10(사용자 신고): 화면을 옮길 때마다 왼쪽에 "≫ 운영자 대시보드" 메뉴가 잠깐 보였다
+# 사라졌다 — 각 화면의 사이드바 숨김 CSS가 늦게 도착해서다. 일반 이용자에겐 페이지 목록 자체를
+# 그리지 않는다(position="hidden" — 등록은 그대로라 관리자 URL·switch_page 는 그대로 동작).
+# 관리자 세션은 기존처럼 사이드바 목록을 보여 준다(고객불만 페이지로 가는 경로).
+pg = st.navigation(
+    [user_view, admin_view, feedback_view],
+    position="sidebar" if st.session_state.get("is_admin") else "hidden",
+)
 
 if st.session_state.pop("go_to_admin", False):
     st.switch_page("admin_dashboard.py")

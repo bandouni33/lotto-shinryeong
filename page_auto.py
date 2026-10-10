@@ -3,6 +3,7 @@
 import base64
 import importlib
 import os
+import textwrap
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
@@ -943,6 +944,311 @@ def _render_auto_history_content():
                     unsafe_allow_html=True,
                 )
         _highlight_next = False
+
+
+# 2026-10-10: 자동조합 "최종 레이아웃 강제 오버라이드" CSS — 한 곳(이 상수)에만 둔다.
+# 예전엔 render() 맨 끝에서만 주입해, 그 사이(통계표 DB 조회 등) 동안 즉시/5개·조합시작/저장내역이
+# 좌우 끝으로 흩어져 보였다가 제자리로 모였다(사용자 신고). 이제 레이아웃을 그리기 직전에 한 번,
+# 맨 끝에서 한 번(캐스케이드 순서상 항상 이기도록 — 기존 이유 그대로) 같은 상수를 두 번 주입한다.
+_AUTO_FINAL_LAYOUT_CSS = """
+        <style>
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: flex-start !important;
+            gap: 6px !important;
+            width: 100% !important;
+        }
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] * {
+            flex-shrink: 0 !important;
+        }
+        .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            display: block !important;
+        }
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5,
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 > div[data-testid="stVerticalBlock"],
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 [data-testid="stMarkdown"],
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 .auto-stats-table-wrap {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        /* 구매방식·수량 / 구매확정·구매내역 — 아래 캐릭터 이미지와 같은 폭 기준(360px 중앙정렬)
+           컨테이너 안에서, 두 항목을 하나의 짝으로 묶어 항상 가운데(캐릭터 아이콘과 같은 축)에
+           배치한다. 예전엔 위쪽 줄은 20%/80%, 아래 줄은 30%/70% 지점으로 서로 다르게 벌려놔서
+           두 줄이 서로 다른 폭으로 벌어져 보였다 — 두 줄 모두 같은 방식(중앙 정렬 + 고정 간격)으로
+           통일해서 좌우 균형이 맞도록 한다. */
+        .st-key-auto_purchase_method_zone_6n36s5 {
+            width: 100% !important;
+            max-width: var(--auto-visual-col-width) !important;
+            margin: 0 auto !important;
+        }
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            justify-content: center !important;
+            align-items: center !important;
+            gap: 14px !important;
+            box-sizing: border-box !important;
+        }
+        /* 2026-08-30: 이 규칙은 원래 "auto_confirm_history_row_6n36s5"라는 컨테이너
+           키를 겨냥해 쓰여 있었는데, 실제 구매확정·구매내역 버튼 줄의 키는
+           "auto_phone_btn_row_6n36s5"라 하나도 안 먹히고 있었다(고아 셀렉터) —
+           그래서 이 줄이 캐릭터 아이콘·구매방식 줄과 다른 폭·정렬로 보이던 것.
+           바로 위 구매방식 줄(auto_purchase_method_zone_6n36s5)과 완전히 같은
+           폭(--auto-visual-col-width)·중앙정렬 방식으로 맞춰서 두 줄이 캐릭터
+           아이콘과 같은 축에 나란히 정렬되게 한다. */
+        .st-key-auto_phone_btn_row_6n36s5 {
+            width: 100% !important;
+            max-width: var(--auto-visual-col-width) !important;
+            margin: 0 auto !important;
+        }
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            justify-content: center !important;
+            align-items: center !important;
+            gap: 14px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            box-sizing: border-box !important;
+        }
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            height: auto !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] {
+            width: 106px !important;
+            min-width: 106px !important;
+            max-width: 106px !important;
+        }
+        /* ⚠️ 구매 안내 expander — 내용 크기만큼만 폭을 줄이고 가로 중앙 정렬 */
+        .st-key-auto_guide_expander_zone_6n36s5 {
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] {
+            width: auto !important;
+            max-width: max-content !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details {
+            width: auto !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            width: auto !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            padding: 10px 18px !important;
+            white-space: nowrap !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary svg {
+            flex: 0 0 auto !important;
+            margin: 0 !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary span {
+            margin: 0 !important;
+            white-space: nowrap !important;
+        }
+        /* 캐릭터 이미지는 항상 "구매내역" 팝업(z-index:40) 뒤에 있도록 낮은 z-index 고정 */
+        .st-key-auto_spirit_below_confirm_6n36s5 {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
+            position: relative !important;
+            z-index: 40 !important;
+        }
+        html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
+            overflow-y: auto !important;
+            max-height: none !important;
+        }
+        /* 구매방식·구매수량·구매확정·구매내역 — 공통 사이즈 조정 (높이 -10%, 폰트 한 단계 확대) */
+        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"],
+        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"] > div,
+        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] > div,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"],
+        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"] > div,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
+            height: 32px !important;
+            min-height: 32px !important;
+            max-height: 32px !important;
+            font-size: 16px !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] span,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] span {
+            font-size: 16px !important;
+        }
+        /* 구매방식·구매수량 — 현재 Streamlit 버전은 BaseWeb select 대신
+           React Aria ComboBox(input[type="text"] + div[role="group"])를 쓰므로
+           위 data-baseweb 규칙이 매치되지 않는다. 실제 DOM 기준으로 재적용. */
+        .st-key-auto_purchase_method_6n36s5 div[role="group"],
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
+            height: 32px !important;
+            min-height: 32px !important;
+            max-height: 32px !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 input[type="text"],
+        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
+            font-size: 16px !important;
+        }
+        /* input[type=text]가 브라우저 기본 폭(약 211px)을 그대로 차지해서 화살표 버튼이
+           박스 밖으로 밀려나 overflow:hidden에 잘려 안 보이던 문제 — input은 남는 공간만
+           차지하고 버튼은 자기 크기만큼만 차지하도록 flex 배분을 명시. */
+        .st-key-auto_purchase_method_6n36s5 input[type="text"],
+        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
+            flex: 1 1 auto !important;
+            width: 0 !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"] button,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button {
+            flex: 0 0 auto !important;
+        }
+        /* 즉시/월간·5개/10개 — 클릭 가능한 선택 요소로 보이도록 테두리·그림자·hover 반응 추가 */
+        .st-key-auto_purchase_method_6n36s5 div[role="group"],
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
+            box-sizing: border-box !important;
+            overflow: visible !important;
+            border: 2px solid #6C3CE0 !important;
+            box-shadow: 0 2px 6px rgba(108, 60, 224, 0.35) !important;
+            cursor: pointer !important;
+            transition: box-shadow 0.15s ease, border-color 0.15s ease !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"]:hover,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:hover,
+        .st-key-auto_purchase_method_6n36s5 div[role="group"]:focus-within,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:focus-within {
+            border-color: #8B5CF6 !important;
+            box-shadow: 0 3px 10px rgba(108, 60, 224, 0.55) !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"] button svg,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button svg {
+            width: 1.6rem !important;
+            height: 1.6rem !important;
+            color: #6C3CE0 !important;
+            fill: #6C3CE0 !important;
+        }
+        /* 구매확정·구매내역 버튼 — 106px → 7%↓(98.58) → 4%↑(102.52) → 3%↑(105.6px) */
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
+            width: 105.6px !important;
+            min-width: 105.6px !important;
+            max-width: 105.6px !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button div {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary span {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+        }
+        /* 화살표는 Material Symbols 아이콘 폰트로 렌더링된다. 번들 코드를 더 파보니
+           "icon"/"type" prop이 있는 특수 expander(체크·에러·스피너)만 data-testid를
+           "stExpanderIcon*"로 오버라이드하고, 우리처럼 그런 prop이 없는 일반 expander는
+           기본 아이콘 컴포넌트를 타서 기본 testid인 "stIconMaterial" 그대로 남는다 —
+           그래서 stExpanderIcon만 노렸던 지난 시도가 안 먹혔다. 둘 다 잡는다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stExpanderIcon"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            gap: 0 !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > p {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+            flex: 1 1 auto !important;
+        }
+        /* 구매확정·구매내역 — 버튼/summary 자체에 font-size·weight를 줘도 안쪽 <p>가
+           Streamlit 기본 스타일(구매확정 p는 weight 400, 구매내역 p는 weight 900으로
+           서로 달랐다)을 그대로 써서 두 버튼 글씨체가 달라 보였다 — 실제로 텍스트를
+           그리는 p/span에 직접 같은 값을 지정해야 반영된다. font-family까지 명시해서
+           혹시 모를 폴백 폰트 차이도 없앤다. */
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button span {
+            font-family: "Source Sans", sans-serif !important;
+            font-size: 17px !important;
+            font-weight: 700 !important;
+        }
+        /* 구매내역 쪽 p는 폭이 텍스트 크기만큼만 좁게 잡혀서(68px) 106px 버튼 안에서
+           살짝 왼쪽으로 치우쳐 보이거나(데스크톱), 모바일 폭에서는 아예 0px로 접혀
+           안 보이는 문제까지 있었다 — flex-grow 하나에만 기대지 않고, 감싸는 모든
+           단계(outer span → text-wrap div → stMarkdownContainer → p)를 전부
+           display:block + width:100%로 강제해서 어떤 화면 폭에서도 안정적으로
+           구매확정 쪽과 동일하게 꽉 채워 중앙정렬되게 한다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span > div,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stMarkdownContainer"] {
+            display: block !important;
+            width: 100% !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 auto !important;
+            text-align: center !important;
+        }
+        </style>
+        """
 
 
 def render():
@@ -2601,7 +2907,12 @@ def render():
     # 차지하는 작은 로고 링크를 대신 둔다.
     from shared_ui_styles import brand_home_link_css, brand_home_link_html
 
-    st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
+    # 2026-10-10: 레이아웃을 그리기 전에 최종 CSS를 먼저 깔아 둔다(상수 설명 참고 — 흩어졌다 모이는
+    # 현상 방지). 따로 st.markdown 을 하나 더 만들면 요소 간격이 생겨 화면이 14px 밀리므로 이 줄에 붙인다.
+    st.markdown(
+        textwrap.dedent(_AUTO_FINAL_LAYOUT_CSS).strip() + brand_home_link_css() + brand_home_link_html(),
+        unsafe_allow_html=True,
+    )
 
     spirit2_base64 = _get_icon_base64("로또신령2.jpg")
 
@@ -2918,305 +3229,4 @@ def render():
     # 버전으로 올라가면서, 위쪽에 있는 동일 내용의 CSS가 소스 순서상 밀려 적용되지 않는
     # 문제가 있었다. 페이지 렌더링 맨 마지막에 한 번 더(동일 규칙을) 주입해서
     # 캐스케이드 순서상 항상 이기도록 한다.
-    st.markdown(
-        """
-        <style>
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            align-items: flex-start !important;
-            gap: 6px !important;
-            width: 100% !important;
-        }
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-            flex: 0 0 auto !important;
-            width: auto !important;
-            min-width: 0 !important;
-        }
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] * {
-            flex-shrink: 0 !important;
-        }
-        .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            display: block !important;
-        }
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5,
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 > div[data-testid="stVerticalBlock"],
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 [data-testid="stMarkdown"],
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 .auto-stats-table-wrap {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            overflow: visible !important;
-            position: relative !important;
-            z-index: 1 !important;
-        }
-        /* 구매방식·수량 / 구매확정·구매내역 — 아래 캐릭터 이미지와 같은 폭 기준(360px 중앙정렬)
-           컨테이너 안에서, 두 항목을 하나의 짝으로 묶어 항상 가운데(캐릭터 아이콘과 같은 축)에
-           배치한다. 예전엔 위쪽 줄은 20%/80%, 아래 줄은 30%/70% 지점으로 서로 다르게 벌려놔서
-           두 줄이 서로 다른 폭으로 벌어져 보였다 — 두 줄 모두 같은 방식(중앙 정렬 + 고정 간격)으로
-           통일해서 좌우 균형이 맞도록 한다. */
-        .st-key-auto_purchase_method_zone_6n36s5 {
-            width: 100% !important;
-            max-width: var(--auto-visual-col-width) !important;
-            margin: 0 auto !important;
-        }
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            justify-content: center !important;
-            align-items: center !important;
-            gap: 14px !important;
-            box-sizing: border-box !important;
-        }
-        /* 2026-08-30: 이 규칙은 원래 "auto_confirm_history_row_6n36s5"라는 컨테이너
-           키를 겨냥해 쓰여 있었는데, 실제 구매확정·구매내역 버튼 줄의 키는
-           "auto_phone_btn_row_6n36s5"라 하나도 안 먹히고 있었다(고아 셀렉터) —
-           그래서 이 줄이 캐릭터 아이콘·구매방식 줄과 다른 폭·정렬로 보이던 것.
-           바로 위 구매방식 줄(auto_purchase_method_zone_6n36s5)과 완전히 같은
-           폭(--auto-visual-col-width)·중앙정렬 방식으로 맞춰서 두 줄이 캐릭터
-           아이콘과 같은 축에 나란히 정렬되게 한다. */
-        .st-key-auto_phone_btn_row_6n36s5 {
-            width: 100% !important;
-            max-width: var(--auto-visual-col-width) !important;
-            margin: 0 auto !important;
-        }
-        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            justify-content: center !important;
-            align-items: center !important;
-            gap: 14px !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            height: auto !important;
-            min-height: 0 !important;
-            box-sizing: border-box !important;
-        }
-        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
-        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
-            flex: 0 0 auto !important;
-            width: auto !important;
-            max-width: none !important;
-            min-width: 0 !important;
-            height: auto !important;
-        }
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] {
-            width: 106px !important;
-            min-width: 106px !important;
-            max-width: 106px !important;
-        }
-        /* ⚠️ 구매 안내 expander — 내용 크기만큼만 폭을 줄이고 가로 중앙 정렬 */
-        .st-key-auto_guide_expander_zone_6n36s5 {
-            width: 100% !important;
-            display: flex !important;
-            justify-content: center !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] {
-            width: auto !important;
-            max-width: max-content !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details {
-            width: auto !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
-            width: auto !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 8px !important;
-            padding: 10px 18px !important;
-            white-space: nowrap !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary svg {
-            flex: 0 0 auto !important;
-            margin: 0 !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary p,
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary span {
-            margin: 0 !important;
-            white-space: nowrap !important;
-        }
-        /* 캐릭터 이미지는 항상 "구매내역" 팝업(z-index:40) 뒤에 있도록 낮은 z-index 고정 */
-        .st-key-auto_spirit_below_confirm_6n36s5 {
-            position: relative !important;
-            z-index: 1 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
-            position: relative !important;
-            z-index: 40 !important;
-        }
-        html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
-            overflow-y: auto !important;
-            max-height: none !important;
-        }
-        /* 구매방식·구매수량·구매확정·구매내역 — 공통 사이즈 조정 (높이 -10%, 폰트 한 단계 확대) */
-        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"],
-        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"] > div,
-        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] > div,
-        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"],
-        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"] > div,
-        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
-            height: 32px !important;
-            min-height: 32px !important;
-            max-height: 32px !important;
-            font-size: 16px !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] span,
-        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] span {
-            font-size: 16px !important;
-        }
-        /* 구매방식·구매수량 — 현재 Streamlit 버전은 BaseWeb select 대신
-           React Aria ComboBox(input[type="text"] + div[role="group"])를 쓰므로
-           위 data-baseweb 규칙이 매치되지 않는다. 실제 DOM 기준으로 재적용. */
-        .st-key-auto_purchase_method_6n36s5 div[role="group"],
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
-            height: 32px !important;
-            min-height: 32px !important;
-            max-height: 32px !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 input[type="text"],
-        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
-            font-size: 16px !important;
-        }
-        /* input[type=text]가 브라우저 기본 폭(약 211px)을 그대로 차지해서 화살표 버튼이
-           박스 밖으로 밀려나 overflow:hidden에 잘려 안 보이던 문제 — input은 남는 공간만
-           차지하고 버튼은 자기 크기만큼만 차지하도록 flex 배분을 명시. */
-        .st-key-auto_purchase_method_6n36s5 input[type="text"],
-        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
-            flex: 1 1 auto !important;
-            width: 0 !important;
-            min-width: 0 !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[role="group"] button,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button {
-            flex: 0 0 auto !important;
-        }
-        /* 즉시/월간·5개/10개 — 클릭 가능한 선택 요소로 보이도록 테두리·그림자·hover 반응 추가 */
-        .st-key-auto_purchase_method_6n36s5 div[role="group"],
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
-            box-sizing: border-box !important;
-            overflow: visible !important;
-            border: 2px solid #6C3CE0 !important;
-            box-shadow: 0 2px 6px rgba(108, 60, 224, 0.35) !important;
-            cursor: pointer !important;
-            transition: box-shadow 0.15s ease, border-color 0.15s ease !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[role="group"]:hover,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:hover,
-        .st-key-auto_purchase_method_6n36s5 div[role="group"]:focus-within,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:focus-within {
-            border-color: #8B5CF6 !important;
-            box-shadow: 0 3px 10px rgba(108, 60, 224, 0.55) !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[role="group"] button svg,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button svg {
-            width: 1.6rem !important;
-            height: 1.6rem !important;
-            color: #6C3CE0 !important;
-            fill: #6C3CE0 !important;
-        }
-        /* 구매확정·구매내역 버튼 — 106px → 7%↓(98.58) → 4%↑(102.52) → 3%↑(105.6px) */
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
-            width: 105.6px !important;
-            min-width: 105.6px !important;
-            max-width: 105.6px !important;
-        }
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            text-align: center !important;
-        }
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button div {
-            width: 100% !important;
-            text-align: center !important;
-            margin: 0 auto !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            text-align: center !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary p,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary span {
-            width: 100% !important;
-            text-align: center !important;
-            margin: 0 auto !important;
-        }
-        /* 화살표는 Material Symbols 아이콘 폰트로 렌더링된다. 번들 코드를 더 파보니
-           "icon"/"type" prop이 있는 특수 expander(체크·에러·스피너)만 data-testid를
-           "stExpanderIcon*"로 오버라이드하고, 우리처럼 그런 prop이 없는 일반 expander는
-           기본 아이콘 컴포넌트를 타서 기본 testid인 "stIconMaterial" 그대로 남는다 —
-           그래서 stExpanderIcon만 노렸던 지난 시도가 안 먹혔다. 둘 다 잡는다. */
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stExpanderIcon"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
-            display: none !important;
-            width: 0 !important;
-            height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            gap: 0 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
-            gap: 0 !important;
-            justify-content: center !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > span,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > p {
-            width: 100% !important;
-            text-align: center !important;
-            margin: 0 auto !important;
-            flex: 1 1 auto !important;
-        }
-        /* 구매확정·구매내역 — 버튼/summary 자체에 font-size·weight를 줘도 안쪽 <p>가
-           Streamlit 기본 스타일(구매확정 p는 weight 400, 구매내역 p는 weight 900으로
-           서로 달랐다)을 그대로 써서 두 버튼 글씨체가 달라 보였다 — 실제로 텍스트를
-           그리는 p/span에 직접 같은 값을 지정해야 반영된다. font-family까지 명시해서
-           혹시 모를 폴백 폰트 차이도 없앤다. */
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button p,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button span {
-            font-family: "Source Sans", sans-serif !important;
-            font-size: 17px !important;
-            font-weight: 700 !important;
-        }
-        /* 구매내역 쪽 p는 폭이 텍스트 크기만큼만 좁게 잡혀서(68px) 106px 버튼 안에서
-           살짝 왼쪽으로 치우쳐 보이거나(데스크톱), 모바일 폭에서는 아예 0px로 접혀
-           안 보이는 문제까지 있었다 — flex-grow 하나에만 기대지 않고, 감싸는 모든
-           단계(outer span → text-wrap div → stMarkdownContainer → p)를 전부
-           display:block + width:100%로 강제해서 어떤 화면 폭에서도 안정적으로
-           구매확정 쪽과 동일하게 꽉 채워 중앙정렬되게 한다. */
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span > div,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stMarkdownContainer"] {
-            display: block !important;
-            width: 100% !important;
-            flex: 1 1 auto !important;
-            min-width: 0 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span {
-            display: block !important;
-            width: 100% !important;
-            margin: 0 auto !important;
-            text-align: center !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(_AUTO_FINAL_LAYOUT_CSS, unsafe_allow_html=True)
