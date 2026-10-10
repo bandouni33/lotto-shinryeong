@@ -216,7 +216,8 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
     if not person or not plate:
         return ""
     name = f"autoSpiritQuake{token}"
-    # 한 묶음(불규칙 흔들림) 0.6초를 3초 동안 5번 — 세기 일정. 2026-10-10(사용자 지시): 속도 50% 감소(0.3→0.6초).
+    # 한 묶음(불규칙 흔들림) 1.2초를 3초 동안 2.5번 — 세기 일정. 2026-10-10(사용자 지시): 속도 50%씩 두 번 감소
+    # (0.3→0.6→1.2초). 반복 횟수는 소수 허용(CSS) — 3초를 꽉 채운다.
     steps = (
         (0, 0, 0), (-10, 4, -1.6), (9, -6, 1.4), (-7, -8, 0.9), (11, 3, -1.2), (-9, 7, 1.6),
         (7, -4, -1.4), (-11, -3, 1.1), (6, 9, -0.9), (-4, -9, 1.4), (0, 0, 0),
@@ -225,8 +226,8 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
         f"{round(i * 10)}%{{transform:scale(1.12) translate({x}px,{y}px) rotate({r}deg);}}"
         for i, (x, y, r) in enumerate(steps)
     )
-    cycle = 0.6
-    loops = max(1, round(AUTO_GEN_ANIM_SECONDS / cycle))
+    cycle = 1.2
+    loops = f"{AUTO_GEN_ANIM_SECONDS / cycle:g}"
     return f"""
           <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
             <img src="data:image/jpeg;base64,{plate}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;transform:scale(1.12);animation:{name} {cycle:g}s linear {loops};">
