@@ -1276,9 +1276,12 @@ def render():
             <script>
             (function() {
                 try {
-                    var s = window.top.document.createElement('script');
-                    s.textContent = "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}";
-                    window.top.document.head.appendChild(s);
+                    // 2026-10-10: top 이 아니라 parent(앱 문서), 실제 스크롤 칸(stMain)도 함께 —
+                    // 운영 주소는 앱이 Cloud 껍데기 안 iframe 이라 top 에서는 아무것도 안 움직였다.
+                    var s = window.parent.document.createElement('script');
+                    s.textContent = "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}"
+                        + "try{var m=document.querySelector('[data-testid=\\"stMain\\"]');if(m){m.scrollTo({top:0,behavior:'smooth'});}}catch(e){}";
+                    window.parent.document.head.appendChild(s);
                     s.parentNode.removeChild(s);
                 } catch (e) {
                     try { window.parent.scrollTo(0, 0); } catch (e2) {}

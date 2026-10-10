@@ -1922,13 +1922,19 @@ def _normalize_combo_df(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+COMBO_COLUMN_WIDTH_PX = 40
+
+
 def _combo_column_config(df):
     cfg = {}
     for i, col in enumerate(df.columns):
-        label = f"번호{i + 1}" if str(col).strip().startswith("번호") else str(col).strip()
+        # 머리글은 표 칸(캔버스)에 그려져 CSS 로 줄일 수 없다 — 좁은 칸에서 "번호1"이 잘려 숫자만 둔다.
+        label = f"{i + 1}" if str(col).strip().startswith("번호") else str(col).strip()
         cfg[col] = st.column_config.NumberColumn(
             label,
-            width="small",
+            # 2026-10-10(실기기 신고 — 모바일에서 6열 중 4열만 보임): "small"(약 75px)×6 이 폰 폭을 넘었다.
+            # 두 자리 번호에 맞춘 고정 폭으로 6열이 폰 한 화면에 들어오게 한다(PC 에선 가운데 좁은 표).
+            width=COMBO_COLUMN_WIDTH_PX,
             format="%d",
             alignment="center",
         )

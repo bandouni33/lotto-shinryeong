@@ -766,26 +766,37 @@ def _scroll_to_top_once() -> None:
     안 먹힐 수 있다 — window뿐 아니라 Streamlit이 흔히 쓰는 스크롤 컨테이너
     후보도 함께 스크롤한다. 배너 DOM이 이 스크립트보다 늦게 붙는 타이밍
     문제에도 대비해 짧게 몇 번 재시도한다(update-toast에서 이미 쓰던 재시도
-    패턴과 동일)."""
+    패턴과 동일).
+
+    2026-10-10(실기기 신고 — 고급필터 맨 아래 '구독하기'를 누르면 로그인창이 맨 위에 떠서 이용자는 아래에서
+    버튼만 계속 누르게 됨): ① 스크립트를 window.top 이 아니라 window.parent(앱 문서)에 심는다 — 운영 주소는
+    앱이 Streamlit Cloud 껍데기 안 iframe 이라 top 문서엔 stMain 이 없어 스크롤이 아무 데도 안 걸렸다
+    (로컬은 top=앱이라 정상으로 보였다 — _cleanup_stale_auth_banner_dom 의 2026-10-03 기록과 같은 원인).
+    ② 부드러운 스크롤(수천 px 를 천천히 이동·손대면 멈춤) 대신 즉시 이동. ③ 로그인 버튼이 실제로 화면 안에
+    들어올 때까지(최대 약 4초) 반복한다 — 다시 그리는 동안 배너가 늦게 붙는 경우 대비."""
     components.html(
         """
         <script>
         (function() {
+            var code = (
+                "(function(){" +
+                "var tries=0;" +
+                "function inView(){var b=document.querySelector('.st-key-auth_banner_kakao');" +
+                "if(!b)return false;var r=b.getBoundingClientRect();return r.height>0&&r.top>=0&&r.top<window.innerHeight;}" +
+                "function go(){" +
+                "try{window.scrollTo(0,0);}catch(e){}" +
+                "try{['[data-testid=\\"stMain\\"]','[data-testid=\\"stAppViewContainer\\"]','section.main'].forEach(function(sel){" +
+                "var el=document.querySelector(sel);if(el){el.scrollTop=0;}});}catch(e){}" +
+                "}" +
+                "go();" +
+                "var t=setInterval(function(){tries+=1;if(inView()||tries>=25){clearInterval(t);return;}go();},160);" +
+                "})();"
+            );
             try {
-                var s = window.top.document.createElement('script');
-                s.textContent = (
-                    "function __ttScroll(){" +
-                    "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){try{window.scrollTo(0,0);}catch(e2){}}" +
-                    "try{['[data-testid=\\"stAppViewContainer\\"]','section.main','[data-testid=\\"stMain\\"]'].forEach(function(sel){" +
-                    "var el=document.querySelector(sel);" +
-                    "if(el){ if(el.scrollTo){el.scrollTo({top:0,behavior:'smooth'});} else {el.scrollTop=0;} }" +
-                    "});}catch(e){}" +
-                    "}" +
-                    "__ttScroll();" +
-                    "var __ttTries=0;" +
-                    "var __ttTimer=window.setInterval(function(){__ttScroll();__ttTries+=1;if(__ttTries>=5)window.clearInterval(__ttTimer);},150);"
-                );
-                window.top.document.head.appendChild(s);
+                var doc = window.parent.document;
+                var s = doc.createElement('script');
+                s.textContent = code;
+                doc.head.appendChild(s);
                 s.parentNode.removeChild(s);
             } catch (e) {
                 try { window.parent.scrollTo(0, 0); } catch (e2) {}

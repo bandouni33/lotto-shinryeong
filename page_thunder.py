@@ -2040,10 +2040,12 @@ def render():
             <script>
             (function() {
                 try {
-                    var s = window.top.document.createElement('script');
+                    // 2026-10-10: top 이 아니라 parent(앱 문서) — 운영 주소는 앱이 Cloud 껍데기 안 iframe 이라
+                    // top 문서엔 저장내역이 없어 스크롤이 안 됐다(wallet_ui._scroll_to_top_once 같은 원인).
+                    var s = window.parent.document.createElement('script');
                     s.textContent = "try{var el=document.querySelector('.st-key-th_history_zone_6n36s5');"
                         + "if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}}catch(e){}";
-                    window.top.document.head.appendChild(s);
+                    window.parent.document.head.appendChild(s);
                     s.parentNode.removeChild(s);
                 } catch (e) {
                     try {

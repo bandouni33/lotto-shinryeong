@@ -159,13 +159,28 @@ const PAGE_READY_INJECTED_JS = `
       }
     } catch (e) {}
   }
-  function app() { return document.querySelector('[data-testid="stApp"]'); }
+  // 2026-10-10(시뮬레이션으로 확인): 운영 주소(Streamlit Cloud)는 최상위 문서가 '껍데기'이고 실제 앱은 그 안의
+  // 같은 출처 iframe(/~/+/)이다 — 최상위 문서만 보면 stApp 을 영영 못 찾아 "불러오는 중"이 안전장치(15초)까지
+  // 남는다(로컬 개발 서버는 최상위=앱이라 정상으로 보였다). 최상위 → 같은 출처 iframe 순으로 앱 문서를 찾는다.
+  function appDoc() {
+    if (document.querySelector('[data-testid="stApp"]')) { return document; }
+    var frames = document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {
+      try {
+        var d = frames[i].contentDocument;
+        if (d && d.querySelector('[data-testid="stApp"]')) { return d; }
+      } catch (e) {}
+    }
+    return null;
+  }
+  function app() { var d = appDoc(); return d ? d.querySelector('[data-testid="stApp"]') : null; }
   function state() { var a = app(); return a ? a.getAttribute('data-test-script-state') : null; }
   // 이 앱의 모든 화면은 어두운 배경을 직접 칠한다 — 배경이 아직 Streamlit 기본(밝은색)이면 화면
   // 스타일이 덜 들어온 상태다(시뮬레이션: 첫 실행이 끝난 순간에도 배경이 밝은 경우가 있었다).
   function painted() {
     var a = app(); if (!a) { return false; }
-    var m = /rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/.exec(getComputedStyle(a).backgroundColor || '');
+    var view = (a.ownerDocument && a.ownerDocument.defaultView) || window;
+    var m = /rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/.exec(view.getComputedStyle(a).backgroundColor || '');
     if (!m) { return false; }
     return (Number(m[1]) + Number(m[2]) + Number(m[3])) / 3 < 128;
   }
@@ -180,15 +195,29 @@ const PAGE_READY_INJECTED_JS = `
   }, POLL_MS);
   // Streamlit 이 주소 파라미터만 지울 때(history.replaceState — QR 진입 등) 웹뷰가 로드 시작만
   // 알리고 끝을 안 알리는 경우가 있어, 이미 그려진 화면이면 곧바로 다시 알린다.
-  ['replaceState', 'pushState'].forEach(function (name) {
-    var orig = history[name];
-    if (typeof orig !== 'function') { return; }
-    history[name] = function () {
-      var r = orig.apply(this, arguments);
-      if (sent) { postWhenSettled(); }
-      return r;
-    };
-  });
+  // 주소 변경 감시는 최상위 문서와 앱 iframe 양쪽에 건다(iframe 은 늦게 생기고 새로 불러올 때마다 바뀐다).
+  function hookHistory(win) {
+    try {
+      if (!win || win.__lnHistoryHooked) { return; }
+      win.__lnHistoryHooked = true;
+      ['replaceState', 'pushState'].forEach(function (name) {
+        var orig = win.history[name];
+        if (typeof orig !== 'function') { return; }
+        win.history[name] = function () {
+          var r = orig.apply(this, arguments);
+          if (sent) { postWhenSettled(); }
+          return r;
+        };
+      });
+      // 앱 뒤로가기(웹뷰 goBack → 같은 문서 안 기록 이동)도 '로드 시작'이 올 수 있어 같은 방식으로 알린다.
+      win.addEventListener('popstate', function () { if (sent) { postWhenSettled(); } });
+    } catch (e) {}
+  }
+  hookHistory(window);
+  setInterval(function () {
+    var d = appDoc();
+    if (d && d !== document) { hookHistory(d.defaultView); }
+  }, 300);
   // 2026-10-10(실기기 영상): 예전엔 주소가 바뀌는 그 순간에 바로 알렸는데, 웹뷰의 '로드 시작'(onLoadStart)이
   // 그보다 늦게 와서 "불러오는 중"이 다시 켜진 채 안전장치 시간까지 남았다(같은 세션 이동·로그인 뒤 토큰 지우기·
   // 번개조합 저장 등). 이제 잠깐 뒤(로드 시작 신호 다음)에, 그리고 Streamlit 실행이 끝났을 때 알린다.
@@ -1229,9 +1258,13 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
   // 계약). 웹뷰의 injectJavaScript는 항상 최상위 문서에서 실행되므로(iframe이
   // 아님) 별도 브릿지 없이 바로 클릭할 수 있다.
   const closeOpenDialog = useCallback(() => {
+    // 2026-10-10: 운영 주소는 앱이 같은 출처 iframe 안이라(PAGE_READY_INJECTED_JS 의 appDoc 설명) 최상위 문서에
+    // 창이 없다 — 최상위 → iframe 순으로 찾는다.
     webViewRef.current?.injectJavaScript(
       "(function(){try{" +
-        'var b=document.querySelector(\'[data-testid="stDialog"] button[aria-label="Close"]\');' +
+        'var sel=\'[data-testid="stDialog"] button[aria-label="Close"]\';' +
+        'var b=document.querySelector(sel);' +
+        'if(!b){var fs=document.querySelectorAll("iframe");for(var i=0;i<fs.length&&!b;i++){try{var d=fs[i].contentDocument;if(d){b=d.querySelector(sel);}}catch(e){}}}' +
         'if(b){b.click();}' +
         '}catch(e){}})();true;'
     );
