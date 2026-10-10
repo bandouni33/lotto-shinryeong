@@ -216,7 +216,7 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
     if not person or not plate:
         return ""
     name = f"autoSpiritQuake{token}"
-    # 0.3초 한 묶음(불규칙 흔들림)을 3초 동안 10번 — 세기 일정.
+    # 한 묶음(불규칙 흔들림) 0.6초를 3초 동안 5번 — 세기 일정. 2026-10-10(사용자 지시): 속도 50% 감소(0.3→0.6초).
     steps = (
         (0, 0, 0), (-10, 4, -1.6), (9, -6, 1.4), (-7, -8, 0.9), (11, 3, -1.2), (-9, 7, 1.6),
         (7, -4, -1.4), (-11, -3, 1.1), (6, 9, -0.9), (-4, -9, 1.4), (0, 0, 0),
@@ -225,10 +225,11 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
         f"{round(i * 10)}%{{transform:scale(1.12) translate({x}px,{y}px) rotate({r}deg);}}"
         for i, (x, y, r) in enumerate(steps)
     )
-    loops = max(1, round(AUTO_GEN_ANIM_SECONDS / 0.3))
+    cycle = 0.6
+    loops = max(1, round(AUTO_GEN_ANIM_SECONDS / cycle))
     return f"""
           <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
-            <img src="data:image/jpeg;base64,{plate}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;transform:scale(1.12);animation:{name} 0.3s linear {loops};">
+            <img src="data:image/jpeg;base64,{plate}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;transform:scale(1.12);animation:{name} {cycle:g}s linear {loops};">
             <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
           </div>
           <style>@keyframes {name}{{{frames}}}</style>"""
