@@ -206,35 +206,52 @@ def _file_base64(path: str) -> str:
         return ""
 
 
+# 2026-10-10(사용자 지시 3차 — "그림 자체가 똑같이 움직이니 부자연, 각각 움직여야, 더 부드럽게"):
+# 배경을 영역별 층(하늘·먼 산·왼쪽 누각/꽃·오른쪽 절벽/폭포·아래 난간)으로 나눠 각자 다른 방향·속도·박자로
+# 부드럽게(ease-in-out) 흔들린다. 가까운 층일수록 크게, 하늘은 아주 작게. 층 경계는 부드러운 그라데이션 가림막.
+# 밑에는 움직이지 않는 배경판이 깔려 있어 층이 움직여도 빈틈이 보이지 않는다(확대 없음).
+# (이름, 가림막, [(%, x px, y px, 회전 deg)], 주기 s, 시작 어긋남 s, 회전 중심)
+_SPIRIT2_QUAKE_LAYERS = (
+    ("sky", "linear-gradient(to bottom, #000 0%, #000 22%, transparent 38%)",
+     ((0, 0, 0, 0), (25, -1.5, 0.5, 0), (50, 1, -0.5, 0), (75, -0.5, 1, 0), (100, 0, 0, 0)), 1.7, -0.3, "50% 0%"),
+    ("far", "linear-gradient(to bottom, transparent 18%, #000 30%, #000 48%, transparent 62%)",
+     ((0, 0, 0, 0), (25, 2, -1, 0.3), (50, -2.5, 1, -0.3), (75, 1.5, 1.5, 0.2), (100, 0, 0, 0)), 1.3, -0.7, "50% 60%"),
+    ("left", "radial-gradient(ellipse 42% 48% at 10% 66%, #000 55%, transparent 100%)",
+     ((0, 0, 0, 0), (20, -3, 1, -0.8), (45, 2.5, -1.5, 0.6), (70, -2, -1, -0.5), (100, 0, 0, 0)), 1.1, -0.2, "10% 100%"),
+    ("right", "radial-gradient(ellipse 36% 50% at 94% 62%, #000 55%, transparent 100%)",
+     ((0, 0, 0, 0), (25, 3, -1, 0.7), (50, -2.5, 1.5, -0.6), (80, 2, 1, 0.4), (100, 0, 0, 0)), 1.2, -0.5, "95% 100%"),
+    ("bottom", "linear-gradient(to top, #000 0%, #000 8%, transparent 18%)",
+     ((0, 0, 0, 0), (30, 1.5, 0.5, 0), (60, -1.5, -0.5, 0), (100, 0, 0, 0)), 0.9, -0.1, "50% 100%"),
+)
+
+
 def _spirit2_gen_layer(base64: str, token: str) -> str:
     """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
-    2026-10-10(사용자 지시 수정): 물결 왜곡이 아니라 **배경 전체가 지진처럼 요동** — 3초 내내 같은 세기로 흔들린다.
-    인물(오려낸 이미지)은 고정. 배경판은 살짝 키워 흔들려도 가장자리가 비지 않게 한다.
-    애니메이션은 이 층이 새로 그려질 때 시작한다(클릭마다 token 이 달라 다시 시작)."""
+    배경 영역별로 따로 흔들리고(_SPIRIT2_QUAKE_LAYERS) 인물(오려낸 이미지)은 고정. 배경판 그림은 style 에
+    한 번만 싣고 층들은 그 그림을 배경으로 재사용한다(용량). 클릭마다 token 이 달라 애니메이션이 새로 시작."""
     person = _file_base64(_SPIRIT2_PERSON_FILE)
     plate = _file_base64(_SPIRIT2_PLATE_FILE)
     if not person or not plate:
         return ""
-    name = f"autoSpiritQuake{token}"
-    # 한 묶음(불규칙 흔들림) 1.2초를 3초 동안 2.5번 — 세기 일정. 2026-10-10(사용자 지시): 속도 50%씩 두 번 감소
-    # (0.3→0.6→1.2초). 반복 횟수는 소수 허용(CSS) — 3초를 꽉 채운다.
-    steps = (
-        # 2026-10-10(사용자 지시): 흔들림 폭 50% 감소(이동·기울기 모두 절반).
-        (0, 0, 0), (-5, 2, -0.8), (4.5, -3, 0.7), (-3.5, -4, 0.45), (5.5, 1.5, -0.6), (-4.5, 3.5, 0.8),
-        (3.5, -2, -0.7), (-5.5, -1.5, 0.55), (3, 4.5, -0.45), (-2, -4.5, 0.7), (0, 0, 0),
-    )
-    frames = "".join(
-        f"{round(i * 10)}%{{transform:scale(1.12) translate({x}px,{y}px) rotate({r}deg);}}"
-        for i, (x, y, r) in enumerate(steps)
-    )
-    cycle = 1.2
-    loops = f"{AUTO_GEN_ANIM_SECONDS / cycle:g}"
+    cls = f"auto-sq-{token}"
+    css = [
+        f".{cls}{{position:absolute;inset:0;background-image:url(data:image/jpeg;base64,{plate});"
+        "background-size:cover;background-position:center;}"
+    ]
+    layers = []
+    for name, mask, frames, dur, delay, origin in _SPIRIT2_QUAKE_LAYERS:
+        kf = "".join(f"{p}%{{transform:translate({x}px,{y}px) rotate({r}deg);}}" for p, x, y, r in frames)
+        css.append(f"@keyframes {cls}-{name}{{{kf}}}")
+        layers.append(
+            f'<div class="{cls}" style="-webkit-mask-image:{mask};mask-image:{mask};transform-origin:{origin};'
+            f'animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s infinite;"></div>'
+        )
     return f"""
           <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
-            <img src="data:image/jpeg;base64,{plate}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;transform:scale(1.12);animation:{name} {cycle:g}s linear {loops};">
+            <div class="{cls}"></div>{''.join(layers)}
             <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
           </div>
-          <style>@keyframes {name}{{{frames}}}</style>"""
+          <style>{''.join(css)}</style>"""
 
 
 def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None) -> str:
