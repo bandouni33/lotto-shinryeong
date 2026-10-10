@@ -96,6 +96,13 @@ _AUTH_BANNER_LW = '[data-testid="stLayoutWrapper"]'
 # 둘 다 따로 검사한다(실측: 시뮬레이션에서 겹친 것은 버튼 묶음이었다 — 새 것 y=158, 이전 것 y=289).
 # 새 것이 실제로 그려진(stale=false) 뒤에만 이전 것을 숨긴다 — 그 전에 숨기면 버튼이 잠깐 통째로 사라진다.
 _AUTH_BANNER_DUP_KEYS = ("auth_banner_wrap", "auth_banner_kakao")
+AUTH_BANNER_SLOT_KEY = "auth_banner_slot"
+# 칸 자체와 1.64 가 덧씌우는 stLayoutWrapper 겉껍데기를 모두 상자 없이(contents) 둔다 — 안내창 요소들이
+# 예전처럼 바깥 블록의 직접 자식처럼 배치된다(간격·sticky 기준 동일, 비었을 땐 공간 0).
+_AUTH_BANNER_SLOT_CSS = (
+    f".st-key-{AUTH_BANNER_SLOT_KEY},"
+    f"{_AUTH_BANNER_LW}:has(> .st-key-{AUTH_BANNER_SLOT_KEY}){{display:contents !important;}}"
+)
 _AUTH_BANNER_DUPLICATE_HIDE_CSS = "".join(
     f"{_AUTH_BANNER_LW}:has(> .st-key-{k} [data-stale=\"true\"])"
     f":has(~ {_AUTH_BANNER_LW} > .st-key-{k} [data-stale=\"false\"]),"
@@ -1924,6 +1931,7 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
         f'<style>.st-key-{WALLET_TOAST_BOX_KEY} [data-stale="true"]'
         "{display:none !important;}"
         + _AUTH_BANNER_DUPLICATE_HIDE_CSS
+        + _AUTH_BANNER_SLOT_CSS
         + "</style>"
     )
     toast = st.session_state.pop("wallet_toast", None)
@@ -1937,7 +1945,12 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
             if toast_error:
                 st.error(toast_error)
 
-    render_auth_banner()
+    # 2026-10-10(사용자 신고·영상 — 로그인 안내가 아래에서 보였다가 위로 튀어오름): 안내창이 열릴 때
+    # 그 자리에 요소 여러 개가 새로 끼어들어 뒤따르는 화면 요소의 순번이 한꺼번에 밀렸고, 다시 그리는
+    # 동안 옛 요소·새 요소가 뒤섞여 보였다. 안내창을 항상 존재하는 칸(AUTH_BANNER_SLOT_KEY) 안에
+    # 그려 뒤 요소들의 순번을 고정한다. 칸은 display:contents 라 상자·간격이 없다(배치·sticky 그대로).
+    with st.container(key=AUTH_BANNER_SLOT_KEY):
+        render_auth_banner()
 
     zp_uid = st.session_state.get("zp_user_id")
     if zp_uid:
