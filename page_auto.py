@@ -1659,6 +1659,18 @@ def render():
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] {
             min-width: 0 !important;
         }
+        /* 2026-10-10(사용자 신고 "저장내역이 조합시작보다 살짝 밑으로 처짐"): 저장내역 열에는 공용
+           버튼(combo_history_ui.render_history_button)이 넣는 높이 0짜리 style 칸이 버튼 위에 하나 더
+           있어, 열 안 간격(16px)만큼 열이 길어지고 세로 가운데 정렬로 8px 내려가 보였다(로컬 렌더 실측:
+           조합시작 y=180, 저장내역 y=188). 이 버튼 줄의 두 열만 안 간격을 없애 높이를 같게 맞춘다. */
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        /* 위에서 줄어든 열 높이(16px)만큼 위·아래 8px 씩 채워, 조합시작 위치와 아래 이미지 위치는 예전 그대로 둔다. */
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stHorizontalBlock"] {
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+        }
         .st-key-auto_page_columns_6n36s5 {
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
