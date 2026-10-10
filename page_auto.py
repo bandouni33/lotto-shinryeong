@@ -206,29 +206,33 @@ def _file_base64(path: str) -> str:
         return ""
 
 
-# 2026-10-10(사용자 지시 3차 — "그림 자체가 똑같이 움직이니 부자연, 각각 움직여야, 더 부드럽게"):
-# 배경을 영역별 층(하늘·먼 산·왼쪽 누각/꽃·오른쪽 절벽/폭포·아래 난간)으로 나눠 각자 다른 방향·속도·박자로
-# 부드럽게(ease-in-out) 흔들린다. 가까운 층일수록 크게, 하늘은 아주 작게. 층 경계는 부드러운 그라데이션 가림막.
-# 밑에는 움직이지 않는 배경판이 깔려 있어 층이 움직여도 빈틈이 보이지 않는다(확대 없음).
-# (이름, 가림막, [(%, x px, y px, 회전 deg)], 주기 s, 시작 어긋남 s, 회전 중심)
+# 2026-10-10(사용자 지시 4차 — "부분별로 더 쪼개서, 하늘·구름은 움직이지 않게, 땅·건물은 살짝, 나무는 바람에
+# 휩쓸리듯, 더 느리게"): 배경을 영역 가림막(spirit2_layers/*.png — scripts/make_spirit2_layers.py 로 생성)
+# 별로 따로 움직인다. 하늘은 그대로. 땅·산·절벽·난간·누각은 아주 살짝 천천히 떨리고, 나무·꽃은 한쪽으로 기울며
+# 흔들린다(회전 중심을 각 영역 아래쪽에 두고 기울기 skewX). 밑에는 움직이지 않는 배경판이 깔려 빈틈이 없다.
+# (가림막 이름, [(%, x px, y px, 회전 deg, 기울기 deg)], 주기 s, 시작 지연 s, 회전 중심) — 위에서부터 겹치는 순서.
+# 시작 지연은 0 — 모두 멈춘 모습(원래 그림)에서 출발해 주기 차이로 서로 어긋난다(시작 순간 튀지 않게).
+_SPIRIT2_LAYER_DIR = "spirit2_layers"
 _SPIRIT2_QUAKE_LAYERS = (
-    ("sky", "linear-gradient(to bottom, #000 0%, #000 22%, transparent 38%)",
-     ((0, 0, 0, 0), (25, -1.5, 0.5, 0), (50, 1, -0.5, 0), (75, -0.5, 1, 0), (100, 0, 0, 0)), 1.7, -0.3, "50% 0%"),
-    ("far", "linear-gradient(to bottom, transparent 18%, #000 30%, #000 48%, transparent 62%)",
-     ((0, 0, 0, 0), (25, 2, -1, 0.3), (50, -2.5, 1, -0.3), (75, 1.5, 1.5, 0.2), (100, 0, 0, 0)), 1.3, -0.7, "50% 60%"),
-    ("left", "radial-gradient(ellipse 42% 48% at 10% 66%, #000 55%, transparent 100%)",
-     ((0, 0, 0, 0), (20, -3, 1, -0.8), (45, 2.5, -1.5, 0.6), (70, -2, -1, -0.5), (100, 0, 0, 0)), 1.1, -0.2, "10% 100%"),
-    ("right", "radial-gradient(ellipse 36% 50% at 94% 62%, #000 55%, transparent 100%)",
-     ((0, 0, 0, 0), (25, 3, -1, 0.7), (50, -2.5, 1.5, -0.6), (80, 2, 1, 0.4), (100, 0, 0, 0)), 1.2, -0.5, "95% 100%"),
-    ("bottom", "linear-gradient(to top, #000 0%, #000 8%, transparent 18%)",
-     ((0, 0, 0, 0), (30, 1.5, 0.5, 0), (60, -1.5, -0.5, 0), (100, 0, 0, 0)), 0.9, -0.1, "50% 100%"),
+    # 땅·산·절벽·난간 — 살짝(±1px 안팎), 느리게
+    ("mtn_left", ((0, 0, 0, 0, 0), (30, -0.8, 0.4, 0, 0), (65, 0.7, -0.4, 0, 0), (100, 0, 0, 0, 0)), 1.9, 0, "15% 40%"),
+    ("mtn_right", ((0, 0, 0, 0, 0), (35, 0.8, -0.3, 0, 0), (70, -0.7, 0.4, 0, 0), (100, 0, 0, 0, 0)), 2.1, 0, "80% 45%"),
+    ("cliff_right", ((0, 0, 0, 0, 0), (40, -0.9, 0.3, 0, 0), (75, 0.6, -0.4, 0, 0), (100, 0, 0, 0, 0)), 1.7, 0, "95% 80%"),
+    ("rail", ((0, 0, 0, 0, 0), (45, 0.6, 0.2, 0, 0), (100, 0, 0, 0, 0)), 1.8, 0, "50% 100%"),
+    # 나무·꽃 — 바람에 한쪽으로 휩쓸리듯(기울기), 천천히
+    ("trees_left", ((0, 0, 0, 0, 0), (35, 1.5, 0, 0, -2.5), (55, 0.8, 0, 0, -1.2), (80, 1.8, 0, 0, -3), (100, 0, 0, 0, 0)), 3.0, 0, "15% 70%"),
+    ("trees_right", ((0, 0, 0, 0, 0), (30, 1.2, 0, 0, -2), (60, 0.5, 0, 0, -0.8), (85, 1.5, 0, 0, -2.6), (100, 0, 0, 0, 0)), 3.2, 0, "75% 70%"),
+    ("flowers_left", ((0, 0, 0, 0, 0), (30, 2.5, -0.5, 1.2, -4), (55, 1, 0, 0.4, -1.5), (80, 3, -0.5, 1.5, -5), (100, 0, 0, 0, 0)), 2.6, 0, "0% 92%"),
+    ("trees_right_low", ((0, 0, 0, 0, 0), (35, 2, -0.4, 0.8, -3.5), (60, 0.8, 0, 0.3, -1.2), (85, 2.4, -0.4, 1, -4.2), (100, 0, 0, 0, 0)), 2.8, 0, "92% 92%"),
+    # 누각 — 살짝(나무 위에 겹쳐 건물 모양 유지)
+    ("building", ((0, 0, 0, 0, 0), (40, 0.9, 0.3, 0.15, 0), (75, -0.7, -0.3, -0.12, 0), (100, 0, 0, 0, 0)), 2.0, 0, "10% 66%"),
 )
 
 
 def _spirit2_gen_layer(base64: str, token: str) -> str:
     """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
-    배경 영역별로 따로 흔들리고(_SPIRIT2_QUAKE_LAYERS) 인물(오려낸 이미지)은 고정. 배경판 그림은 style 에
-    한 번만 싣고 층들은 그 그림을 배경으로 재사용한다(용량). 클릭마다 token 이 달라 애니메이션이 새로 시작."""
+    영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정. 배경판 그림은 style 에 한 번만 싣고 층들은
+    그 그림을 배경으로 재사용한다(용량). 클릭마다 token 이 달라 애니메이션이 새로 시작."""
     person = _file_base64(_SPIRIT2_PERSON_FILE)
     plate = _file_base64(_SPIRIT2_PLATE_FILE)
     if not person or not plate:
@@ -236,16 +240,23 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
     cls = f"auto-sq-{token}"
     css = [
         f".{cls}{{position:absolute;inset:0;background-image:url(data:image/jpeg;base64,{plate});"
-        "background-size:cover;background-position:center;}"
+        "background-size:cover;background-position:center;"
+        "-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;}"
     ]
     layers = []
-    for name, mask, frames, dur, delay, origin in _SPIRIT2_QUAKE_LAYERS:
-        kf = "".join(f"{p}%{{transform:translate({x}px,{y}px) rotate({r}deg);}}" for p, x, y, r in frames)
-        css.append(f"@keyframes {cls}-{name}{{{kf}}}")
-        layers.append(
-            f'<div class="{cls}" style="-webkit-mask-image:{mask};mask-image:{mask};transform-origin:{origin};'
-            f'animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s infinite;"></div>'
+    for name, frames, dur, delay, origin in _SPIRIT2_QUAKE_LAYERS:
+        mask = _file_base64(os.path.join(_SPIRIT2_LAYER_DIR, f"{name}.png"))
+        if not mask:
+            continue
+        kf = "".join(
+            f"{p}%{{transform:translate({x}px,{y}px) rotate({r}deg) skewX({k}deg);}}" for p, x, y, r, k in frames
         )
+        css.append(f"@keyframes {cls}-{name}{{{kf}}}")
+        css.append(
+            f".{cls}-{name}{{-webkit-mask-image:url(data:image/png;base64,{mask});mask-image:url(data:image/png;base64,{mask});"
+            f"transform-origin:{origin};animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s infinite;}}"
+        )
+        layers.append(f'<div class="{cls} {cls}-{name}"></div>')
     return f"""
           <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
             <div class="{cls}"></div>{''.join(layers)}
