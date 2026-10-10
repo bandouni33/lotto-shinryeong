@@ -359,6 +359,53 @@ def test_non_timeout_error_is_not_counted_as_timeout():
         )
 
 
+# ── P11: 연결 끊김(aiohttp ServerDisconnectedError) — 읽기만 다시 시도 (2026-10-10) ──
+
+
+def test_read_retries_on_server_disconnect_but_write_does_not():
+    import aiohttp
+
+    pool, _ = _pool(1)
+    slot, client = pool.acquire()
+    conn = db_turso._ConnectionWrapper(client, pool, slot)
+    original_sleep = db_turso.time.sleep
+    db_turso.time.sleep = lambda _s: None
+    try:
+        left = {"n": 1}
+
+        def once(sql):
+            if left["n"] > 0:
+                left["n"] -= 1
+                return aiohttp.ServerDisconnectedError()
+            return None
+
+        client.fail_on = once
+        before = client.calls
+        conn.execute("SELECT id FROM t")  # 한 번 끊겨도 성공해야 한다
+        assert client.calls - before == 2, f"읽기를 다시 시도하지 않았다: {client.calls - before}회"
+
+        left["n"] = 1
+        before = client.calls
+        raised = None
+        try:
+            conn.execute("UPDATE t SET x = 1")
+        except Exception as e:  # noqa: BLE001
+            raised = e
+        assert isinstance(raised, aiohttp.ServerDisconnectedError), f"쓰기 예외가 바뀌었다: {raised!r}"
+        assert client.calls - before == 1, "쓰기를 다시 시도했다(이중 반영 위험)"
+
+        client.fail_on = lambda sql: aiohttp.ServerDisconnectedError()
+        raised = None
+        try:
+            conn.execute("SELECT 1")
+        except Exception as e:  # noqa: BLE001
+            raised = e
+        assert isinstance(raised, aiohttp.ServerDisconnectedError), "계속 끊기면 결국 예외가 올라가야 한다"
+    finally:
+        client.fail_on = None
+        db_turso.time.sleep = original_sleep
+
+
 # ── P10: 풀 크기 파싱 ────────────────────────────────────────────
 
 

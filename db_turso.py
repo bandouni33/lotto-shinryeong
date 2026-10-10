@@ -13,6 +13,11 @@ import threading
 import time
 
 import libsql_client
+
+try:  # libsql_client 가 쓰는 HTTP 라이브러리 — 연결 끊김 예외 종류를 알아보는 데만 쓴다.
+    from aiohttp import ClientConnectionError as _AiohttpConnectionError
+except Exception:  # pragma: no cover - aiohttp 는 libsql_client 의존성이라 보통 항상 있다
+    _AiohttpConnectionError = None
 import streamlit as st
 
 # 2026-09-03: 어제 앱이 12시간 동안 먹통이었던 사고 이후 원인 조사 —
@@ -297,6 +302,21 @@ class _ConnectionWrapper:
                 raise
             except KeyError:
                 if i + 1 < attempts:
+                    time.sleep(0.35 * (i + 1))
+                    continue
+                raise
+            except Exception as e:
+                # 2026-10-10(실기기 영상 — 자동조합 '확인 후 진행' 중 aiohttp ServerDisconnectedError 가
+                # 화면에 그대로 노출): Turso 가 쉬고 있던 연결을 끊어 둔 상태에서 첫 요청이 실패하는 전형적인
+                # 일시 오류다. 읽기(SELECT)만 위 KeyError 와 같은 방식으로 다시 시도한다 — 쓰기는 서버에
+                # 반영됐는지 알 수 없어 기존처럼 그대로 올려보낸다(이중 반영 방지).
+                if (
+                    is_read
+                    and _AiohttpConnectionError is not None
+                    and isinstance(e, _AiohttpConnectionError)
+                    and i + 1 < attempts
+                ):
+                    print(f"[db_turso] 읽기 연결 끊김 재시도 {i + 1}: {type(e).__name__}", flush=True)
                     time.sleep(0.35 * (i + 1))
                     continue
                 raise
