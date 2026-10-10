@@ -1728,16 +1728,55 @@ def get_draw_generation_stats(draw_round: int) -> dict | None:
     }
 
 
+# 2026-10-10(사용자 승인 — 자동조합 첫 화면 DB 12~22회·1.7~4.5초): "동기화 끝남"은 한 번 기록되면
+# 지워지는 경로가 없다(DELETE 없음, 추첨 결과는 안 바뀜). 그래서 끝난 회차는 이 프로세스가 기억해 두고
+# 다시 묻지 않는다 — "아직 안 끝남"은 기억하지 않는다(매번 실제로 확인). 묶음 확인은
+# prefetch_synced_win_rank_rounds 가 1회 조회로 채운다. 기억은 DB 연결 함수별로 따로 둔다(테스트 격리
+# DB 와 섞이지 않게 — db_turso.connect 를 바꿔치기하면 다른 칸을 쓴다).
+_SYNCED_WIN_RANK_MEMO: dict[int, set[tuple[int, str]]] = {}
+
+
+def _synced_memo() -> set[tuple[int, str]]:
+    return _SYNCED_WIN_RANK_MEMO.setdefault(id(db_turso.connect), set())
+
+
+_SYNCED_WIN_RANK_PREFETCHED: set[tuple[int, str]] = set()
+
+
+def prefetch_synced_win_rank_rounds(source: str) -> None:
+    """이 출처의 '동기화 끝난 회차'를 한 번의 조회로 기억해 둔다(회차마다 따로 묻던 것을 대신).
+    프로세스(·DB 연결 함수)당 출처별 1회만 — 그 뒤 새로 끝난 회차는 is_win_rank_synced 가 개별 확인한다."""
+    done_key = (id(db_turso.connect), source)
+    if done_key in _SYNCED_WIN_RANK_PREFETCHED:
+        return
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT draw_round FROM draw_win_rank_sync_status WHERE source = ?",
+        (source,),
+    ).fetchall()
+    conn.close()
+    memo = _synced_memo()
+    for row in rows:
+        memo.add((int(row[0]), source))
+    _SYNCED_WIN_RANK_PREFETCHED.add(done_key)
+
+
 def is_win_rank_synced(draw_round: int, source: str) -> bool:
     """이 회차(+출처)의 당첨 등수 동기화가 이미 끝났는지. source는
     "lotto_combinations" 또는 "guest_generated_combos" 중 하나로 호출부에서
     구분해 쓴다 — 같은 회차라도 두 테이블은 별도로 동기화되기 때문."""
+    key = (int(draw_round), source)
+    memo = _synced_memo()
+    if key in memo:
+        return True
     conn = _connect()
     row = conn.execute(
         "SELECT 1 FROM draw_win_rank_sync_status WHERE draw_round = ? AND source = ?",
         (int(draw_round), source),
     ).fetchone()
     conn.close()
+    if row is not None:
+        memo.add(key)
     return row is not None
 
 
@@ -1753,6 +1792,7 @@ def mark_win_rank_synced(draw_round: int, source: str) -> None:
     )
     conn.commit()
     conn.close()
+    _synced_memo().add((int(draw_round), source))
 
 
 def update_win_ranks_for_draw(
@@ -2348,6 +2388,7 @@ __all__ = [
     "update_win_ranks_for_draw",
     "is_win_rank_synced",
     "mark_win_rank_synced",
+    "prefetch_synced_win_rank_rounds",
     "get_win_rank_counts_by_draw",
     "get_combination_count_by_draw",
     "get_draw_extraction_stats",

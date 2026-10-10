@@ -743,6 +743,14 @@ def sync_marketing_win_ranks_for_db_draws(filepath: str = DATA_FILE) -> list[dic
     from marketing_db import get_draw_extraction_stats, init_marketing_tables
 
     init_marketing_tables()
+    # 2026-10-10: 회차마다 따로 묻던 "동기화 끝났는지"를 1회 조회로 미리 채운다(marketing_db 설명).
+    # 배포 직후 옛 marketing_db 가 남아 있으면(이름 없음) 조용히 예전 방식으로 동작한다.
+    try:
+        from marketing_db import prefetch_synced_win_rank_rounds
+
+        prefetch_synced_win_rank_rounds(_WIN_RANK_SOURCE_LOTTO)
+    except Exception:
+        pass
     synced: list[dict] = []
     for item in get_draw_extraction_stats(limit=100):
         outcome = sync_marketing_win_ranks_for_round(int(item["draw_round"]), filepath)
@@ -769,6 +777,12 @@ def sync_generated_combo_win_ranks(filepath: str = DATA_FILE) -> list[dict]:
     )
 
     init_marketing_tables()
+    try:
+        from marketing_db import prefetch_synced_win_rank_rounds
+
+        prefetch_synced_win_rank_rounds(_WIN_RANK_SOURCE_GENERATED)
+    except Exception:
+        pass
     synced: list[dict] = []
     for draw_round in get_generated_combo_pending_draw_rounds():
         if is_win_rank_synced(draw_round, _WIN_RANK_SOURCE_GENERATED):
