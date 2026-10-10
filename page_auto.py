@@ -186,9 +186,21 @@ html, body {{
 </html>"""
 
 
-def _spirit2_image_block(base64: str, slot_class: str) -> str:
-    """정적 원형 크롭 이미지 (물결 애니메이션은 추후 원형 비율에 맞게 재조정해서 복원 예정)."""
-    return f"""
+# 2026-10-10(사용자 지시): '조합시작'을 누르면 신령이 직접 번호를 골라 주는 연출 — 이미지가 출렁이고
+# 손 위의 볼 고리가 돌다가 결과가 나온다(평소에는 지금처럼 정지 원형 이미지). 8/9에 원형 크롭으로 바꾸며
+# 꺼 두었던 물결을 원형에 맞춰 되살리되, 저사양 폰을 위해 SVG 필터 대신 CSS 변형만 쓴다.
+AUTO_SUMMON_SECONDS = 2.5
+AUTO_SUMMON_CAPTION = "신령이 번호를 고르는 중…"
+# 볼 고리의 중심·반지름(이미지 512×512 기준 실측: 중심 (322, 402), 볼 바깥 반지름 약 70px).
+_ORB_CENTER = "63% 78.5%"
+# (원 반지름은 %로 줄 수 없어 정사각형 상자 기준 타원 15% 15% 로 쓴다 — circle 15% 는 브라우저가 무시한다)
+_ORB_RADIUS = "15%"
+
+
+def _spirit2_image_block(base64: str, slot_class: str, summoning: bool = False) -> str:
+    """원형 크롭 이미지. summoning=True 면 출렁임·볼 회전·빛 연출 층을 겹친다(위치·크기는 같다)."""
+    if not summoning:
+        return f"""
     <div class="{slot_class}">
       <div class="auto-spirit2-wrap">
         <div class="auto-spirit2-ripple">
@@ -199,6 +211,146 @@ def _spirit2_image_block(base64: str, slot_class: str) -> str:
       </div>
     </div>
     """
+    src = f"data:image/jpeg;base64,{base64}"
+    return f"""
+    <div class="{slot_class} auto-spirit2-summoning">
+      <div class="auto-spirit2-wrap">
+        <div class="auto-spirit2-ripple">
+          <img class="auto-spirit2-img auto-spirit2-img-base" src="{src}" alt="로또신령2">
+          <div class="auto-summon-layer auto-summon-wave" aria-hidden="true">
+            <img class="auto-spirit2-img auto-summon-img" src="{src}" alt="">
+          </div>
+          <div class="auto-summon-layer auto-summon-orbs" aria-hidden="true">
+            <img class="auto-spirit2-img auto-summon-img" src="{src}" alt="">
+          </div>
+          <div class="auto-summon-layer auto-summon-glow" aria-hidden="true"></div>
+        </div>
+      </div>
+      <div class="auto-summon-caption">{AUTO_SUMMON_CAPTION}</div>
+    </div>
+    """
+
+
+def _summon_css() -> str:
+    """연출 전용 CSS — 이 클래스들은 summoning 때만 생기므로 평소 화면에는 영향이 없다."""
+    return f"""<style>
+    .auto-spirit2-summoning .auto-spirit2-ripple {{ position: relative !important; }}
+    .auto-spirit2-summoning .auto-spirit2-img-base {{
+        animation: autoSummonGlow 0.9s ease-in-out infinite !important;
+    }}
+    .auto-summon-layer {{
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        pointer-events: none; border-radius: 50%; overflow: hidden;
+    }}
+    .auto-summon-layer .auto-summon-img {{
+        width: 100% !important; height: 100% !important; display: block !important;
+        object-fit: cover !important; border: none !important; box-shadow: none !important;
+        border-radius: 50% !important;
+    }}
+    /* 출렁임: 얼굴(중앙 위)은 가만히 두고 바깥만 흔들린다 */
+    .auto-summon-wave {{
+        -webkit-mask-image: radial-gradient(ellipse 20% 19% at 47% 37%, transparent 0%, transparent 70%, rgba(0,0,0,.35) 82%, black 92%);
+        mask-image: radial-gradient(ellipse 20% 19% at 47% 37%, transparent 0%, transparent 70%, rgba(0,0,0,.35) 82%, black 92%);
+    }}
+    .auto-summon-wave .auto-summon-img {{
+        transform-origin: 50% 45%;
+        animation: autoSummonWave 0.8s ease-in-out infinite;
+        will-change: transform;
+    }}
+    /* 볼 고리만 오려 내어 손 위에서 돌린다 */
+    .auto-summon-orbs {{
+        -webkit-mask-image: radial-gradient(ellipse {_ORB_RADIUS} {_ORB_RADIUS} at {_ORB_CENTER}, black 0%, black 78%, transparent 100%);
+        mask-image: radial-gradient(ellipse {_ORB_RADIUS} {_ORB_RADIUS} at {_ORB_CENTER}, black 0%, black 78%, transparent 100%);
+    }}
+    .auto-summon-orbs .auto-summon-img {{
+        transform-origin: {_ORB_CENTER};
+        animation: autoSummonOrbSpin 1.1s linear infinite;
+        will-change: transform;
+    }}
+    .auto-summon-glow {{
+        background: radial-gradient(ellipse {_ORB_RADIUS} {_ORB_RADIUS} at {_ORB_CENTER}, rgba(255,236,170,.55) 0%, rgba(255,214,102,.18) 55%, transparent 100%);
+        mix-blend-mode: screen;
+        animation: autoSummonPulse 0.6s ease-in-out infinite alternate;
+    }}
+    .auto-summon-caption {{
+        margin-top: 8px; text-align: center; color: #ffe08a; font-size: 14px; font-weight: 700;
+        letter-spacing: 0.02em; animation: autoSummonPulse 0.6s ease-in-out infinite alternate;
+    }}
+    @keyframes autoSummonWave {{
+        0%, 100% {{ transform: perspective(820px) rotateY(0deg) skewX(0deg) scale(1); }}
+        25% {{ transform: perspective(820px) rotateY(2.6deg) skewX(-1.6deg) scale(1.012); }}
+        75% {{ transform: perspective(820px) rotateY(-2.6deg) skewX(1.6deg) scale(1.012); }}
+    }}
+    @keyframes autoSummonOrbSpin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+    @keyframes autoSummonPulse {{ from {{ opacity: .45; }} to {{ opacity: 1; }} }}
+    @keyframes autoSummonGlow {{
+        0%, 100% {{ box-shadow: 0 6px 16px rgba(6,182,212,.35); }}
+        50% {{ box-shadow: 0 0 26px 6px rgba(255,214,102,.75); }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+        .auto-summon-wave .auto-summon-img, .auto-summon-orbs .auto-summon-img {{ animation: none !important; }}
+    }}
+    </style>"""
+
+
+_AUTO_SUMMON_KEY = "auto_summon_pending"
+
+
+def _has_enough_points(member_id: int, quantity: int) -> bool:
+    try:
+        from wallet_db import calc_auto_cost, get_balance
+
+        return get_balance(member_id) >= calc_auto_cost(quantity)
+    except Exception:
+        return True  # 판단 못 하면 연출 후 실제 처리에 맡긴다(부족하면 거기서 충전창)
+
+
+def _execute_auto_purchase(pending: dict) -> None:
+    """적립금 차감·조합 배정·결과 표시 플래그 — 예전 확인창 콜백 안에 있던 처리를 그대로 옮겼다."""
+    from auto_purchase_service import NEXT_DRAW_POOL_BANNER, process_auto_purchase
+
+    quantity = pending["quantity"]
+    method = pending["method"]
+    sms_days = pending.get("sms_days", [])
+    outcome = process_auto_purchase(pending["member_id"], quantity, method, pending.get("phone", ""), sms_days)
+    if outcome.get("ok"):
+        entry = _purchase_history_entry(outcome, method, sms_days)
+        _append_purchase_history(entry)
+        st.session_state["auto_history_blink"] = True
+        # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역 하단으로 밀려 내려가 홈 버튼이
+        # 안 보인다는 신고 — 다음 렌더에서 최상단으로 한 번 스크롤한다.
+        st.session_state["auto_scroll_top"] = True
+        st.session_state["auto_generation_complete"] = True
+    elif outcome.get("error") == "insufficient_balance":
+        # 2026-09-08(사용자 지시): 번개조합·안티·액땜조합과 동일 — 그 자리에서 바로 충전할 수
+        # 있는 통합 창을 띄운다. cost 는 process_auto_purchase 가 실제 시도한 값을 그대로 쓴다.
+        from wallet_db import calc_auto_cost
+        from wallet_ui import open_insufficient_balance_dialog
+
+        open_insufficient_balance_dialog(outcome.get("cost") or calc_auto_cost(quantity))
+    elif outcome.get("error") == "next_draw_pool_missing":
+        st.session_state["auto_purchase_error"] = outcome.get("message") or NEXT_DRAW_POOL_BANNER
+    else:
+        st.session_state["auto_purchase_error"] = "구매 처리에 실패했습니다."
+
+
+def _run_pending_auto_purchase(spirit2_base64: str) -> bool:
+    """확인창에서 '확인 후 진행'을 누른 다음 렌더: 신령 연출을 먼저 그려 보여 주고 잠시 뒤 조합한다.
+    처리했으면 True(호출부가 st.rerun()). 대기 표시는 먼저 지워 두므로 새로고침·연타로 두 번 처리되지 않는다."""
+    import time as _time_mod
+
+    pending = st.session_state.pop(_AUTO_SUMMON_KEY, None)
+    if not pending:
+        return False
+    if spirit2_base64:
+        st.markdown(_summon_css(), unsafe_allow_html=True)
+        st.markdown(
+            _spirit2_image_block(spirit2_base64, "auto-spirit2-slot-right", summoning=True),
+            unsafe_allow_html=True,
+        )
+        _time_mod.sleep(AUTO_SUMMON_SECONDS)
+    _execute_auto_purchase(pending)
+    return True
 
 
 def _marketing_db():
@@ -2795,7 +2947,6 @@ def render():
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
                         from auth_providers import current_member_id
-                        from auto_purchase_service import process_auto_purchase
 
                         def _auto_dialog_close(
                             confirmed: bool,
@@ -2824,45 +2975,18 @@ def render():
 
                                 st.session_state["auto_purchase_error"] = GATE_INLINE_HINT
                                 return
-                            outcome = process_auto_purchase(
-                                mid,
-                                selected_quantity,
-                                purchase_method,
-                                phone,
-                                st.session_state.get("auto_sms_days", []),
-                            )
-                            if outcome.get("ok"):
-                                entry = _purchase_history_entry(
-                                    outcome,
-                                    purchase_method,
-                                    st.session_state.get("auto_sms_days", []),
-                                )
-                                _append_purchase_history(entry)
-                                st.session_state["auto_history_blink"] = True
-                                # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역
-                                # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
-                                # 다음 렌더에서 최상단으로 한 번 스크롤한다.
-                                st.session_state["auto_scroll_top"] = True
-                                st.session_state["auto_generation_complete"] = True
-                            elif outcome.get("error") == "insufficient_balance":
-                                # 2026-09-08(사용자 지시): 번개조합·안티·액땜조합과
-                                # 동일 — "부족합니다" 문구만 띄우지 않고 그 자리에서
-                                # 바로 충전할 수 있는 통합 창을 띄운다. cost는
-                                # auto_purchase_service.process_auto_purchase가 실제
-                                # 시도한 값을 그대로 쓴다(별도로 다시 계산하지 않음 —
-                                # selected_quantity와 어긋날 여지를 없앤다).
-                                from wallet_db import calc_auto_cost
-                                from wallet_ui import open_insufficient_balance_dialog
-
-                                open_insufficient_balance_dialog(
-                                    outcome.get("cost") or calc_auto_cost(selected_quantity)
-                                )
-                            elif outcome.get("error") == "next_draw_pool_missing":
-                                st.session_state["auto_purchase_error"] = (
-                                    outcome.get("message") or NEXT_DRAW_POOL_BANNER
-                                )
-                            else:
-                                st.session_state["auto_purchase_error"] = "구매 처리에 실패했습니다."
+                            # 2026-10-10(사용자 지시): 바로 조합하지 않고 신령 연출(약 2.5초) 뒤에
+                            # 조합한다 — 실제 처리는 아래 신령 이미지 자리(_run_pending_auto_purchase)에서.
+                            # 적립금이 모자라면 연출 없이 바로 처리해 충전창을 곧장 띄운다.
+                            st.session_state[_AUTO_SUMMON_KEY] = {
+                                "member_id": int(mid),
+                                "quantity": selected_quantity,
+                                "method": purchase_method,
+                                "phone": phone,
+                                "sms_days": list(st.session_state.get("auto_sms_days", [])),
+                            }
+                            if not _has_enough_points(int(mid), selected_quantity):
+                                _execute_auto_purchase(st.session_state.pop(_AUTO_SUMMON_KEY))
 
                         points_notice_dialog("auto", quantity=selected_quantity, on_close=_auto_dialog_close)
 
@@ -2884,6 +3008,8 @@ def render():
 
         # ── 신령 이미지 + 회차별 당첨번호 배출 (2열 밖·전체 너비) ──
         with st.container(key="auto_spirit_below_confirm_6n36s5"):
+            if _run_pending_auto_purchase(spirit2_base64):
+                st.rerun()
             if spirit2_base64:
                 st.markdown(
                     _spirit2_image_block(

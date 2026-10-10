@@ -111,7 +111,9 @@ def _with_timeout_js(source: str) -> str:
 
 def _previous_source() -> str:
     """이 수정 직전 소스(대조군). 아직 커밋 전이면 HEAD가 곧 직전 소스다."""
-    found = _git("log", "-S", "IAP_DISPATCH_TIMEOUT_MS", "--format=%H", "-1", "--", TSX_REL)
+    # 2026-10-10: 가장 "처음" 이 상수를 넣은 커밋의 직전이 대조군이다. 예전엔 가장 최근 변경(-1)을 골라,
+    # 그 뒤 같은 상수를 건드린 커밋(애플 결제 추가)이 생기자 '이미 고쳐진 소스'를 대조군으로 잡아 I5 가 실패했다.
+    found = _git("log", "-S", "IAP_DISPATCH_TIMEOUT_MS", "--format=%H", "--reverse", "--", TSX_REL)
     hashes = [h for h in found.stdout.split() if h]
     rev = f"{hashes[0]}^" if hashes else "HEAD"
     shown = _git("show", f"{rev}:{TSX_REL}")
