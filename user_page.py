@@ -80,6 +80,7 @@ def _reload_if_stale(module):
 # DB 연결 풀·지갑 원장 모듈(db_turso·wallet_db)과 결제 모듈은 상태를 들고 있어 대상에서 뺀다.
 _CORE_RELOAD_ORDER = (
     "shared_ui_styles",
+    "in_session_nav",
     "legal_notices",
     "login_gate",
     "security_log",
@@ -361,6 +362,15 @@ if _apple_rerun:
     st.rerun()
 
 current_page = st.query_params.get("page", "main")
+
+# 2026-10-10(사용자 승인 ③ 시험판): 메인 ↔ 자동조합은 새로 불러오지 않고 같은 세션 안에서 바꿔 그린다.
+# 스위치·대상 화면은 in_session_nav 한 곳에만 있다. 실패해도 링크는 예전처럼 동작한다.
+try:
+    import in_session_nav as _in_session_nav
+
+    _in_session_nav.render(current_page)
+except Exception:
+    pass
 
 st.markdown(
     f'<style>:root{{--app-build:"{base64.b64encode(b"lotto-shinryeong|com.bandouni.lottoshinryeong").decode()}"}}</style>',
