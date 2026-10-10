@@ -521,14 +521,25 @@ if current_page in ("main", "thunder", "auto", "stats", "birthday", "advanced", 
     # 줄임)를 예전엔 여기 공통 영역에서 무조건 호출해서, 결과를 실제로 쓰는
     # main 화면이 아닌 다른 화면(자동구매·번개조합 등)으로 옮길 때마다도
     # 매번 안 쓰이는 조회가 따라붙었다. main 화면일 때만 부르도록 옮긴다.
+    # 2026-10-10(사용자 승인 B): 업데이트 안내는 안드로이드 구버전 앱(56 이하)에만 띄운다 — 웹·iOS·
+    # 이미 새 버전인 앱에는 뜨지 않는다(판정 기준점: wallet_ui.is_outdated_android_app). 대상이 아니면
+    # 설정 조회도 하지 않는다.
     _update_notice = None
+    _un_target = False
     if current_page == "main":
+        try:
+            from wallet_ui import is_outdated_android_app
+
+            _un_target = is_outdated_android_app()
+        except Exception:
+            _un_target = False
+    if _un_target:
         from app_settings import get_update_notice
 
         _update_notice = get_update_notice()
     # 메인화면에서만 노출한다 — 예전엔 이 블록이 모든 페이지 공통 영역에 있어서
     # 화면을 옮길 때마다(자동구매→메인→자동구매 등) 계속 다시 떴다.
-    if current_page == "main" and _update_notice["version"]:
+    if _update_notice and _update_notice["version"]:
         _un_version = _update_notice["version"]
         _un_message = _html.escape(_update_notice["message"])
         _un_url = _update_notice["url"]

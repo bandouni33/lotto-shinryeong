@@ -1060,6 +1060,24 @@ def native_platform() -> str:
     return str(value or "").strip().lower()
 
 
+def is_outdated_android_app() -> bool:
+    """업데이트 안내 배너 대상 — 안드로이드 구버전 앱(빌드 56 이하)인지.
+
+    2026-10-10(사용자 승인 B): 56 이하는 native_platform 을 보내지 않는다(57부터 항상 보냄,
+    user_scope.internal_nav_href 가 화면 이동에도 이어 보냄). 그래서 "앱(native=1)인데 플랫폼 값이
+    없고, 접속 기기가 아이폰·아이패드가 아니고 안드로이드"면 구버전 안드로이드 앱으로 본다.
+    iOS 구버전(플랫폼 값 없음)은 Play 스토어 안내가 맞지 않아 제외한다."""
+    if not in_native_app() or native_platform():
+        return False
+    try:
+        ua = st.context.headers.get("User-Agent") or ""
+    except Exception:
+        ua = ""
+    if not isinstance(ua, str):
+        return False
+    return "Android" in ua and "iPhone" not in ua and "iPad" not in ua
+
+
 # 2026-10-09(테스터 신고 — 앱 주소가 크롬에서 열려 QR·카카오 로그인이 무반응): 앱 전용 기능을 앱 밖에서
 # 눌렀을 때 조용히 아무 일도 안 일어나는 대신 이 안내를 보인다.
 APP_ONLY_FEATURE_NOTICE = (
