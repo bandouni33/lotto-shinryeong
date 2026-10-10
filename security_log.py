@@ -34,6 +34,7 @@ EVENT_LABELS = {
     "render_timing": "화면 그리기 소요 시간(계측)",
     "af_subscribe_click": "고급필터 구독하기 누름(계측)",
     "af_subscribe_dialog": "고급필터 구독창 그림(계측)",
+    "restore_diag": "자동 재로그인 안 된 이유(계측)",
 }
 
 # 2026-09-19: cookie_reachable은 세션마다 정상적으로 매번 기록되는 순수 계측용
@@ -81,6 +82,8 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         # 2026-10-10: 고급필터 구독하기 실기기 먹통 추적(누름·창 열림) — 정상 트래픽이다.
         "af_subscribe_click",
         "af_subscribe_dialog",
+        # 2026-10-10: 자동 재로그인 실패 이유(계측) — 정상 트래픽이다.
+        "restore_diag",
     }
 )
 
