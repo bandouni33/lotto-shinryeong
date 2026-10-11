@@ -8,7 +8,7 @@ import time
 # 2026-10-08(로딩 시간 실측 — 사용자 지시 "로딩시간 줄이는 데 집중"): 이 화면 스크립트 한 번이
 # 서버에서 몇 ms 걸리는지(모든 화면 공통). _record_render_timing 참고.
 _LN_PAGE_T0 = time.perf_counter()
-_LN_RT_MAX_PER_SESSION = 3
+_LN_RT_MAX_PER_SESSION = 10  # 2026-10-11(사용자 승인): 3→10 — 같은 세션 화면 이동(자동·번개 등) 시간까지 재기 위해
 _LN_MARKS: list = []  # (구간 이름, 시작부터 ms) — 이 실행 동안만(모듈이 매 실행 새로 돈다)
 
 

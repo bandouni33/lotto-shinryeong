@@ -76,7 +76,7 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "apple_refund_points",
         "apple_refund_subscription",
         "apple_purchase_ok",
-        # 2026-10-08: 로딩 시간 실측(세션당 처음 3회) — 정상 트래픽이다.
+        # 2026-10-08: 로딩 시간 실측(세션당 처음 10회, 10-11 3→10) — 정상 트래픽이다.
         "render_timing",
         # 2026-10-10: 고급필터 구독하기 실기기 먹통 추적(누름·창 열림) — 정상 트래픽이다.
         "af_subscribe_click",

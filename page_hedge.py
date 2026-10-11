@@ -1056,29 +1056,11 @@ def render():
 
         render_generation_complete_notice("hedge")
     if st.session_state.pop("hedge_scroll_to_history", False):
-        # page_thunder.py와 동일한 방식(최상위 문서에 <script>를 심어 window.top에서
-        # 실행) — 저장내역 지점(.st-key-hedge_history_zone_6n36s5)으로 스크롤.
-        components.html(
-            """
-            <script>
-            (function() {
-                try {
-                    var s = window.top.document.createElement('script');
-                    s.textContent = "try{var el=document.querySelector('.st-key-hedge_history_zone_6n36s5');"
-                        + "if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}}catch(e){}";
-                    window.top.document.head.appendChild(s);
-                    s.parentNode.removeChild(s);
-                } catch (e) {
-                    try {
-                        var el2 = window.parent.document.querySelector('.st-key-hedge_history_zone_6n36s5');
-                        if (el2) el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    } catch (e2) {}
-                }
-            })();
-            </script>
-            """,
-            height=0,
-        )
+        # 2026-10-11(사용자 지시 — 자동·번개·번호검증 공통): 방금 저장한 카드가 5줄 모두 보이게.
+        # (예전 스크립트는 window.top 에 심어 운영 주소에서는 움직이지 않았다.)
+        from combo_history_ui import render_scroll_to_just_saved
+
+        render_scroll_to_just_saved()
     render_history_panel(
         container_key="hedge_history_zone_6n36s5",
         guest_id=history_guest_ids(),

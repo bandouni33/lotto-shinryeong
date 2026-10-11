@@ -2029,35 +2029,11 @@ def render():
 
         render_generation_complete_notice("thunder")
     if st.session_state.pop("thunder_scroll_to_history", False):
-        # page_auto.py의 구매 후 "최상단으로 스크롤"과 동일한 방식(최상위 문서에
-        # <script>를 심어 window.top에서 실행) — 이번엔 반대로 저장내역 지점
-        # (.st-key-th_history_zone_6n36s5, render_history_button의 컨테이너)으로
-        # 내려간다. 자동구매는 "저장내역까지 밀려 내려가 홈 버튼이 안 보였다"는
-        # 신고로 반대 방향(맨 위)으로 고정한 것이라 이 둘은 서로 다른 화면에서
-        # 의도적으로 반대 방향 — 번개조합만 사용자 지시로 아래쪽 고정.
-        components.html(
-            """
-            <script>
-            (function() {
-                try {
-                    // 2026-10-10: top 이 아니라 parent(앱 문서) — 운영 주소는 앱이 Cloud 껍데기 안 iframe 이라
-                    // top 문서엔 저장내역이 없어 스크롤이 안 됐다(wallet_ui._scroll_to_top_once 같은 원인).
-                    var s = window.parent.document.createElement('script');
-                    s.textContent = "try{var el=document.querySelector('.st-key-th_history_zone_6n36s5');"
-                        + "if(el){el.scrollIntoView({behavior:'smooth',block:'start'});}}catch(e){}";
-                    window.parent.document.head.appendChild(s);
-                    s.parentNode.removeChild(s);
-                } catch (e) {
-                    try {
-                        var el2 = window.parent.document.querySelector('.st-key-th_history_zone_6n36s5');
-                        if (el2) el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    } catch (e2) {}
-                }
-            })();
-            </script>
-            """,
-            height=0,
-        )
+        # 2026-10-11(사용자 지시 — 자동·번개·번호검증 공통): 저장내역 버튼 칸을 맨 위로 올리던 방식은
+        # 카드가 화면 아래에서 2~3줄만 보였다 — 방금 저장한 카드가 5줄 모두 보이게 공용 함수로 옮긴다.
+        from combo_history_ui import render_scroll_to_just_saved
+
+        render_scroll_to_just_saved()
     render_history_panel(
         container_key="th_history_zone_6n36s5",
         guest_id=history_guest_ids(),

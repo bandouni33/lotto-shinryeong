@@ -511,6 +511,49 @@ def _save_af_notice_dismiss_today() -> None:
     st.session_state.af_mobile_notice_dismissed = True
 
 
+_AF_NOTICE_DISMISS_WRAP = "af_notice_dismiss_wrap"
+_AF_NOTICE_DISMISS_BTN = "af_notice_dismiss_btn"
+
+
+def _render_af_notice_in_session_dismiss() -> None:
+    """PC 이용 안내 창의 ✕·'오늘 더이상 열지않음'을 같은 세션 안에서 처리한다(2026-10-11 사용자 승인).
+
+    링크(href=…&af_notice=dismiss)는 앱 전체를 새로 불러와(새 세션) 흰 화면 + 약 4초 로딩이 보였다
+    (57 실기기 영상·render_timing 새 세션 기록). 링크는 그대로 두고, 클릭을 가로채 창을 바로 숨기고
+    숨은 버튼(on_click=_save_af_notice_dismiss_today)을 누른다. 숨은 버튼이 없으면 예전처럼 링크로
+    이동한다(안전한 쪽으로 실패). 숨김 처리는 in_session_nav 와 같은 방식(stLayoutWrapper 겉껍데기까지)."""
+    import streamlit.components.v1 as _components
+
+    with st.container(key=_AF_NOTICE_DISMISS_WRAP):
+        st.markdown(
+            f"<style>.st-key-{_AF_NOTICE_DISMISS_WRAP},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{_AF_NOTICE_DISMISS_WRAP})'
+            "{display:none !important;}</style>",
+            unsafe_allow_html=True,
+        )
+        st.button("af_notice_dismiss", key=_AF_NOTICE_DISMISS_BTN, on_click=_save_af_notice_dismiss_today)
+        body = (
+            "(function(){if(window.__afNoticeDismissHooked)return;window.__afNoticeDismissHooked=true;"
+            "document.addEventListener('click',function(e){"
+            "var a=e.target&&e.target.closest?e.target.closest('.af-mobile-notice-banner a[href]'):null;"
+            "if(!a)return;"
+            "var b=document.querySelector('.st-key-" + _AF_NOTICE_DISMISS_BTN + " button');"
+            "if(!b)return;"
+            "e.preventDefault();"
+            "var n=a.closest('.af-mobile-notice-banner');"
+            "if(n){n.style.setProperty('display','none','important');}"
+            "b.click();},true);})();"
+        )
+        _components.html(
+            "<script>(function(){try{var d=window.parent.document;"
+            "if(d.__afNoticeDismissInjected)return;d.__afNoticeDismissInjected=true;"
+            "var s=d.createElement('script');s.textContent="
+            + json.dumps(body)
+            + ";d.head.appendChild(s);}catch(e){}})();</script>",
+            height=0,
+        )
+
+
 def _prompt_user_email() -> None:
     """사용자 데이터 스코프 초기화 (member/guest 자동 분리)."""
     from user_scope import init_guest_scope
@@ -1811,6 +1854,7 @@ if not _af_notice_dismissed_today():
         """,
         unsafe_allow_html=True,
     )
+    _render_af_notice_in_session_dismiss()
 
 # 2026-08-28: 다른 상세페이지(자동구매·번개조합 등)는 전부 사이드바를 CSS로
 # 숨겨놨는데 이 화면(고급필터)엔 그 처리가 빠져 있었다 — "«" 화살표를 누르면

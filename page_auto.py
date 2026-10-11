@@ -3230,6 +3230,9 @@ def render():
                         from wallet_ui import render_generation_complete_notice
 
                         render_generation_complete_notice("auto")
+                        # 2026-10-11(사용자 지시 — 자동·번개·번호검증 공통): 방금 저장한 카드가 5줄 모두
+                        # 보이게 화면을 옮긴다. 칸은 화면 맨 끝에서 그린다(위쪽 배치에 영향 없게).
+                        st.session_state["auto_scroll_to_saved"] = True
 
                     # 2026-08-29: "다음회차 준비 안됨" 배너는 구매내역(지난 회차 조회)과
                     # 무관하므로, 버튼 2열 전체 밑·저장내역 패널보다 위에 전체 폭으로
@@ -3383,3 +3386,7 @@ def render():
 
     # 조합 생성 표시 중이면 남은 시간 뒤 다시 그려 결과를 보인다(맨 끝 — 위쪽 배치 불변).
     _render_auto_generation_timer()
+    if st.session_state.pop("auto_scroll_to_saved", False):
+        from combo_history_ui import render_scroll_to_just_saved
+
+        render_scroll_to_just_saved()

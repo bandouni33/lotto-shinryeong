@@ -12,6 +12,8 @@ position:absolute 팝오버, 좁은 열 안에서 펼치다 번호가 잘리는 
 버튼 바로 밑 전체 폭 인라인 패널.
 """
 
+import json
+
 import streamlit as st
 
 RANK_LABELS = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
@@ -400,6 +402,66 @@ def _history_panel_open_key(blink_flag_key: str) -> str:
 
 # 방금 저장한 카드에 붙이는 깜빡임 클래스(2~3회 깜빡) — CSS도 이 파일 history_css() 안에만 있다.
 JUST_SAVED_CLASS = "history-just-saved"
+
+
+def render_scroll_to_just_saved() -> None:
+    """조합 완료 직후 1회: 방금 저장한 카드(JUST_SAVED_CLASS)가 **5줄 모두 보이게** 화면을 옮긴다.
+
+    2026-10-11(사용자 지시 — 자동·번개·번호검증 공통): 예전엔 화면마다 '저장내역 버튼 칸'을 맨 위로
+    올렸는데(block:'start'), 그 아래 완료 안내 + 회차 제목이 붙어 카드가 화면 아래에서 2~3줄만 보였다
+    (57 실기기 영상). 이제 카드의 아래 끝이 화면 안(여백 16px)에 오도록 필요한 만큼만 움직인다 —
+    이미 다 보이면 움직이지 않고, 카드가 화면보다 길면 카드 위 끝을 맞춘다.
+    · 스크립트는 앱 문서(window.parent)에 심는다 — 운영 주소는 앱이 Cloud 껍데기 안 iframe 이라
+      top 에서는 아무것도 안 움직였다(2026-10-10 번개조합 수정과 같은 원인).
+    · Streamlit 이 이번 실행을 다 그린 뒤(script-state notRunning이 잠깐 이어질 때) 한 번만 움직인다.
+    · 실제 스크롤 칸은 stMain(1.64 실측), 없으면 창."""
+    import streamlit.components.v1 as components
+
+    body = """
+(function(){
+  var CLS = '__CLS__', MARGIN = 16, started = Date.now(), idle = null;
+  function stateOf(){ var a = document.querySelector('[data-testid="stApp"]'); return a ? a.getAttribute('data-test-script-state') : null; }
+  function scroller(){
+    var m = document.querySelector('[data-testid="stMain"]');
+    return (m && m.scrollHeight > m.clientHeight + 1) ? m : null;
+  }
+  function move(){
+    var el = document.querySelector('.' + CLS);
+    if (!el) return false;
+    var card = (el.closest && el.closest('.hedge-pair-card, .auto-history-pair-card')) || el;
+    var r = card.getBoundingClientRect(), vh = window.innerHeight || document.documentElement.clientHeight;
+    var dy = 0;
+    if (r.bottom > vh - MARGIN) dy = r.bottom - (vh - MARGIN);
+    if (r.top - dy < MARGIN) dy = r.top - MARGIN;
+    if (Math.abs(dy) < 2) return true;
+    var s = scroller();
+    try { if (s) s.scrollBy({top: dy, behavior: 'smooth'}); else window.scrollBy({top: dy, behavior: 'smooth'}); }
+    catch (e) { if (s) s.scrollTop += dy; else window.scrollBy(0, dy); }
+    return true;
+  }
+  var t = setInterval(function(){
+    if (Date.now() - started > 8000) { clearInterval(t); return; }
+    if (stateOf() !== 'notRunning' || !document.querySelector('.' + CLS)) { idle = null; return; }
+    if (idle === null) { idle = Date.now(); return; }
+    if (Date.now() - idle >= 300) { clearInterval(t); move(); }
+  }, 100);
+})();
+""".replace("__CLS__", JUST_SAVED_CLASS)
+    # 높이 0 iframe 도 요소 칸(간격)을 차지하므로 겉껍데기까지 숨긴다(in_session_nav 와 같은 방식) —
+    # 완료 직후 한 번만 그려지는 칸이라 숨기지 않으면 그 순간 아래쪽이 살짝 밀린다.
+    wrap = "ln_scroll_just_saved_wrap"
+    with st.container(key=wrap):
+        st.markdown(
+            f"<style>.st-key-{wrap},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
+            unsafe_allow_html=True,
+        )
+        components.html(
+            "<script>(function(){try{var d=window.parent.document;var s=d.createElement('script');s.textContent="
+            + json.dumps(body)
+            + ";d.head.appendChild(s);s.parentNode.removeChild(s);}catch(e){}})();</script>",
+            height=0,
+        )
 
 
 def _just_saved_key(blink_flag_key: str) -> str:
