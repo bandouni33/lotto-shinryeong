@@ -137,11 +137,7 @@ def test_S1_server_reads_the_same_parameter_name():
     )
     assert "def native_platform() -> str:" in WALLET_SRC, "native_platform() 정의가 없다"
     assert "def in_ios_native_app() -> bool:" in WALLET_SRC, "in_ios_native_app() 정의가 없다"
-    # 안드로이드 스위치 값은 이번 작업에서 건드리지 않는다(iOS 때문에 라이브가 바뀌면 안 된다).
-    import wallet_ui
-
-    assert wallet_ui.IAP_CHARGE_ENABLED is False
-    assert wallet_ui.IAP_SUBSCRIPTION_ENABLED is False
+    # 2026-10-11: 안드로이드 스위치는 구글 결제 출시(B안)로 켰다 — 값과 무관하게 iOS 가 막히는지는 S3 가 8조합 전수로 본다.
 
 
 # ── S2 두 지점 모두 막혔는가 ─────────────────────────────────
