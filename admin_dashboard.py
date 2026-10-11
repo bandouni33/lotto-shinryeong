@@ -1645,6 +1645,38 @@ elif st.session_state.admin_view == "dispute_resolution":
                         else:
                             st.warning(f"토스 기록상 결제가 완료되지 않았습니다(상태: {_toss_status}). 지급 대상이 아닙니다.")
 
+    # ── 3) 구글 환불 즉시 회수 — 2026-10-11(사용자 승인) ──
+    # 자동 회수(10분마다 구글 환불 목록 확인)는 콘솔에서 '권한 삭제'까지 한 주문만 받는다. 운영자가 직접 환불한
+    # 건은 여기서 구매 토큰으로 바로 회수한다(같은 회수 함수라 자동 회수와 겹쳐도 한 번만 빠진다).
+    st.markdown("---")
+    st.markdown(
+        "<h4 style='margin-top:10px; color:#FFB300; font-weight:700;'>↩️ 구글 환불 즉시 회수</h4>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Play 콘솔 → 주문 관리 → 주문 상세의 '구매 토큰 복사'로 토큰을 붙여넣으세요. 환불분 전액을 회수하며, "
+        "환불 전에 이미 쓴 몫은 마이너스 잔액으로 남습니다(충전 전까지 사용 불가). 콘솔에서 환불할 때는 "
+        "'권한 삭제'도 함께 체크하세요."
+    )
+    _rc_token = st.text_input("구매 토큰", key="dispute_gplay_reclaim_token")
+    if _rc_token.strip():
+        _rc_row = wallet_db.get_gplay_purchase(_rc_token.strip())
+        if not _rc_row:
+            st.warning("이 구매 토큰의 결제 기록이 없습니다.")
+        else:
+            st.write(
+                f"회원 {_rc_row['member_id']} · {_rc_row.get('product_id')} · {int(_rc_row.get('points') or 0):,}P · "
+                f"{'테스트 결제' if int(_rc_row.get('is_test') or 0) else '실결제'} · "
+                f"{'이미 환불 처리됨' if _rc_row.get('voided_at') else '환불 처리 전'} · "
+                f"현재 잔액 {wallet_db.get_balance(int(_rc_row['member_id'])):,}P"
+            )
+            _rc_ok = st.checkbox("Play 콘솔에서 이 주문을 환불했음을 확인했습니다", key="dispute_gplay_reclaim_confirm")
+            if st.button("환불분 즉시 회수", key="dispute_gplay_reclaim_btn", disabled=not _rc_ok):
+                import google_play_pg
+
+                _rc_res = google_play_pg.manual_reclaim_points(_rc_token.strip())
+                (st.success if _rc_res["ok"] else st.error)(_rc_res["msg"])
+
 # ==========================================
 # ⚙️ 운영관리 — 2026-09-20 추가. 홈 화면에 있던 5개 섹션(업데이트 배너 /
 # 메인화면 핵심수 보정 / 동시접속 상한 / 게스트 자동로그인 보안(UA 대조) /

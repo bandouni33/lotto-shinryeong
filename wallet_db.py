@@ -1205,8 +1205,11 @@ def reclaim_voided_gplay_points(member_id: int, token: str, points: int) -> tupl
     실제로 지급된 적(원장에 pg:gplay:<token> 행)이 있을 때만 회수한다 — 지급 전에 끊겨
     구글이 자동 환불한 건에서 다른 적립금을 빼앗지 않게.
 
-    잔액보다 많이는 빼지 않는다(잔액이 음수가 되지 않게). 이미 써버린 몫(shortfall)은
-    호출부가 운영 기록으로 남긴다. 반환: (회수한 P, 못 회수한 P, 이미 처리된 건이었나)."""
+    2026-10-11(사용자 결정): 환불분 **전액**을 회수한다 — 환불 전에 이미 써버린 몫이 있으면 잔액이
+    마이너스가 된다. 마이너스 동안은 차감(deduct_points: balance >= 비용)이 막혀 쓸 수 없고, 다음 충전분에서
+    먼저 메워진다(환불 확인 지연 사이에 다 써버리는 악용 차단). 예전엔 잔액 한도까지만 뺐다.
+    반환: (회수한 P, 그중 0 아래로 내려간 P(=환불 전에 써버린 몫), 이미 처리된 건이었나) — 두 번째 값은
+    예전 '못 회수한 몫'과 같은 자리라 호출부 운영 기록(shortfall=) 형식은 그대로다."""
     if points <= 0:
         raise ValueError("points must be positive")
     ref = f"{GPLAY_VOID_REF_PREFIX}{token}"
@@ -1214,19 +1217,19 @@ def reclaim_voided_gplay_points(member_id: int, token: str, points: int) -> tupl
     conn = _connect()
     try:
         dup = conn.execute(
-            "SELECT delta FROM wallet_ledger WHERE ref_id = ?", (ref,)
+            "SELECT delta, balance_after FROM wallet_ledger WHERE ref_id = ?", (ref,)
         ).fetchone()
         if dup:
             conn.close()
             taken = -int(dup[0])
-            return taken, int(points) - taken, True
+            return taken, min(taken, max(0, -int(dup[1]))), True
         _batch_execute(
             conn,
             [
                 (
                     """
                     INSERT INTO wallet_ledger (member_id, delta, balance_after, reason, ref_id, created_at)
-                    SELECT ?, -MIN(balance, ?), balance - MIN(balance, ?), 'pg_void', ?, ?
+                    SELECT ?, -?, balance - ?, 'pg_void', ?, ?
                     FROM wallets WHERE member_id = ?
                       AND EXISTS (SELECT 1 FROM wallet_ledger WHERE ref_id = ?)
                     """,
@@ -1248,10 +1251,12 @@ def reclaim_voided_gplay_points(member_id: int, token: str, points: int) -> tupl
             ],
         )
         conn.commit()
-        row = conn.execute("SELECT delta FROM wallet_ledger WHERE ref_id = ?", (ref,)).fetchone()
+        row = conn.execute("SELECT delta, balance_after FROM wallet_ledger WHERE ref_id = ?", (ref,)).fetchone()
         conn.close()
-        taken = -int(row[0]) if row else 0
-        return taken, int(points) - taken, False
+        if not row:
+            return 0, 0, False  # 지급 기록이 없는 결제(지급 전 끊김) — 아무것도 빼지 않았다
+        taken = -int(row[0])
+        return taken, min(taken, max(0, -int(row[1]))), False
     except sqlite3.IntegrityError:
         conn.close()
         return 0, 0, True

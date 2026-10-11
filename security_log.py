@@ -68,6 +68,7 @@ _NON_ALERTING_EVENT_TYPES = frozenset(
         "gplay_voided_poll_failed",
         "gplay_voided_points",
         "gplay_voided_subscription",
+        "gplay_manual_reclaim",  # 2026-10-11: 결제 분쟁 처리 화면의 '환불 즉시 회수'(운영자 조작 기록)
         # 2026-10-09: 애플 결제 운영 기록(apple_iap) — 구글과 같은 기준(검증 실패·키 없음은 배지에 남긴다).
         "apple_refresh_failed",
         "apple_member_refresh_error",

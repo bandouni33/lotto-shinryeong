@@ -358,11 +358,11 @@ def test_A9_refunds_from_notification_history():
         summary = ap.run_maintenance_once()
         assert summary["refunds"] == 2, summary
         assert ap.HISTORY_TIMEOUT_SECONDS >= 60, "알림 이력 조회 대기 시간이 다시 짧아졌다(운영 조회가 15초에 끊겼던 일)"
-        assert wdb.get_balance(mid) == 0, "잔액 한도까지 회수하지 않았다"
+        assert wdb.get_balance(mid) == -1800, "환불분 전액(3,000P)을 회수하지 않았다(10-11 정책: 사용분은 마이너스)"
         assert not wdb.has_active_subscription(mid), "환불된 구독이 남았다"
         assert wdb.get_gplay_purchase("apple:9100")["voided_at"]
         again = ap.run_maintenance_once()
-        assert again["refunds"] == 1 and wdb.get_balance(mid) == 0, "겹쳐 읽은 구간에서 두 번 회수했다"
+        assert again["refunds"] == 1 and wdb.get_balance(mid) == -1800, "겹쳐 읽은 구간에서 두 번 회수했다"
         assert app_settings.get_setting("apple_refund_last_poll_ms_production", "")
 
 

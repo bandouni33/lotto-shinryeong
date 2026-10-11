@@ -13,7 +13,7 @@
   L6  요금제 변경(linkedPurchaseToken) → 옛 구독 행 종료, 이월 승계
   L7  같은 토큰을 다른 회원이 보내면 거절(토큰 재사용 차단)
   L8  적립금 소비(consume) 실패 → 백그라운드 재시도로 완료 / 지급 중 끊김 → 재시도가 1회만 지급
-  L9  적립금 환불(voided) → 잔액 한도 회수·멱등·못 회수한 몫 기록
+  L9  적립금 환불(voided) → 전액 회수(환불 전 사용분은 마이너스, 10-11)·멱등·사용분 기록·마이너스 동안 사용 불가·충전이 먼저 메움
   L10 구독 환불(voided) → 재확인으로 차단
   L11 회원 화면 확인은 백그라운드로, 10분에 한 번(렌더가 구글을 기다리지 않는다)
   L12 결제 대기(pending) → 지급 안 함, 대기 안내
@@ -26,6 +26,7 @@
   L19 요금제 변경으로 대체된 옛 토큰은 되살아나지 않는다
   L20 라이선스 테스터의 테스트 결제는 is_test=1 로 기록(출시 전 적립금 초기화 대상 구분)
   L21 consume·acknowledge 의 204(본문 없는 성공)를 성공으로 본다(10-11 실결제 시험의 '실패(204)')
+  L22 운영자 즉시 회수(결제 분쟁 처리 화면) 뒤 환불 목록에 같은 주문이 와도 두 번 빼지 않는다(10-11)
 
 실행: venv312\\Scripts\\python.exe -X utf8 tests\\test_gplay_lifecycle.py
 """
@@ -285,7 +286,7 @@ def test_L8_consume_retry_and_interrupted_credit():
         assert wdb.get_balance(mid) == 4000, "끊긴 지급이 정확히 한 번 이어지지 않았다"
 
 
-def test_L9_voided_points_reclaimed_within_balance():
+def test_L9_voided_points_reclaimed_in_full():
     with _db_isolation.isolated_db(), _google() as fake:
         import security_log
 
@@ -299,13 +300,17 @@ def test_L9_voided_points_reclaimed_within_balance():
         fake.responses["purchases/voidedpurchases"] = (True, {"voidedPurchases": [
             {"purchaseToken": "ptok_l9", "orderId": "GPA.1"}, {"purchaseToken": "unknown", "orderId": "GPA.2"}]})
         assert gp._poll_voided_purchases(datetime.now(UTC)) == 1
-        assert wdb.get_balance(mid) == 0, "환불됐는데 적립금이 남았다(H2)"
+        # 2026-10-11(사용자 결정): 환불분 전액 회수 — 환불 전에 쓴 1,000P 만큼 마이너스로 남는다.
+        assert wdb.get_balance(mid) == -1000, f"환불분 전액이 회수되지 않았다: {wdb.get_balance(mid)}"
         gp._poll_voided_purchases(datetime.now(UTC))
-        assert wdb.get_balance(mid) == 0
+        assert wdb.get_balance(mid) == -1000, "같은 환불을 두 번 회수했다"
         ledger = _q("SELECT delta FROM wallet_ledger WHERE reason = 'pg_void'")
-        assert ledger == [{"delta": -2000}], f"회수는 잔액 한도에서 1회: {ledger}"
+        assert ledger == [{"delta": -3000}], f"회수는 전액 1회: {ledger}"
         events = _q("SELECT detail FROM security_events WHERE event_type = 'gplay_voided_points'")
-        assert events and "shortfall=1000" in events[0]["detail"], "못 회수한 몫이 기록되지 않았다"
+        assert events and "reclaimed=3000 shortfall=1000" in events[0]["detail"], "환불 전 사용분이 기록되지 않았다"
+        assert not wdb.deduct_points(mid, 10, "use", "use:l9b"), "마이너스 잔액인데 적립금을 쓸 수 있다"
+        assert wdb.charge_points(mid, 1000, "pg:mock:l9"), "마이너스 잔액에 충전이 안 된다"
+        assert wdb.get_balance(mid) == 0, "충전분이 마이너스를 먼저 메우지 않았다"
 
 
 def test_L10_voided_subscription_cut():
@@ -508,6 +513,32 @@ def test_L20_test_purchase_flag_recorded():
         _grant(fake, mid, "tok_l20r", _sub_payload(days=30))
         assert int(wdb.get_gplay_purchase("tok_l20t")["is_test"]) == 1
         assert int(wdb.get_gplay_purchase("tok_l20r")["is_test"]) == 0
+
+
+def test_L22_manual_reclaim_then_voided_list_no_double():
+    """운영자 즉시 회수(결제 분쟁 처리 화면) → 나중에 환불 목록에 같은 주문이 와도 두 번 빼지 않는다(10-11)."""
+    with _db_isolation.isolated_db(), _google() as fake:
+        import security_log
+
+        security_log.init_security_tables()
+        mid = _member("lc_l22")
+        _wallet(mid, 0)
+        fake.responses["purchases/products/points_1000/tokens/ptok_l22"] = (
+            True, {"purchaseState": 0, "consumptionState": 0})
+        assert gp._verify_and_credit_one_time(mid, "points_1000", "ptok_l22")[0]
+        assert wdb.deduct_points(mid, 300, "use", "use:l22")
+        assert not gp.manual_reclaim_points("nope")["ok"], "없는 토큰을 회수했다"
+        res = gp.manual_reclaim_points("ptok_l22")
+        assert res["ok"] and res["taken"] == 1000 and res["negative"] == 300, res
+        assert wdb.get_balance(mid) == -300
+        again = gp.manual_reclaim_points("ptok_l22")
+        assert again["ok"] and "이미" in again["msg"] and wdb.get_balance(mid) == -300, again
+        fake.responses["purchases/voidedpurchases"] = (True, {"voidedPurchases": [
+            {"purchaseToken": "ptok_l22", "orderId": "GPA.22"}]})
+        gp._poll_voided_purchases(datetime.now(UTC))
+        assert wdb.get_balance(mid) == -300, "즉시 회수한 결제를 환불 목록이 또 회수했다"
+        ev = _q("SELECT detail FROM security_events WHERE event_type = 'gplay_manual_reclaim'")
+        assert len(ev) == 1 and "reclaimed=1000 shortfall=300" in ev[0]["detail"], ev
 
 
 def test_L21_post_204_is_success():

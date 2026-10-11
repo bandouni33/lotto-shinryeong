@@ -491,7 +491,10 @@ def refresh_member_subscriptions_if_due(member_id: int | None) -> bool:
 
 
 # ── 백그라운드 점검(승인 재시도·구독 재확인·환불 회수) ─────────────────────────
-MAINTENANCE_INTERVAL_SECONDS = 3600
+# 2026-10-11(사용자 승인): 3600 → 600 — 환불 확인이 최대 1시간 늦어 그동안 환불분을 쓸 수 있었다.
+# 하는 일(미완료 재시도·만료 임박 구독 재확인·환불 목록 1회 조회)은 가볍고, 환불 목록 API 한도(하루 6,000회)에
+# 비해 하루 144회라 여유가 크다. 애플(apple_iap.MAINTENANCE_INTERVAL_SECONDS)도 같은 값.
+MAINTENANCE_INTERVAL_SECONDS = 600
 # 프로세스가 뜨고 첫 점검까지 기다리는 시간 — 화면 첫 로딩과 겹치지 않게, 그리고 짧게 끝나는
 # 테스트 프로세스가 백그라운드 점검을 띄우지 않게 한다(Cloud 는 잠들었다 깨면 새 프로세스).
 MAINTENANCE_FIRST_DELAY_SECONDS = 300
@@ -581,6 +584,35 @@ def _poll_voided_purchases(now: datetime) -> int:
     except Exception:
         pass
     return handled
+
+
+def manual_reclaim_points(token: str) -> dict:
+    """운영자가 Play 콘솔에서 환불한 적립금 결제를 **즉시** 회수한다(2026-10-11 사용자 승인 — 결제 분쟁 처리 화면).
+
+    환불 목록(Voided Purchases)은 '권한 삭제'까지 한 주문만, 그것도 다음 점검 때 반영된다 — 운영자가 직접
+    환불하는 건은 구매 토큰(콘솔 주문 상세의 '구매 토큰 복사')으로 바로 회수한다. 회수 규칙·멱등은 자동 회수와
+    같은 함수(wallet_db.reclaim_voided_gplay_points)라, 나중에 환불 목록에 같은 주문이 올라와도 두 번 빼지 않는다.
+    반환: {"ok": bool, "msg": str, "taken": int, "negative": int}"""
+    token = (token or "").strip()
+    row = get_gplay_purchase(token) if token else None
+    if not row:
+        return {"ok": False, "msg": "이 구매 토큰의 결제 기록이 없습니다(토큰 전체를 붙여넣었는지 확인).", "taken": 0, "negative": 0}
+    if row.get("kind") != "points":
+        return {"ok": False, "msg": "적립금 결제가 아닙니다(구독은 콘솔에서 해지·환불하면 10분 안에 자동 반영).",
+                "taken": 0, "negative": 0}
+    taken, negative, already = reclaim_voided_gplay_points(int(row["member_id"]), token, int(row["points"]))
+    if already:
+        return {"ok": True, "msg": f"이미 회수된 결제입니다({taken:,}P).", "taken": taken, "negative": negative}
+    if taken <= 0:
+        return {"ok": False, "msg": "지급된 적이 없는 결제라 회수할 적립금이 없습니다(환불 표시만 남김).",
+                "taken": 0, "negative": 0}
+    _log_gplay_issue(
+        "gplay_manual_reclaim",
+        f"member_id={row['member_id']} product_id={row['product_id']} token={_short(token)} "
+        f"reclaimed={taken} shortfall={negative}",
+    )
+    return {"ok": True, "msg": f"{taken:,}P 회수 완료" + (f"(환불 전 사용분 {negative:,}P는 마이너스 잔액)" if negative else ""),
+            "taken": taken, "negative": negative}
 
 
 def run_maintenance_once(now: datetime | None = None) -> dict:

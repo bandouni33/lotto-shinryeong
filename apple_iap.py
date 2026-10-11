@@ -517,7 +517,8 @@ def refresh_member_subscriptions_if_due(member_id: int | None) -> bool:
 
 
 # ── 백그라운드 점검(끊긴 지급 마무리·구독 재확인·환불 회수) ─────────────────────
-MAINTENANCE_INTERVAL_SECONDS = 3600
+# 2026-10-11(사용자 승인): 3600 → 600 — 구글(google_play_pg)과 같은 이유·같은 값(환불분 사용 가능 시간 단축).
+MAINTENANCE_INTERVAL_SECONDS = 600
 MAINTENANCE_FIRST_DELAY_SECONDS = 300
 REFUND_POLL_SETTING = "apple_refund_last_poll_ms_{env}"
 _HISTORY_DAYS = {"Production": 180, "Sandbox": 30}
