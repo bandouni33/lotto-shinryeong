@@ -162,7 +162,9 @@ def _api_post(path: str) -> tuple[bool, str]:
         )
     except requests.RequestException as e:
         return False, f"Google Play 서버 통신 실패: {e}"
-    if resp.status_code == 200:
+    # 2026-10-11(실결제 시험 — gplay_consume_failed "실패(204)" 3건): consume·acknowledge 는 성공하면 본문 없는
+    # 204 를 돌려준다. 200 만 성공으로 봐서 성공을 실패로 기록하고 백그라운드가 같은 요청을 되풀이했다.
+    if resp.status_code in (200, 204):
         return True, "ok"
     try:
         body = resp.json()

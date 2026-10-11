@@ -25,6 +25,7 @@
   L18 지급 전에 끊긴 결제가 환불돼도 다른 적립금을 빼앗지 않는다
   L19 요금제 변경으로 대체된 옛 토큰은 되살아나지 않는다
   L20 라이선스 테스터의 테스트 결제는 is_test=1 로 기록(출시 전 적립금 초기화 대상 구분)
+  L21 consume·acknowledge 의 204(본문 없는 성공)를 성공으로 본다(10-11 실결제 시험의 '실패(204)')
 
 실행: venv312\\Scripts\\python.exe -X utf8 tests\\test_gplay_lifecycle.py
 """
@@ -507,6 +508,29 @@ def test_L20_test_purchase_flag_recorded():
         _grant(fake, mid, "tok_l20r", _sub_payload(days=30))
         assert int(wdb.get_gplay_purchase("tok_l20t")["is_test"]) == 1
         assert int(wdb.get_gplay_purchase("tok_l20r")["is_test"]) == 0
+
+
+def test_L21_post_204_is_success():
+    """구글 consume·acknowledge 는 성공 시 204(본문 없음) — 실패로 기록하면 안 된다."""
+    import requests
+
+    class _Resp:
+        def __init__(self, code):
+            self.status_code = code
+            self.text = ""
+
+        def json(self):
+            raise ValueError("no body")
+
+    saved = (requests.post, gp._access_token)
+    gp._access_token = lambda: "tok"
+    try:
+        for code, want in ((204, True), (200, True), (400, False), (500, False)):
+            requests.post = lambda *a, _c=code, **k: _Resp(_c)
+            ok, msg = gp._api_post("purchases/products/points_1000/tokens/t:consume")
+            assert ok is want, f"{code} → {ok} ({msg})"
+    finally:
+        requests.post, gp._access_token = saved
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_L")]
