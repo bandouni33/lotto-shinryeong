@@ -91,13 +91,17 @@ LOTTO_APP_DIR = Path(r"C:\Users\PC\Desktop\lotto-app")
 _TRACKER_DIR = LOTTO_APP_DIR / "★조합생성_후보숫자_추적표"
 
 FILE_PATHS = {
-    "샘플": _TRACKER_DIR / "조합생성_후보숫자_추적표_샘플.xlsx",
+    # 2026-10-11(사용자): "샘플" 파일은 적중률이 낮아 삭제함 → 목록에서 뺐다(있으면 매주 '파일 없음' 오류·재시도).
     "200회검증용": _TRACKER_DIR / "조합생성_후보숫자_추적표_샘플_200회검증용.xlsx",
     "전체표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_전체표본_윈도우비교.xlsx",
     "최근500표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_최근500표본_윈도우비교.xlsx",
     # 2026-10-05(사용자 지시): 최근500표본을 복사해 2행 기준모집단만 최근300회로 바꾼 파일.
     # 구조·수식·7행 배열수식·서식은 최근500표본과 동일 — 전진 로직도 그대로 쓴다.
     "최근300표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_최근300표본_윈도우비교.xlsx",
+    # 2026-10-11(사용자 지시): 최근500표본을 복사해 3차필터 시트 1개만 남기고 2행 기준=최근150회,
+    # 3행 비교=최근30회로 바꾼 파일. 5행 적중회수는 최근 30회차(8~37행)만 집계. 과거 149회차는 같은
+    # 정의(앵커=그 회차-1)로 재계산 — 전진 로직·파이썬 폴백(라벨에서 창을 읽음)은 그대로 쓴다.
+    "최근150vs30": _TRACKER_DIR / "조합생성_후보숫자_추적표_최근150vs30_윈도우비교.xlsx",
 }
 
 def _resolve_tracker_path(path: Path) -> Path:
@@ -114,7 +118,7 @@ def _resolve_tracker_path(path: Path) -> Path:
 
 
 # 3차필터(NN회_후보) 구조를 가진 파일(= 자동 예측행 갱신까지 수행)
-ADVANCE_3CHA_FILES = {"전체표본", "최근500표본", "최근300표본"}
+ADVANCE_3CHA_FILES = {"전체표본", "최근500표본", "최근300표본", "최근150vs30"}
 
 LOG_FILE = LOTTO_APP_DIR / "weekly_update_log.txt"
 
@@ -353,7 +357,7 @@ def append_draw_result(ws_all, rec: dict) -> None:
 #   · 가장 오래된 열은 내용을 비운다(열 개수 유지 = 창 크기 고정).
 #   · 서식(_style)·열 너비·병합·숨김 열도 함께 옮긴다.
 #   · openpyxl은 계산을 하지 않으므로 값은 저장 후 엑셀 재계산(recalc_and_save)이 채운다.
-COLUMN_ROUND_FILES = {"샘플"}
+COLUMN_ROUND_FILES: set[str] = set()  # 2026-10-11: 유일한 대상이던 "샘플" 파일 삭제(사용자) — 코드는 남겨 둔다
 COLUMN_ROUND_SHEETS = ("1차필터(7기본필터)", "2차필터(5이격수)")
 
 
@@ -499,7 +503,7 @@ def advance_round_columns(path: Path, label: str) -> dict[str, dict]:
 #   · H열은 그 단계의 '입력' 조합수 사슬(1차입력=전체 → 2차입력=1차 → 4차입력=2차).
 # 값 정의는 앱 배포 파이프라인과 같은 곳(combo_filter_v2.compute_stage_masks)을 쓴다 —
 # 그래야 아래 대조 시트가 "파일 계산값 vs 앱 실제 배포 기록"을 비교하는 표가 된다.
-ROW_ROUND_FILES = {"샘플"}
+ROW_ROUND_FILES: set[str] = set()  # 2026-10-11: 유일한 대상이던 "샘플" 파일 삭제(사용자) — 코드는 남겨 둔다
 ROW_ROUND_SHEETS = ("1차추적결과", "2차추적결과", "4차필터")
 ROW_FIRST, ROW_LAST = 3, 104           # 3~104행 = 102회차 창
 ROW_WINDOW = ROW_LAST - ROW_FIRST + 1
