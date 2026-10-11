@@ -100,6 +100,19 @@ FILE_PATHS = {
     "최근300표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_최근300표본_윈도우비교.xlsx",
 }
 
+def _resolve_tracker_path(path: Path) -> Path:
+    """등록된 이름이 없으면 앞에 '★'를 붙인 이름도 찾는다.
+
+    2026-10-11 실측: PC의 최근300표본 파일명이 '★조합생성_…최근300표본_윈도우비교.xlsx'라
+    09:13 실행에서 '파일을 찾을 수 없음'으로 이 파일만 건너뛰었다. 이름에 ★가 붙든 안 붙든
+    같은 파일로 본다(둘 다 있으면 등록된 이름 우선).
+    """
+    if path.exists():
+        return path
+    starred = path.with_name("★" + path.name)
+    return starred if starred.exists() else path
+
+
 # 3차필터(NN회_후보) 구조를 가진 파일(= 자동 예측행 갱신까지 수행)
 ADVANCE_3CHA_FILES = {"전체표본", "최근500표본", "최근300표본"}
 
@@ -921,6 +934,7 @@ def main() -> int:
     any_error = False
 
     for label, path in FILE_PATHS.items():
+        path = _resolve_tracker_path(path)
         if not path.exists():
             log(f"[오류] {label}: 파일을 찾을 수 없음 -> {path} (CONFIG의 LOTTO_APP_DIR 확인 필요)")
             any_error = True
