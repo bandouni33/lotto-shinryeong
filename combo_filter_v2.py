@@ -227,12 +227,14 @@ CAND_NEIGHBOR_200_RULE = "후보패턴 이웃수(200회)"
 CAND_NEIGHBOR_WINDOW = 200
 
 
-def build_base_masks() -> dict:
+def build_base_masks(rules: tuple | None = None) -> dict:
     """회차와 무관한 재료(전체 조합·원핫·1차 고정 마스크·2차 이격수 마스크·규칙표)를
     한 번 만든다. 한 실행에서 여러 회차를 계산할 때(추적표 행 전진) 이걸 재사용하면
     8백만 조합과 378개 규칙을 회차마다 다시 만들지 않아도 된다
     (실측: 이 재료를 매번 새로 만들면 회차당 수십 초가 더 든다)."""
-    static_rules, auto_rules, gap_rules = _load_rules()
+    # rules: (고정, AUTO, 이격수) — 주면 그 규칙으로(2026-10-11: 추적표 파일 규칙표로 계산할 때),
+    # 안 주면 앱 정본(DB) 규칙. 앱 생성 경로는 인자 없이 부르므로 동작이 그대로다.
+    static_rules, auto_rules, gap_rules = rules if rules is not None else _load_rules()
     combos = _all_combos()
     combo_oh = _onehot(combos)
     static_mask, gap_mask = split_static_gap_masks(combo_oh, static_rules, gap_rules, combos)
@@ -243,6 +245,7 @@ def build_base_masks() -> dict:
         "gap_mask": gap_mask,
         "static_rules": static_rules,
         "auto_rules": auto_rules,
+        "gap_rules": gap_rules,
     }
 
 
@@ -281,6 +284,7 @@ def compute_stage_masks(history_asc: list[dict], anchor_round: int,
         target_cand_neighbor_200 = _cand_neighbor_of(order200, anchors7)
 
     auto_pass = np.ones(combos.shape[0], dtype=bool)
+    auto_targets: dict[str, list[int]] = {}
     for ar in auto_rules:
         if ar["name"] == "전 출현번호":
             tv = _targets_to_vec(target_prev)
@@ -292,6 +296,7 @@ def compute_stage_masks(history_asc: list[dict], anchor_round: int,
             tv = _targets_to_vec(target_cand_neighbor_200 or set())
         else:
             continue
+        auto_targets[ar["name"]] = [i + 1 for i in range(45) if tv[i]]
         cnt = combo_oh @ tv
         auto_pass &= _band(cnt, ar["min"], ar["max"])
 
@@ -337,6 +342,7 @@ def compute_stage_masks(history_asc: list[dict], anchor_round: int,
         "static_gap_mask": base["static_mask"] & base["gap_mask"],
         "gap_order": gap_order,            # 4차 순위(top5_numbers·상중하의 기준)
         "auto_gap_order": auto_gap_order,  # 1차 AUTO '후보패턴 이웃수'에 쓴 옛 순위
+        "auto_targets": auto_targets,      # AUTO 규칙별 이번 회차 대상 번호(추적표 누락원인 표기용)
     }
 
 

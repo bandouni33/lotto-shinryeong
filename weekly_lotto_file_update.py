@@ -559,19 +559,99 @@ DAEJO_HEADERS = ("회차", "파일_1차통과", "파일_2차통과", "파일_4�
 RULE_VINTAGE_ROUND = 1247   # 2026-10-11: 4차 순위 100vs30 전환(1247회차부터) — combo_filter_v2.STAGE4_*
 DAEJO_VINTAGE_NOTE = (f"{RULE_VINTAGE_ROUND - 1}회차 이하 = 규칙 변경 전 배포분(차이 나도 정상)")
 
-_TRACKING_BASE: dict | None = None
+_TRACKING_BASES: dict[str, dict] = {}
+
+# 2026-10-11(사용자 규칙): 이 파일들은 1차/2차추적결과를 **앱 DB 규칙이 아니라 파일 안의
+# '1차필터(7기본필터)'·'2차필터(5이격수)' 규칙표(J=번호목록, K=최소, L=최대 — 사용자가 수시로 바꿈)**로
+# 계산한다. AUTO 행(J='AUTO')은 최소·최대만 표에서 읽고 대상 번호는 매주 직전 회차로 자동 계산
+# (앱 엔진과 같은 정의 — compute_stage_masks). 매 실행마다 표를 새로 읽으므로 바꾼 값이 그 주부터 반영된다.
+FILE_RULE_FILES: set[str] = {"1-4차표본"}
+_KNOWN_AUTO = ("전 출현번호", "이웃수", "후보패턴 이웃수", "후보패턴 이웃수(200회)")
 
 
-def _tracking_base() -> dict:
-    """회차 무관 마스크(전체 조합·고정 378·이격수 48)를 프로세스당 한 번만 만든다 —
+def file_rules_from_wb(wb) -> tuple[list, list, list]:
+    """파일 규칙표 → (고정, AUTO, 이격수) — combo_filter_v2._load_rules()와 같은 모양.
+    파서는 scratch/verify_sample_stage1·stage2_4 에서 앱 규칙과 1:1 일치를 확인한 것과 같다:
+    번호목록(J)이 빈 행은 비활성(규칙 아님), 최소·최대가 숫자가 아니면 건너뜀."""
+    ws1, ws2 = wb["1차필터(7기본필터)"], wb["2차필터(5이격수)"]
+    static, auto = [], []
+    group = None                  # 이름(H)은 묶음 첫 행에만 있다 — 누락원인 표기는 위 이름을 이어 쓴다
+    for r in range(5, ws1.max_row + 1):
+        name, j, k, lm = (ws1.cell(r, c).value for c in (8, 10, 11, 12))
+        if name not in (None, ""):
+            group = name.strip() if isinstance(name, str) else name   # '자 ' → '자'(파일 표기)
+        if j is None or not isinstance(k, (int, float)) or not isinstance(lm, (int, float)):
+            continue
+        if str(j).strip().upper() == "AUTO":
+            nm = str(name or "").strip()
+            if nm not in _KNOWN_AUTO:
+                raise RuntimeError(f"1차필터 {r}행 AUTO 규칙 이름을 모릅니다: {name!r} (알려진 것 {_KNOWN_AUTO})")
+            auto.append({"row": r, "name": nm, "is_auto": True, "targets": None,
+                         "min": int(k), "max": int(lm)})
+            continue
+        tgt = sorted({int(x) for x in re.findall(r"\d+", str(j))})
+        if tgt:
+            static.append({"row": r, "name": group, "is_auto": False, "targets": tgt,
+                           "min": int(k), "max": int(lm)})
+    gap = []
+    ggroup = None
+    for r in range(5, ws2.max_row + 1):
+        gname, j, k, lm = (ws2.cell(r, c).value for c in (8, 10, 11, 12))
+        if gname not in (None, ""):
+            ggroup = gname.strip() if isinstance(gname, str) else gname
+        if j is None or not isinstance(k, (int, float)) or not isinstance(lm, (int, float)):
+            continue
+        tgt = sorted({int(x) for x in re.findall(r"\d+", str(j))})
+        if tgt:
+            gap.append({"row": r, "name": ggroup, "targets": tgt, "min": int(k), "max": int(lm)})
+    if not static or not auto or not gap:
+        raise RuntimeError(f"파일 규칙표를 읽지 못했습니다(고정 {len(static)}·AUTO {len(auto)}·이격 {len(gap)})")
+    return static, auto, gap
+
+
+def _rules_diff_vs_app(rules) -> str:
+    """파일 규칙표 vs 앱(DB) 규칙 — 다르면 요약(알림용, 실패 아님). 앱 규칙을 못 읽으면 그 사실만."""
+    import combo_filter_v2 as cf
+
+    try:
+        app = cf._load_rules()
+    except Exception as e:  # noqa: BLE001
+        return f"앱 규칙 조회 실패({type(e).__name__})"
+
+    def key(rs, with_targets=True):
+        return [(tuple(sorted(int(x) for x in r["targets"])) if with_targets and r.get("targets") else
+                 r.get("name"), int(r["min"]), int(r["max"])) for r in rs]
+
+    parts = []
+    for nm, f, a in (("1차 고정", rules[0], app[0]), ("1차 AUTO", rules[1], app[1]), ("2차 이격", rules[2], app[2])):
+        if key(f, nm != "1차 AUTO") != key(a, nm != "1차 AUTO"):
+            parts.append(f"{nm} 파일 {len(f)}개 / 앱 {len(a)}개 (내용 다름)")
+    return "; ".join(parts)
+
+
+def _tracking_base(rules: tuple | None = None) -> dict:
+    """회차 무관 마스크(전체 조합·1차 고정·2차 이격수)를 규칙 묶음당 한 번만 만든다 —
     여러 회차를 처리할 때 회차마다 수십 초를 다시 쓰지 않게(실측)."""
-    global _TRACKING_BASE
-    if _TRACKING_BASE is None:
+    k = json.dumps(rules, ensure_ascii=False, sort_keys=True, default=str) if rules is not None else "app"
+    if k not in _TRACKING_BASES:
         import combo_filter_v2 as cf
 
-        log("  [추적계산] 회차 무관 마스크(전체 조합·1차 고정 378·2차 이격수 48) 계산 중...")
-        _TRACKING_BASE = cf.build_base_masks()
-    return _TRACKING_BASE
+        log("  [추적계산] 회차 무관 마스크(전체 조합·1차 고정·2차 이격수) 계산 중"
+            + (" — 파일 규칙표 기준..." if rules is not None else " — 앱 규칙 기준..."))
+        _TRACKING_BASES[k] = cf.build_base_masks(rules)
+    return _TRACKING_BASES[k]
+
+
+def _base_for(wb, label: str) -> dict:
+    if label in FILE_RULE_FILES:
+        rules = file_rules_from_wb(wb)
+        log(f"    [{label}] 파일 규칙표: 1차 고정 {len(rules[0])}·AUTO {len(rules[1])}"
+            f"({', '.join(a['name'] for a in rules[1])})·2차 이격 {len(rules[2])}")
+        diff = _rules_diff_vs_app(rules)
+        if diff:
+            log(f"    [참고] 파일 규칙표가 앱 생성 규칙과 다릅니다 — {diff} (앱은 바뀌지 않음)")
+        return _tracking_base(tuple(rules))
+    return _tracking_base()
 
 
 def _draws_asc_from_sheet(ws_all) -> list[dict]:
@@ -599,7 +679,7 @@ def _draws_asc_from_sheet(ws_all) -> list[dict]:
     return out
 
 
-def _rule_violations(nums, static_rules) -> str:
+def _rule_violations(nums, static_rules, auto_rules=None, auto_targets=None) -> str:
     """당첨 조합이 1차 고정 규칙에서 벗어난 항목 — 추적표 S열 표기 형식 그대로
     (예: '3(row37)3개/허용0~2; 10단 기본(row28)4개/허용0~3')."""
     parts = []
@@ -609,6 +689,29 @@ def _rule_violations(nums, static_rules) -> str:
         if c < rule["min"] or c > rule["max"]:
             nm = f"{rule['name']}" if rule.get("name") else ""
             parts.append(f"{nm}(row{rule['row']}){c}개/허용{rule['min']}~{rule['max']}")
+    # 2026-10-11: AUTO 규칙 위반도 뒤에 붙인다 — 파일 표기 '전 출현번호(AUTO)3개/허용0~2'
+    for rule in auto_rules or []:
+        tgt = set((auto_targets or {}).get(rule["name"], ()))
+        if not tgt:
+            continue
+        c = sum(1 for n in nums if n in tgt)
+        if c < rule["min"] or c > rule["max"]:
+            parts.append(f"{rule['name']}(AUTO){c}개/허용{rule['min']}~{rule['max']}")
+    return "; ".join(parts)
+
+
+def _gap_violations(nums, gap_rules) -> str:
+    """2차 이격수 규칙 위반 — 파일 2차추적결과 S열 표기 '이격_단자리(row7)3개/허용0~2'.
+    이격 = 정렬된 당첨번호 6개의 이웃 차 5개, 개수 = 그 중 규칙 목록에 든 것."""
+    ns = sorted(int(n) for n in nums)
+    gaps = [b - a for a, b in zip(ns, ns[1:])]
+    parts = []
+    for rule in gap_rules or []:
+        tgt = set(int(t) for t in rule["targets"])
+        c = sum(1 for g in gaps if g in tgt)
+        if c < rule["min"] or c > rule["max"]:
+            nm = rule.get("name") or ""
+            parts.append(f"이격_{nm}(row{rule['row']}){c}개/허용{rule['min']}~{rule['max']}")
     return "; ".join(parts)
 
 
@@ -660,7 +763,7 @@ def row_advance_values(wb, label: str) -> dict[int, dict]:
     # 2026-09-27: 회차 무관 마스크(전체 조합·1차 고정 378·2차 이격수 48)는 **실제로 밀
     # 회차가 있을 때만** 만든다. 예전엔 이 함수 맨 앞에서 만들어서, 이미 최신인 주에도
     # 대상이 없는데 130초를 쓰고 끝났다(실측: 진입점 1회 253초의 절반 이상).
-    base = _tracking_base()
+    base = _base_for(wb, label)
     combo_oh = base["combo_oh"]
 
     out: dict[int, dict] = {}
@@ -678,7 +781,9 @@ def row_advance_values(wb, label: str) -> dict[int, dict]:
             "tiers1": cf.tier_counts(combo_oh[m1], nums, bonus),
             "tiers2": cf.tier_counts(combo_oh[m2], nums, bonus),
             "tiers4": cf.tier_counts(combo_oh[m4], nums, bonus),
-            "S": _rule_violations(nums, base["static_rules"]),
+            "S": _rule_violations(nums, base["static_rules"], base.get("auto_rules"),
+                                  masks.get("auto_targets")),
+            "S_gap": _gap_violations(nums, base.get("gap_rules")),
         }
         log(f"    {rnd}회차 계산: 1차={out[rnd]['stage1']:,} 2차={out[rnd]['stage2']:,} "
             f"4차={out[rnd]['stage4']:,} "
@@ -708,7 +813,7 @@ def advance_row_sheets(wb, label: str, values: dict[int, dict]) -> dict[str, dic
         return {sn: {"advanced": [], "labels_before": p["newest"], "labels_after": p["newest"]}
                 for sn, p in plans.items()}
 
-    base = _tracking_base()
+    base = _base_for(wb, label)
     total_combos = int(base["combos"].shape[0])
     out: dict[str, dict] = {}
     for sn, p in plans.items():
@@ -740,8 +845,10 @@ def advance_row_sheets(wb, label: str, values: dict[int, dict]) -> dict[str, dic
             ws.cell(row, 13).value = v["M"]
             for i, key in enumerate(("t1", "t2", "t3", "t4", "t5")):
                 ws.cell(row, 14 + i).value = tiers[key]
-            if sn != "4차필터":
-                ws.cell(row, 19).value = v["S"]
+            if sn == "2차추적결과":       # 2차는 1차 위반 뒤에 이격 위반을 잇는다(파일 표기)
+                ws.cell(row, 19).value = "; ".join(x for x in (v["S"], v.get("S_gap", "")) if x) or None
+            elif sn != "4차필터":
+                ws.cell(row, 19).value = v["S"] or None
         for r in range(ROW_FIRST, ROW_LAST + 1):        # J는 자기 행 번호를 쓴다
             if isinstance(ws.cell(r, 1).value, int):
                 ws.cell(r, 10).value = f"=SUM(K{r}:M{r})"

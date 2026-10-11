@@ -4,6 +4,8 @@
   W2 보드 시트 따라잡기: 밀린 회차 확정·다음 대기 행·창 크기 유지·J 수식·오른쪽 패널/병합 그대로·멱등
   W3 외부 파일 참조('[1]전체당첨내역!') → 자기 파일 참조, 다 고치면 외부 연결 제거
   W4 FILE_PATHS 에 표본 파일 등록, 옛 200회검증용 빠짐
+  W5 파일 규칙표(1차필터·2차필터 J/K/L) 읽기 — AUTO 는 이름·최소·최대만, 묶음 이름 이어 쓰기
+  W6/W7 누락원인(S열) 표기 — 고정·AUTO·이격 위반
 
 실행: python tests/test_weekly_pyobon.py
 """
@@ -98,6 +100,44 @@ class PyobonTest(unittest.TestCase):
         self.assertNotIn("[1]", s.cell(2, 12).value)
         self.assertEqual(wb._external_links, [])
         self.assertEqual(w.localize_external_refs(wb), 0)
+
+    def test_W5_file_rules(self):
+        wb = openpyxl.Workbook()
+        ws1 = wb.active
+        ws1.title = "1차필터(7기본필터)"
+        rows1 = [(5, "전 출현번호", "AUTO", 0, 2), (6, "이웃수", "AUTO", 0, 4),
+                 (8, "홀짝", ",1,3,5,", 1, 5), (9, None, ",2,4,", 0, 2),
+                 (10, "비활성", None, 0, 1), (11, "글자", ",7,", "x", 2)]
+        for r, h, j, k, l_ in rows1:
+            ws1.cell(r, 8).value, ws1.cell(r, 10).value = h, j
+            ws1.cell(r, 11).value, ws1.cell(r, 12).value = k, l_
+        ws2 = wb.create_sheet("2차필터(5이격수)")
+        ws2.cell(5, 10).value, ws2.cell(5, 11).value, ws2.cell(5, 12).value = ",1,", 0, 2
+        ws2.cell(6, 10).value, ws2.cell(6, 11).value, ws2.cell(6, 12).value = ",1,1,11,", 0, 3
+        static, auto, gap = w.file_rules_from_wb(wb)
+        self.assertEqual([(a["name"], a["min"], a["max"]) for a in auto],
+                         [("전 출현번호", 0, 2), ("이웃수", 0, 4)])
+        self.assertEqual([(s["row"], s["name"], s["targets"]) for s in static],
+                         [(8, "홀짝", [1, 3, 5]), (9, "홀짝", [2, 4])])   # 이름 이어 쓰기
+        self.assertEqual([g["targets"] for g in gap], [[1], [1, 11]])
+        ws1.cell(5, 8).value = "모르는규칙"
+        with self.assertRaises(RuntimeError):
+            w.file_rules_from_wb(wb)
+        self.assertIn("1-4차표본", w.FILE_RULE_FILES)
+
+    def test_W6_violation_text(self):
+        static = [{"row": 37, "name": "3", "targets": [3, 13, 23], "min": 0, "max": 2}]
+        auto = [{"name": "전 출현번호", "min": 0, "max": 2}]
+        txt = w._rule_violations([3, 13, 23, 30, 31, 40], static, auto,
+                                 {"전 출현번호": [30, 31, 40, 1]})
+        self.assertEqual(txt, "3(row37)3개/허용0~2; 전 출현번호(AUTO)3개/허용0~2")
+
+    def test_W7_gap_violation_text(self):
+        gap = [{"row": 7, "name": "단자리", "targets": [3], "min": 0, "max": 2},
+               {"row": 25, "name": "홀", "targets": [1, 3, 5, 7, 9], "min": 1, "max": 4}]
+        # 1,4,7,10,13,20 → 이격 3,3,3,3,7 : 3이 4개(>2), 홀 이격 5개(>4)
+        self.assertEqual(w._gap_violations([1, 4, 7, 10, 13, 20], gap),
+                         "이격_단자리(row7)4개/허용0~2; 이격_홀(row25)5개/허용1~4")
 
     def test_W4_registered(self):
         self.assertIn("1-4차표본", w.FILE_PATHS)
