@@ -39,6 +39,11 @@
      범위가 아니라 아직 "전체당첨내역" 갱신까지만 한다(필요해지면
      COLUMN_ROUND_FILES에 추가하면 된다).
 
+  ※ 2026-10-11: 샘플·200회검증용은 빠지고 '★1-4차 필터링 표본'(200회검증용 복사본)이 들어왔다 —
+     1차/2차추적결과(행)·3차필터(200, S:BK 보드: catch_up_board_sheet)·4차필터(100vs30, 표준
+     L:BD: std_forecast_sheets)를 민다. 1차/2차필터(7기본·5이격수) 컬럼 시트는 수식 없는 고정값
+     보드라 자동 전진 대상이 아니다(COLUMN_ROUND_FILES 비어 있음).
+
   4. 파일 1(샘플)의 "1차추적결과"·"2차추적결과"·"4차필터"는 회차를 '행'으로 나열한다
      (3~104행 = 102회차 창). 이 행들도 2026-09-27(사용자 승인)부터 매주 자동으로 밀린다:
      새 회차가 3행에 들어가고 맨 아래 행을 버려 창 크기를 유지한다. 값은 앱 배포
@@ -92,7 +97,10 @@ _TRACKER_DIR = LOTTO_APP_DIR / "★조합생성_후보숫자_추적표"
 
 FILE_PATHS = {
     # 2026-10-11(사용자): "샘플" 파일은 적중률이 낮아 삭제함 → 목록에서 뺐다(있으면 매주 '파일 없음' 오류·재시도).
-    "200회검증용": _TRACKER_DIR / "조합생성_후보숫자_추적표_샘플_200회검증용.xlsx",
+    # 2026-10-11(사용자 지시): '200회검증용'을 이름 바꿔 복사한 파일로 교체 — 1~4차 필터 표본.
+    # 1차/2차추적결과(행)·3차필터(200출현빈도순, S:BK 보드)·4차필터(100vs30회, L:BD 표준) 시트를 매주 민다.
+    # 4차필터 시트는 최근30회 파일에서 복사돼 '[1]전체당첨내역' 외부 참조를 들고 왔다 → 자기 파일 참조로 고친다.
+    "1-4차표본": _TRACKER_DIR / "★1-4차 필터링 표본.xlsx",
     "전체표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_전체표본_윈도우비교.xlsx",
     "최근500표본": _TRACKER_DIR / "조합생성_후보숫자_추적표_최근500표본_윈도우비교.xlsx",
     # 2026-10-05(사용자 지시): 최근500표본을 복사해 2행 기준모집단만 최근300회로 바꾼 파일.
@@ -120,7 +128,24 @@ def _resolve_tracker_path(path: Path) -> Path:
 
 
 # 3차필터(NN회_후보) 구조를 가진 파일(= 자동 예측행 갱신까지 수행)
-ADVANCE_3CHA_FILES = {"전체표본", "최근500표본", "최근300표본", "최근30회"}
+ADVANCE_3CHA_FILES = {"전체표본", "최근500표본", "최근300표본", "최근30회", "1-4차표본"}
+
+
+def std_forecast_sheets(wb) -> list[str]:
+    """표준 예측 시트(L:BD = 격차순위 1~45위, 7행 대기 배열수식) — advance_3cha_sheet 대상.
+
+    2026-10-11: 이름이 '3차필터'로 시작하는 것만 고르던 것을 '구조'로 고른다 — 1-4차표본의
+    '4차필터(100vs30회_후보)'도 같은 구조이고, 같은 파일의 '3차필터(200출현빈도순 후보)'는
+    구조가 달라(S:BK 보드) 표준 전진에 넣으면 망가진다."""
+    out = []
+    for sn in wb.sheetnames:
+        if not (sn.startswith("3차필터") or sn.startswith("4차필터")):
+            continue
+        ws = wb[sn]
+        if ws.cell(6, 1).value == "회차" and ws.cell(1, 12).value in (1, "1") \
+                and ws.cell(1, 56).value in (45, "45"):
+            out.append(sn)
+    return out
 
 LOG_FILE = LOTTO_APP_DIR / "weekly_update_log.txt"
 
@@ -505,8 +530,19 @@ def advance_round_columns(path: Path, label: str) -> dict[str, dict]:
 #   · H열은 그 단계의 '입력' 조합수 사슬(1차입력=전체 → 2차입력=1차 → 4차입력=2차).
 # 값 정의는 앱 배포 파이프라인과 같은 곳(combo_filter_v2.compute_stage_masks)을 쓴다 —
 # 그래야 아래 대조 시트가 "파일 계산값 vs 앱 실제 배포 기록"을 비교하는 표가 된다.
-ROW_ROUND_FILES: set[str] = set()  # 2026-10-11: 유일한 대상이던 "샘플" 파일 삭제(사용자) — 코드는 남겨 둔다
+# 2026-10-11: "샘플" 삭제(사용자) → 1-4차표본의 1차/2차추적결과(같은 정의·같은 값 확인)를 민다.
+# 1-4차표본에는 '4차필터' 행 시트가 없다 → 파일에 있는 시트만 민다(row_sheets_in_wb).
+ROW_ROUND_FILES: set[str] = {"1-4차표본"}
 ROW_ROUND_SHEETS = ("1차추적결과", "2차추적결과", "4차필터")
+# 앱 DB 기록과 맞대는 대조 시트를 만드는 파일 — 샘플 전용이었다(1-4차표본에는 새 시트를 만들지 않는다).
+DAEJO_FILES: set[str] = set()
+
+
+def row_sheets_in_wb(wb, label: str) -> list[str]:
+    names = [sn for sn in ROW_ROUND_SHEETS if sn in wb.sheetnames]
+    if not names:
+        raise RuntimeError(f"{label}: 행 전진 대상 시트({ROW_ROUND_SHEETS})가 하나도 없습니다")
+    return names
 ROW_FIRST, ROW_LAST = 3, 104           # 3~104행 = 102회차 창
 ROW_WINDOW = ROW_LAST - ROW_FIRST + 1
 
@@ -599,9 +635,7 @@ def row_advance_values(wb, label: str) -> dict[int, dict]:
     by_round = {h["draw_round"]: h for h in draws}
 
     windows: dict[str, int] = {}
-    for sn in ROW_ROUND_SHEETS:
-        if sn not in wb.sheetnames:
-            raise RuntimeError(f"{label}: 시트 '{sn}'을 찾지 못했습니다(행 전진 대상)")
+    for sn in row_sheets_in_wb(wb, label):
         have = [wb[sn].cell(r, 1).value for r in range(ROW_FIRST, ROW_LAST + 1)]
         have = [x for x in have if isinstance(x, int)]
         if not have:
@@ -655,12 +689,9 @@ def row_advance_values(wb, label: str) -> dict[int, dict]:
 def advance_row_sheets(wb, label: str, values: dict[int, dict]) -> dict[str, dict]:
     """행식 회차 시트들을 새 회차까지 전진시킨다(이미 앞서 있으면 그대로)."""
     draws = {h["draw_round"]: h for h in _draws_asc_from_sheet(wb["전체당첨내역"])}
-    for sn in ROW_ROUND_SHEETS:
-        if sn not in wb.sheetnames:
-            raise RuntimeError(f"{label}: 시트 '{sn}'을 찾지 못했습니다(행 전진 대상)")
 
     plans: dict[str, dict] = {}
-    for sn in ROW_ROUND_SHEETS:
+    for sn in row_sheets_in_wb(wb, label):
         ws = wb[sn]
         have = [ws.cell(r, 1).value for r in range(ROW_FIRST, ROW_LAST + 1)]
         have = [x for x in have if isinstance(x, int)]
@@ -808,7 +839,7 @@ def _advance_rows_in_wb(wb, label: str) -> tuple[dict[str, dict], list[str]]:
     for sn, st in stats.items():
         log(f"    {sn}: 회차 행 전진 {st['advanced']} "
             f"({st['labels_before']}→{st['labels_after']})")
-    problems = write_daejo_sheet(wb, label, values)
+    problems = write_daejo_sheet(wb, label, values) if label in DAEJO_FILES else []
     for p in problems:
         log(f"    [대조] {p}")
     return stats, problems
@@ -858,6 +889,174 @@ def advance_3cha_sheet(ws, sheet_name: str, forecast45: list[int], actual_rec: d
     return hit_top, hit_mid, hit_low
 
 
+# ── 보드식 예측 시트(S:BK) 전진 — 1-4차표본 '3차필터(200출현빈도순 후보)' (2026-10-11, 사용자 지시) ──
+# 구조: 1행 S:BK=번호 1~45, 2행=역대 빈도, 3행=최근 N회 빈도(수식의 '-(N-1)'), 4행=오차, 6행 머리글,
+# 7행=대기 중인 예측(회차 라벨 + S:BK 격차순위 1~45위, **값**), 8행부터 확정 회차(최신이 위).
+# 확정 회차 열: A=회차, B~G=당첨번호, J=SUM(K:M), K/L/M=상위/중위/하위(각 15개) 적중수.
+# H/I(필터1·최종)·N~R(1~5등)은 이 시트만의 옛 계산(200회 AUTO 규칙 변형)이라 재현할 수 없어
+# 새 행에서는 비워 둔다(지난 행은 그대로 — 지난 회차 값은 고정).
+# 예측 정의는 표준 시트와 같다: 오차 = rank(최근N) − rank(역대), 내림차순·동점은 작은 번호, 앵커 = 그 회차−1.
+BOARD_FIRST_COL, BOARD_LAST_COL = 19, 63          # S..BK
+
+
+def board_forecast_sheets(wb) -> list[str]:
+    out = []
+    for sn in wb.sheetnames:
+        ws = wb[sn]
+        if ws.cell(6, 1).value == "회차" and ws.cell(1, BOARD_FIRST_COL).value in (1, "1") \
+                and ws.cell(1, BOARD_LAST_COL).value in (45, "45"):
+            out.append(sn)
+    return out
+
+
+def _board_recent_window(ws) -> int:
+    """3행 수식의 '(MAX(...)-199)'에서 창을 읽는다(라벨은 '최근 100회차'로 잘못 적혀 있어 믿지 않는다)."""
+    v = ws.cell(3, BOARD_FIRST_COL).value
+    text = v.text if isinstance(v, ArrayFormula) else str(v or "")
+    m = re.search(r"\)\s*-\s*(\d+)\s*\)", text)
+    if not m:
+        raise RuntimeError(f"{ws.title}: 3행 수식에서 최근 N회 창을 읽지 못했습니다 — {text[:80]}")
+    return int(m.group(1)) + 1
+
+
+def gap_forecast(draws_asc: list[dict], anchor_round: int, recent_window: int | None,
+                 base_window: int | None = None) -> list[int]:
+    """앵커 회차까지의 이력으로 격차순위 1~45위(_python_pending_forecast와 같은 정의)."""
+    hist = [h for h in draws_asc if h["draw_round"] <= anchor_round]
+    if not hist or hist[-1]["draw_round"] != anchor_round:
+        raise RuntimeError(f"앵커 {anchor_round}회차가 전체당첨내역에 없습니다")
+    nums = list(range(1, 46))
+
+    def counts(window):
+        lo = hist[0]["draw_round"] if (not window or window >= len(hist)) else anchor_round - (window - 1)
+        return {n: sum(1 for h in hist if h["draw_round"] >= lo and n in h["nums"]) for n in nums}
+
+    def ranks(vals):
+        return {n: (1 + sum(1 for m in nums if vals[m] > vals[n])
+                    + sum(1 for m in nums if vals[m] == vals[n] and m < n)) for n in nums}
+
+    rb, rr = ranks(counts(base_window)), ranks(counts(recent_window))
+    gap = {n: rr[n] - rb[n] for n in nums}
+    return sorted(nums, key=lambda n: (-gap[n], n))
+
+
+def catch_up_board_sheet(ws, draws_asc: list[dict]) -> list[int]:
+    """7행 대기 회차가 이미 추첨됐으면 확정하고 다음 대기 행을 만든다 — 최신까지 반복(멱등).
+    반환: 확정한 회차 목록."""
+    by_round = {h["draw_round"]: h for h in draws_asc}
+    latest = draws_asc[-1]["draw_round"]
+    window = _board_recent_window(ws)
+    done: list[int] = []
+    while True:
+        pending = ws.cell(7, 1).value
+        pending = int(pending) if isinstance(pending, (int, str)) and str(pending).isdigit() else None
+        if pending is None:
+            raise RuntimeError(f"{ws.title}: 7행 회차 라벨을 읽지 못했습니다")
+        if pending > latest:
+            break
+        if pending - 1 not in by_round:
+            raise RuntimeError(f"{ws.title}: {pending - 1}회차가 전체당첨내역에 없습니다")
+        if len(done) >= ROW_WINDOW:
+            raise RuntimeError(f"{ws.title}: 밀린 회차가 너무 많습니다 — 파일 상태 확인 필요")
+        want = gap_forecast(draws_asc, pending - 1, window)
+        frozen = [ws.cell(7, c).value for c in range(BOARD_FIRST_COL, BOARD_LAST_COL + 1)]
+        if all(isinstance(x, int) for x in frozen):
+            order = frozen                                  # 지난 예측은 고정값 그대로
+            if order != want:
+                log(f"    [주의] {ws.title} {pending}회차: 저장된 예측과 재계산이 다릅니다 — 저장값 유지")
+        else:
+            order = want
+        rec = by_round[pending]
+        got = set(rec["nums"])
+        k, l, m = len(got & set(order[:15])), len(got & set(order[15:30])), len(got & set(order[30:45]))
+        for i, c in enumerate(range(BOARD_FIRST_COL, BOARD_LAST_COL + 1)):
+            ws.cell(7, c).value = order[i]
+        for i, n in enumerate(rec["nums"][:6]):
+            ws.cell(7, 2 + i).value = n
+        ws.cell(7, 11).value, ws.cell(7, 12).value, ws.cell(7, 13).value = k, l, m
+
+        # 행 삽입(insert_rows) 대신 A:BK 칸만 한 줄씩 내린다 — 오른쪽 BO:BP '누적 통계' 패널·병합
+        # (BO16:BP19)이 같이 밀리면 깨진다. 맨 아래 회차는 덮여 사라진다(창 크기 유지).
+        last = max(r for r in range(7, ws.max_row + 1) if ws.cell(r, 1).value not in (None, ""))
+        for r in range(last, 7, -1):
+            for c in range(1, BOARD_LAST_COL + 1):
+                src, dst = ws.cell(r - 1, c), ws.cell(r, c)
+                dst.value = src.value
+                dst._style = _style_copy(src._style)
+        for c in range(2, 19):
+            ws.cell(7, c).value = None
+        ws.cell(7, 1).value = pending + 1
+        if pending + 1 <= latest:
+            nxt = None                                      # 다음 반복에서 계산
+        else:
+            nxt = gap_forecast(draws_asc, pending, window)
+        for i, c in enumerate(range(BOARD_FIRST_COL, BOARD_LAST_COL + 1)):
+            ws.cell(7, c).value = nxt[i] if nxt else None
+        done.append(pending)
+    for r in range(8, ws.max_row + 1):                      # J는 자기 행 번호를 쓴다
+        if isinstance(ws.cell(r, 1).value, int) or str(ws.cell(r, 1).value or "").isdigit():
+            ws.cell(r, 10).value = f"=SUM(K{r}:M{r})"
+    return done
+
+
+def catch_up_board_sheets_in_wb(wb, label: str) -> dict[str, list[int]]:
+    names = board_forecast_sheets(wb)
+    if not names:
+        return {}
+    draws = _draws_asc_from_sheet(wb["전체당첨내역"])
+    out = {}
+    for sn in names:
+        out[sn] = catch_up_board_sheet(wb[sn], draws)
+        if out[sn]:
+            log(f"    [{label}] {sn}: {out[sn]}회차 확정, 다음 예측대상 -> {wb[sn].cell(7, 1).value}")
+    return out
+
+
+# ── 다른 파일에서 복사해 온 시트의 외부 참조('[1]전체당첨내역!') → 자기 파일 참조 (2026-10-11) ──
+_EXT_REF = re.compile(r"\[(\d+)\](전체당첨내역!)")
+
+
+def localize_external_refs(wb) -> int:
+    """외부 통합문서의 '전체당첨내역' 참조를 이 파일의 같은 시트 참조로 바꾼다.
+    다 바꿔서 외부 참조가 하나도 안 남으면 외부 연결 자체도 지운다. 반환: 고친 셀 수."""
+    if "전체당첨내역" not in wb.sheetnames or not getattr(wb, "_external_links", None):
+        return 0
+    fixed, remaining = 0, 0
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                v = cell.value
+                if isinstance(v, ArrayFormula):
+                    if "[" in (v.text or ""):
+                        new = _EXT_REF.sub(r"\2", v.text)
+                        if new != v.text:
+                            cell.value = ArrayFormula(ref=v.ref, text=new)
+                            fixed += 1
+                        if re.search(r"\[\d+\]", new):
+                            remaining += 1
+                elif isinstance(v, str) and v.startswith("=") and "[" in v:
+                    new = _EXT_REF.sub(r"\2", v)
+                    if new != v:
+                        cell.value = new
+                        fixed += 1
+                    if re.search(r"\[\d+\]", new):
+                        remaining += 1
+    if fixed and not remaining:
+        wb._external_links = []
+    return fixed
+
+
+def localize_external_refs_file(path: Path, label: str) -> None:
+    wb = openpyxl.load_workbook(path, data_only=False)
+    try:
+        n = localize_external_refs(wb)
+        if n:
+            wb.save(path)
+            log(f"  [{label}] 외부 파일 참조 {n}칸을 이 파일의 전체당첨내역 참조로 고쳤습니다")
+    finally:
+        wb.close()
+
+
 def get_current_max_round(path: Path) -> int:
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     ws = wb["전체당첨내역"]
@@ -878,7 +1077,7 @@ def process_one_round_for_file(path: Path, label: str, rec: dict) -> list[str]:
 
     if needs_3cha:
         wb_peek = openpyxl.load_workbook(path, data_only=False, read_only=True)
-        sheet_names = [sn for sn in wb_peek.sheetnames if sn.startswith("3차필터")]
+        sheet_names = std_forecast_sheets(wb_peek)
         wb_peek.close()
         log(f"  [{label}] {rec['round']}회차 처리 전 재계산으로 예측행(L:BD) 확보 중...")
         try:
@@ -902,6 +1101,7 @@ def process_one_round_for_file(path: Path, label: str, rec: dict) -> list[str]:
         log(f"  [{label}] {rec['round']}회차: 3차필터 구조가 아니므로 전체당첨내역만 갱신")
 
     append_draw_result(ws_all, rec)
+    catch_up_board_sheets_in_wb(wb, label)       # S:BK 보드 시트(있을 때만) — 이 회차 확정 + 다음 대기 행
 
     row_problems: list[str] = []
     if needs_rows:
@@ -947,6 +1147,13 @@ def main() -> int:
             continue
 
         try:
+            localize_external_refs_file(path, label)
+        except Exception as e:  # noqa: BLE001
+            log(f"[오류] {label}: 외부 참조 정리 실패 -> {e}")
+            any_error = True
+            continue
+
+        try:
             local_max = get_current_max_round(path)
         except Exception as e:
             log(f"[오류] {label}: 현재 최신 회차 확인 실패 -> {e}")
@@ -978,15 +1185,18 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001
                 log(f"[경고] {label}: 오류값 스캔 실패 -> {e}")
                 any_error = True
-            if label in ROW_ROUND_FILES:
+            if label in ROW_ROUND_FILES or label in ADVANCE_3CHA_FILES:
                 # 2026-09-27: 신규 회차가 없어도 추적결과 창이 뒤처져 있으면 채운다. 이 경로로
                 # 들어오는 파일(샘플)은 3차필터 전진 대상이 아니라 예전엔 여기서 "이미 최신"으로
                 # 끝나, 창이 밀린 채로 남았다(실측: 창 최신 1241 · 전체당첨내역 1243).
+                # 2026-10-11: S:BK 보드 시트(1-4차표본 3차필터(200))도 같은 자리에서 따라잡는다.
                 try:
                     wb_rows = openpyxl.load_workbook(path, data_only=False)
                     try:
-                        stats, problems = _advance_rows_in_wb(wb_rows, label)
-                        if stats:
+                        board = catch_up_board_sheets_in_wb(wb_rows, label)
+                        stats, problems = (_advance_rows_in_wb(wb_rows, label)
+                                           if label in ROW_ROUND_FILES else ({}, []))
+                        if stats or any(board.values()):
                             wb_rows.save(path)
                             for sn, st in stats.items():
                                 log(f"[{label}] {sn}: 추적결과 창을 {st['labels_after']}회차까지 "
