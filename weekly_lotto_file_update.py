@@ -112,6 +112,9 @@ FILE_PATHS = {
     # 라벨에서 창을 읽음)은 그대로 쓴다. 생성 기록 scratch/build_tracker_30vs.py.
     # (같은 날 먼저 만든 '최근150vs30' 단일 시트 파일은 이 파일로 대체 — 목록에서 뺐다.)
     "최근30회": _TRACKER_DIR / "조합생성_후보숫자_추적표_최근30회_윈도우비교.xlsx",
+    # 2026-10-11(사용자 지시): 최근30회 파일 복사 → 5개 시트 3행 비교창 최근10회, 5행 적중회수 최근 10회차
+    # (8~17행), 시트명 '3차필터(NNNvs10회_후보)'. 과거 회차 재계산·생성 기록 scratch/build_tracker_100vs10.py.
+    "100vs10": _TRACKER_DIR / "★조합생성_후보숫자_추적표_100vs10_비교표.xlsx",
 }
 
 def _resolve_tracker_path(path: Path) -> Path:
@@ -128,7 +131,7 @@ def _resolve_tracker_path(path: Path) -> Path:
 
 
 # 3차필터(NN회_후보) 구조를 가진 파일(= 자동 예측행 갱신까지 수행)
-ADVANCE_3CHA_FILES = {"전체표본", "최근500표본", "최근300표본", "최근30회", "1-4차표본"}
+ADVANCE_3CHA_FILES = {"전체표본", "최근500표본", "최근300표본", "최근30회", "1-4차표본", "100vs10"}
 
 
 def std_forecast_sheets(wb) -> list[str]:

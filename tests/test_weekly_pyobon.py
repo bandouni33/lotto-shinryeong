@@ -146,6 +146,8 @@ class PyobonTest(unittest.TestCase):
         self.assertIn("1-4차표본", w.ADVANCE_3CHA_FILES)
         self.assertIn("1-4차표본", w.ROW_ROUND_FILES)
         self.assertNotIn("1-4차표본", w.DAEJO_FILES)
+        self.assertEqual(w.FILE_PATHS["100vs10"].name, "★조합생성_후보숫자_추적표_100vs10_비교표.xlsx")
+        self.assertIn("100vs10", w.ADVANCE_3CHA_FILES)
 
 
 if __name__ == "__main__":
