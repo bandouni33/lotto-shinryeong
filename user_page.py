@@ -162,6 +162,15 @@ _EARLY_DARK_BG_CSS = (
     if st.query_params.get("page", "main") in _EARLY_DARK_BG_PAGES
     else ""
 )
+# 2026-10-11(사용자 승인 — 57 영상 타로 로그인 뒤 '불러오는 중' 약 15초): 앱(streamlit-webview.tsx
+# PAGE_READY_INJECTED_JS painted())은 stApp 배경이 어두워야 '다 그렸다'고 본다. 타로만 밝은 화면이라 새로
+# 불러올 때마다 안전장치 15초까지 가려졌다(서버는 0.4초에 끝남). 보이는 색은 그대로 두고 판정만 통과시킨다:
+# 가장 바깥 stApp 은 어둡게, 화면 전체를 덮는 stAppViewContainer(0,0,390x844 실측)에 원래 테마 배경을 칠한다.
+if st.query_params.get("page", "main") == "tarot":
+    _EARLY_DARK_BG_CSS = (
+        "<style>.stApp{background-color:#12182b;}"
+        '[data-testid="stAppViewContainer"]{background-color:#FAF8FF;}</style>'
+    )
 try:
     from shared_ui_styles import no_stale_dim_css
 

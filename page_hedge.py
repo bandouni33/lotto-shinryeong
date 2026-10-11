@@ -1050,6 +1050,7 @@ def render():
     render_history_button(
         container_key="hedge_history_zone_6n36s5",
         blink_flag_key="hedge_history_blink",
+        scroll_on_open=True,  # 2026-10-11(사용자 지시): 펼치면 저장내역이 보이게 아래로
     )
     if st.session_state.pop("hedge_generation_complete", False):
         from wallet_ui import render_generation_complete_notice

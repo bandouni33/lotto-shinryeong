@@ -1,5 +1,7 @@
-"""7단계 — 출시전 체크리스트 1번: Mock 결제로 충전됐던 테스터 잔액을
-신규가입 보너스로 되돌리는 1회성 스크립트.
+"""7단계 — 출시전 체크리스트 1번: 정식 출시 때 회원 적립금을 신규가입 보너스(500P)로 맞추는 1회성 스크립트.
+
+[대상 조건 — 2026-10-11 변경(사용자 결정)] **실결제 기록이 없는 모든 회원**(탈퇴 회원 제외)을 500P 로.
+아래 10-02·10-09 설명은 '실결제 판정' 규칙으로 그대로 유효하다(그 회원들은 제외). 정확한 조건은 select_targets.
 
 [대상 조건 — 2026-10-02 확정] **Mock 충전(pg:mock:) 기록이 있는 회원**이면서
 **실결제 기록(pg:toss: / pg:gplay:)이 없는 회원**만 리셋한다. 2026-09-20 재검토에서
@@ -85,31 +87,39 @@ def _gplay_members(conn) -> tuple[set[int], set[int]]:
 
 
 def select_targets(conn, *, verbose: bool = True) -> list[tuple[int, int]]:
-    """초기화 대상 [(member_id, 현재 잔액)] — (Mock 충전 또는 구글 테스트 결제 기록이 있고) 실결제 기록이
-    없으며, 잔액이 이미 보너스와 다른 회원. 그 밖의 회원(정상 사용·실결제자)은 건드리지 않는다."""
+    """초기화 대상 [(member_id, 현재 잔액)].
+
+    2026-10-11(사용자 결정 — "정식 출시되면 기존·신규 이용자 모두 적립금 500P"): **실결제 기록이 없는
+    모든 회원**의 잔액을 신규가입 보너스(500P)로 맞춘다 — 보너스를 써서 줄어든 회원은 다시 채워지고,
+    500P 를 넘는 회원(테스트 충전·테스트 결제·운영 지급 등)은 500P 로 내려간다. 예전(10-02~10-09)엔
+    테스트 충전·테스트 결제 기록이 있는 회원만 골랐다.
+    제외: ① 실결제 회원(토스, 구글·애플 is_test=0, 테스트 여부를 모르는 옛 pg:gplay: 기록) — 산 적립금을
+    건드리지 않는다 ② 탈퇴(익명화) 회원 ③ 이미 500P 인 회원."""
     log = print if verbose else (lambda *a, **k: None)
     mock_members = _members_with_prefix(conn, MOCK_CHARGE_PREFIX)
     gplay_real, gplay_test_only = _gplay_members(conn)
     protected = _members_with_prefix(conn, "pg:toss:") | gplay_real
     if protected:
-        log(f"실결제(토스·구글) 기록이 있는 회원 {len(protected)}명은 자동 제외: {sorted(protected)}")
-    log(f"Mock 충전({MOCK_CHARGE_PREFIX}) 기록이 있는 회원 {len(mock_members)}명: {sorted(mock_members)}")
-    log(f"구글 테스트 결제만 있는 회원 {len(gplay_test_only)}명: {sorted(gplay_test_only)}")
+        log(f"실결제(토스·구글·애플) 기록이 있는 회원 {len(protected)}명은 자동 제외: {sorted(protected)}")
+    log(f"참고: Mock 충전 기록 {len(mock_members)}명, 테스트 결제만 {len(gplay_test_only)}명(둘 다 대상에 포함)")
 
     rows = conn.execute(
-        "SELECT member_id, balance FROM wallets WHERE balance != ?",
+        """
+        SELECT w.member_id, w.balance FROM wallets w
+        JOIN members m ON m.id = w.member_id
+        WHERE w.balance != ? AND m.deleted_at IS NULL AND m.provider != 'deleted'
+        """,
         (wallet_db.SIGNUP_BONUS,),
     ).fetchall()
-    balances = {int(r["member_id"]): int(r["balance"]) for r in rows}
-    candidates = mock_members | gplay_test_only
     targets = [
-        (member_id, balances[member_id])
-        for member_id in sorted(candidates)
-        if member_id not in protected and member_id in balances
+        (int(r["member_id"]), int(r["balance"]))
+        for r in sorted(rows, key=lambda r: int(r["member_id"]))
+        if int(r["member_id"]) not in protected
     ]
+    up = sum(1 for _, b in targets if b < wallet_db.SIGNUP_BONUS)
     log(
-        f"참고: 잔액이 보너스와 다른 회원은 {len(balances)}명인데, "
-        f"그중 테스트 충전·테스트 결제 기록이 있어 대상이 된 사람은 {len(targets)}명이다(나머지는 정상 사용·실결제자)."
+        f"대상 {len(targets)}명 — {wallet_db.SIGNUP_BONUS}P 미만이라 채워지는 회원 {up}명, "
+        f"넘어서 내려가는 회원 {len(targets) - up}명(실결제·탈퇴·이미 {wallet_db.SIGNUP_BONUS}P 회원 제외)."
     )
     return targets
 

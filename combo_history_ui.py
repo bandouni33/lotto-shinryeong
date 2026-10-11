@@ -415,24 +415,40 @@ def render_scroll_to_just_saved() -> None:
       top 에서는 아무것도 안 움직였다(2026-10-10 번개조합 수정과 같은 원인).
     · Streamlit 이 이번 실행을 다 그린 뒤(script-state notRunning이 잠깐 이어질 때) 한 번만 움직인다.
     · 실제 스크롤 칸은 stMain(1.64 실측), 없으면 창."""
+    _render_scroll_script("." + JUST_SAVED_CLASS, mode="reveal", wrap_key="ln_scroll_just_saved_wrap")
+
+
+def render_scroll_to_history_top(container_key: str) -> None:
+    """'저장내역' 버튼으로 패널을 펼친 직후 1회: 버튼을 화면 위쪽(여백 16px)으로 올려 그 아래 저장내역이
+    최대한 많이 보이게 한다(2026-10-11 사용자 지시 — 번호검증 '저장내역 확인 시 더 아래로 보여지게').
+    방식은 render_scroll_to_just_saved 와 같다(앱 문서에 심고, 다 그린 뒤 한 번만)."""
+    _render_scroll_script(f".st-key-{container_key}", mode="top", wrap_key="ln_scroll_history_top_wrap")
+
+
+def _render_scroll_script(selector: str, *, mode: str, wrap_key: str) -> None:
+    """mode='reveal': 대상(카드)이 통째로 보이게 필요한 만큼만 / mode='top': 대상 위 끝을 화면 위 여백에 맞춘다."""
     import streamlit.components.v1 as components
 
     body = """
 (function(){
-  var CLS = '__CLS__', MARGIN = 16, started = Date.now(), idle = null;
+  var SEL = __SEL__, MODE = __MODE__, MARGIN = 16, started = Date.now(), idle = null;
   function stateOf(){ var a = document.querySelector('[data-testid="stApp"]'); return a ? a.getAttribute('data-test-script-state') : null; }
   function scroller(){
     var m = document.querySelector('[data-testid="stMain"]');
     return (m && m.scrollHeight > m.clientHeight + 1) ? m : null;
   }
   function move(){
-    var el = document.querySelector('.' + CLS);
+    var el = document.querySelector(SEL);
     if (!el) return false;
-    var card = (el.closest && el.closest('.hedge-pair-card, .auto-history-pair-card')) || el;
+    var card = MODE === 'reveal' ? ((el.closest && el.closest('.hedge-pair-card, .auto-history-pair-card')) || el) : el;
     var r = card.getBoundingClientRect(), vh = window.innerHeight || document.documentElement.clientHeight;
     var dy = 0;
-    if (r.bottom > vh - MARGIN) dy = r.bottom - (vh - MARGIN);
-    if (r.top - dy < MARGIN) dy = r.top - MARGIN;
+    if (MODE === 'top') {
+      dy = r.top - MARGIN;
+    } else {
+      if (r.bottom > vh - MARGIN) dy = r.bottom - (vh - MARGIN);
+      if (r.top - dy < MARGIN) dy = r.top - MARGIN;
+    }
     if (Math.abs(dy) < 2) return true;
     var s = scroller();
     try { if (s) s.scrollBy({top: dy, behavior: 'smooth'}); else window.scrollBy({top: dy, behavior: 'smooth'}); }
@@ -441,19 +457,18 @@ def render_scroll_to_just_saved() -> None:
   }
   var t = setInterval(function(){
     if (Date.now() - started > 8000) { clearInterval(t); return; }
-    if (stateOf() !== 'notRunning' || !document.querySelector('.' + CLS)) { idle = null; return; }
+    if (stateOf() !== 'notRunning' || !document.querySelector(SEL)) { idle = null; return; }
     if (idle === null) { idle = Date.now(); return; }
     if (Date.now() - idle >= 300) { clearInterval(t); move(); }
   }, 100);
 })();
-""".replace("__CLS__", JUST_SAVED_CLASS)
+""".replace("__SEL__", json.dumps(selector)).replace("__MODE__", json.dumps(mode))
     # 높이 0 iframe 도 요소 칸(간격)을 차지하므로 겉껍데기까지 숨긴다(in_session_nav 와 같은 방식) —
-    # 완료 직후 한 번만 그려지는 칸이라 숨기지 않으면 그 순간 아래쪽이 살짝 밀린다.
-    wrap = "ln_scroll_just_saved_wrap"
-    with st.container(key=wrap):
+    # 한 번만 그려지는 칸이라 숨기지 않으면 그 순간 아래쪽이 살짝 밀린다.
+    with st.container(key=wrap_key):
         st.markdown(
-            f"<style>.st-key-{wrap},"
-            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
+            f"<style>.st-key-{wrap_key},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap_key}){{display:none !important;}}</style>',
             unsafe_allow_html=True,
         )
         components.html(
@@ -462,6 +477,10 @@ def render_scroll_to_just_saved() -> None:
             + ";d.head.appendChild(s);s.parentNode.removeChild(s);}catch(e){}})();</script>",
             height=0,
         )
+
+
+def _scroll_on_open_key(blink_flag_key: str) -> str:
+    return f"{blink_flag_key}_scroll_on_open"
 
 
 def _just_saved_key(blink_flag_key: str) -> str:
@@ -496,7 +515,9 @@ def _resolve_history_panel_state(blink_flag_key: str) -> str:
     return panel_open_key
 
 
-def render_history_button(*, container_key: str, blink_flag_key: str, title: str = "저장내역") -> None:
+def render_history_button(
+    *, container_key: str, blink_flag_key: str, title: str = "저장내역", scroll_on_open: bool = False
+) -> None:
     """저장내역 열기/닫기 버튼만 렌더. 패널은 render_history_panel이 그린다 —
     자동구매처럼 버튼은 좁은 열에, 패널은 전체 폭 아래에 둬야 하는 화면 때문에
     분리했다. 버튼+패널을 붙여서 쓰려면 render_history_section을 쓰면 된다."""
@@ -515,6 +536,10 @@ def render_history_button(*, container_key: str, blink_flag_key: str, title: str
         배너가 같은 렌더에서 뜬다(그리는 건 render_wallet_bar)."""
         opening = not st.session_state.get(panel_open_key, False)
         st.session_state[panel_open_key] = opening
+        # 2026-10-11(사용자 지시 — 번호검증): 펼칠 때 저장내역이 화면에 보이게 버튼을 위로 올린다.
+        # 그리는 건 render_history_panel(로그인 확인 뒤, 1회 소비).
+        if opening and scroll_on_open:
+            st.session_state[_scroll_on_open_key(blink_flag_key)] = True
         # 미로그인인데 "저장내역"을 눌러 펼치는 경우에만 여기서 로그인 배너를
         # 띄운다. 패널 쪽(render_history_panel)에서는 배너를 열지 않는다 —
         # 안 그러면 배너를 [닫기]로 닫아도 패널이 아직 펼침 상태라 다음
@@ -571,8 +596,12 @@ def render_history_panel(
         from auth_kakao import current_member_id as _cmid
 
         if not _cmid():
+            st.session_state.pop(_scroll_on_open_key(blink_flag_key), None)
             render_login_required_notice()
             return
+
+        if st.session_state.pop(_scroll_on_open_key(blink_flag_key), False):
+            render_scroll_to_history_top(container_key)
 
         if content_renderer is not None:
             content_renderer()
