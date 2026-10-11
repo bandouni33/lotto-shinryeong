@@ -27,6 +27,16 @@ _STAGE2_FILE = os.path.join(_DIR, "combo_filter_rules_stage2.json")
 RECENT_WINDOW = 100
 MAXGAP = 46
 
+# 2026-10-11(사용자 지시): 4차 필터(상위1~5위 중 1개 이상 + 상·중·하 각 1~4개)의 순위를
+# '역대 vs 최근100회' → '최근100회(기준) vs 최근30회(비교)' 격차순위로 바꾼다. **1247회차부터**
+# (앵커 1246 이상). 1246회차 이하(앵커 1245 이하)는 옛 순위 그대로 — 이미 배포·확정된 회차의
+# 풀·참고등수(compute_reference_stats 재현)가 바뀌면 안 된다. 1차 AUTO '후보패턴 이웃수'는
+# 옛 순위(역대 vs 최근100) 그대로 쓴다(사용자 지시 범위 밖). 추적표 '4차필터(100vs30회_후보)'
+# 시트와 같은 정의(weekly_lotto_file_update.gap_forecast).
+STAGE4_100VS30_FROM_ANCHOR = 1246
+STAGE4_BASE_WINDOW = 100
+STAGE4_RECENT_WINDOW = 30
+
 
 def _load_stage_json(stage: int, local_file: str):
     """DB(app_settings) 우선, 없거나(마이그레이션 전) DB 접속 실패 시 기존
@@ -131,16 +141,26 @@ def compute_static_gap_mask(combo_oh: np.ndarray, static_rules, gap_rules, combo
     return static_pass & gap_pass
 
 
+def stage4_order_for_anchor(history_asc: list[dict], anchor_round: int) -> list[int]:
+    """4차 필터(상중하·top5)에 쓰는 격차순위 — 앵커 1246부터 최근100 vs 최근30, 그 전은 옛 순위."""
+    if anchor_round >= STAGE4_100VS30_FROM_ANCHOR:
+        return _gap_order_for_anchor(history_asc, anchor_round, STAGE4_RECENT_WINDOW,
+                                     base_window=STAGE4_BASE_WINDOW)
+    return _gap_order_for_anchor(history_asc, anchor_round)
+
+
 def _gap_order_for_anchor(history_asc: list[dict], anchor_round: int,
-                         window: int = RECENT_WINDOW) -> list[int]:
+                         window: int = RECENT_WINDOW, base_window: int | None = None) -> list[int]:
     """history_asc: draw_round 오름차순 정렬된 [{'draw_round','nums':[6개],'bonus'}...].
     anchor_round까지의 데이터로 역대/최근 `window`회 출현빈도 순위 격차를 계산.
     window 기본값은 RECENT_WINDOW(100) — 2026-09-27: 파일의 '후보패턴 이웃수(200회)'
-    규칙을 앱에 사실대로 추가하면서 창을 인자로 뺏다(창 계산이 두 벌이 되지 않게)."""
+    규칙을 앱에 사실대로 추가하면서 창을 인자로 뺏다(창 계산이 두 벌이 되지 않게).
+    base_window: 기준 빈도의 창(None=역대 전체). 2026-10-11 4차 100vs30 용으로 추가."""
     rounds = [h["draw_round"] for h in history_asc]
     idx = rounds.index(anchor_round)
     freq_all = np.zeros(46, dtype=np.int64)
-    for h in history_asc[: idx + 1]:
+    base_lo = 0 if base_window is None else max(0, idx + 1 - base_window)
+    for h in history_asc[base_lo : idx + 1]:
         for x in h["nums"]:
             freq_all[x] += 1
     freq_recent = np.zeros(46, dtype=np.int64)
@@ -278,6 +298,10 @@ def compute_stage_masks(history_asc: list[dict], anchor_round: int,
     stage1_mask = base["static_mask"] & auto_pass
     stage2_mask = stage1_mask & base["gap_mask"]
 
+    # 4차 순위 — 앵커 1246(=1247회차)부터 최근100 vs 최근30(위 STAGE4_* 참고).
+    # 1차 AUTO(후보패턴 이웃수)는 위 gap_order(옛 순위)를 그대로 썼다.
+    auto_gap_order = gap_order
+    gap_order = stage4_order_for_anchor(history_asc, anchor_round)
     sang = _targets_to_vec(gap_order[:15])
     jung = _targets_to_vec(gap_order[15:30])
     ha = _targets_to_vec(gap_order[30:45])
@@ -311,7 +335,8 @@ def compute_stage_masks(history_asc: list[dict], anchor_round: int,
         "stage2_mask": stage2_mask,
         "stage4_mask": stage4_mask,
         "static_gap_mask": base["static_mask"] & base["gap_mask"],
-        "gap_order": gap_order,
+        "gap_order": gap_order,            # 4차 순위(top5_numbers·상중하의 기준)
+        "auto_gap_order": auto_gap_order,  # 1차 AUTO '후보패턴 이웃수'에 쓴 옛 순위
     }
 
 

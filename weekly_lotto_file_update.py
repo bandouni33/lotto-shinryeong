@@ -556,7 +556,7 @@ DAEJO_HEADERS = ("회차", "파일_1차통과", "파일_2차통과", "파일_4�
 # 1244회차 이하는 규칙 변경 전 배포분이라 달라도 이력일 뿐이다. 규칙을 또 바꾸면(예: 새 필터
 # 규칙을 1250회차부터 적용) 이 값을 그 첫 배포 회차로 올려야 한다 — 그러지 않으면 바뀌기 전에
 # 생성된 회차들이 '불일치(실패)'로 잘못 잡힌다.
-RULE_VINTAGE_ROUND = 1245
+RULE_VINTAGE_ROUND = 1247   # 2026-10-11: 4차 순위 100vs30 전환(1247회차부터) — combo_filter_v2.STAGE4_*
 DAEJO_VINTAGE_NOTE = (f"{RULE_VINTAGE_ROUND - 1}회차 이하 = 규칙 변경 전 배포분(차이 나도 정상)")
 
 _TRACKING_BASE: dict | None = None
