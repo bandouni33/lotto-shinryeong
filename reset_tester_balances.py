@@ -213,4 +213,17 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # 2026-10-11: 끝난 뒤에도 창이 닫히지 않았다(db_turso 의 non-daemon 스레드가 종료를 붙잡음 —
+    # hourly_draw_sync·round_result_finalize 와 같은 원인). 출력은 다 끝났으니 즉시 종료한다.
+    import os
+
+    try:
+        main()
+        _code = 0
+    except Exception:  # noqa: BLE001
+        import traceback
+
+        traceback.print_exc()
+        _code = 1
+    sys.stdout.flush()
+    os._exit(_code)
