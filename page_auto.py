@@ -3237,9 +3237,12 @@ def render():
                     # 2026-08-29: "다음회차 준비 안됨" 배너는 구매내역(지난 회차 조회)과
                     # 무관하므로, 버튼 2열 전체 밑·저장내역 패널보다 위에 전체 폭으로
                     # 둔다 — 구매 관련 안내라는 게 분명하게 보이도록.
-                    if not next_pool["ok"]:
+                    # 2026-10-12(사용자 지시): 이용 가능 = 다음 회차 조합 준비 완료 ~ 토 19:55. 그 밖에는
+                    # "준비중입니다"(sales_window 한 곳). 방금 누른 안내가 같은 문구면 한 번만 보인다.
+                    if (not _is_auto_deploy_window_open()
+                            and st.session_state.get("auto_purchase_notice") != AUTO_DEPLOY_WINDOW_BANNER):
                         st.markdown(
-                            f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
+                            f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
                             unsafe_allow_html=True,
                         )
 

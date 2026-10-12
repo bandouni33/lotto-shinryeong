@@ -40,7 +40,7 @@ def _next_draw_round() -> int:
         return 1234
 
 
-NEXT_DRAW_POOL_BANNER = "다음회차 조합생성이 완료된 후 이용 바랍니다"
+NEXT_DRAW_POOL_BANNER = "준비중입니다"  # 2026-10-12: sales_window.SALES_WINDOW_BANNER 와 같은 문구
 
 
 class NextDrawPoolNotReadyError(Exception):

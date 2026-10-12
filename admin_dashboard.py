@@ -1733,7 +1733,7 @@ elif st.session_state.admin_view == "ops_manage":
     # (파일을 옮겨도 화요일 배포엔 영향 없음) — 그래서 파일 경로를 바꾸는
     # 대신, DB에 실제로 뭐가 들어있는지 한눈에 보이는 현황판만 추가한다.
     st.markdown("<h4 style='margin-top:40px; color:#FFB300; font-weight:700;'>📦 현재 배포현황</h4>", unsafe_allow_html=True)
-    st.caption("화요일 09:00부터 판매(배포)되는 조합은 이 회차 기준입니다 — 로컬 CSV 파일이 아니라 DB(Turso)에 저장된 값입니다.")
+    st.caption("조합 생성 완료 즉시(일요일 오후)부터 판매(배포)되는 조합은 이 회차 기준입니다 — 로컬 CSV 파일이 아니라 DB(Turso)에 저장된 값입니다.")
 
     @st.cache_data(ttl=60, show_spinner=False)
     def _ops_latest_distribution_cached():

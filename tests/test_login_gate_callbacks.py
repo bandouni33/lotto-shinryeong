@@ -65,7 +65,7 @@ def _mock_auth_off():
     이 값은 호출 시점에 os.environ에서 읽히므로 앱 실행 전에 바꾸면 된다.
 
     2026-09-19(시계 의존 실패 제거): 번개조합 "조합시작" 콜백은 로그인 게이트보다
-    먼저 판매시간대(sales_window.is_sales_window_open — 화 09:00~토 19:55)를 보고,
+    먼저 판매시간대(sales_window.is_sales_window_open — 다음 회차 조합 준비 즉시~토 19:55)를 보고,
     닫혀 있으면 배너를 요청하지 않고 조기 return한다. 그래서
     test_thunder_gate_click_does_not_open_dialog_when_logged_out는 실행 시각에 따라
     (토요일 19:55 이후·일·월요일) 항상 실패했다. 이 테스트가 검증하는 대상은
