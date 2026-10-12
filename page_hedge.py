@@ -31,6 +31,8 @@ _ANTI_MAX_OVERLAP = 2
 # 겹침이 "결과로 선택되는 5줄 전체를 합산"해서 최대 3개(조합 하나하나가
 # 아니라 5줄 누적 합계에 적용되는 상한 — 자세한 건 해당 함수 주석 참고).
 _AEKDDAEM_TOTAL_OVERLAP_CAP = 3
+# 풀에서 겹침 조건 통과 후보를 몇 배수까지 훑을지 — 패턴 전부 만족 조합을 찾을 여유(2026-10-12).
+_POOL_SCAN_FACTOR = 20
 
 # 동행복권 로또 용지 QR의 v= 값 포맷: {회차4자리}({모드글자1}{번호6개를 2자리씩
 # 이어붙인 12자리}) 이 최대 5번 반복. 글자(수동/자동 구분으로 추정) 자체의 의미는
@@ -137,14 +139,22 @@ def generate_anti_combinations(lines: list[tuple[int, ...]], count: int) -> list
     weights = get_number_weights()
     pattern_rules = get_resolved_pattern_rules()
 
-    results: list[tuple[int, ...]] = list(
-        _pool_priority_matches(
-            lambda c: all(len(set(c) & set(line)) <= _ANTI_MAX_OVERLAP for line in lines),
-            count,
-        )
-    )
+    # 2026-10-12(사용자 규칙): 풀 조합도 기준값패턴을 **전부 만족**할 때만 바로 쓰고, 아니면
+    # 최다충족 후보(fallback)로만 남긴다 — 순서: 패턴 전부 만족(풀 → 가중치 추첨) → 최다 만족.
+    results: list[tuple[int, ...]] = []
     fallback: list[tuple[int, tuple[int, ...]]] = []
-    seen: set[tuple[int, ...]] = set(results)
+    for combo in _pool_priority_matches(
+        lambda c: all(len(set(c) & set(line)) <= _ANTI_MAX_OVERLAP for line in lines),
+        count * _POOL_SCAN_FACTOR,
+    ):
+        if len(results) >= count:
+            break
+        all_pass, matched, _total = score_combo_against_pattern_rules(combo, pattern_rules)
+        if all_pass:
+            results.append(combo)
+        else:
+            fallback.append((matched, combo))
+    seen: set[tuple[int, ...]] = set(results) | {c for _, c in fallback}
     for _ in range(_MAX_ATTEMPTS):
         if len(results) >= count:
             break
@@ -193,7 +203,10 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
     #    우선 채운다. 조건 자체는 "겹침 개수"가 아니라 항상 통과(True)시켜서
     #    여기서 직접 누적 예산을 관리한다 — _pool_priority_matches의 조건
     #    콜백은 조합 1개 단위라 누적 상태를 못 들고 있기 때문.
-    for combo in _pool_priority_matches(lambda c: True, count * 5):
+    # 2026-10-12(사용자 규칙): 풀 조합도 기준값패턴 전부 만족일 때만 바로 쓰고, 아니면
+    # 최다충족 후보(fallback)로만 남긴다.
+    fallback: list[tuple[int, tuple[int, ...], int]] = []
+    for combo in _pool_priority_matches(lambda c: True, count * _POOL_SCAN_FACTOR):
         if len(results) >= count:
             break
         if combo in seen:
@@ -202,12 +215,15 @@ def generate_aekddaem_combinations(lines: list[tuple[int, ...]], count: int) -> 
         ov = _overlap(combo)
         if cumulative_overlap + ov > _AEKDDAEM_TOTAL_OVERLAP_CAP:
             continue
-        results.append(combo)
-        cumulative_overlap += ov
+        all_pass, matched, _total = score_combo_against_pattern_rules(combo, pattern_rules)
+        if all_pass:
+            results.append(combo)
+            cumulative_overlap += ov
+        else:
+            fallback.append((matched, combo, ov))
 
     # 2) 남은 자리는 가중치 추첨 — 매 시도마다 "지금까지 누적 + 이 후보의
     #    겹침"이 상한을 넘는지 먼저 확인하고, 넘으면 이 후보는 건너뛴다.
-    fallback: list[tuple[int, tuple[int, ...], int]] = []
     for _ in range(_MAX_ATTEMPTS):
         if len(results) >= count:
             break
