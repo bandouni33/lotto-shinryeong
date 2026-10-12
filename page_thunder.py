@@ -1003,6 +1003,10 @@ def render():
             const ADMIN_LUCKY_NUMBERS = {js_admin_lucky_numbers};
             let poolCombos = {js_pool_combos};
             const thunderFilter = {js_filter_config};
+            // 2026-10-12(사용자 규칙 5): 연출이 시작되자마자 첫 줄이 채워지면 '미리 정해 둔 것'처럼
+            // 보인다 — 첫 게임은 1.5초 뒤부터, 이후 2초 간격.
+            const THUNDER_FIRST_GAME_DELAY_MS = 1500;
+            const THUNDER_PATTERN_MAX_TRIES = 200;
             const patternRules = {js_pattern_rules};
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
@@ -1236,12 +1240,40 @@ def render():
                 initGrid();
             }}
 
+            // 2026-10-12(사용자 규칙): 행운수를 지정한 이용자는 게임마다 행운수 1~2개를
+            // **반드시** 포함(예전: 0~3개 무작위 — 30% 확률로 하나도 안 들어갔다).
             function pickLuckyCount() {{
-                const r = Math.random();
-                if (r < 0.30) return 0;
-                if (r < 0.65) return 1;
-                if (r < 0.90) return 2;
-                return 3;
+                return Math.random() < 0.5 ? 1 : 2;
+            }}
+            function countIn(nums, list) {{
+                let c = 0;
+                nums.forEach(n => {{ if (list.has ? list.has(n) : list.includes(n)) c += 1; }});
+                return c;
+            }}
+            // 이번 선택에서 행운수·핵심수 규칙을 지킬 수 있는지(삭제수로 전부 지웠으면 적용 불가).
+            function luckyActive() {{
+                for (const n of luckyNumbers) {{ if (!selectedDelete.has(n) && !selectedFixed.has(n)) return true; }}
+                return false;
+            }}
+            function adminActive() {{
+                return ADMIN_LUCKY_NUMBERS.some(n => !selectedDelete.has(n));
+            }}
+            // 2026-10-12(사용자 규칙 1·2·4): 고정수 전부 포함·삭제수 없음·행운수 1~2개·
+            // 핵심수 1~2개(고정수만으로 이미 3개 이상이면 그 수까지 인정 — 이용자 지정 우선).
+            function meetsUserRules(nums) {{
+                const s = new Set(nums);
+                for (const n of selectedFixed) {{ if (!s.has(n)) return false; }}
+                for (const n of nums) {{ if (selectedDelete.has(n)) return false; }}
+                if (luckyActive()) {{
+                    const lc = countIn(nums, luckyNumbers);
+                    if (lc < 1 || lc > 2) return false;
+                }}
+                if (adminActive()) {{
+                    const ac = countIn(nums, ADMIN_LUCKY_NUMBERS);
+                    const fixedAdmin = countIn(Array.from(selectedFixed), ADMIN_LUCKY_NUMBERS);
+                    if (ac < 1 || ac > Math.max(2, fixedAdmin)) return false;
+                }}
+                return true;
             }}
 
             // 나머지 빈 자리를 채울 때 완전 무작위 대신, 1회~최신회차 실제 당첨
@@ -1320,31 +1352,31 @@ def render():
                 return false;
             }}
 
+            // 2026-10-12(사용자 규칙): 고정수 → 행운수 1~2개(지정 시 반드시) → 핵심수 1~2개
+            // (반드시, 자리가 있으면) → 나머지는 과거 출현 가중치. 나머지를 뽑을 때 행운수는
+            // 더 넣지 않고(최대 2개 유지), 핵심수는 2개가 되면 후보에서 뺀다 — 한 개씩 뽑아
+            // 매번 다시 거른다(한꺼번에 뽑으면 3개째가 섞일 수 있었다).
             function fillRandomSlots(fixedArr, availablePool) {{
                 let game = fixedArr.slice();
                 const gameSet = new Set(game);
                 const pool = availablePool.filter(n => !selectedFixed.has(n));
+                const useLucky = luckyActive();
 
-                let luckyCandidates = pool.filter(n => luckyNumbers.has(n));
-                let targetLucky = pickLuckyCount();
-                targetLucky = Math.min(targetLucky, luckyCandidates.length, 6 - game.length);
-                luckyCandidates.sort(() => Math.random() - 0.5);
-                const pickedLucky = luckyCandidates.slice(0, targetLucky);
-                game = game.concat(pickedLucky);
-                pickedLucky.forEach(n => gameSet.add(n));
+                let luckyInGame = countIn(game, luckyNumbers);
+                if (useLucky) {{
+                    const luckyCandidates = pool.filter(n => luckyNumbers.has(n) && !gameSet.has(n));
+                    luckyCandidates.sort(() => Math.random() - 0.5);
+                    const want = Math.min(Math.max(pickLuckyCount() - luckyInGame, 0),
+                                          luckyCandidates.length, 6 - game.length);
+                    luckyCandidates.slice(0, want).forEach(n => {{ game.push(n); gameSet.add(n); }});
+                    luckyInGame = countIn(game, luckyNumbers);
+                }}
 
-                // 2026-09-20(사용자 지시, 재도입): 관리자 "메인화면 핵심수" 6개
-                // (ADMIN_LUCKY_NUMBERS) 중 최소 1개는 반드시 강제 포함시킨다 —
-                // 단, 고정수/개인 행운수로 이미 우연히 포함돼 있으면(예: 고정수
-                // 중 하나가 마침 핵심수이기도 한 경우) 추가로 더 강제하지 않고
-                // 그대로 인정한다(이중 강제 방지). 자리가 이미 다 찼거나(고정수
-                // 6개 — 이 경우 이 함수 자체가 안 불림, buildOneGame 참고), 6개
-                // 핵심수가 전부 삭제수/고정수와 겹쳐 pool에 하나도 안 남았으면
-                // 강제할 후보가 없으므로 조용히 건너뛴다(생성 자체를 막지 않음).
-                let adminLuckyInGame = game.filter(n => ADMIN_LUCKY_NUMBERS.includes(n)).length;
+                let adminLuckyInGame = countIn(game, ADMIN_LUCKY_NUMBERS);
                 if (adminLuckyInGame === 0 && game.length < 6) {{
                     const adminLuckyCandidates = pool.filter(
                         n => ADMIN_LUCKY_NUMBERS.includes(n) && !gameSet.has(n)
+                            && (!useLucky || !luckyNumbers.has(n) || luckyInGame < 2)
                     );
                     if (adminLuckyCandidates.length > 0) {{
                         const forced = adminLuckyCandidates[
@@ -1353,19 +1385,22 @@ def render():
                         game.push(forced);
                         gameSet.add(forced);
                         adminLuckyInGame = 1;
+                        if (luckyNumbers.has(forced)) luckyInGame += 1;
                     }}
                 }}
 
-                // 최대 2개 상한: 이미 2개(또는 그 이상, 고정수만으로 2개 이상
-                // 겹쳤을 수도 있음) 도달했으면, 나머지 자리를 채우는 가중치
-                // 추첨 후보에서 핵심수를 미리 제외해 3개째가 우연히도 안
-                // 들어가게 막는다(1~2개 초과 방지).
-                let remainingPool = pool.filter(n => !gameSet.has(n));
-                if (adminLuckyInGame >= 2) {{
-                    remainingPool = remainingPool.filter(n => !ADMIN_LUCKY_NUMBERS.includes(n));
+                while (game.length < 6) {{
+                    let remainingPool = pool.filter(n => !gameSet.has(n));
+                    if (useLucky) remainingPool = remainingPool.filter(n => !luckyNumbers.has(n));
+                    if (adminLuckyInGame >= 2) {{
+                        remainingPool = remainingPool.filter(n => !ADMIN_LUCKY_NUMBERS.includes(n));
+                    }}
+                    if (remainingPool.length === 0) break;
+                    const picked = weightedPickWithoutReplacement(1, remainingPool)[0];
+                    game.push(picked);
+                    gameSet.add(picked);
+                    if (ADMIN_LUCKY_NUMBERS.includes(picked)) adminLuckyInGame += 1;
                 }}
-                const pickedRest = weightedPickWithoutReplacement(6 - game.length, remainingPool);
-                game = game.concat(pickedRest);
                 return game;
             }}
 
@@ -1402,9 +1437,11 @@ def render():
                 for (let i = 0; i < poolCombos.length; i++) {{
                     const combo = poolCombos[i];
                     const comboSet = new Set(combo);
+                    // 2026-10-12(사용자 규칙): 풀 조합도 이용자 지정(고정·삭제·행운수 1~2)·
+                    // 핵심수 1~2·기준값패턴 전부 만족일 때만 쓴다 — 예전엔 고정·삭제만 봐서
+                    // 행운수·핵심수·패턴이 사실상 적용되지 않았다.
                     const hasAllFixed = fixedArr.every(n => comboSet.has(n));
-                    const hasNoDeleted = combo.every(n => !selectedDelete.has(n));
-                    if (hasAllFixed && hasNoDeleted) {{
+                    if (hasAllFixed && meetsUserRules(combo) && scoreComboPattern(combo).allPass) {{
                         poolCombos.splice(i, 1);
                         return combo.slice().sort((a, b) => a - b);
                     }}
@@ -1418,7 +1455,8 @@ def render():
                 // 자연수 필터 하나만 볼 때의 기존 재시도 한도(100)에, 8가지 유형지표까지
                 // 함께 만족하는 조합을 찾을 여유를 더 준다 — 반복 1회 비용이 미미해서
                 // (45개 중 6개 뽑기 수준) 늘려도 체감 속도 차이는 없다.
-                const maxRetries = Math.max(thunderFilter.thresholds.max_retries, 400);
+                // 2026-10-12(사용자 규칙 3): 기준값패턴 전부 만족을 최대 200번 시도 → 못 찾으면 최다 만족.
+                const maxRetries = THUNDER_PATTERN_MAX_TRIES;
                 let game = fixedArr.slice();
                 let attempts = 0;
                 let gaveUp = false;
@@ -1587,7 +1625,7 @@ def render():
                         renderGame(game);
                         persistGenProgress(currentResults, count);
                         updateGenProgressBanner(currentResults.length, count);
-                    }}, g * 2000);
+                    }}, THUNDER_FIRST_GAME_DELAY_MS + g * 2000);
                     activeGenTimers.push(tid);
                 }}
                 const completeId = setTimeout(() => {{
@@ -1597,7 +1635,7 @@ def render():
                     clearGenProgress();
                     hideGenProgressBanner();
                     window.parent.postMessage({{ type: 'thunder_complete', count: count }}, '*');
-                }}, count * 2000 + 600);
+                }}, THUNDER_FIRST_GAME_DELAY_MS + count * 2000 + 600);
                 activeGenTimers.push(completeId);
             }}
 
