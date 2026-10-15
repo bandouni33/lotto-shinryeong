@@ -1,0 +1,49 @@
+name: 주간 리포트 제작
+
+# 2026-10-15(사용자 승인 컨셉): 토요일 당첨번호 반영(+등수 확정) 작업이 성공하면 바로 이어서
+# 카드 5장·게시 문구·쇼츠를 만든다. 지금은 제작만 하고 결과는 실행 기록의 'Artifacts'로 받는다.
+# 계정(인스타·스레드·유튜브) 연동 뒤 자동 게시 단계를 붙인다.
+on:
+  workflow_run:
+    workflows: ["토요일 밤 당첨번호 확인"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      round:
+        description: "회차(비우면 최신)"
+        required: false
+
+jobs:
+  build:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 글꼴·영상 도구
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk ffmpeg
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt pillow openpyxl
+
+      - name: 카드·문구·쇼츠 만들기
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.round }}" ]; then
+            python -m weekly_content.run_weekly --out weekly_out --round "${{ github.event.inputs.round }}"
+          else
+            python -m weekly_content.run_weekly --out weekly_out
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weekly-report
+          path: weekly_out/
+          retention-days: 30

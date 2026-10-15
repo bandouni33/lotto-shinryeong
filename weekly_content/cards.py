@@ -3,7 +3,8 @@
 
   1 표지: N회 당첨번호 + 보너스 (볼 색은 ball_style 단일 기준점)
   2 숫자 분석: 홀짝·저고·합계·연번·구간 분포, 최근 10회 많이 나온 번호 / 오래 안 나온 번호
-  3 앱 결과: 이번 회 앱 배포 조합의 실제 3·4·5등 개수(나쁜 주도 그대로). 값이 없으면 '집계 대기' 표시
+  3 필터 결과: 앱 자동조합 화면 '회차별 당첨번호 배출' 표와 같은 값(combo_round_stats — 필터 통과
+    조합 기준 참고등수, 나쁜 주도 그대로). '실제 이용자 당첨'으로 표현하지 않는다. 값이 없으면 '집계 대기'.
   4 다음 회 재미 요소: 회차로 정해지는 타로 한 장(메이저 22장, 퍼블릭 도메인 RWS) + 한 줄 + 500P 체험
   5 마무리: 설치 안내 + '참고·재미용, 당첨 보장 없음 / 복권은 만 19세 이상'
 
@@ -31,6 +32,7 @@ MUTED = (170, 175, 200)
 CARD_BG = (255, 255, 255, 18)
 _FONT_DIR = Path("/usr/share/fonts/opentype/noto")
 _BUNDLED = ROOT / "weekly_content" / "fonts"
+BLOG_URL = "https://blog.naver.com/bandouni"
 DISCLAIMER = "참고·재미용 정보이며 당첨을 보장하지 않습니다 · 복권은 만 19세 이상"
 SPIRIT_IMG = ROOT / "아이콘815.png"
 TAROT_DIR = ROOT / "tarot"
@@ -218,12 +220,13 @@ def card2(a, rnd):
 def card3(rnd, app_result: dict | None):
     im = _canvas()
     d = ImageDraw.Draw(im)
-    _center(d, 120, f"{rnd}회 로또신령 앱 결과", font(60, "Black"), GOLD)
-    _center(d, 215, "앱이 배포한 조합을 실제 당첨번호와 맞춰 본 결과예요", font(32, "Medium"), MUTED)
-    _panel(im, (60, 300, W - 60, 960))
+    _center(d, 120, f"{rnd}회 로또신령 필터 결과", font(60, "Black"), GOLD)
+    _center(d, 200, "앱 ‘회차별 당첨번호 배출’ 표와 같은 값이에요", font(32, "Medium"), MUTED)
+    _center(d, 245, "(필터 통과 조합 기준 참고 집계)", font(28, "Medium"), MUTED)
+    _panel(im, (60, 310, W - 60, 960))
     d = ImageDraw.Draw(im)
     tiers = [("1등", "t1"), ("2등", "t2"), ("3등", "t3"), ("4등", "t4"), ("5등", "t5")]
-    y = 345
+    y = 350
     for label, k in tiers:
         v = "집계 대기" if app_result is None else f"{int(app_result.get(k, 0)):,}개"
         d.text((130, y), label, font=font(48, "Bold"), fill=WHITE)
@@ -287,7 +290,8 @@ def card5(store_text):
     d = ImageDraw.Draw(im)
     _center(d, 825, store_text, font(38, "Bold"), WHITE)
     _center(d, 895, "에서 ‘로또신령’ 검색", font(34, "Medium"), MUTED)
-    _center(d, 1080, "매주 토요일 밤, 이번 주 숫자 이야기로 다시 만나요", font(32, "Medium"), WHITE)
+    _center(d, 1040, "자세한 사용법은 네이버 블로그 ‘로또신령’", font(32, "Medium"), WHITE)
+    _center(d, 1100, "매주 토요일 밤, 이번 주 숫자 이야기로 다시 만나요", font(30, "Medium"), MUTED)
     _footer(im, 5)
     return im
 
@@ -315,7 +319,8 @@ def caption(draws: dict[int, dict], rnd: int) -> str:
             f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n"
             f"최근 10회 자주 나온 번호: {', '.join(str(n) for n, _ in a['hot'])}\n\n"
             f"{rnd + 1}회를 기다리며 뽑은 이번 주 타로: {t['name']}\n“{t['line']}”\n\n"
-            "첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n\n"
+            "첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
+            f"자세한 사용법: {BLOG_URL}\n\n"
             "※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상.\n"
             f"#로또 #로또{rnd}회 #로또당첨번호 #로또번호 #로또통계 #타로 #로또신령")
 
