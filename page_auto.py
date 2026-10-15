@@ -1027,14 +1027,16 @@ def _render_auto_history_content():
     if not mid:
         return
     history_items, load_error = _collect_purchase_history_items(mid)
+    from combo_history_ui import render_history_notice  # 빈 상태 안내 공용(2026-10-15)
+
     if not history_items:
         if load_error:
-            st.caption("저장내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.")
+            render_history_notice("저장내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.")
         else:
-            st.caption("아직 저장한 내역이 없습니다. 조합시작 후 이곳에 저장됩니다.")
+            render_history_notice("아직 저장한 내역이 없습니다. 조합시작 후 이곳에 저장됩니다.")
         return
     if load_error:
-        st.caption("일부 내역을 불러오지 못했어요. 잠시 후 새로고침하면 전체가 보입니다.")
+        render_history_notice("일부 내역을 불러오지 못했어요. 잠시 후 새로고침하면 전체가 보입니다.")
     # 여러 회차 구매가 섞여 쌓일 수 있는데, 예전엔 조합 숫자만 보여주고 몇
     # 회차 것인지 표시가 없어서 어떤 조합이 어느 회차인지, 왜 동그라미가
     # 없는지(미추첨인지 낙첨인지) 헷갈릴 수 있었다 — 회차별로 묶어서 머리글을

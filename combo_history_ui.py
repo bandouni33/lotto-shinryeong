@@ -12,6 +12,7 @@ position:absolute 팝오버, 좁은 열 안에서 펼치다 번호가 잘리는 
 버튼 바로 밑 전체 폭 인라인 패널.
 """
 
+import html
 import json
 
 import streamlit as st
@@ -94,6 +95,17 @@ def history_css(container_key: str = "") -> str:
     <style>
     .auto-purchase-banner-plain {
         margin: 10px 0;
+    }
+    /* 저장내역 빈 상태·불러오기 실패 안내(자동·번개·번호검증 공용 — render_history_notice) */
+    .history-empty-notice {
+        margin: 10px 0 4px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #d6d3e6 !important;
+        font-size: 0.92rem;
+        text-align: center;
     }
     .auto-history-round-head {
         margin: 14px 0 6px;
@@ -515,6 +527,15 @@ def _resolve_history_panel_state(blink_flag_key: str) -> str:
     return panel_open_key
 
 
+def render_history_notice(text: str) -> None:
+    """저장내역 패널 안의 안내 한 줄(빈 상태·불러오기 실패) — 자동·번개·번호검증 공용.
+
+    2026-10-15(아이폰 번호검증 '저장내역 먹통' 신고): 예전 st.caption 은 라이트 테마 기본 글자색
+    (#1f1a2e)이라 어두운 화면 배경에 묻혀, 내역이 없는 회원이 버튼을 누르면 펼쳐져도 아무것도
+    안 보였다(로컬 렌더 실측). 화면마다 caption 색을 따로 고치지 말고 이 함수만 쓴다."""
+    st.markdown(f'<div class="history-empty-notice">{html.escape(text)}</div>', unsafe_allow_html=True)
+
+
 def render_history_button(
     *, container_key: str, blink_flag_key: str, title: str = "저장내역", scroll_on_open: bool = False
 ) -> None:
@@ -630,7 +651,7 @@ def render_history_panel(
         batches = _limit_to_recent_rounds(batches)
 
         if not batches:
-            st.caption(empty_caption)
+            render_history_notice(empty_caption)
         else:
             # 2026-09-26: 방금 저장(blink) 직후면 목록의 첫 카드(=가장 최근 저장본)에만
             # 깜빡임을 붙인다 — 플래그는 여기서 1회 소비된다.
