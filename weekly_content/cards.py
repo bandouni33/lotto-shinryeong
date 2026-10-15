@@ -4,7 +4,7 @@
   1 표지: N회 당첨번호 + 보너스 (볼 색은 ball_style 단일 기준점)
   2 숫자 분석: 홀짝·저고·합계·연번·구간 분포, 최근 10회 많이 나온 번호 / 오래 안 나온 번호
   3 필터 결과: 앱 자동조합 화면 '회차별 당첨번호 배출' 표와 같은 값(combo_round_stats — 필터 통과
-    조합 기준 참고등수, 나쁜 주도 그대로). '실제 이용자 당첨'으로 표현하지 않는다. 값이 없으면 '집계 대기'.
+    조합 기준 참고등수, 나쁜 주도 그대로). '실제 이용자 당첨'으로 표현하지 않는다. 값이 없으면 '동행복권 집계중'만(2026-10-15 사용자 지시 — 부제 '필터 통과 조합 기준 참고 집계' 쓰지 않음).
   4 다음 회 재미 요소: 회차로 정해지는 타로 한 장(메이저 22장, 퍼블릭 도메인 RWS) + 한 줄 + 500P 체험
   5 마무리: 설치 안내 + '참고·재미용, 당첨 보장 없음 / 복권은 만 19세 이상'
 
@@ -33,6 +33,7 @@ CARD_BG = (255, 255, 255, 18)
 _FONT_DIR = Path("/usr/share/fonts/opentype/noto")
 _BUNDLED = ROOT / "weekly_content" / "fonts"
 BLOG_URL = "https://blog.naver.com/bandouni"
+PENDING_TEXT = "동행복권 집계중"
 DISCLAIMER = "참고·재미용 정보이며 당첨을 보장하지 않습니다 · 복권은 만 19세 이상"
 SPIRIT_IMG = ROOT / "아이콘815.png"
 TAROT_DIR = ROOT / "tarot"
@@ -222,21 +223,21 @@ def card3(rnd, app_result: dict | None):
     d = ImageDraw.Draw(im)
     _center(d, 120, f"{rnd}회 로또신령 필터 결과", font(60, "Black"), GOLD)
     _center(d, 200, "앱 ‘회차별 당첨번호 배출’ 표와 같은 값이에요", font(32, "Medium"), MUTED)
-    _center(d, 245, "(필터 통과 조합 기준 참고 집계)", font(28, "Medium"), MUTED)
+    if app_result is None:   # 미확정: 등수 칸 없이 한 줄만(2026-10-15 사용자 지시)
+        _center(d, 620, PENDING_TEXT, font(44, "Medium"), MUTED)
+        _footer(im, 3)
+        return im
     _panel(im, (60, 310, W - 60, 960))
     d = ImageDraw.Draw(im)
     tiers = [("1등", "t1"), ("2등", "t2"), ("3등", "t3"), ("4등", "t4"), ("5등", "t5")]
     y = 350
     for label, k in tiers:
-        v = "집계 대기" if app_result is None else f"{int(app_result.get(k, 0)):,}개"
+        v = f"{int(app_result.get(k, 0)):,}개"
         d.text((130, y), label, font=font(48, "Bold"), fill=WHITE)
-        f = font(48, "Black") if app_result is not None else font(40, "Medium")
-        d.text((W - 130 - d.textlength(v, font=f), y + (0 if app_result is not None else 6)), v, font=f,
-               fill=GOLD if app_result is not None else MUTED)
+        f = font(48, "Black")
+        d.text((W - 130 - d.textlength(v, font=f), y), v, font=f, fill=GOLD)
         y += 120
-    msg = ("결과가 좋든 나쁘든 매주 그대로 공개합니다" if app_result is not None
-           else "[샘플] 실제 운영에서는 이 자리에 앱 DB의 실제 집계가 들어갑니다")
-    _center(d, 1010, msg, font(32, "Medium"), WHITE)
+    _center(d, 1010, "결과가 좋든 나쁘든 매주 그대로 공개합니다", font(32, "Medium"), WHITE)
     _footer(im, 3)
     return im
 

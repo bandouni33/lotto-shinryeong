@@ -106,7 +106,7 @@ def main() -> int:
     (out / f"{rnd}_caption.txt").write_text(cards.caption(draws, rnd), encoding="utf-8")
     shorts = make_shorts(pngs, out / f"{rnd}_shorts.mp4")
     print(f"[완료] {rnd}회 카드 {len(pngs)}장 · 문구 · 쇼츠={'있음' if shorts else '없음'} · "
-          f"필터 결과={'확정값' if res else '집계 대기'} → {out}")
+          f"필터 결과={'확정값' if res else '동행복권 집계중'} → {out}")
     return 0
 
 
