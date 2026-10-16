@@ -21,6 +21,9 @@ def compose(raw, w, h, title, sub, crop_bottom, band, title_px, sub_px):
     im = bg(w, h)
     d = ImageDraw.Draw(im)
     ft, fs = font(title_px, "Black"), font(sub_px, "Medium")
+    while d.textlength(title, font=ft) > w * 0.9 and title_px > 40:  # 긴 문구는 폭에 맞게 줄인다
+        title_px -= 2
+        ft = font(title_px, "Black")
     d.text(((w - d.textlength(title, font=ft)) / 2, band * 0.30), title, font=ft, fill=GOLD)
     d.text(((w - d.textlength(sub, font=fs)) / 2, band * 0.30 + title_px * 1.45), sub, font=fs, fill=MUTED)
     shot = raw.crop((0, 0, raw.width, crop_bottom))
