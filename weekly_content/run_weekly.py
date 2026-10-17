@@ -78,12 +78,20 @@ def main() -> int:
     ap.add_argument("--out", default="weekly_out")
     ap.add_argument("--round", type=int)
     ap.add_argument("--no-date-check", action="store_true")
+    ap.add_argument("--capture", help="토요일 즉시 게시: 캡처 번호 파일(instant/<회차>.txt) — DB에 그 회차가 아직 없을 때만 씀(DB엔 넣지 않음)")
     a = ap.parse_args()
 
     import draw_results_db
 
     draws = {h["draw_round"]: {"nums": sorted(h["numbers"]), "bonus": h["bonus"]}
              for h in draw_results_db.get_all_draw_results()}
+    if a.capture:   # 2026-10-17(사용자 지시): 공식 발표를 기다리지 않고 캡처 번호로 바로 제작
+        from weekly_content.instant_check import parse
+
+        c_rnd, c_nums, c_bonus = parse(Path(a.capture))
+        if c_rnd not in draws:
+            draws[c_rnd] = {"nums": c_nums, "bonus": c_bonus}
+            print(f"  ({c_rnd}회는 공식 미반영 — 캡처 번호로 제작, DB에는 넣지 않음)")
     rnd = a.round or max(draws)
     validate(draws, rnd)
     if not a.round and not a.no_date_check:

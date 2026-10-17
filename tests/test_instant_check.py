@@ -2,7 +2,7 @@
 
   I1 동행복권 값이 캡처와 같으면 DB에 반영하고 통과
   I2 다르면 반영하지 않고 중단(2)
-  I3 아직 미발표면 기다렸다가 발표되면 통과, 끝까지 없으면 1
+  I3 아직 미발표면 기다리지 않고 통과(캡처로 진행, DB 미반영) · --verify 도 보류(0)
   I4 형식 오류(6+1개 아님·중복·범위 밖)는 즉시 중단
 실행: python tests/test_instant_check.py
 """
@@ -53,8 +53,16 @@ class T(unittest.TestCase):
                {"draw_round": 1246, "numbers": [3, 11, 19, 27, 35, 44], "bonus": 8}]
         fake_db(self.local, seq)
         self.assertEqual(ic.check(self.f, tries=5, sleep=lambda *_: None), 0)
-        fake_db(self.local, [])
-        self.assertEqual(ic.check(self.f, tries=3, sleep=lambda *_: None), 1)
+        m = fake_db(self.local, [])
+        self.assertEqual(ic.check(self.f), 0)
+        self.assertEqual(m.upserts, [])
+        self.assertEqual(ic.check(self.f, verify=True), 0)
+
+    def test_I5_verify_mismatch_after_sync(self):
+        local = dict(self.local)
+        local[1246] = {"numbers": [3, 11, 19, 27, 35, 45], "bonus": 8}
+        fake_db(local, [])
+        self.assertEqual(ic.check(self.f, verify=True), 2)
 
     def test_I4_format(self):
         for bad in ("1 2 3 4 5 + 7", "1 1 2 3 4 5 + 6", "1 2 3 4 5 46 + 7"):

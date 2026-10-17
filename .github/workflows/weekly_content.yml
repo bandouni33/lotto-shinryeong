@@ -4,8 +4,9 @@ name: 주간 리포트 제작
 # 카드 5장·게시 문구·쇼츠를 만든다. 지금은 제작만 하고 결과는 실행 기록의 'Artifacts'로 받는다.
 # 계정(인스타·스레드·유튜브) 연동 뒤 자동 게시 단계를 붙인다.
 on:
-  # 2026-10-17(사용자 지시): 토요일 밤 '즉시 게시' — 캡처 번호를 weekly_content/instant/<회차>.txt 로 push 하면
-  # 공식 값과 대조(instant_check) 후 바로 제작·게시. 정기 실행과 겹쳐도 아래 concurrency 로 한 줄로 서고,
+  # 2026-10-17(사용자 지시): 토요일 밤 '즉시 게시' — TV 추첨 캡처 번호를 weekly_content/instant/<회차>.txt 로 push 하면
+  # 공식 발표를 기다리지 않고 바로 제작·게시(공식 값이 이미 있으면 대조, 다르면 중단. 캡처 번호는 DB에 넣지 않음).
+  # 정기 실행(workflow_run) 때 공식 값과 사후 대조 — 다르면 실행이 실패로 표시된다. 정기 실행과 겹쳐도 아래 concurrency 로 한 줄로 서고,
   # 같은 회차·채널은 DB 기록(weekly_social_posts)으로 두 번 올리지 않는다.
   push:
     branches: [main]
@@ -44,7 +45,7 @@ jobs:
       - name: 의존성 설치
         run: pip install -r requirements.txt pillow openpyxl
 
-      - name: 즉시 게시 — 캡처 번호와 동행복권 공식 값 대조
+      - name: 즉시 게시 — 캡처 번호 확인(공식 값 있으면 대조)
         if: ${{ github.event_name == 'push' }}
         id: instant
         env:
@@ -61,12 +62,22 @@ jobs:
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
           if [ -n "${{ steps.instant.outputs.round }}" ]; then
-            python -m weekly_content.run_weekly --out weekly_out --round "${{ steps.instant.outputs.round }}"
+            python -m weekly_content.run_weekly --out weekly_out --round "${{ steps.instant.outputs.round }}" \
+              --capture "weekly_content/instant/${{ steps.instant.outputs.round }}.txt"
           elif [ -n "${{ github.event.inputs.round }}" ]; then
             python -m weekly_content.run_weekly --out weekly_out --round "${{ github.event.inputs.round }}"
           else
             python -m weekly_content.run_weekly --out weekly_out
           fi
+
+      - name: 즉시 게시분 사후 대조(공식 값 ≠ 캡처면 실패 표시)
+        if: ${{ github.event_name == 'workflow_run' }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          f=$(ls weekly_content/instant/*.txt 2>/dev/null | sort -V | tail -1)
+          if [ -n "$f" ]; then python -m weekly_content.instant_check "$f" --verify; fi
 
       # 2026-10-17: 자동 게시 — 저장소 변수 WEEKLY_PUBLISH_CHANNELS 가 비어 있으면 '계획'만 남긴다(기본 꺼짐).
       # 수동 실행은 publish=yes 일 때만 게시. 같은 회차·채널은 DB 기록으로 다시 올리지 않는다.
