@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import datetime as dt
 import os
 import shutil
@@ -104,6 +105,8 @@ def main() -> int:
     res = app_result_for(rnd)
     pngs = cards.build(draws, rnd, out, date_text=draw_date_text(rnd), app_result=res)
     (out / f"{rnd}_caption.txt").write_text(cards.caption(draws, rnd), encoding="utf-8")
+    (out / f"{rnd}_captions.json").write_text(
+        json.dumps(cards.captions_all(draws, rnd), ensure_ascii=False, indent=1), encoding="utf-8")
     shorts = make_shorts(pngs, out / f"{rnd}_shorts.mp4")
     print(f"[완료] {rnd}회 카드 {len(pngs)}장 · 문구 · 쇼츠={'있음' if shorts else '없음'} · "
           f"필터 결과={'확정값' if res else '동행복권 집계중'} → {out}")

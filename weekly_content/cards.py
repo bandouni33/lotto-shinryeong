@@ -326,6 +326,38 @@ def caption(draws: dict[int, dict], rnd: int) -> str:
             f"#로또 #로또{rnd}회 #로또당첨번호 #로또번호 #로또통계 #타로 #로또신령")
 
 
+THREADS_LIMIT = 500  # 스레드 글자 제한(이모지·URL 포함)
+
+
+def caption_threads(draws: dict[int, dict], rnd: int) -> str:
+    """스레드용 짧은 문구(500자 이내) — 해시태그는 1개만 붙는 플랫폼이라 끝에 하나만."""
+    a = analyze(draws, rnd)
+    nums = " ".join(str(n) for n in a["nums"])
+    t = tarot_for_round(rnd)
+    txt = (f"🔮 제{rnd}회 로또 당첨번호\n{nums} + 보너스 {a['bonus']}\n"
+           f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n"
+           f"이번 주 타로: {t['name']} “{t['line']}”\n\n"
+           f"사용법: {BLOG_URL}\n"
+           "※ 참고·재미용, 당첨 보장 없음 · 복권은 만 19세 이상\n#로또")
+    return txt[:THREADS_LIMIT]
+
+
+def youtube_meta(draws: dict[int, dict], rnd: int) -> dict:
+    """유튜브 쇼츠 제목(100자 이내)·설명."""
+    a = analyze(draws, rnd)
+    nums = " ".join(str(n) for n in a["nums"])
+    return {"title": f"제{rnd}회 로또 당첨번호 {nums} + {a['bonus']} | 로또신령 #Shorts"[:100],
+            "description": caption(draws, rnd) + "\n#Shorts"}
+
+
+def captions_all(draws: dict[int, dict], rnd: int) -> dict:
+    """채널별 문구 한 벌 — 게시 단계(publish.py)는 이 값만 쓴다(문구를 따로 만들지 않는다)."""
+    main = caption(draws, rnd)
+    yt = youtube_meta(draws, rnd)
+    return {"instagram": main, "facebook": main, "threads": caption_threads(draws, rnd),
+            "youtube_title": yt["title"], "youtube_description": yt["description"]}
+
+
 def _draws_from_xlsx(path: str) -> dict[int, dict]:
     import openpyxl
 

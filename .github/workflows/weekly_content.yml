@@ -12,6 +12,10 @@ on:
       round:
         description: "회차(비우면 최신)"
         required: false
+      publish:
+        description: "게시까지 할까요?(yes면 저장소 변수 WEEKLY_PUBLISH_CHANNELS 채널에 게시, 이미 올린 채널은 건너뜀)"
+        required: false
+        default: "no"
 
 jobs:
   build:
@@ -42,7 +46,27 @@ jobs:
             python -m weekly_content.run_weekly --out weekly_out
           fi
 
+      # 2026-10-17: 자동 게시 — 저장소 변수 WEEKLY_PUBLISH_CHANNELS 가 비어 있으면 '계획'만 남긴다(기본 꺼짐).
+      # 수동 실행은 publish=yes 일 때만 게시. 같은 회차·채널은 DB 기록으로 다시 올리지 않는다.
+      - name: SNS 게시
+        if: ${{ github.event_name == 'workflow_run' || github.event.inputs.publish == 'yes' }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          WEEKLY_PUBLISH_CHANNELS: ${{ vars.WEEKLY_PUBLISH_CHANNELS }}
+          YT_PRIVACY: ${{ vars.YT_PRIVACY }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: python -m weekly_content.publish --dir weekly_out
+
       - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: weekly-report
           path: weekly_out/
