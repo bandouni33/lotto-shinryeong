@@ -1,5 +1,6 @@
 facebook: OK 로또신령
 instagram: OK @lottoshinryeong
 threads: OK @lottoshinryeong
+youtube: OK 로또신령 (@lottoshinryeong)
 채널 스위치: facebook,instagram,threads
-점검 시각(UTC): 2026-10-17T07:48:58Z
+점검 시각(UTC): 2026-10-17T09:56:02Z
