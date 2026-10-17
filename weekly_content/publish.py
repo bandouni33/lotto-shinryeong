@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT))
 CHANNELS = ("facebook", "instagram", "threads", "youtube")
 GRAPH = "https://graph.facebook.com/v25.0"
 THREADS = "https://graph.threads.net/v1.0"
+THREADS_BASE = "https://graph.threads.net"  # 토큰 갱신은 버전 없는 주소(공식 문서)
 YT_TOKEN_URL = "https://oauth2.googleapis.com/token"
 YT_UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
 TIMEOUT = 120
@@ -196,7 +197,7 @@ def threads_token(http: Http, log: PostLog, env=os.environ) -> str | None:
     cands = [t for t in (log.get_token("threads"), env.get("THREADS_TOKEN")) if t]
     for tok in dict.fromkeys(cands):
         try:
-            new = http.get(f"{THREADS}/refresh_access_token",
+            new = http.get(f"{THREADS_BASE}/refresh_access_token",
                            params={"grant_type": "th_refresh_token", "access_token": tok}).get("access_token")
             if new:
                 log.set_token("threads", new)
@@ -225,7 +226,7 @@ def check_keys(env=os.environ, http: Http | None = None, log: PostLog | None = N
 
     def th():
         tok = threads_token(http, log or PostLog(), env)
-        me = http.get(f"{THREADS}/v1.0/me", params={"fields": "id,username", "access_token": tok})
+        me = http.get(f"{THREADS}/me", params={"fields": "id,username", "access_token": tok})
         if str(me.get("id")) != str(env.get("THREADS_USER_ID")):
             raise PublishError(f"THREADS_USER_ID 불일치(토큰 계정 @{me.get('username')})")
         return "@" + me["username"]
