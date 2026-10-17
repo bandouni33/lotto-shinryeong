@@ -33,12 +33,12 @@ def links_html() -> str:
         for c in active_channels())
     return (
         '<style>'
-        '.sns-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 10px}'
-        '.sns-row .sns-title{color:#b8c2d6;font-size:13px;font-weight:700;margin-right:2px}'
-        '.sns-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;'
+        '.sns-row{display:flex;flex-wrap:nowrap;gap:4px;align-items:center;margin:6px 0 10px;overflow-x:auto}'
+        '.sns-row .sns-title{color:#b8c2d6;font-size:12px;font-weight:700;margin-right:2px;white-space:nowrap}'
+        '.sns-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:999px;'
         'background:linear-gradient(145deg,#243052 0%,#1a2238 42%,#12182b 100%);'
-        'border:1px solid rgba(120,100,170,.35);color:#e6e9f2 !important;font-size:12.5px;'
+        'border:1px solid rgba(120,100,170,.35);color:#e6e9f2 !important;font-size:11.5px;'
         'text-decoration:none !important;white-space:nowrap}'
-        '.sns-dot{width:9px;height:9px;border-radius:50%;display:inline-block}'
+        '.sns-dot{width:7px;height:7px;border-radius:50%;display:inline-block}'
         '</style>'
         f'<div class="sns-row"><span class="sns-title">공식 채널</span>{chips}</div>')

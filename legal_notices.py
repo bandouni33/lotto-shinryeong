@@ -250,7 +250,7 @@ NOTICES = {
 
 위탁: 카카오, Apple(iOS 앱 로그인 — 이름·이메일은 받지 않음), PASS, 금융인증, PG, SMS 대행, 인앱결제(Google Play·Apple App Store — 카드 등 결제정보는 각 스토어가 처리하며 앱·서버는 보관하지 않음) — 위탁 목록은 정식 약관에 기재.
 
-**YouTube API 서비스 이용 (2026-10-17 추가):** 회사는 공식 유튜브 채널(@lottoshinryeong)에 주간 리포트 영상을 올리기 위해 YouTube API 서비스를 사용합니다. 이 과정에서 이용자의 유튜브 계정·데이터에는 접근하거나 보관하지 않습니다. YouTube 서비스 약관(https://www.youtube.com/t/terms)과 Google 개인정보처리방침(https://policies.google.com/privacy)이 함께 적용됩니다.
+**YouTube API 서비스 이용 (2026-10-17 추가):** 회사는 공식 유튜브 채널(@lottoshinryeong)에 주간 리포트 영상을 올리기 위해 YouTube API 서비스를 사용합니다. 이 과정에서 이용자의 유튜브 계정·데이터에는 접근하거나 보관하지 않습니다. [YouTube 서비스 약관](https://www.youtube.com/t/terms)과 [Google 개인정보처리방침](https://policies.google.com/privacy)이 함께 적용됩니다.
 
 **문의 및 탈퇴·삭제 요청:**
 - 앱 내 즉시 처리: 메인 화면 우측 상단 **[내정보] → [회원 탈퇴]** (2026-09-27 추가 —
