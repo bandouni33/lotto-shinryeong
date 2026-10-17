@@ -380,6 +380,18 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    code = main()
+    # 2026-10-17: 예외로 끝나도 os._exit 로 바로 종료 — 아니면 db_turso 비데몬 스레드 때문에 프로세스가
+    # 안 끝나 Actions 가 시간 한도까지 '진행 중'으로 멈추고, 같은 concurrency 의 다음 실행까지 막는다.
+    import traceback
+    try:
+        code = main()
+    except SystemExit as e:
+        code = e.code if isinstance(e.code, int) else (1 if e.code else 0)
+        if not isinstance(e.code, int) and e.code:
+            print(e.code)
+    except BaseException:
+        traceback.print_exc()
+        code = 1
     sys.stdout.flush()
+    sys.stderr.flush()
     os._exit(code)  # db_turso 비데몬 스레드로 종료가 멈추지 않게

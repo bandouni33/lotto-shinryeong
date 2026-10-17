@@ -62,6 +62,16 @@ def check(path: Path, tries: int = 1, wait: float = 60, sleep=time.sleep, verify
 
 
 if __name__ == "__main__":
-    code = check(Path(sys.argv[1]), verify="--verify" in sys.argv)
+    import traceback
+    try:
+        code = check(Path(sys.argv[1]), verify="--verify" in sys.argv)
+    except SystemExit as e:
+        code = e.code if isinstance(e.code, int) else 1
+        if not isinstance(e.code, int):
+            print(e.code)
+    except BaseException:
+        traceback.print_exc()
+        code = 1
     sys.stdout.flush()
+    sys.stderr.flush()
     os._exit(code)
