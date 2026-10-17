@@ -1,0 +1,44 @@
+name: SNS 키 점검
+
+# 2026-10-17: 게시 없이 페이스북·인스타·스레드 키가 살아 있는지 점검한다.
+# weekly_content/checks/request.txt 를 바꿔 push 하면 실행되고, 결과(OK/실패·계정 이름만, 토큰 값 없음)를
+# weekly_content/checks/result.txt 로 저장소에 올린다(Actions 기록을 못 보는 환경에서도 확인 가능).
+on:
+  push:
+    branches: [main]
+    paths: ["weekly_content/checks/request.txt"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 키 점검
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          WEEKLY_PUBLISH_CHANNELS: ${{ vars.WEEKLY_PUBLISH_CHANNELS }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+        run: |
+          python -m weekly_content.publish --check weekly_content/checks/result.txt
+          echo "점검 시각(UTC): $(date -u +%FT%TZ)" >> weekly_content/checks/result.txt
+      - name: 결과 올리기
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weekly_content/checks/result.txt
+          git commit -m "SNS 키 점검 결과" || exit 0
+          git pull --rebase -q && git push -q

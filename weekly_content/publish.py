@@ -191,19 +191,48 @@ def post_instagram(http: Http, ig_id: str, token: str, urls: list[str], caption:
 # ── 스레드 ───────────────────────────────────────────────────────────
 
 def threads_token(http: Http, log: PostLog, env=os.environ) -> str | None:
-    """DB 에 있는 최신 토큰(없으면 THREADS_TOKEN)을 갱신해 저장하고 돌려준다. 갱신 실패 시 기존 값."""
-    tok = log.get_token("threads") or env.get("THREADS_TOKEN")
-    if not tok:
-        return None
-    try:
-        new = http.get(f"{THREADS}/refresh_access_token",
-                       params={"grant_type": "th_refresh_token", "access_token": tok}).get("access_token")
-        if new:
-            log.set_token("threads", new)
-            return new
-    except PublishError as e:
-        print(f"  (스레드 토큰 갱신 실패 — 기존 토큰 사용: {e})")
-    return tok
+    """갱신 가능한 토큰을 찾아 갱신·저장하고 돌려준다 — DB 에 저장된 최신 토큰 먼저, 안 되면 THREADS_TOKEN.
+    2026-10-17: 사용자가 Secrets 를 새로 넣었는데 DB 의 옛(끊긴) 토큰이 먼저 쓰이면 안 되므로 둘 다 시도."""
+    cands = [t for t in (log.get_token("threads"), env.get("THREADS_TOKEN")) if t]
+    for tok in dict.fromkeys(cands):
+        try:
+            new = http.get(f"{THREADS}/refresh_access_token",
+                           params={"grant_type": "th_refresh_token", "access_token": tok}).get("access_token")
+            if new:
+                log.set_token("threads", new)
+                return new
+        except PublishError as e:
+            print(f"  (스레드 토큰 갱신 실패 — 다음 후보: {str(e)[:120]})")
+    return env.get("THREADS_TOKEN") or (cands[0] if cands else None)
+
+
+def check_keys(env=os.environ, http: Http | None = None, log: PostLog | None = None) -> dict:
+    """게시하지 않고 키만 점검(2026-10-17) — 채널별 OK/실패와 계정 이름만 돌려준다(토큰 값은 절대 출력 안 함)."""
+    http = http or Http()
+    out = {}
+
+    def run(name, fn):
+        try:
+            out[name] = "OK " + fn()
+        except Exception as e:  # noqa: BLE001
+            out[name] = "실패 " + str(e)[:200]
+
+    page, ptok = env.get("META_PAGE_ID"), env.get("META_PAGE_TOKEN")
+    run("facebook", lambda: http.get(f"{GRAPH}/{page}", params={"fields": "name", "access_token": ptok})["name"])
+    ig = env.get("IG_USER_ID")
+    run("instagram", lambda: "@" + http.get(f"{GRAPH}/{ig}", params={"fields": "username",
+                                                                    "access_token": ptok})["username"])
+
+    def th():
+        tok = threads_token(http, log or PostLog(), env)
+        me = http.get(f"{THREADS}/v1.0/me", params={"fields": "id,username", "access_token": tok})
+        if str(me.get("id")) != str(env.get("THREADS_USER_ID")):
+            raise PublishError(f"THREADS_USER_ID 불일치(토큰 계정 @{me.get('username')})")
+        return "@" + me["username"]
+
+    run("threads", th)
+    out["채널 스위치"] = ",".join(enabled_channels(env)) or "(비어 있음 — 게시 안 함)"
+    return out
 
 
 def post_threads(http: Http, user_id: str, token: str, urls: list[str], text: str, sleep=time.sleep) -> str:
@@ -319,7 +348,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="weekly_out")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--check", help="게시 없이 키 점검 — 결과를 이 파일에 씀")
     a = ap.parse_args()
+    if a.check:
+        res = check_keys()
+        txt = "\n".join(f"{k}: {v}" for k, v in res.items())
+        Path(a.check).write_text(txt + "\n", encoding="utf-8")
+        print(txt)
+        return 0
     res = publish(Path(a.dir), dry_run=a.dry_run)
     print(json.dumps(res, ensure_ascii=False, indent=1))
     return 1 if res["failed"] else 0
