@@ -3249,17 +3249,9 @@ def render():
                             unsafe_allow_html=True,
                         )
 
-                    # 구매내역 펼침 내용은 좁은 열 안이 아니라 버튼 2열 전체 밑에
-                    # 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면 번호 6개가
-                    # 잘려 보이고, 화면 중앙 팝업으로 띄우면 "구매 확정" 버튼을
-                    # 가려버리는 문제가 있었다(2026-08-23).
-                    from combo_history_ui import render_history_panel
-
-                    render_history_panel(
-                        container_key="auto_purchase_history_zone_6n36s5",
-                        blink_flag_key="auto_history_blink",
-                        content_renderer=_render_auto_history_content,
-                    )
+                    # 2026-10-17(사용자 지시): 저장내역 펼침 패널은 여기(버튼 바로 밑)가 아니라 아래
+                    # 신령 이미지와 '회차별 당첨번호 배출' 표 사이에 그린다 — 버튼 밑에 있으면 조합시작
+                    # 3초 동안 신령 이미지가 패널에 밀려 화면 밖으로 내려가 움직임이 안 보였다.
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
@@ -3362,6 +3354,17 @@ def render():
                     ),
                     unsafe_allow_html=True,
                 )
+
+        # 구매내역 펼침 내용은 좁은 열 안이 아니라 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면
+        # 번호 6개가 잘려 보이고, 팝업으로 띄우면 "구매 확정" 버튼을 가렸다(2026-08-23).
+        # 2026-10-17(사용자 지시): 자리 = 신령 이미지 아래·회차별 당첨번호 배출 표 위(3초 움직임이 보이게).
+        from combo_history_ui import render_history_panel
+
+        render_history_panel(
+            container_key="auto_purchase_history_zone_6n36s5",
+            blink_flag_key="auto_history_blink",
+            content_renderer=_render_auto_history_content,
+        )
 
         stats_df, is_mock = _load_stats_table_cached(_admin_stats_cache_key())
         with st.container(key="auto_stats_section_6n36s5"):
