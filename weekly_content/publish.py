@@ -232,6 +232,23 @@ def check_keys(env=os.environ, http: Http | None = None, log: PostLog | None = N
         return "@" + me["username"]
 
     run("threads", th)
+
+    def yt():
+        if not env.get("YT_REFRESH_TOKEN"):
+            raise PublishError("YT 키 없음")
+        at = http.post(YT_TOKEN_URL, data={"client_id": env.get("YT_CLIENT_ID"),
+                                           "client_secret": env.get("YT_CLIENT_SECRET"),
+                                           "refresh_token": env.get("YT_REFRESH_TOKEN"),
+                                           "grant_type": "refresh_token"})["access_token"]
+        items = http.get("https://www.googleapis.com/youtube/v3/channels",
+                         params={"part": "snippet", "mine": "true"},
+                         headers={"Authorization": f"Bearer {at}"}).get("items") or []
+        if not items:
+            raise PublishError("이 계정에 유튜브 채널 없음")
+        sn = items[0]["snippet"]
+        return f"{sn.get('title')} ({sn.get('customUrl', '')})"
+
+    run("youtube", yt)
     out["채널 스위치"] = ",".join(enabled_channels(env)) or "(비어 있음 — 게시 안 함)"
     return out
 

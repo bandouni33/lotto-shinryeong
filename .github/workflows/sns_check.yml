@@ -32,6 +32,9 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
           THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: |
           python -m weekly_content.publish --check weekly_content/checks/result.txt
           echo "점검 시각(UTC): $(date -u +%FT%TZ)" >> weekly_content/checks/result.txt
