@@ -39,10 +39,19 @@ SPIRIT_IMG = ROOT / "아이콘815.png"
 TAROT_DIR = ROOT / "tarot"
 
 
+_WEIGHT_FALLBACK = {"Black": ("Black", "Bold"), "Medium": ("Medium", "Regular"), "Bold": ("Bold",),
+                    "Regular": ("Regular",)}
+
+
 def font(size: int, weight: str = "Bold") -> ImageFont.FreeTypeFont:
-    for path in (_BUNDLED / f"NotoSansKR-{weight}.otf", _FONT_DIR / f"NotoSansCJK-{weight}.ttc"):
-        if path.exists():
-            return ImageFont.truetype(str(path), size, index=1 if path.suffix == ".ttc" else 0)
+    # 2026-10-17: Actions 러너의 fonts-noto-cjk 에는 Regular·Bold 만 있다(Black·Medium 은 -extra 패키지) —
+    # 없으면 가까운 굵기로 대체(Black→Bold, Medium→Regular). 그래도 없으면 시스템 Noto CJK 를 찾는다.
+    for w in _WEIGHT_FALLBACK.get(weight, (weight, "Bold")):
+        for path in (_BUNDLED / f"NotoSansKR-{w}.otf", _FONT_DIR / f"NotoSansCJK-{w}.ttc"):
+            if path.exists():
+                return ImageFont.truetype(str(path), size, index=1 if path.suffix == ".ttc" else 0)
+    for path in sorted(Path("/usr/share/fonts").rglob("NotoSansCJK-*.ttc")):
+        return ImageFont.truetype(str(path), size, index=1)
     raise FileNotFoundError("한글 글꼴을 찾지 못했습니다(weekly_content/fonts 에 Noto Sans KR 필요)")
 
 
