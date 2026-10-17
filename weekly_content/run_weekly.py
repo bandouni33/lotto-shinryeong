@@ -6,7 +6,7 @@
    · 번호 6개가 1~45 서로 다름, 보너스가 1~45이고 본번호와 다름
    · 회차가 1부터 빠짐없이 이어짐
    · (자동 실행) 최신 회차 == 날짜로 계산한 '이번 주 토요일' 회차 — 반영이 덜 됐으면 멈춤
-3. 카드 5장·게시 문구·쇼츠(mp4)를 out 폴더에 만든다. 3장(필터 결과)은 확정된 스냅샷만 쓴다.
+3. 카드 5장·게시 문구·쇼츠(mp4)를 out 폴더에 만든다. 3장은 '추첨결과, 당첨지역 집계중' 한 줄(필터 결과는 앱에서만 공유).
 
 게시(인스타·스레드·유튜브)는 계정 연동 뒤 별도 단계로 붙인다 — 지금은 제작물만 만든다.
 실행: python -m weekly_content.run_weekly --out weekly_out [--round 1246] [--no-date-check]
@@ -53,16 +53,6 @@ def draw_date_text(rnd: int) -> str:
     return (dt.date(2002, 12, 7) + dt.timedelta(weeks=rnd - 1)).strftime("%Y.%m.%d")
 
 
-def app_result_for(rnd: int) -> dict | None:
-    """자동조합 화면 '회차별 당첨번호 배출' 표와 같은 값 — 확정(finalized)된 행만."""
-    import marketing_db
-
-    for row in marketing_db.get_round_stats_snapshot(limit=10):
-        if row["draw_round"] == rnd and row.get("finalized_at"):
-            return {f"t{i}": row[f"rank_{i}"] for i in range(1, 6)}
-    return None
-
-
 def make_shorts(pngs: list[Path], out: Path, sec: float = 4.0) -> Path | None:
     if not shutil.which("ffmpeg"):
         print("  (ffmpeg 없음 — 쇼츠는 건너뜀)")
@@ -102,14 +92,13 @@ def main() -> int:
             raise SystemExit(f"[중단] DB 최신 {rnd}회 ≠ 날짜상 최신 {exp}회 — 당첨번호 반영 후 다시 실행")
 
     out = Path(a.out)
-    res = app_result_for(rnd)
-    pngs = cards.build(draws, rnd, out, date_text=draw_date_text(rnd), app_result=res)
+    pngs = cards.build(draws, rnd, out, date_text=draw_date_text(rnd))
     (out / f"{rnd}_caption.txt").write_text(cards.caption(draws, rnd), encoding="utf-8")
     (out / f"{rnd}_captions.json").write_text(
         json.dumps(cards.captions_all(draws, rnd), ensure_ascii=False, indent=1), encoding="utf-8")
     shorts = make_shorts(pngs, out / f"{rnd}_shorts.mp4")
     print(f"[완료] {rnd}회 카드 {len(pngs)}장 · 문구 · 쇼츠={'있음' if shorts else '없음'} · "
-          f"필터 결과={'확정값' if res else '동행복권 집계중'} → {out}")
+          f"→ {out}")
     return 0
 
 
