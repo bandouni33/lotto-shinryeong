@@ -376,7 +376,8 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
                 "2등": ranks["rank_2"],
                 "3등": ranks["rank_3"],
                 "4등": ranks["rank_4"],
-                "5등": ranks["rank_5"],
+                # 2026-10-17(사용자 지시): 4차가 상위 7위로 넓어져 5등 수가 너무 커짐 → 표는 1~4등만
+                # (DB의 rank_5 기록은 그대로 둔다 — 표시만 뺌).
             }
         )
     df = pd.DataFrame(rows)
@@ -2601,7 +2602,7 @@ def render():
         .auto-stats-table th:nth-child(2),
         .auto-stats-table td:nth-child(2) { width: 13.6%; }
         .auto-stats-table th:nth-child(n+3),
-        .auto-stats-table td:nth-child(n+3) { width: 17.2%; }
+        .auto-stats-table td:nth-child(n+3) { width: 18.1%; }  /* 2026-10-17: 1~4등 4칸 균등(72.4%÷4) */
         .auto-back-main-btn {
             display: flex;
             align-items: center;

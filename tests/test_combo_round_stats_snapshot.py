@@ -232,7 +232,8 @@ class ComboRoundStatsSnapshotTests(unittest.TestCase):
         rows = mdb.get_round_stats_snapshot(limit=20)
 
         df = page_auto._stats_to_dataframe(rows, False)
-        self.assertEqual(list(df.columns), ["회차", "적용패턴수", "1등", "2등", "3등", "4등", "5등"])
+        # 2026-10-17(사용자 지시): 표는 1~4등만(5등 열 없음 — DB rank_5 는 그대로)
+        self.assertEqual(list(df.columns), ["회차", "적용패턴수", "1등", "2등", "3등", "4등"])
         self.assertFalse([c for c in df.columns if "조합수" in str(c) or "total_count" in str(c)])
         self.assertEqual(df.iloc[0]["회차"], R_MID)
         self.assertEqual(df.iloc[0]["적용패턴수"], "6,465")
@@ -267,7 +268,8 @@ class ComboRoundStatsSnapshotTests(unittest.TestCase):
         self.assertFalse(is_mock)
         self.assertIn(4242, list(df["회차"]))
         row = df[df["회차"] == 4242].iloc[0]
-        self.assertEqual(row["5등"], 1157)
+        self.assertEqual(row["4등"], 169)
+        self.assertNotIn("5등", df.columns)
         self.assertEqual(row["적용패턴수"], "6,465")
 
     def test_display_requests_only_recent_five_rounds(self):
