@@ -688,6 +688,9 @@ def _pick_spread_indices(pool_size: int, count: int) -> list[int]:
 # 비율이 어긋나면 특정 그룹만 먼저 바닥난다).
 RANK_TIER_RATIO = (1, 1, 1, 1, 1)  # (1위,2위,3위,4위,5위그룹) 각 1개
 _BUNDLE_SIZE = sum(RANK_TIER_RATIO)
+# 2026-10-17(사용자 지시): 1247회차부터 4차가 상위 1~7위 → 그룹 최대 7개. 묶음(5개)은 그 회차 풀에
+# 실제로 있는 그룹들 중에서 '랜덤 균등'으로 고른다(_rank_tier_quota). 5그룹 회차는 예전과 똑같이 각 1개.
+_MAX_RANK_TIERS = 7
 
 
 def _rank_tier_from_mask(mask: int) -> int | None:
@@ -695,22 +698,24 @@ def _rank_tier_from_mask(mask: int) -> int | None:
     1위그룹(0)~5위그룹(4)을 판정. mask=0(NULL, 관리자 수기 업로드나 2026-09-13
     이전 구버전 top3 전용 데이터 등 top5 정보 없는 행)은 정식 그룹이 없어
     None — 배분 시 leftover로만 채워진다."""
-    for bit_pos in range(5):
+    for bit_pos in range(_MAX_RANK_TIERS):
         if mask & (1 << bit_pos):
             return bit_pos
     return None
 
 
-def _rank_tier_quota(count: int) -> list[int]:
-    """count(5의 배수 기준)를 1~5위그룹에 1:1:1:1:1로 배분한 목표 수량
-    [1위그룹, 2위그룹, 3위그룹, 4위그룹, 5위그룹]. 5의 배수가 아니면
-    나머지를 비율이 큰 그룹부터 1개씩 얹는다(방어적 처리 — 현재 구매 수량
-    선택지는 5/10개뿐이라 실제로는 항상 딱 떨어진다)."""
-    unit, leftover = divmod(count, _BUNDLE_SIZE)
-    targets = [unit * r for r in RANK_TIER_RATIO]
-    order = sorted(range(len(RANK_TIER_RATIO)), key=lambda i: -RANK_TIER_RATIO[i])
-    for i in range(leftover):
-        targets[order[i % len(order)]] += 1
+def _rank_tier_quota(count: int, tiers: list[int] | None = None) -> list[int]:
+    """count를 그룹들(tiers, 기본 1~5위)에 균등 배분한 목표 수량(길이 _MAX_RANK_TIERS, 인덱스=그룹).
+    나머지는 그룹을 **랜덤으로** 골라 1개씩 얹는다(2026-10-17 사용자 지시 '랜덤으로 모두 균등배분').
+    5그룹·5/10개 구매는 나머지가 0이라 예전(각 1개/2개)과 완전히 같다. 7그룹이면 5개 구매 = 7개 중
+    서로 다른 5개 그룹 랜덤, 10개 = 각 1개 + 서로 다른 3개 그룹 랜덤 1개씩."""
+    tiers = sorted(set(tiers)) if tiers else list(range(len(RANK_TIER_RATIO)))
+    unit, leftover = divmod(count, len(tiers))
+    targets = [0] * _MAX_RANK_TIERS
+    for t in tiers:
+        targets[t] = unit
+    for t in random.sample(tiers, leftover):
+        targets[t] += 1
     return targets
 
 
@@ -720,7 +725,7 @@ def _pick_bundle_candidates(pending: list, quota_remaining: list[int]) -> list:
     [1위그룹필요수, 2위그룹필요수, 3위그룹필요수, 4위그룹필요수, 5위그룹필요수].
     특정 그룹 재고가 모자라면 남은 총량만큼 나머지 pending(그룹 무관, NULL
     포함)에서 채워 최소한 need는 맞춘다."""
-    by_tier: dict[int, list] = {0: [], 1: [], 2: [], 3: [], 4: []}
+    by_tier: dict[int, list] = {t: [] for t in range(_MAX_RANK_TIERS)}
     for row in pending:
         mask = int(row["top3_mask"]) if row["top3_mask"] is not None else 0
         tier = _rank_tier_from_mask(mask)
@@ -785,7 +790,7 @@ def allocate_lotto_combinations_random_sequential(
     # top3→top5 확장): _BUNDLE_SIZE가 3→5로 바뀌면서 이 나머지 조건 자체는
     # 코드 수정 없이 자동으로 새 그룹 수에 맞춰진다.
     use_bundle_quota = count % _BUNDLE_SIZE == 0
-    full_quota = _rank_tier_quota(count) if use_bundle_quota else None
+    full_quota = None  # 2026-10-17: 그 회차 풀에 있는 그룹을 보고 첫 시도에서 정한다(5그룹/7그룹)
     try:
         total = _count_total_combinations(conn, draw_round)
         if total < count:
@@ -824,13 +829,23 @@ def allocate_lotto_combinations_random_sequential(
                 continue
 
             if use_bundle_quota:
+                if full_quota is None:
+                    present = {
+                        _rank_tier_from_mask(int(r["top3_mask"]) if r["top3_mask"] is not None else 0)
+                        for r in pending
+                    } - {None}
+                    # 7그룹 회차(6·7위 비트가 있는 풀)면 1~7위, 아니면 예전 1~5위 — 재고가 잠깐 빈
+                    # 그룹이 있어도 그룹 정의는 회차 기준으로 고정(빈 그룹 몫은 아래 leftover 로 채움).
+                    tiers = list(range(_MAX_RANK_TIERS)) if present and max(present) >= 5 \
+                        else list(range(len(RANK_TIER_RATIO)))
+                    full_quota = _rank_tier_quota(count, tiers)
                 claimed_tier_counts = Counter(
                     _rank_tier_from_mask(int(r["top3_mask"]) if r["top3_mask"] is not None else 0)
                     for r in claimed_rows
                 )
                 quota_remaining = [
                     full_quota[tier] - claimed_tier_counts.get(tier, 0)
-                    for tier in range(len(RANK_TIER_RATIO))
+                    for tier in range(_MAX_RANK_TIERS)
                 ]
                 candidates = _pick_bundle_candidates(pending, quota_remaining)[:need]
             else:
@@ -1531,11 +1546,12 @@ def _compute_top3_mask(
     그대로 유지(DB 스키마상 제약 없는 일반 INTEGER라 이름만 예전 그대로고
     실제로는 5비트를 씀 — 컬럼 rename은 별도 마이그레이션 없이도 되지만
     굳이 필요 없어 생략)."""
+    # 2026-10-17(사용자 지시): 1247회차부터 상위 7위 → 비트 7개(6위=32, 7위=64). 5개면 예전과 동일.
     combo_set = set(combo)
     mask = 0
-    for bit, num in zip((1, 2, 4, 8, 16), top5_numbers):
+    for i, num in enumerate(top5_numbers):
         if num in combo_set:
-            mask |= bit
+            mask |= 1 << i
     return mask
 
 

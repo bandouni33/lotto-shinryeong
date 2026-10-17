@@ -144,34 +144,36 @@ def cleanup_old_full_stage4_pools(keep_round: int) -> list[int]:
 # 배포(구매 시 배정) 로직과 반드시 같은 5단계 정의를 유지할 것 — 그룹 정의가
 # 어긋나면 특정 그룹 조합이 배포 목록에 없거나 중복 분류되는 문제가 재발한다.
 RANK_TIER_RATIO = (1, 1, 1, 1, 1)  # (1위,2위,3위,4위,5위그룹) = 각 20%
+# 2026-10-17(사용자 지시): 1247회차부터 4차 조건이 상위 1~7위로 넓어져 그룹도 7개(1~7위, 같은
+# 우선순위 정의). 추출은 그룹 수(len(top_numbers))만큼 균등 — 5개면 위와 똑같다.
 
 
-def _rank_tier(combo: tuple[int, ...], top5_numbers: tuple[int, int, int, int, int]) -> int:
-    """combo가 1위그룹(0)~5위그룹(4) 중 어디에 속하는지."""
+def _rank_tier(combo: tuple[int, ...], top_numbers: tuple[int, ...]) -> int:
+    """combo가 1위그룹(0)~N위그룹(N-1) 중 어디에 속하는지(N = 5 또는 7)."""
     combo_set = set(combo)
-    for i, num in enumerate(top5_numbers):
+    for i, num in enumerate(top_numbers):
         if num in combo_set:
             return i
-    raise ValueError("4차 조건상 top1~5위 중 최소 1개는 반드시 포함돼야 함")
+    raise ValueError(f"4차 조건상 top1~{len(top_numbers)}위 중 최소 1개는 반드시 포함돼야 함")
 
 
 def extract_sample_by_rank_tier_ratio(
-    combos: list[tuple[int, ...]], top5_numbers: tuple[int, int, int, int, int]
+    combos: list[tuple[int, ...]], top_numbers: tuple[int, ...]
 ) -> list[tuple[int, ...]]:
-    """전체 4차 통과 조합의 5%를 뽑아 5개 그룹에 RANK_TIER_RATIO(1:1:1:1:1
-    = 각 20%)로 균등 배분한다 — 배포 시 5개묶음마다 5개 그룹 각 1개씩을
-    소진하는 것과 정확히 같은 비율로 미리 저장해둬야, 어느 한쪽 그룹만
-    먼저 바닥나지 않는다."""
-    groups: list[list] = [[] for _ in range(5)]
+    """전체 4차 통과 조합의 5%를 뽑아 N개 그룹(1~N위)에 균등 배분한다 — 배포 시 묶음마다
+    그룹을 균등하게 소진하는 것과 같은 비율로 미리 저장해둬야, 어느 한쪽 그룹만
+    먼저 바닥나지 않는다. 그룹 수 N=len(top_numbers)(1246회차까지 5, 1247회차부터 7)."""
+    ratio = (1,) * len(top_numbers)
+    groups: list[list] = [[] for _ in ratio]
     for combo in combos:
-        groups[_rank_tier(combo, top5_numbers)].append(combo)
+        groups[_rank_tier(combo, top_numbers)].append(combo)
 
     total_target = math.floor(len(combos) * EXTRACT_RATE)
-    ratio_sum = sum(RANK_TIER_RATIO)
+    ratio_sum = sum(ratio)
     unit, leftover = divmod(total_target, ratio_sum)
     # 나머지는 비율이 큰 그룹부터 1개씩 얹는다(정확히 나눠떨어지지 않을 때의 방어적 처리).
-    targets = [unit * r for r in RANK_TIER_RATIO]
-    order = sorted(range(len(RANK_TIER_RATIO)), key=lambda i: -RANK_TIER_RATIO[i])
+    targets = [unit * r for r in ratio]
+    order = sorted(range(len(ratio)), key=lambda i: -ratio[i])
     for i in range(leftover):
         targets[order[i % len(order)]] += 1
 
@@ -245,10 +247,12 @@ def main() -> int:
 
         # 2026-09-13(사용자 지시, top3→top5 최종 확정): 추출도 배포와 동일하게
         # top5_numbers 기준 5단계로 한다(위 함수 참고).
-        sample = extract_sample_by_rank_tier_ratio(combos, stats["top5_numbers"])
+        # 2026-10-17: 그룹·마스크는 4차에 실제로 쓴 상위 N위(top_numbers, 1247회차부터 7개).
+        top_numbers = stats.get("top_numbers") or stats["top5_numbers"]
+        sample = extract_sample_by_rank_tier_ratio(combos, top_numbers)
         sample_size = len(sample)
         inserted = marketing_db.bulk_insert_lotto_combinations(
-            target_round, sample, top5_numbers=stats.get("top5_numbers")
+            target_round, sample, top5_numbers=top_numbers
         )
         marketing_db.record_draw_pattern_count(target_round, PATTERN_COUNT_DISPLAY)
         # 2026-10-04(사용자 승인): 회차별 배출표 스냅샷 — 조합을 추출한 "그 순간"만 알 수

@@ -2,7 +2,7 @@
 
   V1 앵커 1245 이하 = 옛 순위(역대 vs 최근100) — 확정 회차 풀·참고등수 불변
   V2 앵커 1246 이상 = 최근100(기준) vs 최근30(비교) — 추적표 '4차필터(100vs30회_후보)'와 같은 정의
-  V3 compute_stage_masks: 상중하·top5 는 새 순위, 1차 AUTO 는 옛 순위(auto_gap_order), gap_order = 새 순위
+  V3 compute_stage_masks: 상중하·top7(2026-10-17, 앵커 1246부터 — 1245 이하 top5) 는 새 순위, 1차 AUTO 는 옛 순위(auto_gap_order), gap_order = 새 순위
   V4 주간 대조 기준 회차 1247
 
 실행: python tests/test_stage4_100vs30.py
@@ -57,10 +57,16 @@ class Stage4Test(unittest.TestCase):
         for row, ok in zip(combos, m["stage4_mask"]):
             s = set(int(x) for x in row)
             g = [len(s & set(order[i:i + 15])) for i in (0, 15, 30)]
-            want = all(1 <= x <= 4 for x in g) and bool(s & set(order[:5]))
+            want = all(1 <= x <= 4 for x in g) and bool(s & set(order[:7]))   # 2026-10-17: 1247회차부터 7위
             self.assertEqual(bool(ok), want)
         old = cf.compute_stage_masks(h, 1245, base)
         self.assertEqual(old["gap_order"], cf._gap_order_for_anchor(h, 1245))
+        o5 = old["gap_order"]
+        for row, ok in zip(combos, old["stage4_mask"]):   # 앵커 1245 이하는 예전 top5 그대로
+            s = set(int(x) for x in row)
+            g = [len(s & set(o5[i:i + 15])) for i in (0, 15, 30)]
+            self.assertEqual(bool(ok), all(1 <= x <= 4 for x in g) and bool(s & set(o5[:5])))
+        self.assertEqual((cf.stage4_top_n(1245), cf.stage4_top_n(1246)), (5, 7))
 
     def test_V4_vintage(self):
         self.assertEqual(w.RULE_VINTAGE_ROUND, 1247)

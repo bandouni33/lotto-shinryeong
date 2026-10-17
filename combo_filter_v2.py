@@ -37,6 +37,16 @@ STAGE4_100VS30_FROM_ANCHOR = 1246
 STAGE4_BASE_WINDOW = 100
 STAGE4_RECENT_WINDOW = 30
 
+# 2026-10-17(사용자 지시): 4차 '상위 N위 중 1개 이상' 절대수 조건을 1~5위 → 1~7위로. **1247회차부터**
+# (앵커 1246 이상, 위 100vs30 전환과 같은 시점). 그 전 앵커는 5위 그대로(배포·참고등수 재현 불변).
+# 배포 묶음은 7개 그룹(1~7위 우선순위)을 랜덤 균등으로 고른다(marketing_db._rank_tier_quota).
+STAGE4_TOP7_FROM_ANCHOR = 1246
+
+
+def stage4_top_n(anchor_round: int) -> int:
+    """4차 '상위 N위 중 최소 1개' 의 N — 앵커 1246(=1247회차)부터 7, 그 전은 5."""
+    return 7 if anchor_round >= STAGE4_TOP7_FROM_ANCHOR else 5
+
 
 def _load_stage_json(stage: int, local_file: str):
     """DB(app_settings) 우선, 없거나(마이그레이션 전) DB 접속 실패 시 기존
@@ -328,8 +338,9 @@ def compute_stage_masks(history_asc: list[dict], anchor_round: int,
     # _rank_tier()/marketing_db.py의 _compute_top3_mask()도 반드시 5단계
     # 버전으로 같이 갱신해야 한다 — 하나만 바꾸면 배포 시 특정 조합이 어느
     # 그룹에도 안 속하는 오류가 난다.
-    top5_vec = _targets_to_vec(gap_order[:5])
-    cond2 = (combo_oh @ top5_vec) >= 1
+    # 2026-10-17(사용자 지시): 1247회차(앵커 1246)부터 상위1~7위 중 최소1개(stage4_top_n).
+    top_vec = _targets_to_vec(gap_order[:stage4_top_n(anchor_round)])
+    cond2 = (combo_oh @ top_vec) >= 1
 
     stage4_mask = stage2_mask & cond1 & cond2
 
@@ -394,6 +405,9 @@ def generate_next_round_combos(history_desc: list[dict]) -> tuple[int, list[tupl
         # 맞춰 격차순위 1~5위 숫자를 추가로 넘긴다. combo_gen_worker.py/
         # marketing_db.py의 5단계 배분 로직이 이 값을 써야 한다.
         "top5_numbers": tuple(int(x) for x in gap_order[:5]),
+        # 2026-10-17(사용자 지시): 4차 절대수 조건·배분 그룹에 실제로 쓰는 상위 N위(1247회차부터 7개).
+        # combo_gen_worker 추출·marketing_db 배분 마스크는 이 값을 쓴다(top5_numbers 는 통계 기록용).
+        "top_numbers": tuple(int(x) for x in gap_order[:stage4_top_n(anchor_round)]),
     }
     return target_round, [tuple(int(x) for x in row) for row in passing], stats
 
