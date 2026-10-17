@@ -2,7 +2,7 @@
 
   C1 안전 확인: 번호 중복·범위 밖·보너스 겹침·빠진 회차 → 중단
   C2 날짜상 최신 회차: 토 19:55 전/후 경계 (1245회 = 2026-10-10)
-  C3 제작: 카드 5장(1080x1350)·문구(고지·블로그 주소 포함, 예측·보장 표현 없음)·3장은 '추첨결과, 당첨지역 집계중' 한 줄(필터 결과 미게재)
+  C3 제작: 카드 5장(1080x1350)·문구(고지·블로그 주소 포함, 예측·보장 표현 없음)·3장은 '동행복권 집계중' 한 줄 + 공식 채널(필터 결과 미게재)
   C4 쇼츠: ffmpeg 있으면 mp4 생성
 실행: python tests/test_weekly_content.py
 """
@@ -61,7 +61,7 @@ class WeeklyContentTest(unittest.TestCase):
             from PIL import Image
             for p in ps:
                 self.assertEqual(Image.open(p).size, (1080, 1350))
-            self.assertEqual(cards.PENDING_TEXT, "추첨결과, 당첨지역 집계중")
+            self.assertEqual(cards.PENDING_TEXT, "동행복권 집계중")
             cap = cards.caption(d, 60)
             self.assertIn("당첨을 보장하지 않습니다", cap)
             self.assertIn(cards.BLOG_URL, cap)

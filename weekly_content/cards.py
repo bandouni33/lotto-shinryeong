@@ -3,8 +3,8 @@
 
   1 표지: N회 당첨번호 + 보너스 (볼 색은 ball_style 단일 기준점)
   2 숫자 분석: 홀짝·저고·합계·연번·구간 분포, 최근 10회 많이 나온 번호 / 오래 안 나온 번호
-  3 추첨결과·당첨지역: 지금은 '추첨결과, 당첨지역 집계중' 한 줄만(2026-10-17 사용자 지시 —
-    필터 결과는 앱에서만 공유, SNS 카드에는 싣지 않는다).
+  3 추첨결과·당첨지역: 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널(블로그·페이스북·인스타·스레드·유튜브)
+    (2026-10-17 사용자 지시 — 필터 결과는 앱에서만 공유, SNS 카드에는 싣지 않는다. 채널 목록은 social_links).
   4 다음 회 재미 요소: 회차로 정해지는 타로 한 장(메이저 22장, 퍼블릭 도메인 RWS) + 한 줄 + 500P 체험
   5 마무리: 설치 안내 + '참고·재미용, 당첨 보장 없음 / 복권은 만 19세 이상'
 
@@ -33,7 +33,7 @@ CARD_BG = (255, 255, 255, 18)
 _FONT_DIR = Path("/usr/share/fonts/opentype/noto")
 _BUNDLED = ROOT / "weekly_content" / "fonts"
 BLOG_URL = "https://blog.naver.com/bandouni"
-PENDING_TEXT = "추첨결과, 당첨지역 집계중"
+PENDING_TEXT = "동행복권 집계중"
 DISCLAIMER = "참고·재미용 정보이며 당첨을 보장하지 않습니다 · 복권은 만 19세 이상"
 SPIRIT_IMG = ROOT / "아이콘815.png"
 TAROT_DIR = ROOT / "tarot"
@@ -219,11 +219,27 @@ def card2(a, rnd):
 
 
 def card3(rnd):
-    """2026-10-17: 필터 결과는 앱에서만 공유 → SNS 카드는 제목 + 집계중 한 줄만."""
+    """2026-10-17: 필터 결과는 앱에서만 공유 → 제목 + 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널."""
+    import social_links
+
     im = _canvas()
     d = ImageDraw.Draw(im)
     _center(d, 120, f"{rnd}회 추첨결과 · 당첨지역", font(60, "Black"), GOLD)
-    _center(d, 620, PENDING_TEXT, font(44, "Medium"), MUTED)
+    _center(d, 560, PENDING_TEXT, font(44, "Medium"), MUTED)
+    _center(d, 930, "로또신령 공식 채널", font(34, "Bold"), WHITE)
+    f = font(30, "Bold")
+    chips = social_links.CHANNELS
+    widths = [int(d.textlength(c["name"], font=f)) + 74 for c in chips]
+    gap = 14
+    x = (W - (sum(widths) + gap * (len(chips) - 1))) // 2
+    y0, y1 = 1000, 1068
+    for c, w in zip(chips, widths):
+        _panel(im, (x, y0, x + w, y1), radius=34)
+        d = ImageDraw.Draw(im)
+        d.ellipse([x + 22, y0 + 25, x + 40, y0 + 43], fill=_hex(c["color"]))
+        d.text((x + 52, y0 + 15), c["name"], font=f, fill=WHITE)
+        x += w + gap
+    _center(d, 1100, f"{social_links.HANDLE}  ·  blog.naver.com/bandouni", font(28, "Medium"), MUTED)
     _footer(im, 3)
     return im
 
@@ -306,7 +322,8 @@ def caption(draws: dict[int, dict], rnd: int) -> str:
             f"최근 10회 자주 나온 번호: {', '.join(str(n) for n, _ in a['hot'])}\n\n"
             f"{rnd + 1}회를 기다리며 뽑은 이번 주 타로: {t['name']}\n“{t['line']}”\n\n"
             "첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
-            f"자세한 사용법: {BLOG_URL}\n\n"
+            f"자세한 사용법: {BLOG_URL}\n"
+            "인스타·스레드·유튜브: @lottoshinryeong\n\n"
             "※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상.\n"
             f"#로또 #로또{rnd}회 #로또당첨번호 #로또번호 #로또통계 #타로 #로또신령")
 

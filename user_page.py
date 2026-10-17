@@ -1839,6 +1839,14 @@ div[data-testid="stVerticalBlock"]:has(.main-feedback-section-marker) div[data-t
                 """
             )
 
+    # 2026-10-17(사용자 승인): 메인 맨 아래 '공식 채널' 한 줄 — 주소는 social_links 단일 기준점.
+    try:
+        import social_links
+
+        st.markdown(social_links.links_html(), unsafe_allow_html=True)
+    except Exception:
+        pass
+
 
 # ==========================================
 # ⚡ 화면 2: 번개조합 (Thunder View) - 로직 분리됨
