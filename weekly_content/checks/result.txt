@@ -1,0 +1,5 @@
+facebook: OK 로또신령
+instagram: OK @lottoshinryeong
+threads: 실패 400 {"error": {"message": "Unsupported get request. Object with ID 'v1.0' does not exist, cannot be loaded due to missing permissions, or does not support this operation", "type": "THApiException", "c
+채널 스위치: facebook
+점검 시각(UTC): 2026-10-17T07:35:01Z
