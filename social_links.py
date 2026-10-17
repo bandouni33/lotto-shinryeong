@@ -2,7 +2,7 @@
 """로또신령 공식 채널 주소 — 앱 '공식 채널' 줄과 주간 리포트 카드가 같이 쓰는 단일 기준점(2026-10-17).
 
 active=False 인 채널은 앱에서 숨긴다(카드에는 이름만 나오므로 그대로 둔다).
-인스타는 계정 검토(재고 요청) 중이라 꺼 둠 → 복구되면 True 로.
+인스타는 10-17 검토 해제 → True.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ CHANNELS = [
     {"key": "facebook", "name": "페이스북", "url": "https://www.facebook.com/1447656485087383",
      "color": "#1877f2", "active": True},
     {"key": "instagram", "name": "인스타", "url": "https://www.instagram.com/lottoshinryeong",
-     "color": "#d6249f", "active": False},
+     "color": "#d6249f", "active": True},
     {"key": "threads", "name": "스레드", "url": "https://www.threads.net/@lottoshinryeong", "color": "#9aa0b4",
      "active": True},
     {"key": "youtube", "name": "유튜브", "url": "https://www.youtube.com/@lottoshinryeong", "color": "#ff0033",
