@@ -45,15 +45,23 @@ def _ask(label: str, secret: bool = True) -> str:
 
 
 def meta() -> None:
-    print("Graph API 탐색기에서 받은 '사용자 액세스 토큰'(짧은 토큰)과 앱 ID·앱 시크릿을 넣으세요.")
-    app_id = _ask("앱 ID", secret=False)
-    app_secret = _ask("앱 시크릿")
-    short = _ask("사용자 액세스 토큰")
-    r = requests.get(f"{GRAPH}/oauth/access_token", params={
-        "grant_type": "fb_exchange_token", "client_id": app_id, "client_secret": app_secret,
-        "fb_exchange_token": short}, timeout=60).json()
-    if "access_token" not in r:
-        sys.exit(f"장기 토큰 교환 실패: {r}")
+    """2026-10-17: 앱 시크릿 교환이 계속 'Error validating client secret' 로 실패 →
+    기본은 '액세스 토큰 디버거 → 액세스 토큰 연장'으로 받은 장기 토큰을 그대로 쓴다(시크릿 불필요).
+    `meta --exchange` 일 때만 예전처럼 앱 ID·시크릿으로 교환한다."""
+    if "--exchange" in sys.argv:
+        app_id = _ask("앱 ID", secret=False)
+        app_secret = _ask("앱 시크릿")
+        short = _ask("사용자 액세스 토큰")
+        r = requests.get(f"{GRAPH}/oauth/access_token", params={
+            "grant_type": "fb_exchange_token", "client_id": app_id, "client_secret": app_secret,
+            "fb_exchange_token": short}, timeout=60).json()
+        if "access_token" not in r:
+            sys.exit(f"장기 토큰 교환 실패: {r}")
+        r_token = r["access_token"]
+    else:
+        print("액세스 토큰 디버거에서 [액세스 토큰 연장]으로 받은 '장기 토큰'을 복사해 두세요.")
+        r_token = _ask("장기 사용자 액세스 토큰")
+    r = {"access_token": r_token}
     pages = requests.get(f"{GRAPH}/me/accounts", params={"access_token": r["access_token"]}, timeout=60).json()
     rows = pages.get("data") or []
     if not rows:
