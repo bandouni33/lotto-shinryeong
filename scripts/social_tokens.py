@@ -10,7 +10,6 @@
 """
 from __future__ import annotations
 
-import getpass
 import sys
 import time
 
@@ -21,7 +20,13 @@ THREADS = "https://graph.threads.net"
 
 
 def _ask(label: str, secret: bool = True) -> str:
-    return (getpass.getpass if secret else input)(f"{label}: ").strip()
+    """2026-10-17: 숨김 입력(getpass)은 윈도우에서 붙여넣기가 깨져 'Cannot parse access token'이 났다 →
+    보이는 입력으로 받고(내 PC 화면에만 보임) 공백·따옴표·제어문자를 지운다."""
+    raw = input(f"{label} (붙여넣기 후 Enter): ")
+    val = "".join(ch for ch in raw if ch.isprintable()).strip().strip("'\"").replace(" ", "")
+    if secret and val:
+        print(f"  → 입력됨({len(val)}자, 앞 4자 {val[:4]}…)")
+    return val
 
 
 def meta() -> None:
