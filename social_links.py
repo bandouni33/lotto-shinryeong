@@ -17,7 +17,7 @@ CHANNELS = [
     {"key": "threads", "name": "스레드", "url": "https://www.threads.net/@lottoshinryeong", "color": "#9aa0b4",
      "active": True},
     {"key": "youtube", "name": "유튜브", "url": "https://www.youtube.com/@lottoshinryeong", "color": "#ff0033",
-     "active": True},
+     "active": False},  # 2026-10-17 사용자 결정: 유튜브 중단(앱·카드에서 숨김)
 ]
 
 

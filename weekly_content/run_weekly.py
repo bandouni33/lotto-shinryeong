@@ -53,22 +53,36 @@ def draw_date_text(rnd: int) -> str:
     return (dt.date(2002, 12, 7) + dt.timedelta(weeks=rnd - 1)).strftime("%Y.%m.%d")
 
 
-def make_shorts(pngs: list[Path], out: Path, sec: float = 4.0) -> Path | None:
+def make_shorts(pngs: list[Path], out: Path, sec: float = 3.2) -> Path | None:
+    """세로 9:16 짧은 영상(네이버 클립·쇼츠용).
+
+    2026-10-17(사용자 지적 '빛바랜 화질'): 예전엔 색공간 표시 없이 BT.601 로 변환돼 재생기(BT.709 가정)에서
+    색이 바래 보였다 → BT.709 행렬로 변환 + 색공간 태그, 고화질(crf 16·slow·stillimage), faststart.
+    배경은 단색 띠 대신 같은 카드를 흐리게·어둡게 깔아 9:16 화면을 꽉 채운다. 첫 장(번호)은 표지라 조금 길게."""
     if not shutil.which("ffmpeg"):
         print("  (ffmpeg 없음 — 쇼츠는 건너뜀)")
         return None
     args = ["ffmpeg", "-y", "-loglevel", "error"]
-    for p in pngs:
-        args += ["-loop", "1", "-t", str(sec), "-i", str(p)]
-    chains = "".join(f"[{i}:v]scale=1080:1350,pad=1080:1920:0:285:color=0x161c33,setsar=1,format=yuv420p[v{i}];"
-                     for i in range(len(pngs)))
-    prev, off, parts = "v0", sec - 0.5, []
+    durs = [sec + 0.8] + [sec] * (len(pngs) - 1)
+    for p, d in zip(pngs, durs):
+        args += ["-loop", "1", "-t", f"{d:.1f}", "-i", str(p)]
+    chains = "".join(
+        f"[{i}:v]split[a{i}][b{i}];"
+        f"[a{i}]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:3,"
+        f"eq=brightness=-0.18:saturation=1.1[bg{i}];"
+        f"[b{i}]scale=1080:1350:flags=lanczos[fg{i}];"
+        f"[bg{i}][fg{i}]overlay=0:(H-h)/2,setsar=1,fps=30,"
+        f"scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[v{i}];"
+        for i in range(len(pngs)))
+    prev, off, parts = "v0", durs[0] - 0.4, []
     for i in range(1, len(pngs)):
         tag = "out" if i == len(pngs) - 1 else f"x{i}"
-        parts.append(f"[{prev}][v{i}]xfade=transition=slideleft:duration=0.5:offset={off:.1f}[{tag}]")
-        prev, off = tag, off + sec - 0.5
+        parts.append(f"[{prev}][v{i}]xfade=transition=slideleft:duration=0.4:offset={off:.2f}[{tag}]")
+        prev, off = tag, off + durs[i] - 0.4
     args += ["-filter_complex", chains + ";".join(parts), "-map", "[out]", "-r", "30",
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out)]
+             "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-tune", "stillimage", "-profile:v", "high",
+             "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+             "-color_range", "tv", "-movflags", "+faststart", str(out)]
     subprocess.run(args, check=True)
     return out
 

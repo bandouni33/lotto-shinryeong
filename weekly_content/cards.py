@@ -3,7 +3,7 @@
 
   1 표지: N회 당첨번호 + 보너스 (볼 색은 ball_style 단일 기준점)
   2 숫자 분석: 홀짝·저고·합계·연번·구간 분포, 최근 10회 많이 나온 번호 / 오래 안 나온 번호
-  3 추첨결과·당첨지역: 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널(블로그·페이스북·인스타·스레드·유튜브)
+  3 추첨결과·당첨지역: 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널(social_links 활성 채널)
     (2026-10-17 사용자 지시 — 필터 결과는 앱에서만 공유, SNS 카드에는 싣지 않는다. 채널 목록은 social_links).
   4 다음 회 재미 요소: 회차로 정해지는 타로 한 장(메이저 22장, 퍼블릭 도메인 RWS) + 한 줄 + 500P 체험
   5 마무리: 설치 안내 + '참고·재미용, 당첨 보장 없음 / 복권은 만 19세 이상'
@@ -237,7 +237,7 @@ def card3(rnd):
     _center(d, 560, PENDING_TEXT, font(44, "Medium"), MUTED)
     _center(d, 930, "로또신령 공식 채널", font(34, "Bold"), WHITE)
     f = font(30, "Bold")
-    chips = social_links.CHANNELS
+    chips = social_links.active_channels()
     widths = [int(d.textlength(c["name"], font=f)) + 74 for c in chips]
     gap = 14
     x = (W - (sum(widths) + gap * (len(chips) - 1))) // 2
@@ -332,7 +332,7 @@ def caption(draws: dict[int, dict], rnd: int) -> str:
             f"{rnd + 1}회를 기다리며 뽑은 이번 주 타로: {t['name']}\n“{t['line']}”\n\n"
             "첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
             f"자세한 사용법: {BLOG_URL}\n"
-            "인스타·스레드·유튜브: @lottoshinryeong\n\n"
+            "인스타·스레드: @lottoshinryeong\n\n"
             "※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상.\n"
             f"#로또 #로또{rnd}회 #로또당첨번호 #로또번호 #로또통계 #타로 #로또신령")
 
