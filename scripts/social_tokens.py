@@ -19,14 +19,29 @@ GRAPH = "https://graph.facebook.com/v25.0"
 THREADS = "https://graph.threads.net"
 
 
+def _clipboard() -> str:
+    try:
+        import subprocess
+        return subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+                              capture_output=True, text=True, timeout=10).stdout or ""
+    except Exception:
+        return ""
+
+
 def _ask(label: str, secret: bool = True) -> str:
-    """2026-10-17: 숨김 입력(getpass)은 윈도우에서 붙여넣기가 깨져 'Cannot parse access token'이 났다 →
-    보이는 입력으로 받고(내 PC 화면에만 보임) 공백·따옴표·제어문자를 지운다."""
-    raw = input(f"{label} (붙여넣기 후 Enter): ")
-    val = "".join(ch for ch in raw if ch.isprintable()).strip().strip("'\"").replace(" ", "")
-    if secret and val:
-        print(f"  → 입력됨({len(val)}자, 앞 4자 {val[:4]}…)")
-    return val
+    """2026-10-17: 숨김 입력은 윈도우에서 붙여넣기가 깨졌다 → 보이는 입력 + '그냥 Enter = 클립보드에서 읽기'.
+    공백·따옴표·제어문자를 지우고, 비어 있으면 다시 묻는다."""
+    for _ in range(3):
+        raw = input(f"{label} — 복사해 두고 그냥 Enter(또는 붙여넣기 후 Enter): ")
+        if not raw.strip():
+            raw = _clipboard()
+        val = "".join(ch for ch in raw if ch.isprintable()).strip().strip("'\"").replace(" ", "")
+        if val:
+            if secret:
+                print(f"  → 입력됨({len(val)}자, 앞 4자 {val[:4]}…)")
+            return val
+        print("  (비어 있습니다 — 다시 복사한 뒤 Enter)")
+    sys.exit(f"{label} 입력이 없어 중단합니다.")
 
 
 def meta() -> None:
