@@ -9,7 +9,7 @@ import requests
 out = []
 H = {"User-Agent": "Mozilla/5.0"}
 try:
-    r = requests.get("https://www.dhlottery.co.kr/lt645/selectPstLt645Info.do", timeout=15, headers=H)
+    r = requests.get("https://www.dhlottery.co.kr/lt645/selectPstLt645Info.do", timeout=45, headers=H)
     d = r.json()
     item = d["data"]["list"][0]
     out.append(f"[selectPstLt645Info] status={r.status_code} keys(data)={list(d['data'])}")
@@ -21,7 +21,7 @@ for url in ("https://www.dhlottery.co.kr/store.do?method=topStore&pageGubun=L645
             "https://www.dhlottery.co.kr/wnprchsplcsrch/home",
             "https://www.dhlottery.co.kr/lt645/result"):
     try:
-        r = requests.get(url, timeout=15, headers=H, allow_redirects=True)
+        r = requests.get(url, timeout=45, headers=H, allow_redirects=True)
         t = r.text
         out.append(f"\n[{url}] status={r.status_code} final={r.url} len={len(t)}")
         for m in sorted(set(re.findall(r"[\"']((?:/[\w.-]+)+\.do[^\"'\s]*)[\"']", t)))[:60]:
