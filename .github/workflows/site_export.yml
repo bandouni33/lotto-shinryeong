@@ -1,0 +1,45 @@
+name: 홈페이지 데이터 내보내기
+
+# 2026-10-18(사용자 승인 — 홈페이지 구축, 별도 공개 저장소 bandouni33.github.io):
+# 공식 당첨번호·조합 성적(확정분)·이번 주 타로·볼 색·링크 등 **공개 값만** site_data/data.json 으로 저장소에 올린다.
+# 홈페이지 저장소가 이 파일을 읽어 페이지를 만든다(그쪽엔 비밀키 없음).
+on:
+  workflow_run:
+    workflows: ["토요일 밤 당첨번호 확인"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths: ["weekly_content/site_export.py", "social_links.py", ".github/workflows/site_export.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: site-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pillow
+      - name: 공개 데이터 내보내기
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m weekly_content.site_export --out site_data
+      - name: 올리기(바뀐 경우만)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site_data/data.json
+          git diff --cached --quiet && { echo "변경 없음"; exit 0; }
+          git commit -m "홈페이지 데이터 갱신"
+          git pull --rebase -q && git push -q
