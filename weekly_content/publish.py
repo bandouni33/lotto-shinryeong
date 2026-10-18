@@ -127,16 +127,12 @@ class Http:
 # ── 페이스북 페이지 ─────────────────────────────────────────────────
 
 def to_jpegs(pngs: list[Path], tmp: Path) -> list[Path]:
-    """인스타는 JPEG 만 받는다 — PNG 카드를 JPEG 로 바꾼다."""
-    from PIL import Image
-
-    tmp.mkdir(parents=True, exist_ok=True)
-    out = []
-    for p in pngs:
-        q = tmp / (p.stem + ".jpg")
-        Image.open(p).convert("RGB").save(q, "JPEG", quality=92)
-        out.append(q)
-    return out
+    """업로드용 파일 준비 — 2026-10-18(사용자: 화질 선명하게):
+    글자 많은 카드는 JPEG 로 바꾸면 색 정보가 1/4로 줄어(4:2:0) 금색·빨간 글씨가 번진다 →
+    페이스북엔 원본 PNG 를 그대로 올린다(페이스북 권장: 글자·로고 이미지는 PNG).
+    인스타·스레드는 페이스북이 만든 가장 큰 공개 이미지 주소를 쓰므로 따로 JPEG 가 필요 없다.
+    (이름은 호출부 호환을 위해 유지)"""
+    return list(pngs)
 
 
 def fb_upload_unpublished(http: Http, page_id: str, token: str, jpgs: list[Path]) -> list[tuple[str, str]]:
@@ -146,7 +142,7 @@ def fb_upload_unpublished(http: Http, page_id: str, token: str, jpgs: list[Path]
         with open(j, "rb") as fh:
             r = http.post(f"{GRAPH}/{page_id}/photos",
                           data={"published": "false", "access_token": token},
-                          files={"source": (j.name, fh, "image/jpeg")})
+                          files={"source": (j.name, fh, "image/png" if j.suffix == ".png" else "image/jpeg")})
         pid = r["id"]
         info = http.get(f"{GRAPH}/{pid}", params={"fields": "images", "access_token": token})
         imgs = sorted(info.get("images") or [], key=lambda x: x.get("width", 0), reverse=True)
