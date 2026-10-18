@@ -1,4 +1,67 @@
-[selectPstLt645Info] 실패 HTTPSConnectionPool(host='www.dhlottery.co.kr', port=443): Max retries exceeded with url: /lt645/selectPstLt645Info.do (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.dhlottery.co.kr', port=443) at 0x7f97cbd02e10>, 'Connection to www.dhlottery.co.kr timed out. (connect timeout=15)'))
-[https://www.dhlottery.co.kr/store.do?method=topStore&pageGubun=L645] 실패 HTTPSConnectionPool(host='www.dhlottery.co.kr', port=443): Max retries exceeded with url: /store.do?method=topStore&pageGubun=L645 (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.dhlottery.co.kr', port=443) at 0x7f97cac19010>, 'Connection to www.dhlottery.co.kr timed out. (connect timeout=15)'))
-[https://www.dhlottery.co.kr/wnprchsplcsrch/home] 실패 HTTPSConnectionPool(host='www.dhlottery.co.kr', port=443): Max retries exceeded with url: /wnprchsplcsrch/home (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.dhlottery.co.kr', port=443) at 0x7f97cac19700>, 'Connection to www.dhlottery.co.kr timed out. (connect timeout=15)'))
-[https://www.dhlottery.co.kr/lt645/result] 실패 HTTPSConnectionPool(host='www.dhlottery.co.kr', port=443): Max retries exceeded with url: /lt645/result (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.dhlottery.co.kr', port=443) at 0x7f97cb23d1c0>, 'Connection to www.dhlottery.co.kr timed out. (connect timeout=15)'))
+[selectPstLt645Info] status=200 keys(data)=['list']
+{"winType0": 0, "winType1": 11, "winType2": 4, "winType3": 1, "gmSqNo": 5133, "ltEpsd": 1246, "tm1WnNo": 16, "tm2WnNo": 22, "tm3WnNo": 23, "tm4WnNo": 24, "tm5WnNo": 27, "tm6WnNo": 28, "bnsWnNo": 6, "ltRflYmd": "20261017", "rnk1WnNope": 16, "rnk1WnAmt": 1881025430, "rnk1SumWnAmt": 30096406880, "rnk2WnNope": 64, "rnk2WnAmt": 78376060, "rnk2SumWnAmt": 5016067840, "rnk3WnNope": 3350, "rnk3WnAmt": 1497334, "rnk3SumWnAmt": 5016068900, "rnk4WnNope": 155108, "rnk4WnAmt": 50000, "rnk4SumWnAmt": 7755400000, "rnk5WnNope": 2608922, "rnk5WnAmt": 5000, "rnk5SumWnAmt": 13044610000, "sumWnNope": 2767460, "rlvtEpsdSumNtslAmt": 60928553620, "wholEpsdSumNtslAmt": 121857105000, "excelRnk": "1등"}
+
+[https://www.dhlottery.co.kr/store.do?method=topStore&pageGubun=L645] status=200 final=https://www.dhlottery.co.kr/errorPage len=97210
+  do: /mypage/selectMypageTooltip.do
+  do: /securityLogout.do
+  do: /selectMyHomeInfo.do
+  do: /sy/selectSessionRemainTime.do
+  do: /sy/selectTopResource.do
+  do: /sy/sessionInvalidate.do
+  do: /sy/updatePswdChgLate.do
+  js: /common/rsa/jsbn.js
+  js: /common/rsa/prng4.js
+  js: /common/rsa/rng.js
+  js: /common/rsa/rsa.js
+  js: /common/xlsx.full.min.js
+  js: /resources/jquery/jquery-3.7.1.min.js
+  js: /resources/jquery/jquery-ui.min.js
+  js: /resources/js/moment.min.js
+  js: /resources/swiper/swiper-bundle.js
+
+[https://www.dhlottery.co.kr/wnprchsplcsrch/home] status=200 final=https://www.dhlottery.co.kr/wnprchsplcsrch/home len=141326
+  do: /lt645/selectLtEpsdInfo.do
+  do: /mypage/selectMypageTooltip.do
+  do: /pt720/selectPtEpsdInfo.do
+  do: /securityLogout.do
+  do: /selectMyHomeInfo.do
+  do: /sy/selectSessionRemainTime.do
+  do: /sy/selectTopResource.do
+  do: /sy/sessionInvalidate.do
+  do: /sy/updatePswdChgLate.do
+  do: /wnprchsplcsrch/selectLtWnShp.do
+  do: /wnprchsplcsrch/selectLtWnShpCnt.do
+  do: /wnprchsplcsrch/selectPtWnShp.do
+  do: /wnprchsplcsrch/selectPtWnShpCnt.do
+  do: /wnprchsplcsrch/selectStEpsdInfo.do
+  do: /wnprchsplcsrch/selectStWnShp.do
+  do: /wnprchsplcsrch/selectStWnShpCnt.do
+  js: /common/rsa/jsbn.js
+  js: /common/rsa/prng4.js
+  js: /common/rsa/rng.js
+  js: /common/rsa/rsa.js
+  js: /common/xlsx.full.min.js
+  js: /resources/jquery/jquery-3.7.1.min.js
+  js: /resources/jquery/jquery-ui.min.js
+  js: /resources/js/moment.min.js
+  js: /resources/swiper/swiper-bundle.js
+
+[https://www.dhlottery.co.kr/lt645/result] status=200 final=https://www.dhlottery.co.kr/lt645/result len=553689
+  do: /lt645/checkWnNo.do
+  do: /lt645/selectPstLt645InfoNew.do
+  do: /mypage/selectMypageTooltip.do
+  do: /securityLogout.do
+  do: /selectMyHomeInfo.do
+  do: /sy/selectSessionRemainTime.do
+  do: /sy/selectTopResource.do
+  do: /sy/sessionInvalidate.do
+  do: /sy/updatePswdChgLate.do
+  js: /common/rsa/jsbn.js
+  js: /common/rsa/prng4.js
+  js: /common/rsa/rng.js
+  js: /common/rsa/rsa.js
+  js: /common/xlsx.full.min.js
+  js: /resources/jquery/jquery-3.7.1.min.js
+  js: /resources/jquery/jquery-ui.min.js
+  js: /resources/js/moment.min.js
+  js: /resources/swiper/swiper-bundle.js
