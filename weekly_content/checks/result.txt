@@ -1,6 +1,6 @@
-facebook: OK 로또신령
-instagram: OK @lottoshinryeong
-threads: OK @lottoshinryeong
+facebook: 실패 400 {"error": {"message": "Any of the pages_read_engagement, pages_manage_metadata,\n        pages_read_user_content, pages_manage_ads, pages_show_list or\n        pages_messaging permission(s) must b
+instagram: 실패 400 {"error": {"message": "Any of the pages_read_engagement, pages_manage_metadata,\n        pages_read_user_content, pages_manage_ads, pages_show_list or\n        pages_messaging permission(s) must b
+threads: 실패 400 {"error": {"message": "Error validating access token: You cannot access the app till you log in to www.threads.com and follow the instructions given.", "type": "OAuthException", "code": 190, "erro
 youtube: OK 로또신령 (@lottoshinryeong)
-채널 스위치: facebook,instagram,threads
-점검 시각(UTC): 2026-10-17T09:56:02Z
+채널 스위치: facebook,instagram,threads,youtube
+점검 시각(UTC): 2026-10-18T04:48:22Z
