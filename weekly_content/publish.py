@@ -285,11 +285,16 @@ def post_youtube(http: Http, env, mp4: Path, title: str, desc: str) -> str:
 
 # ── 전체 흐름 ───────────────────────────────────────────────────────
 
+KINDS = ("weekly", "thu", "fri")   # 2026-10-18: 목·금 구매 전 콘텐츠(pre_draw.py) — 카드 2장
+
+
 def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: PostLog | None = None,
-            dry_run: bool = False, sleep=time.sleep) -> dict:
+            dry_run: bool = False, sleep=time.sleep, kind: str = "weekly") -> dict:
+    if kind not in KINDS:
+        raise PublishError(f"kind 는 {KINDS} 중 하나")
     rnd = find_round(out_dir)
     caps = json.loads((out_dir / f"{rnd}_captions.json").read_text(encoding="utf-8"))
-    pngs = [out_dir / f"{rnd}_{i}.png" for i in range(1, 6)]
+    pngs = [out_dir / f"{rnd}_{i}.png" for i in range(1, 6 if kind == "weekly" else 3)]
     mp4 = out_dir / f"{rnd}_shorts.mp4"
     missing = [p.name for p in pngs if not p.exists()]
     if missing:
@@ -303,7 +308,8 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
         return result
     http = http or Http()
     log = log or PostLog()
-    todo = [c for c in chans if not log.done(rnd, c)]
+    key = (lambda c: c) if kind == "weekly" else (lambda c: f"{c}:{kind}")   # 게시 기록 키(토요일 게시와 분리)
+    todo = [c for c in chans if not log.done(rnd, key(c))]
     for c in chans:
         if c not in todo:
             result["skipped"][c] = "이미 게시됨"
@@ -330,7 +336,7 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
             return
         try:
             pid = fn()
-            log.mark(rnd, channel, pid)
+            log.mark(rnd, key(channel), pid)
             result["posted"][channel] = pid
         except Exception as e:  # 한 채널 실패가 다른 채널을 막지 않게
             result["failed"][channel] = str(e)[:300]
@@ -367,6 +373,7 @@ def main() -> int:
     ap.add_argument("--dir", default="weekly_out")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--check", help="게시 없이 키 점검 — 결과를 이 파일에 씀")
+    ap.add_argument("--kind", default="weekly", choices=KINDS)
     a = ap.parse_args()
     if a.check:
         res = check_keys()
@@ -374,7 +381,7 @@ def main() -> int:
         Path(a.check).write_text(txt + "\n", encoding="utf-8")
         print(txt)
         return 0
-    res = publish(Path(a.dir), dry_run=a.dry_run)
+    res = publish(Path(a.dir), dry_run=a.dry_run, kind=a.kind)
     print(json.dumps(res, ensure_ascii=False, indent=1))
     return 1 if res["failed"] else 0
 

@@ -41,6 +41,8 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(set(self.d), {"schema", "generated_at", "latest_round", "draws", "our_stats", "tarot",
                                        "balls", "links"})
         self.assertEqual(self.d["tarot"]["round"], 1247)
+        from weekly_content import cards
+        self.assertEqual(self.d["tarot"]["key"], cards.tarot_for_round(1246)["key"])   # SNS 주간 카드 4번과 같은 카드
         self.assertTrue(self.d["tarot"]["image"].startswith("tarot/images/"))
 
     def test_E4_sources(self):

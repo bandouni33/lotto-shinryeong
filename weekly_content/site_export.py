@@ -38,7 +38,8 @@ def build_data(draws: list[dict], round_stats: list[dict], now: dt.datetime | No
 
     now = now or dt.datetime.now(dt.timezone.utc)
     latest = max(d["draw_round"] for d in draws)
-    tarot = cards.tarot_for_round(latest + 1)
+    # 주간 카드 4번·문구와 같은 카드: cards.tarot_for_round(최신 회차) = '다음 회차를 기다리며' 뽑은 카드
+    tarot = cards.tarot_for_round(latest)
     return {
         "schema": SCHEMA,
         "generated_at": now.isoformat(timespec="seconds"),

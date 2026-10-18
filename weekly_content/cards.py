@@ -102,11 +102,11 @@ def _panel(im, box, radius=28):
     im.paste(Image.alpha_composite(im.convert("RGBA"), ov).convert("RGB"))
 
 
-def _footer(im, page):
+def _footer(im, page, total=5, label="로또신령 주간 리포트"):
     d = ImageDraw.Draw(im)
     _center(d, H - 70, DISCLAIMER, font(24, "Regular"), MUTED)
-    d.text((W - 110, 40), f"{page}/5", font=font(28, "Medium"), fill=MUTED)
-    d.text((48, 40), "로또신령 주간 리포트", font=font(28, "Bold"), fill=GOLD)
+    d.text((W - 110, 40), f"{page}/{total}", font=font(28, "Medium"), fill=MUTED)
+    d.text((48, 40), label, font=font(28, "Bold"), fill=GOLD)
 
 
 # ── 숫자 계산(이력에서만) ─────────────────────────────────────────────
@@ -269,7 +269,7 @@ def card3(rnd, ours=None):
     return im
 
 
-def card4(rnd, tarot):
+def card4(rnd, tarot, foot=(4, 5, "로또신령 주간 리포트")):
     im = _canvas()
     d = ImageDraw.Draw(im)
     _center(d, 110, f"{rnd + 1}회를 기다리며", font(60, "Black"), GOLD)
@@ -300,11 +300,11 @@ def card4(rnd, tarot):
         _center(d, y, ln, f, WHITE)
         y += 50
     _center(d, 1150, "첫 가입 500P로 번호 조합을 무료로 체험해 보세요", font(32, "Bold"), GOLD)
-    _footer(im, 4)
+    _footer(im, *foot)
     return im
 
 
-def card5(store_text):
+def card5(store_text, foot=(5, 5, "로또신령 주간 리포트")):
     im = _canvas()
     sp = Image.open(SPIRIT_IMG).convert("RGB")
     icon = sp.crop((90, 120, 90 + 600, 120 + 600)).resize((300, 300))
@@ -320,7 +320,7 @@ def card5(store_text):
     _center(d, 895, "에서 ‘로또신령’ 검색", font(34, "Medium"), MUTED)
     _center(d, 1040, "자세한 사용법은 네이버 블로그 ‘로또신령’", font(32, "Medium"), WHITE)
     _center(d, 1100, "매주 토요일 밤, 이번 주 숫자 이야기로 다시 만나요", font(30, "Medium"), MUTED)
-    _footer(im, 5)
+    _footer(im, *foot)
     return im
 
 

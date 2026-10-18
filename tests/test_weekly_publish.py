@@ -123,6 +123,20 @@ class PublishTest(unittest.TestCase):
         self.assertEqual(set(res["skipped"]), set(pub.CHANNELS))
         self.assertFalse(any("photos" in c[1] or "media" in c[1] for c in s2.calls))
 
+    def test_P7_predraw_kind_separate_log(self):
+        """목·금 콘텐츠(kind=thu): 카드 2장만 올리고, 게시 기록 키가 '채널:thu' 라 토요일 게시와 섞이지 않음."""
+        log = _log()
+        pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(FakeSession()), log=log, sleep=lambda *_: None)
+        s = FakeSession()
+        res = pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(s), log=log, sleep=lambda *_: None, kind="thu")
+        self.assertEqual(set(res["posted"]), set(pub.CHANNELS), res)
+        photos = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/PG/photos")]
+        self.assertEqual(len(photos), 2)
+        self.assertTrue(all(log.done(1246, f"{c}:thu") for c in pub.CHANNELS))
+        res2 = pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(FakeSession()), log=log, sleep=lambda *_: None,
+                           kind="thu")
+        self.assertEqual(res2["posted"], {})
+
     def test_P4_missing_keys_and_failure_isolated(self):
         env = dict(ALL_ENV)
         del env["YT_REFRESH_TOKEN"]

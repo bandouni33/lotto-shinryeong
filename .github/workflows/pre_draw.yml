@@ -1,0 +1,67 @@
+name: 목·금 구매 전 콘텐츠
+
+# 2026-10-18(사용자 승인 5번): 목 '이번 주 신령 타로', 금 '이번 주 번호 흐름' — 카드 2장 + 문구 + 짧은 영상.
+# 게시 채널은 토요일과 같은 저장소 변수 WEEKLY_PUBLISH_CHANNELS. 같은 회차·종류는 DB 기록('채널:thu')으로 두 번 올리지 않는다.
+# 영상(네이버 클립 수동 업로드용)은 실행 기록의 Artifacts 로 받는다.
+on:
+  schedule:
+    - cron: "52 10 * * 4"   # 목 19:52 KST
+    - cron: "52 10 * * 5"   # 금 19:52 KST
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "thu(타로) / fri(번호 흐름)"
+        required: true
+        default: "thu"
+      publish:
+        description: "게시까지 할까요?(yes면 게시, 이미 올린 채널은 건너뜀)"
+        required: false
+        default: "no"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: weekly-content
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 글꼴·영상 도구
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk fonts-noto-cjk-extra ffmpeg
+      - run: pip install -r requirements.txt pillow openpyxl
+      - name: 종류 정하기
+        id: k
+        run: |
+          if [ -n "${{ github.event.inputs.kind }}" ]; then k="${{ github.event.inputs.kind }}";
+          elif [ "$(date -u +%u)" = "4" ]; then k=thu; else k=fri; fi
+          echo "kind=$k" >> "$GITHUB_OUTPUT"
+      - name: 카드·문구·영상 만들기
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m weekly_content.pre_draw --kind "${{ steps.k.outputs.kind }}" --out pre_out
+      - name: SNS 게시
+        if: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'yes' }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          WEEKLY_PUBLISH_CHANNELS: ${{ vars.WEEKLY_PUBLISH_CHANNELS }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: python -m weekly_content.publish --dir pre_out --kind "${{ steps.k.outputs.kind }}"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: predraw-${{ steps.k.outputs.kind }}
+          path: pre_out/
+          retention-days: 14
