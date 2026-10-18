@@ -21,7 +21,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 100
     concurrency:
       group: weekly-content
       cancel-in-progress: false
