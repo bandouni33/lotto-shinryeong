@@ -1890,14 +1890,51 @@ def inject_manual_dialog_back_bridge() -> None:
                         if (!key || !key.querySelector('button')) { return; }
                         var dlg = key.closest('[data-testid="stDialog"]');
                         if (!dlg) { return; }
-                        dlg.style.visibility = 'hidden';
-                        var t0 = Date.now();
-                        var iv = setInterval(function () {
-                            var gone = !dlg.isConnected;
-                            var reused = !gone && !dlg.querySelector('[class*="st-key-pn_confirm_"]');
-                            if (gone || reused || Date.now() - t0 > 10000) {
-                                clearInterval(iv);
-                                if (!gone) { dlg.style.visibility = ''; }
+                        // 창 노드 하나만 감추면, 처리 중 Streamlit 이 같은 창을 새 노드로 다시 그려 흐릿하게 보였다
+                        // (로컬 시뮬 확인) → 적립금 확인 버튼이 든 창은 모두 감추는 규칙을 잠시 건다. 다른 내용의 창
+                        // (잔액 부족 충전창 등)은 해당 없음. 확인창이 0.6초 이상 안 보이면(또는 10초) 규칙을 뗀다.
+                        var css = pdoc.getElementById('ln-pn-fast-close');
+                        if (!css) {
+                            css = pdoc.createElement('style');
+                            css.id = 'ln-pn-fast-close';
+                            css.textContent = '[data-testid="stDialog"]:has([class*="st-key-pn_confirm_"]){display:none !important;}';  // visibility 는 안쪽 글자가 visible 로 덮어써 비쳤다
+                            pdoc.head.appendChild(css);
+                        }
+                        // 자동조합: 확인 즉시 미리 실어 둔 신령 이미지 움직임 층을 보인다(page_auto preload).
+                        // 서버가 처리 뒤 이 층을 새로 그려도(같은 모양) 끊기지 않게, 보이게 하는 표시는 문서 맨 위(html)에 둔다.
+                        if (key.closest('[class*="st-key-pn_confirm_auto"]')) {
+                            var gcss = pdoc.getElementById('ln-gen-on-css');
+                            if (!gcss) {
+                                gcss = pdoc.createElement('style');
+                                gcss.id = 'ln-gen-on-css';
+                                gcss.textContent = 'html.ln-gen-on .auto-spirit2-gen[data-ln-preload]{display:block !important;}';
+                                pdoc.head.appendChild(gcss);
+                            }
+                            var root = pdoc.documentElement;
+                            root.classList.add('ln-gen-on');
+                            if (pdoc.__lnGenIv) { clearInterval(pdoc.__lnGenIv); }
+                            var g0 = Date.now(), gLast = Date.now();
+                            pdoc.__lnGenIv = setInterval(function () {
+                                var now = Date.now();
+                                if (pdoc.querySelector('.auto-spirit2-gen')) { gLast = now; }
+                                var reopened = pdoc.querySelector('[data-testid="stDialog"] [class*="st-key-pn_confirm_auto"]') && !pdoc.getElementById('ln-pn-fast-close');
+                                if (now - gLast > 400 || now - g0 > 15000 || reopened) {
+                                    clearInterval(pdoc.__lnGenIv);
+                                    pdoc.__lnGenIv = null;
+                                    root.classList.remove('ln-gen-on');
+                                }
+                            }, 100);
+                        }
+                        if (pdoc.__lnPnIv) { clearInterval(pdoc.__lnPnIv); }
+                        var t0 = Date.now(), lastSeen = Date.now();
+                        pdoc.__lnPnIv = setInterval(function () {
+                            var now = Date.now();
+                            if (pdoc.querySelector('[data-testid="stDialog"] [class*="st-key-pn_confirm_"]')) { lastSeen = now; }
+                            if (now - lastSeen > 600 || now - t0 > 10000) {
+                                clearInterval(pdoc.__lnPnIv);
+                                pdoc.__lnPnIv = null;
+                                var c = pdoc.getElementById('ln-pn-fast-close');
+                                if (c) { c.remove(); }
                             }
                         }, 80);
                     } catch (e) {}

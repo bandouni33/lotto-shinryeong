@@ -229,7 +229,7 @@ _SPIRIT2_QUAKE_LAYERS = (
 )
 
 
-def _spirit2_gen_layer(base64: str, token: str) -> str:
+def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str:
     """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
     영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정. 배경판 그림은 style 에 한 번만 싣고 층들은
     그 그림을 배경으로 재사용한다(용량). 클릭마다 token 이 달라 애니메이션이 새로 시작."""
@@ -257,17 +257,28 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
             f"transform-origin:{origin};animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s infinite;}}"
         )
         layers.append(f'<div class="{cls} {cls}-{name}"></div>')
+    # preload: 적립금 확인창이 떠 있는 동안 미리 숨겨 두는 층 — '확인 후 진행'을 누르는 순간 브라우저가 바로 보이게
+    # 한다(wallet_ui 확인창 스크립트). 서버 처리(1~2초)를 기다리지 않고 움직임이 시작되게(2026-10-18 사용자 지시).
+    pre = ' data-ln-preload="1"' if preload else ""
+    hide = "display:none;" if preload else ""
     return f"""
-          <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
+          <div class="auto-spirit2-gen"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
             <div class="{cls}"></div>{''.join(layers)}
             <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
           </div>
           <style>{''.join(css)}</style>"""
 
 
-def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None) -> str:
-    """정적 원형 크롭 이미지. gen_token 이 있으면(조합 생성 중) 위에 출렁이는 층을 겹친다."""
-    gen = _spirit2_gen_layer(base64, gen_token) if gen_token else ""
+def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None,
+                         preload_token: str | None = None) -> str:
+    """정적 원형 크롭 이미지. gen_token 이 있으면(조합 생성 중) 위에 출렁이는 층을 겹친다.
+    preload_token 이 있으면 같은 층을 숨겨서 미리 실어 둔다(확인 클릭 즉시 시작용)."""
+    if gen_token:
+        gen = _spirit2_gen_layer(base64, gen_token)
+    elif preload_token:
+        gen = _spirit2_gen_layer(base64, preload_token, preload=True)
+    else:
+        gen = ""
     ripple_style = ' style="position:relative;"' if gen else ""
     return f"""
     <div class="{slot_class}">
@@ -323,7 +334,8 @@ def _render_auto_generation_timer() -> None:
     with st.container(key=wrap):
         st.markdown(
             f"<style>.st-key-{wrap},"
-            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}'
+            f'.auto-spirit2-gen[data-ln-preload]{{display:block !important;}}</style>',
             unsafe_allow_html=True,
         )
         st.button("auto-gen-done", key="auto_gen_done_btn")
@@ -3285,6 +3297,9 @@ def render():
 
                                 st.session_state["auto_purchase_error"] = GATE_INLINE_HINT
                                 return
+                            import time as _t_click
+
+                            _gen_started = _t_click.time()  # 3초는 확인을 누른 때부터(브라우저가 이미 움직이기 시작)
                             outcome = process_auto_purchase(
                                 mid,
                                 selected_quantity,
@@ -3300,7 +3315,14 @@ def render():
                                 )
                                 # 2026-10-10(사용자 지시): 저장내역 추가·깜빡임·완료 안내는 신령 이미지가
                                 # 3초 움직인 뒤에 보인다(_finish_auto_generation_if_due). 결제는 이미 끝났다.
-                                st.session_state[AUTO_GEN_PENDING_KEY] = {"entry": entry, "started": None}
+                                # 2026-10-18: 확인 클릭 즉시 미리 실어 둔 층이 움직이므로, 시작 시각을 그때로 잡고 같은
+                                # token 을 이어 쓴다 — 서버 처리 시간만큼 움직임이 길어지지 않게(전체 약 3초).
+                                _pre = st.session_state.pop("auto_gen_preload_token", None)
+                                st.session_state[AUTO_GEN_PENDING_KEY] = {
+                                    "entry": entry,
+                                    "started": _gen_started,
+                                    "token": _pre or str(int(_gen_started * 1000)),
+                                }
                                 # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역
                                 # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
                                 # 다음 렌더에서 최상단으로 한 번 스크롤한다.
@@ -3344,13 +3366,23 @@ def render():
                 pass
 
         # ── 신령 이미지 + 회차별 당첨번호 배출 (2열 밖·전체 너비) ──
+        _auto_preload_token = None
+        if (not _auto_gen_token and not AUTO_PURCHASE_SKIP_AUTH
+                and st.session_state.get("auto_show_points")):
+            import time as _t_pre
+
+            _auto_preload_token = str(int(_t_pre.time() * 1000))
+            st.session_state["auto_gen_preload_token"] = _auto_preload_token
         with st.container(key="auto_spirit_below_confirm_6n36s5"):
             if spirit2_base64:
                 st.markdown(
+                    # 생성 중에도 미리 실어 둔 층과 같은 모양(숨김 표시 포함)으로 그린다 — 글자 하나라도 다르면
+                    # 화면이 층을 새로 만들며 움직임이 잠깐 끊긴다. 보이게 하는 규칙은 맨 끝 타이머 칸이 싣는다.
                     _spirit2_image_block(
                         spirit2_base64,
                         "auto-spirit2-slot-right",
-                        _auto_gen_token,
+                        None,
+                        _auto_gen_token or _auto_preload_token,
                     ),
                     unsafe_allow_html=True,
                 )
