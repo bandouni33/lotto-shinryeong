@@ -17,7 +17,11 @@ HEADERS = {"User-Agent": "Mozilla/5.0", "X-Requested-With": "XMLHttpRequest"}
 def parse(info: dict, stores: list[dict], rnd: int) -> dict:
     ranks = [{"rank": k, "count": int(info.get(f"rnk{k}WnNope") or 0), "amount": int(info.get(f"rnk{k}WnAmt") or 0)}
              for k in range(1, 6)]
-    shops = [{"name": (s.get("shpNm") or "").strip(), "region": (s.get("region") or "").strip(),
+    def region(s):   # 인터넷 구매는 지역이 '서울'로 오므로 '인터넷'으로 표시
+        return "인터넷" if "인터넷" in (s.get("shpNm") or "") or "dhlottery" in (s.get("shpAddr") or "") \
+            else (s.get("region") or "").strip()
+
+    shops = [{"name": (s.get("shpNm") or "").strip(), "region": region(s),
               "addr": (s.get("shpAddr") or "").strip(), "kind": (s.get("atmtPsvYnTxt") or "").strip()}
              for s in stores]
     kinds = Counter(s["kind"] for s in shops if s["kind"])

@@ -24,7 +24,8 @@ INFO = {"ltEpsd": 1246, "rnk1WnNope": 16, "rnk1WnAmt": 1881025430, "rnk2WnNope":
         "rnk5WnNope": 2608922, "rnk5WnAmt": 5000, "wholEpsdSumNtslAmt": 121857105000}
 STORES = [{"shpNm": "가게A", "region": "서울", "shpAddr": "서울 중구 1", "atmtPsvYnTxt": "수동", "shpTelno": "02-000"},
           {"shpNm": "가게B", "region": "경기", "shpAddr": "경기 수원 2", "atmtPsvYnTxt": "자동", "shpTelno": "031-000"},
-          {"shpNm": "가게C", "region": "경기", "shpAddr": "경기 화성 3", "atmtPsvYnTxt": "자동"}]
+          {"shpNm": "가게C", "region": "경기", "shpAddr": "경기 화성 3", "atmtPsvYnTxt": "자동"},
+          {"shpNm": "인터넷 복권판매사이트", "region": "서울", "shpAddr": "동행복권(dhlottery.co.kr)", "atmtPsvYnTxt": "자동"}]
 
 
 class R:
@@ -49,7 +50,8 @@ class RoundResultTest(unittest.TestCase):
     def test_R1_parse(self):
         res = rr.parse(INFO, STORES, 1246)
         self.assertEqual(res["ranks"][0], {"rank": 1, "count": 16, "amount": 1881025430})
-        self.assertEqual(res["first_kinds"], {"자동": 2, "수동": 1})
+        self.assertEqual(res["first_kinds"], {"자동": 3, "수동": 1})
+        self.assertEqual(res["first_shops"][3]["region"], "인터넷")
         self.assertEqual(res["first_regions"][0], ["경기", 2])
         self.assertEqual(set(res["first_shops"][0]), {"name", "region", "addr", "kind"})
         self.assertNotIn("02-000", json.dumps(res))
