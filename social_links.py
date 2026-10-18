@@ -32,6 +32,18 @@ def round_url(rnd: int) -> str:
 PLAY_URL = "https://play.google.com/store/apps/details?id=com.bandouni.lottoshinryeong"
 MANUAL_URL = "https://blog.naver.com/bandouni/224444112459"   # 사용설명서 글
 
+# 네이버 블로그 사용설명 8편(2026-10-16 사용자 발행) — 홈페이지 사이드바 '사용설명서' 목록의 단일 기준점
+MANUAL_POSTS = [
+    ("설치·로그인·첫 가입 500P", MANUAL_URL),
+    ("자동조합", "https://blog.naver.com/bandouni/224444125686"),
+    ("번개조합", "https://blog.naver.com/bandouni/224444138835"),
+    ("번호검증", "https://blog.naver.com/bandouni/224444193876"),
+    ("고급필터", "https://blog.naver.com/bandouni/224444208405"),
+    ("통계센터", "https://blog.naver.com/bandouni/224444212584"),
+    ("타로", "https://blog.naver.com/bandouni/224444220906"),
+    ("자주 묻는 질문", "https://blog.naver.com/bandouni/224444223272"),
+]
+
 
 def store_link(source: str, medium: str = "social", campaign: str = "weekly") -> str:
     """채널별 유입을 구분하는 구글 플레이 설치 링크(2026-10-18 승인 1번).

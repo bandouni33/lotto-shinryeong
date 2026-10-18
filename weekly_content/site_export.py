@@ -54,6 +54,7 @@ def build_data(draws: list[dict], round_stats: list[dict], now: dt.datetime | No
                   for n in range(1, 46)},
         "links": {"play": social_links.store_link("homepage", medium="web", campaign="site"),
                   "manual": social_links.MANUAL_URL,
+                  "manual_posts": [{"title": t, "url": u} for t, u in social_links.MANUAL_POSTS],
                   "channels": [{"name": c["name"], "url": c["url"], "color": c["color"]}
                                for c in social_links.active_channels()]},
     }

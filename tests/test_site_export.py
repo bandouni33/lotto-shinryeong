@@ -49,6 +49,8 @@ class SiteExportTest(unittest.TestCase):
         self.assertIn("utm_source%3Dhomepage", self.d["links"]["play"])
         self.assertTrue(self.d["links"]["play"].startswith(social_links.PLAY_URL))
         self.assertEqual(self.d["links"]["manual"], social_links.MANUAL_URL)
+        self.assertEqual(len(self.d["links"]["manual_posts"]), 8)
+        self.assertEqual(self.d["links"]["manual_posts"][0]["url"], social_links.MANUAL_URL)
         self.assertEqual(self.d["balls"]["7"]["fill"], ball_style.ball_fill(7))
         self.assertNotIn("유튜브", [c["name"] for c in self.d["links"]["channels"]])
 
