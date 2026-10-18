@@ -1876,6 +1876,33 @@ def inject_manual_dialog_back_bridge() -> None:
         """
         <script>
         (function () {
+            // 2026-10-18(사용자 지시): 적립금 확인창(points_notice_dialog — 자동·번개·안티액땜·타로 공통)에서
+            // '확인 후 진행'·'취소'를 누르면 서버 처리(차감·배정 1~2초)가 끝날 때까지 창이 그대로 남아 멈춘 듯
+            // 보였다 → 누르는 즉시 창을 화면에서만 감춘다(처리·결과는 그대로 서버). 같은 창이 다른 내용으로 다시
+            // 쓰이면(잔액 부족 충전창 등) 바로 다시 보이게 하고, 10초 안전장치로도 되돌린다.
+            var pdoc = window.parent.document;
+            if (!pdoc.__lnPnFastClose) {
+                pdoc.__lnPnFastClose = true;
+                pdoc.addEventListener('click', function (ev) {
+                    try {
+                        var t = ev.target;
+                        var key = t && t.closest && t.closest('[class*="st-key-pn_confirm_"],[class*="st-key-pn_cancel_"]');
+                        if (!key || !key.querySelector('button')) { return; }
+                        var dlg = key.closest('[data-testid="stDialog"]');
+                        if (!dlg) { return; }
+                        dlg.style.visibility = 'hidden';
+                        var t0 = Date.now();
+                        var iv = setInterval(function () {
+                            var gone = !dlg.isConnected;
+                            var reused = !gone && !dlg.querySelector('[class*="st-key-pn_confirm_"]');
+                            if (gone || reused || Date.now() - t0 > 10000) {
+                                clearInterval(iv);
+                                if (!gone) { dlg.style.visibility = ''; }
+                            }
+                        }, 80);
+                    } catch (e) {}
+                }, true);
+            }
             var doc = window.parent.document;
             if (doc.__lnDialogBridgeInstalled) { return; }
             doc.__lnDialogBridgeInstalled = true;
