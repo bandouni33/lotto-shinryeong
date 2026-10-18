@@ -1,0 +1,29 @@
+name: 동행복권 응답 형식 확인
+
+# 2026-10-18: 이 세션 환경에서 동행복권 접속이 막혀 있어, Actions 러너에서 공개 응답 형식만 확인해 결과 파일로 올린다.
+on:
+  push:
+    branches: [main]
+    paths: ["weekly_content/checks/dh_probe_request.txt"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - run: python scripts/dh_probe.py weekly_content/checks/dh_probe_result.txt
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weekly_content/checks/dh_probe_result.txt
+          git commit -m "동행복권 응답 형식 확인 결과" || exit 0
+          git pull --rebase -q && git push -q
