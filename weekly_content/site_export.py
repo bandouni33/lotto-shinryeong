@@ -40,6 +40,10 @@ def build_data(draws: list[dict], round_stats: list[dict], now: dt.datetime | No
     latest = max(d["draw_round"] for d in draws)
     # 주간 카드 4번·문구와 같은 카드: cards.tarot_for_round(최신 회차) = '다음 회차를 기다리며' 뽑은 카드
     tarot = cards.tarot_for_round(latest)
+    from weekly_content import number_story as ns
+
+    by_round = {d["draw_round"]: {"nums": d["numbers"]} for d in draws}
+    ms = ns.members(by_round, latest)
     return {
         "schema": SCHEMA,
         "generated_at": now.isoformat(timespec="seconds"),
@@ -50,6 +54,10 @@ def build_data(draws: list[dict], round_stats: list[dict], now: dt.datetime | No
                       for s in round_stats if s.get("finalized_at")],
         "tarot": {"round": latest + 1, "key": tarot["key"], "name": tarot["name"], "name_en": tarot["name_en"],
                   "line": tarot["line"], "image": f"tarot/{tarot['image'].relative_to(ROOT / 'tarot').as_posix()}"},
+        "members": ms,
+        "headline": ns.headline(by_round, latest, ms),
+        "question": ns.question(by_round, latest),
+        "answer": ns.answer(by_round, latest),
         "balls": {str(n): {"fill": ball_style.ball_fill(n), "text": ball_style.ball_text_color(n)}
                   for n in range(1, 46)},
         "links": {"play": social_links.store_link("homepage", medium="web", campaign="site"),
@@ -60,6 +68,28 @@ def build_data(draws: list[dict], round_stats: list[dict], now: dt.datetime | No
     }
 
 
+TALISMAN_KEEP = 12   # 홈페이지 회차 부적 — 최근 N회차만 새로 그린다(이미 있으면 건너뜀, 같은 번호면 같은 그림)
+
+
+def export_talismans(data: dict, out: Path, keep: int = TALISMAN_KEEP) -> list[Path]:
+    """회차 부적 JPG(site_data/talisman/<회차>.jpg) — 주간 게시의 부적과 같은 함수(weekly_content.talisman)."""
+    from weekly_content import number_story, talisman
+
+    out.mkdir(parents=True, exist_ok=True)
+    draws = {r[0]: {"nums": r[2:8], "bonus": r[8]} for r in data["draws"]}
+    made = []
+    for r in sorted(draws, reverse=True)[:keep]:
+        p = out / f"{r}.jpg"
+        if p.exists():
+            continue
+        im = talisman.build(r, draws[r]["nums"], draws[r]["bonus"], star_line=number_story.headline(draws, r)["title"],
+                            date_text=draw_date(r).replace("-", "."))
+        im.convert("RGB").resize((720, 900)).save(p, quality=84, optimize=True)
+        made.append(p)
+    data["talismans"] = sorted(int(p.stem) for p in out.glob("*.jpg"))
+    return made
+
+
 def export(out_dir: Path) -> Path:
     import draw_results_db as db
     import marketing_db as mdb
@@ -68,6 +98,7 @@ def export(out_dir: Path) -> Path:
     mdb.init_marketing_tables()
     data = build_data(db.get_all_draw_results(), mdb.get_round_stats_snapshot(limit=400))
     out_dir.mkdir(parents=True, exist_ok=True)
+    export_talismans(data, out_dir / "talisman")
     path = out_dir / "data.json"
     path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     return path

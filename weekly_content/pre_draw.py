@@ -99,6 +99,12 @@ def captions(kind: str, draws: dict[int, dict], latest: int) -> dict:
                    f"오래 안 나온 번호 {', '.join(str(n) for n, _ in cold)}")
     import social_links
 
+    if kind == "thu":   # 2026-10-18 스레드 = 신령과의 문답: 목요일 질문 → 토요일 결과(cards.caption_threads)
+        from weekly_content import number_story
+
+        q = number_story.question(draws, latest)
+        th_head = (f"🗳 {nxt}회 신령 문답\n공백기 멤버 중 이번 주 컴백할 번호는?\n"
+                   f"후보: {', '.join(map(str, q['candidates']))}\n댓글로 한 명 골라주세요. 토요일 밤 결과 공개!")
     threads = (f"{th_head}\n\n설치: {social_links.store_link('threads', campaign='predraw')}\n"
                "※ 참고·재미용 · 복권은 만 19세 이상\n#로또")[:cards.THREADS_LIMIT]
     return {"instagram": head + _caption_tail("instagram") + tags, "facebook": head + _caption_tail("facebook") + tags,

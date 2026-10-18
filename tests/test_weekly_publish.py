@@ -137,6 +137,19 @@ class PublishTest(unittest.TestCase):
                            kind="thu")
         self.assertEqual(res2["posted"], {})
 
+    def test_P8_talisman_instagram_first(self):
+        """회차 부적이 있으면 사진 6장 업로드, 인스타 캐러셀 6장(부적이 첫 장), 페북·스레드는 카드 5장."""
+        Image.new("RGB", (40, 50), (9, 9, 9)).save(self.tmp / "1246_talisman.png")
+        s = FakeSession()
+        res = pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(s), log=_log(), sleep=lambda *_: None)
+        self.assertEqual(res["failed"], {})
+        photos = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/PG/photos")]
+        self.assertEqual(len(photos), 6)
+        ig_items = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/IG/media")]
+        th_items = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/TH/threads")]
+        self.assertEqual(len(ig_items), 6 + 1)    # 캐러셀 항목 6 + 캐러셀 1
+        self.assertEqual(len(th_items), 5 + 1)
+
     def test_P4_missing_keys_and_failure_isolated(self):
         env = dict(ALL_ENV)
         del env["YT_REFRESH_TOKEN"]

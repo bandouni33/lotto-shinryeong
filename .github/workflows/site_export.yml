@@ -9,7 +9,8 @@ on:
     types: [completed]
   push:
     branches: [main]
-    paths: ["weekly_content/site_export.py", "social_links.py", ".github/workflows/site_export.yml"]
+    paths: ["weekly_content/site_export.py", "weekly_content/number_story.py", "weekly_content/talisman.py",
+            "social_links.py", ".github/workflows/site_export.yml"]
   workflow_dispatch: {}
 
 permissions:
@@ -29,6 +30,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: 글꼴(회차 부적용)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk fonts-noto-cjk-extra
       - run: pip install -r requirements.txt pillow
       - name: 공개 데이터 내보내기
         env:
@@ -39,7 +42,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site_data/data.json
+          git add site_data/data.json site_data/talisman
           git diff --cached --quiet && { echo "변경 없음"; exit 0; }
           git commit -m "홈페이지 데이터 갱신"
           git pull --rebase -q && git push -q

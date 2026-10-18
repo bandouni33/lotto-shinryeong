@@ -132,7 +132,19 @@ def main() -> int:
     (out / f"{rnd}_caption.txt").write_text(cards.caption(draws, rnd), encoding="utf-8")
     (out / f"{rnd}_captions.json").write_text(
         json.dumps(cards.captions_all(draws, rnd), ensure_ascii=False, indent=1), encoding="utf-8")
-    shorts = make_shorts(pngs, out / f"{rnd}_shorts.mp4")
+    # 2026-10-18: 회차 부적(인스타 캐러셀 첫 장·영상 첫 장) — 실패해도 카드 게시는 계속
+    talis = None
+    try:
+        from weekly_content import number_story, talisman
+
+        talis = out / f"{rnd}_talisman.png"
+        talisman.build(rnd, draws[rnd]["nums"], draws[rnd]["bonus"],
+                       star_line=number_story.headline(draws, rnd)["title"],
+                       date_text=draw_date_text(rnd)).save(talis, optimize=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  (부적 생성 실패 — 카드만 게시: {exc})")
+        talis = None
+    shorts = make_shorts(([talis] if talis else []) + pngs, out / f"{rnd}_shorts.mp4")
     print(f"[완료] {rnd}회 카드 {len(pngs)}장 · 문구 · 쇼츠={'있음' if shorts else '없음'} · "
           f"→ {out}")
     return 0

@@ -296,6 +296,7 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
     caps = json.loads((out_dir / f"{rnd}_captions.json").read_text(encoding="utf-8"))
     pngs = [out_dir / f"{rnd}_{i}.png" for i in range(1, 6 if kind == "weekly" else 3)]
     mp4 = out_dir / f"{rnd}_shorts.mp4"
+    talis = [p for p in (out_dir / f"{rnd}_talisman.png",) if kind == "weekly" and p.exists()]
     missing = [p.name for p in pngs if not p.exists()]
     if missing:
         raise PublishError(f"카드가 없습니다: {missing}")
@@ -324,7 +325,7 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
                     todo.remove(c)
         else:
             try:
-                photos = fb_upload_unpublished(http, page_id, page_tok, to_jpegs(pngs, out_dir / "_jpg"))
+                photos = fb_upload_unpublished(http, page_id, page_tok, to_jpegs(pngs + talis, out_dir / "_jpg"))
             except PublishError as e:
                 for c in ("facebook", "instagram", "threads"):
                     if c in todo:
@@ -341,12 +342,15 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
         except Exception as e:  # 한 채널 실패가 다른 채널을 막지 않게
             result["failed"][channel] = str(e)[:300]
 
-    urls = [u for _, u in photos]
-    run("facebook", lambda: post_facebook(http, page_id, page_tok, [p for p, _ in photos], caps["facebook"]))
+    # 2026-10-18: 회차 부적(있으면 마지막에 올림) — 인스타 캐러셀 첫 장으로만 쓰고 페북·스레드는 카드만
+    card_photos, talis_photos = photos[:len(pngs)], photos[len(pngs):]
+    urls = [u for _, u in card_photos]
+    ig_urls = [u for _, u in talis_photos] + urls
+    run("facebook", lambda: post_facebook(http, page_id, page_tok, [p for p, _ in card_photos], caps["facebook"]))
     if "instagram" in todo and not env.get("IG_USER_ID"):
         todo.remove("instagram")
         result["skipped"]["instagram"] = "IG_USER_ID 없음"
-    run("instagram", lambda: post_instagram(http, env["IG_USER_ID"], page_tok, urls, caps["instagram"], sleep=sleep))
+    run("instagram", lambda: post_instagram(http, env["IG_USER_ID"], page_tok, ig_urls, caps["instagram"], sleep=sleep))
     if "threads" in todo:
         ttok = threads_token(http, log, env) if env.get("THREADS_USER_ID") else None
         if not ttok:

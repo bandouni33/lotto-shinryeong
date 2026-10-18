@@ -39,7 +39,8 @@ class SiteExportTest(unittest.TestCase):
 
     def test_E3_public_keys_only(self):
         self.assertEqual(set(self.d), {"schema", "generated_at", "latest_round", "draws", "our_stats", "tarot",
-                                       "balls", "links"})
+                                       "balls", "links", "members", "headline", "question", "answer"})   # talismans 는 export() 에서 추가
+        self.assertEqual(len(self.d["members"]), 45)
         self.assertEqual(self.d["tarot"]["round"], 1247)
         from weekly_content import cards
         self.assertEqual(self.d["tarot"]["key"], cards.tarot_for_round(1246)["key"])   # SNS 주간 카드 4번과 같은 카드

@@ -341,10 +341,27 @@ def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
     """source = 채널 이름(설치 링크 UTM 구분용, social_links.store_link)."""
     import social_links
 
+    from weekly_content import number_story
+
     a = analyze(draws, rnd)
     nums = " ".join(str(n) for n in a["nums"])
     t = tarot_for_round(rnd)
-    return (f"🔮 로또신령 주간 리포트 | 제{rnd}회 당첨번호\n\n"
+    h = number_story.headline(draws, rnd)
+    # 2026-10-18 채널별 특색: 인스타 = 회차 부적 컬렉션, 페북 = 신령엔터 주간 사건 일지
+    if source == "instagram":
+        opener = f"🧧 제{rnd}회 부적 — 당첨번호로 그린 이번 주 한 장(첫 장). 매주 한 장씩 모아보세요.\n\n"
+    elif source == "facebook":
+        extra = []
+        if h["comeback"]:
+            extra.append("컴백 " + ", ".join(f"{x['n']}번({x['gap']}회 만)" for x in h["comeback"]))
+        if h["streak"]:
+            extra.append("연속 무대 " + ", ".join(f"{x['n']}번({x['weeks']}주)" for x in h["streak"]))
+        extra.append("가장 긴 공백기 " + ", ".join(f"{x['n']}번({x['gap']}주)" for x in h["hiatus"][:3]))
+        opener = (f"📰 신령엔터 45인조 주간 소식 — {h['title']}\n" + "\n".join(f"· {x}" for x in extra) + "\n"
+                  f"멤버 전체 보기: {social_links.SITE_URL}/members/\n\n")
+    else:
+        opener = ""
+    return (opener + f"🔮 로또신령 주간 리포트 | 제{rnd}회 당첨번호\n\n"
             f"{nums} + 보너스 {a['bonus']}\n"
             f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n"
             f"최근 10회 자주 나온 번호: {', '.join(str(n) for n, _ in a['hot'])}\n\n"
@@ -365,12 +382,17 @@ def caption_threads(draws: dict[int, dict], rnd: int) -> str:
     """스레드용 짧은 문구(500자 이내) — 해시태그는 1개만 붙는 플랫폼이라 끝에 하나만."""
     import social_links
 
+    from weekly_content import number_story
+
     a = analyze(draws, rnd)
     nums = " ".join(str(n) for n in a["nums"])
-    t = tarot_for_round(rnd)
-    txt = (f"🔮 제{rnd}회 로또 당첨번호\n{nums} + 보너스 {a['bonus']}\n"
-           f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n"
-           f"이번 주 타로: {t['name']} “{t['line']}”\n\n"
+    ans = number_story.answer(draws, rnd)   # 목요일 문답 '이번 주 컴백할 멤버는?' 결과
+    cand = ", ".join(map(str, ans["candidates"]))
+    res = (f"{', '.join(f'{n}번' for n in ans['hit'])} 컴백! 맞히신 분들 축하해요 🎉" if ans["hit"]
+           else "이번 주엔 아무도 컴백하지 않았어요. 공백기 계속…")
+    qa = (f"🗳 목요일 문답 결과 — 후보 {cand}\n→ {res}\n\n" if rnd >= number_story.FIRST_QUESTION_ROUND
+          else f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n")
+    txt = (f"🔮 제{rnd}회 로또 당첨번호\n{nums} + 보너스 {a['bonus']}\n\n" + qa +
            f"자세히: {social_links.round_url(rnd)}\n"
            f"설치: {social_links.store_link('threads')}\n"
            f"사용법: {social_links.MANUAL_URL}\n"
