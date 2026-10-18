@@ -2,6 +2,9 @@ name: 결과 정리 수동 게시
 
 # 2026-10-18: 정기 자동 게시(weekly_content.yml, 토요일 공식 발표 뒤)를 놓친 회차를 따로 올릴 때 쓴다.
 # weekly_content/checks/result_request.txt 에 회차 번호 한 줄을 넣어 push 하면 실행. 이미 올린 채널은 DB 기록으로 건너뜀.
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -39,6 +42,17 @@ jobs:
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
           THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
         run: python -m weekly_content.publish --dir result_out --kind result
+      - name: 게시 결과 기록(채널별 성공·실패 사유만, 토큰 없음)
+        if: ${{ always() }}
+        run: |
+          f=$(ls result_out/*_publish_result.json 2>/dev/null | head -1)
+          [ -n "$f" ] || exit 0
+          cp "$f" weekly_content/checks/result_publish_result.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weekly_content/checks/result_publish_result.json
+          git commit -m "결과 정리 게시 결과" || exit 0
+          git pull --rebase -q && git push -q
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
