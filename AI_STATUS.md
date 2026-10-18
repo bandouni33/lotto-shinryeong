@@ -19,6 +19,7 @@
 - Streamlit 버전 고정: `streamlit==1.64.0`
 
 ## 2. 최근 완료 작업 (2026-10-02 ~ 10-05, git log 기준)
+- **(10-18) 적립금 확인창 즉시 닫힘 + 서버 데워두기(사용자 승인)** — ⓐ `wallet_ui.inject_manual_dialog_back_bridge` 스크립트에 추가: 적립금 확인창(points_notice_dialog, 자동·번개·안티액땜·타로 공통 키 `pn_confirm_*`/`pn_cancel_*`) 버튼을 누르는 즉시 창을 화면에서만 감춤(처리는 서버 그대로, 같은 창이 다른 내용으로 다시 쓰이면 즉시 복원, 10초 안전장치). 로컬 시뮬(DB 100ms): 확인 후 창 보임 1.4초→0.04초, 조합 완료 동일. 재부팅 불필요(wallet_ui 자동 새로 읽기). ⓑ `.github/workflows/keep_warm.yml` 10분마다 `scripts/keep_warm.py`(헤드리스 브라우저로 `?warm=1` 열기, 잠든 앱이면 깨우기) — 첫 실행 성공(약 7초). render_timing 에 `warm=` 표시 추가. **다음**: 며칠 뒤 운영 render_timing(일반 방문 첫 화면) 전후 비교로 효과 확인. 도메인 구입은 보류(사용자, 후보 lottoshinryeong.com).
 - **(10-18) 유입 전략 실행 1차(사용자 승인 1·2·3·5번, 4 ASO·6 QR인증/카톡/초대 보류, '추첨 직후 내 복권 확인' 문구는 의미없음으로 제외)** — 전략 문서 Claude Docs "로또신령 유입 전략 — 경쟁 분석과 핵심 전략"(결론·로또리치 벤치마크·홈페이지 구축안).
   - ① 게시 문구 설치 링크: `social_links.PLAY_URL`·`MANUAL_URL`(사용설명서 224444112459)·`store_link(source)`(Play referrer UTM, 채널별 utm_source) — 페북·인스타·스레드·유튜브 문구에 설치·설명서 링크.
   - ② 카드3 '로또신령 조합 N회 성적'(확정된 최근 회차 1~4등, `run_weekly.latest_our_stats` → `cards.card3(rnd, ours)`, 출처 combo_round_stats = 앱 배출 표와 동일. DB 실패 시 예전 카드3).
