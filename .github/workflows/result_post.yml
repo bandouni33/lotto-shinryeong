@@ -1,0 +1,47 @@
+name: 결과 정리 수동 게시
+
+# 2026-10-18: 정기 자동 게시(weekly_content.yml, 토요일 공식 발표 뒤)를 놓친 회차를 따로 올릴 때 쓴다.
+# weekly_content/checks/result_request.txt 에 회차 번호 한 줄을 넣어 push 하면 실행. 이미 올린 채널은 DB 기록으로 건너뜀.
+on:
+  push:
+    branches: [main]
+    paths: ["weekly_content/checks/result_request.txt"]
+  workflow_dispatch: {}
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: weekly-content
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 글꼴
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk fonts-noto-cjk-extra
+      - run: pip install -r requirements.txt pillow
+      - name: 결과 정리 만들기
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m weekly_content.result_post --out result_out --round "$(head -1 weekly_content/checks/result_request.txt | tr -dc 0-9)"
+      - name: 게시
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          WEEKLY_PUBLISH_CHANNELS: ${{ vars.WEEKLY_PUBLISH_CHANNELS }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+        run: python -m weekly_content.publish --dir result_out --kind result
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: result-post
+          path: result_out/
+          retention-days: 14
