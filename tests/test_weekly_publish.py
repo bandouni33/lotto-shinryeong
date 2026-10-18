@@ -150,6 +150,12 @@ class PublishTest(unittest.TestCase):
         self.assertEqual(len(ig_items), 6 + 1)    # 캐러셀 항목 6 + 캐러셀 1
         self.assertEqual(len(th_items), 5 + 1)
 
+    def test_P9_channel_gap(self):
+        """채널 사이 5분 간격: 4채널 게시면 대기 3번(각 300초)."""
+        waits = []
+        pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(FakeSession()), log=_log(), sleep=waits.append)
+        self.assertEqual([w for w in waits if w == pub.CHANNEL_GAP_SEC], [300, 300, 300])
+
     def test_P4_missing_keys_and_failure_isolated(self):
         env = dict(ALL_ENV)
         del env["YT_REFRESH_TOKEN"]

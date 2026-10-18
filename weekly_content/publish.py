@@ -285,6 +285,7 @@ def post_youtube(http: Http, env, mp4: Path, title: str, desc: str) -> str:
 
 # ── 전체 흐름 ───────────────────────────────────────────────────────
 
+CHANNEL_GAP_SEC = 300   # 2026-10-18 사용자 지시: 채널마다 게시 시간을 5분씩 띄움(같은 순간 동시 게시 = 스팸 신호 줄이기)
 KINDS = ("weekly", "thu", "fri", "result")   # 2026-10-18: 목·금 구매 전(pre_draw.py)·공식 결과 정리(result_post.py) — 카드 2장
 
 
@@ -332,9 +333,15 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
                         result["failed"][c] = f"사진 올리기 실패: {e}"
                         todo.remove(c)
 
+    posted_once = []
+
     def run(channel, fn):
         if channel not in todo:
             return
+        if posted_once:   # 앞 채널을 실제로 올렸으면 5분 기다린 뒤 다음 채널
+            print(f"  ({channel} 게시 전 {CHANNEL_GAP_SEC // 60}분 대기)")
+            sleep(CHANNEL_GAP_SEC)
+        posted_once.append(channel)
         try:
             pid = fn()
             log.mark(rnd, key(channel), pid)

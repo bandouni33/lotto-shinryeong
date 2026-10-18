@@ -14,7 +14,7 @@ on:
 jobs:
   post:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     concurrency:
       group: weekly-content
       cancel-in-progress: false
