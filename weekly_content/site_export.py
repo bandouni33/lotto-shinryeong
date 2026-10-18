@@ -90,6 +90,21 @@ def export_talismans(data: dict, out: Path, keep: int = TALISMAN_KEEP) -> list[P
     return made
 
 
+def export_results(data: dict, out: Path, keep: int = TALISMAN_KEEP) -> None:
+    """회차 공식 결과(등수별·1등 판매점) — 최신 회차가 없으면 동행복권에서 받아 저장, 홈페이지엔 최근 N회차만 싣는다."""
+    from weekly_content import round_result
+
+    out.mkdir(parents=True, exist_ok=True)
+    latest = data["latest_round"]
+    p = out / f"{latest}.json"
+    if not p.exists():
+        res = round_result.fetch(latest)
+        if res:
+            p.write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
+    files = sorted(out.glob("*.json"), key=lambda x: -int(x.stem))[:keep]
+    data["results"] = {f.stem: json.loads(f.read_text(encoding="utf-8")) for f in files}
+
+
 def export(out_dir: Path) -> Path:
     import draw_results_db as db
     import marketing_db as mdb
@@ -99,6 +114,7 @@ def export(out_dir: Path) -> Path:
     data = build_data(db.get_all_draw_results(), mdb.get_round_stats_snapshot(limit=400))
     out_dir.mkdir(parents=True, exist_ok=True)
     export_talismans(data, out_dir / "talisman")
+    export_results(data, out_dir / "results")
     path = out_dir / "data.json"
     path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     return path

@@ -98,9 +98,40 @@ jobs:
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
         run: python -m weekly_content.publish --dir weekly_out
 
+      # 2026-10-18(승인 3번): 공식 발표 뒤 '결과 정리'(1등 수·금액·1등 명당) 게시 — 판매점 집계 전이면 다음 정기 실행에서 다시.
+      - name: 결과 정리 만들기
+        id: result
+        if: ${{ github.event_name == 'workflow_run' || github.event.inputs.publish == 'yes' }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          set +e
+          python -m weekly_content.result_post --out result_out
+          c=$?
+          if [ $c -eq 0 ]; then echo "ready=yes" >> "$GITHUB_OUTPUT"; elif [ $c -eq 3 ]; then echo "결과 대기"; else exit $c; fi
+
+      - name: 결과 정리 게시
+        if: ${{ steps.result.outputs.ready == 'yes' }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          WEEKLY_PUBLISH_CHANNELS: ${{ vars.WEEKLY_PUBLISH_CHANNELS }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: python -m weekly_content.publish --dir result_out --kind result
+
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
           name: weekly-report
-          path: weekly_out/
+          path: |
+            weekly_out/
+            result_out/
           retention-days: 30

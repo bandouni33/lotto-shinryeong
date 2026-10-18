@@ -42,7 +42,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site_data/data.json site_data/talisman
+          git add -A site_data
           git diff --cached --quiet && { echo "변경 없음"; exit 0; }
           git commit -m "홈페이지 데이터 갱신"
           git pull --rebase -q && git push -q

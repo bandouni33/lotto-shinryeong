@@ -285,7 +285,7 @@ def post_youtube(http: Http, env, mp4: Path, title: str, desc: str) -> str:
 
 # ── 전체 흐름 ───────────────────────────────────────────────────────
 
-KINDS = ("weekly", "thu", "fri")   # 2026-10-18: 목·금 구매 전 콘텐츠(pre_draw.py) — 카드 2장
+KINDS = ("weekly", "thu", "fri", "result")   # 2026-10-18: 목·금 구매 전(pre_draw.py)·공식 결과 정리(result_post.py) — 카드 2장
 
 
 def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: PostLog | None = None,
