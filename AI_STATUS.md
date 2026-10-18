@@ -27,6 +27,7 @@
   - **공개 완료(10-18 03:16Z)**: https://bandouni33.github.io — 사용자가 Claude GitHub 앱에 저장소 추가·Pages 소스 'GitHub Actions' 설정, 배포 워크플로 success. (Pages 설정·Actions 기록 API는 이 세션 프록시에서 막힘 → 확인은 runs API·사용자 화면) 채널 변수 `WEEKLY_PUBLISH_CHANNELS`에 youtube가 남아 있으면 목·금 게시도 유튜브에 올라감 → 사용자가 `facebook,instagram,threads`로 변경 필요.
   - **(10-18 오후) 이어서 완료(사용자 '모두 진행')**:
     - 네이버 서치어드바이저 등록 완료(사용자): 소유확인(HTML 태그, 사이트 저장소 `naver_verification.txt`)·사이트맵·RSS 제출. 구글 서치콘솔은 사용자가 소유확인 값 주면 `google_verification.txt`.
+    - 홈페이지 레이아웃(10-18 사용자 확정, 사이트 저장소 5a43fe9): PC=왼쪽 고정 사이드바(전체 메뉴·최근 회차·앱 설치·사용설명서·공식 채널) + 본문 맨 위 **앱 안내 카드 고정**(대표 아이콘 왼쪽, 사이드바 침범 없음) + 본문 2단(가운데 구분선·칸 제목 띠). 휴대폰=맨 위 한 줄 앱 띠 고정 + 가로 메뉴 줄 + [전체 메뉴]. CSS 캐시 무효화 `style.css?v=해시`. 레이아웃 임의 변경 금지.
     - 게시 문구 홈페이지 링크: `social_links.SITE_URL`·`round_url()`(토: 회차 페이지, 목·금: /stats/). 공식 반영 전 없는 회차 주소는 사이트 404에서 최신 회차로 이동.
     - 사이트 왼쪽 '로또신령 전체 목록' 사이드바(모든 페이지, 휴대폰은 [전체 메뉴]) — 사용설명서 8편 `social_links.MANUAL_POSTS` 기준점.
     - 채널별 특색(사용자: 뻔하지 않게·신박하게): `weekly_content/number_story.py` **신령엔터 45인조**(번호=멤버, 상태 컴백/연속 활동/이번 주 무대/공백기/대기 중, 포지션 센터·메인·서브·히든=최근 50회 순위, 최애 듀오, 주간 헤드라인) → 홈페이지 /members/·/member/N/, 페북 문구 '주간 소식'. `weekly_content/talisman.py` **회차 부적**(당첨번호로만 정해지는 그림) → 인스타 캐러셀 첫 장(publish: 부적은 인스타만, 페북·스레드는 카드 5장)·쇼츠 첫 장·홈페이지 /talisman/·회차 페이지(site_data/talisman 최근 12회). **스레드 문답**: 목 '공백기 멤버 중 이번 주 컴백할 번호는?'(후보=공백 상위 6) → 토 결과(1247회부터, `FIRST_QUESTION_ROUND`).
