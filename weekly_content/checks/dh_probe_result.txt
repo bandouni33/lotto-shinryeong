@@ -65,3 +65,306 @@
   js: /resources/jquery/jquery-ui.min.js
   js: /resources/js/moment.min.js
   js: /resources/swiper/swiper-bundle.js
+
+[ctx selectLtWnShp.do]
+.getProperty('CTPRVN_CD');
+	                
+	                // 시도 경계선의 중심 좌표로 지도 fit 처리
+	                var maxPoint = feature.bounds._max;
+	                var minPoint = feature.bounds._min;
+	                var centerX = (maxPoint.x + minPoint.x) / 2
+	                var centerY = (maxPoint.y + minPoint.y) / 2
+	                var center = new naver.maps.Point(centerX, centerY)
+
+	                WnPrchsPlcSrchM.map.setZoom(9);
+	                WnPrchsPlcSrchM.map.panTo(center);
+
+	                // 해당 지역의 점포 마커 표시
+	                WnPrchsPlcSrchM.fn_showShpMarker(regionName);
+				}
+            });
+			
+			// 임시
+			var ltGds = $("#ltGds").val();
+            var apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+            const param =  {
+                srchWnShpRnk : $('.map-tab-li.tagTab').attr('value')
+                , srchLtEpsd :$('#srchLtEpsd').val()
+                , srchShpLctn : WnPrchsPlcSrchM.ctpvMap2[city]  
+            }
+            const options = {
+                "method": "GET",
+                "async" : true
+            }
+
+            if(ltGds == 'lt645') {
+                apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+            } else if (ltGds == 'pt720') {
+                apiUrl = '/wnprchsplcsrch/selectPtWnShp.do';
+            } else {
+                apiUrl = '/wnprchsplcsrch/selectStWnShp.do';
+                param.srchLtGdsCd = WnPrchsPlcSrchM.ltGdsCode[ltGds]; 
+            }
+
+            ajaxUtil.sendHttpJson(param, apiUrl, options, function(code, msg, {data}){
+                if(!cmmUtil.isEmpty(data.list)) {
+                    WnPrchsPlcSrchM.f
+
+[ctx selectLtWnShp.do]
+;
+	                WnPrchsPlcSrchM.map.panTo(center);
+
+	                // 해당 지역의 점포 마커 표시
+	                WnPrchsPlcSrchM.fn_showShpMarker(regionName);
+				}
+            });
+			
+			// 임시
+			var ltGds = $("#ltGds").val();
+            var apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+            const param =  {
+                srchWnShpRnk : $('.map-tab-li.tagTab').attr('value')
+                , srchLtEpsd :$('#srchLtEpsd').val()
+                , srchShpLctn : WnPrchsPlcSrchM.ctpvMap2[city]  
+            }
+            const options = {
+                "method": "GET",
+                "async" : true
+            }
+
+            if(ltGds == 'lt645') {
+                apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+            } else if (ltGds == 'pt720') {
+                apiUrl = '/wnprchsplcsrch/selectPtWnShp.do';
+            } else {
+                apiUrl = '/wnprchsplcsrch/selectStWnShp.do';
+                param.srchLtGdsCd = WnPrchsPlcSrchM.ltGdsCode[ltGds]; 
+            }
+
+            ajaxUtil.sendHttpJson(param, apiUrl, options, function(code, msg, {data}){
+                if(!cmmUtil.isEmpty(data.list)) {
+                    WnPrchsPlcSrchM.fn_handleShpList(data);
+                    WnPrchsPlcSrchM.shpDataList = data.list;  // 마커 처리용 당첨판매점 리스트 저장
+                } else {
+                	var html = '';
+                	html += '<div class="alert-box-wrap empty">';
+		            html += '    <figure>';
+		            html += '        <img src="/resources/img/icon/icon_empty.svg" alt="">';
+		            html += '    </figure>';
+		            html += '    <div class="aler
+
+[ctx selectLtWnShp.do]
+			
+					$('#srchLtEpsd').html(html);
+					
+					//회차 셀렉트박스 생성 이후 조회
+					WnPrchsPlcSrchM.fn_selectWnShp();		// 상품별 당첨판매점 목록 조회
+					WnPrchsPlcSrchM.fn_selectWnShpCnt();	// 상품별 + 등수별 당첨판매점 건수  조회
+				}
+			});	
+		},
+		
+		// 상품별 당첨판매점 목록 조회
+		fn_selectWnShp : function(flag) {
+			// 목록 조회 시 지도 zoom 초기화
+		    WnPrchsPlcSrchM.map.setZoom(8);
+		    WnPrchsPlcSrchM.map.panTo(new naver.maps.LatLng(36.4203004, 128.317960));
+			    
+            if(WnPrchsPlcSrchM.props.init && WnPrchsPlcSrchM.props.ltEpsd != "") {
+				$('#srchLtEpsd').val(WnPrchsPlcSrchM.props.ltEpsd);
+				WnPrchsPlcSrchM.props.init = false;
+            }
+            
+			var ltGds = $("#ltGds").val();
+			var apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+			const param =  {
+				srchWnShpRnk : $('.map-tab-li.tagTab').attr('value')
+				, srchLtEpsd :$('#srchLtEpsd').val()
+				, srchShpLctn : cmmUtil.isEmpty($('.srchShpLctn.on').data("city")) ? '' : WnPrchsPlcSrchM.ctpvMap2[$('.srchShpLctn.on').data("city")] 
+			}
+			const options = {
+				"method": "GET",
+				"async" : true
+			}
+
+			if(ltGds == 'lt645') {
+				apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+			} else if (ltGds == 'pt720') {
+				apiUrl = '/wnprchsplcsrch/selectPtWnShp.do';
+			} else {
+				apiUrl = '/wnprchsplcsrch/selectStWnShp.do';
+				param.srchLtGdsCd = WnPrchsPlcSrchM.ltGdsCode[ltGds]; 
+			}
+
+			ajaxUtil.sendHttpJson(param, apiUrl, options, function(code, msg, {data}){
+				if(!cmmUtil.isEmpty(data.list)) {
+					// [flag == true] 지역태그 선택 조회(부분 조회) 시 마커만 update, 지역 태그 업데이트 X
+					WnPrchsPlcSrchM.fn_handleRegionTab(data, flag);
+					WnPrchsPlcSrchM.fn_handleS
+
+[ctx selectLtWnShp.do]
+ 128.317960));
+			    
+            if(WnPrchsPlcSrchM.props.init && WnPrchsPlcSrchM.props.ltEpsd != "") {
+				$('#srchLtEpsd').val(WnPrchsPlcSrchM.props.ltEpsd);
+				WnPrchsPlcSrchM.props.init = false;
+            }
+            
+			var ltGds = $("#ltGds").val();
+			var apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+			const param =  {
+				srchWnShpRnk : $('.map-tab-li.tagTab').attr('value')
+				, srchLtEpsd :$('#srchLtEpsd').val()
+				, srchShpLctn : cmmUtil.isEmpty($('.srchShpLctn.on').data("city")) ? '' : WnPrchsPlcSrchM.ctpvMap2[$('.srchShpLctn.on').data("city")] 
+			}
+			const options = {
+				"method": "GET",
+				"async" : true
+			}
+
+			if(ltGds == 'lt645') {
+				apiUrl = '/wnprchsplcsrch/selectLtWnShp.do';
+			} else if (ltGds == 'pt720') {
+				apiUrl = '/wnprchsplcsrch/selectPtWnShp.do';
+			} else {
+				apiUrl = '/wnprchsplcsrch/selectStWnShp.do';
+				param.srchLtGdsCd = WnPrchsPlcSrchM.ltGdsCode[ltGds]; 
+			}
+
+			ajaxUtil.sendHttpJson(param, apiUrl, options, function(code, msg, {data}){
+				if(!cmmUtil.isEmpty(data.list)) {
+					// [flag == true] 지역태그 선택 조회(부분 조회) 시 마커만 update, 지역 태그 업데이트 X
+					WnPrchsPlcSrchM.fn_handleRegionTab(data, flag);
+					WnPrchsPlcSrchM.fn_handleShpList(data);
+					WnPrchsPlcSrchM.shpDataList = data.list;  // 마커 처리용 당첨판매점 리스트 저장
+				} else {
+					//데이터 없으면 지역 태그 초기화
+					WnPrchsPlcSrchM.fn_handleRegionTab(data, flag);
+					
+					var html = '';
+                    html += '<div class="alert-box-wrap empty">';
+                    html += '    <figure>';
+                    html += '        <img src="/resources/img/icon/icon_empty.svg" alt="">';
+
+
+[ctx selectLtEpsdInfo.do]
+class="map-tab-li" value="21">';
+			        html +=     '<button type="button">보너스<span class="srch-num" id="rankBonusCnt"></span></button>';
+			        html += '</li>';
+		        }
+			}
+			
+			$("#srchLtWnRank").html(html);
+			
+			//메뉴탭 클릭 이벤트(전체, 1등, 2등)
+			$(".map-tab-li").on("click", function() {
+				// 지역 태그 초기화 후 조회
+				$(".store-infoBox").removeClass("overlap");	
+				$(".srchShpLctn").removeClass('on');
+				$(this).removeClass('tagTab');
+				$(this).siblings().removeClass('tagTab');
+				$(this).addClass('tagTab');
+				WnPrchsPlcSrchM.fn_selectWnShp();
+			});
+		},
+		
+		// 상품별 회차 목록 조회 및 데이터 세팅
+		fn_selectEpsdInfo : function() {
+			var ltGds = $("#ltGds").val();
+			var apiUrl = '/lt645/selectLtEpsdInfo.do'; // 상품별 api
+			var param = {}
+			const options = {
+				"method": "GET",
+				"async" : true
+			}
+			
+			if(ltGds == "lt645") {
+				apiUrl = '/lt645/selectLtEpsdInfo.do';
+			} else if(ltGds == "pt720") {
+				apiUrl = '/pt720/selectPtEpsdInfo.do';
+			} else {
+				apiUrl = '/wnprchsplcsrch/selectStEpsdInfo.do';
+				param.srchLtGdsCd = WnPrchsPlcSrchM.ltGdsCode[ltGds];
+			}
+						
+			ajaxUtil.sendHttpJson(param, apiUrl, options, function(code, msg, {data}){
+				if(!cmmUtil.isEmpty(data)) {
+					const list = data.list;
+					var html = '';
+					var epsdColNm = ($("#ltGds").val() == "pt720") ? 'psltEpsd' : 'ltEpsd';
+					
+					list.forEach(item => {
+						html += '<option value="' + item[epsdColNm] + '">' + item[epsdColNm] + '회</option>';
+					});
+					
+					$('#srchLtEpsd').html(html);
+					
+					//회차 셀렉트박스 생성 이후 조회
+					WnPrchsPlcSrchM.fn_selectWnShp();		// 상품별 당첨판매점 목록 조회
+
+[ctx selectLtEpsdInfo.do]
+;
+		        }
+			}
+			
+			$("#srchLtWnRank").html(html);
+			
+			//메뉴탭 클릭 이벤트(전체, 1등, 2등)
+			$(".map-tab-li").on("click", function() {
+				// 지역 태그 초기화 후 조회
+				$(".store-infoBox").removeClass("overlap");	
+				$(".srchShpLctn").removeClass('on');
+				$(this).removeClass('tagTab');
+				$(this).siblings().removeClass('tagTab');
+				$(this).addClass('tagTab');
+				WnPrchsPlcSrchM.fn_selectWnShp();
+			});
+		},
+		
+		// 상품별 회차 목록 조회 및 데이터 세팅
+		fn_selectEpsdInfo : function() {
+			var ltGds = $("#ltGds").val();
+			var apiUrl = '/lt645/selectLtEpsdInfo.do'; // 상품별 api
+			var param = {}
+			const options = {
+				"method": "GET",
+				"async" : true
+			}
+			
+			if(ltGds == "lt645") {
+				apiUrl = '/lt645/selectLtEpsdInfo.do';
+			} else if(ltGds == "pt720") {
+				apiUrl = '/pt720/selectPtEpsdInfo.do';
+			} else {
+				apiUrl = '/wnprchsplcsrch/selectStEpsdInfo.do';
+				param.srchLtGdsCd = WnPrchsPlcSrchM.ltGdsCode[ltGds];
+			}
+						
+			ajaxUtil.sendHttpJson(param, apiUrl, options, function(code, msg, {data}){
+				if(!cmmUtil.isEmpty(data)) {
+					const list = data.list;
+					var html = '';
+					var epsdColNm = ($("#ltGds").val() == "pt720") ? 'psltEpsd' : 'ltEpsd';
+					
+					list.forEach(item => {
+						html += '<option value="' + item[epsdColNm] + '">' + item[epsdColNm] + '회</option>';
+					});
+					
+					$('#srchLtEpsd').html(html);
+					
+					//회차 셀렉트박스 생성 이후 조회
+					WnPrchsPlcSrchM.fn_selectWnShp();		// 상품별 당첨판매점 목록 조회
+					WnPrchsPlcSrchM.fn_selectWnShpCnt();	// 상품별 + 등수별 당첨판매점 건수  조회
+				}
+			});	
+		},
+		
+		// 상품별 당첨판매점 목록 조회
+		fn_selectWnShp : function(flag) {
+			// 목록 조회 시 지도 zoo
+
+[selectLtWnShp {'srchLtEpsd': 1246, 'srchWnShpRnk': 1}] 200 {"resultCode":null,"resultMessage":null,"data":{"total":16,"list":[{"rnum":1,"ltPcd":"LO40","draw":1246,"shpNm":"남대문회현역가판15호","tradNm":"남대문회현역가판15호","befConmNm":null,"status":"정상","rdnm":"서울 중구 퇴계로 45-2","daddr":"가판","rdnmAddr":"퇴계로 45-2","rdnmDtlAddr":"가판","befAddr":"서울 중구 퇴계로 45-2 가판","shpAddr":"서울 중구 퇴계로 45-2 가판","befRdnm":null,"shpTelno":"02-319-3243","region":"서울","atmtPsvYn":"M","atmtPsvYnTxt":"수동","ltShpId":"11100903","slrOperSttsCd":"1","l645LtNtslYn":"Y","st5LtNtslYn":"N","st10LtNtslYn":"Y","st20LtNtslYn":"Y","pt720NtslYn":"Y","wnShpRnk":1,"shpLat":37.55818,"shpLot":126.97767},{"rnum":2,"ltPcd":"LO40","draw":1246,"shpNm":"인터넷 복권판매사이트","tradNm":"인터넷 복권판매사이트","befConmNm":null,"status":"정상","rdnm":"동행복권(dhlottery.co.kr)","daddr":null,"rdnmAddr":"동행복권(dhlottery.co.kr)","rdnmDtlAddr":null,"befAddr":"  동행복권(dhlottery.co.kr)","shpAddr":"동행복권(dhlottery.co.kr)","befRdnm":null,"shpTelno":
+
+[selectLtWnShp {'ltEpsd': 1246, 'rnk': 1}] 200 {"resultCode":"조회할 수 없는 회차입니다.","resultMessage":"조회할 수 없는 회차입니다.","data":null}
+
+[selectLtWnShp {'srchLtEpsd': 1246}] 200 {"resultCode":null,"resultMessage":null,"data":{"total":80,"list":[{"rnum":1,"ltPcd":"LO40","draw":1246,"shpNm":"남산골","tradNm":"남산골","befConmNm":null,"status":"정상","rdnm":"서울 중구 퇴계로 222-1","daddr":"1층","rdnmAddr":"퇴계로 222-1","rdnmDtlAddr":"1층","befAddr":"서울 중구 퇴계로 222-1 1층","shpAddr":"서울 중구 퇴계로 222-1 1층","befRdnm":null,"shpTelno":"02-2274-0184","region":"서울","atmtPsvYn":"M","atmtPsvYnTxt":"수동","ltShpId":"11100297","slrOperSttsCd":"1","l645LtNtslYn":"Y","st5LtNtslYn":"Y","st10LtNtslYn":"Y","st20LtNtslYn":"Y","pt720NtslYn":"Y","wnShpRnk":2,"shpLat":37.561586,"shpLot":126.99656},{"rnum":2,"ltPcd":"LO40","draw":1246,"shpNm":"가로가판대제57호(구)","tradNm":"가로가판대제57호(구)","befConmNm":null,"status":"정상","rdnm":"서울 중구 세종대로 68-1","daddr":"가판","rdnmAddr":"세종대로 68-1","rdnmDtlAddr":"가판","befAddr":"서울 중구 세종대로 68-1 가판","shpAddr":"서울 중구 세종대로 68-1 가판","befRdnm":null,"shpTelno":"02-319-2598","region":"서울","atmtP
