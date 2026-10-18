@@ -227,14 +227,30 @@ def card2(a, rnd):
     return im
 
 
-def card3(rnd):
-    """2026-10-17: 필터 결과는 앱에서만 공유 → 제목 + 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널."""
+def card3(rnd, ours=None):
+    """2026-10-17: 필터 결과는 앱에서만 공유 → 제목 + 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널.
+    2026-10-18(승인 2번): ours=(회차, [1등,2등,3등,4등]) 이 있으면 '로또신령 조합 성적'(확정된 지난 회차) 칸을 넣는다
+    — 앱 자동조합 '회차별 당첨번호 배출' 표·홈페이지와 같은 출처(combo_round_stats)."""
     import social_links
 
     im = _canvas()
     d = ImageDraw.Draw(im)
     _center(d, 120, f"{rnd}회 추첨결과 · 당첨지역", font(60, "Black"), GOLD)
-    _center(d, 560, PENDING_TEXT, font(44, "Medium"), MUTED)
+    if ours:
+        _center(d, 400, PENDING_TEXT, font(44, "Medium"), MUTED)
+        o_rnd, ranks = ours
+        _panel(im, (110, 520, W - 110, 840))
+        d = ImageDraw.Draw(im)
+        _center(d, 560, f"로또신령 조합 {o_rnd}회 성적", font(40, "Bold"), GOLD)
+        cols = list(zip(("1등", "2등", "3등", "4등"), ranks))
+        cw = (W - 220) // 4
+        for i, (lab, v) in enumerate(cols):
+            cx = 110 + cw * i + cw // 2
+            d.text((cx, 660), lab, font=font(30, "Medium"), fill=MUTED, anchor="mm")
+            d.text((cx, 740), f"{v:,}", font=font(56, "Black"), fill=WHITE, anchor="mm")
+        _center(d, 790, "앱이 배포한 조합 중 실제 당첨 개수", font(24, "Regular"), MUTED)
+    else:
+        _center(d, 560, PENDING_TEXT, font(44, "Medium"), MUTED)
     _center(d, 930, "로또신령 공식 채널", font(34, "Bold"), WHITE)
     f = font(30, "Bold")
     chips = social_links.active_channels()
@@ -308,10 +324,10 @@ def card5(store_text):
     return im
 
 
-def build(draws: dict[int, dict], rnd: int, out_dir: Path, *, date_text: str) -> list[Path]:
+def build(draws: dict[int, dict], rnd: int, out_dir: Path, *, date_text: str, ours=None) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     a = analyze(draws, rnd)
-    imgs = [card1(a, rnd, date_text), card2(a, rnd), card3(rnd),
+    imgs = [card1(a, rnd, date_text), card2(a, rnd), card3(rnd, ours),
             card4(rnd, tarot_for_round(rnd)), card5("구글 플레이 · 앱스토어")]
     paths = []
     for i, im in enumerate(imgs, 1):

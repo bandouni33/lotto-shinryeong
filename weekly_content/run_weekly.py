@@ -87,6 +87,20 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 3.2) -> Path | None:
     return out
 
 
+def latest_our_stats(rnd: int):
+    """카드3 '로또신령 조합 성적' — rnd 이하에서 등수가 확정된 가장 최근 회차(앱 배출 표와 같은 출처).
+    DB 문제로 못 읽어도 게시는 계속(None → 예전 카드3)."""
+    try:
+        import marketing_db as mdb
+
+        for s in mdb.get_round_stats_snapshot(limit=5):
+            if s["finalized_at"] and s["draw_round"] <= rnd:
+                return s["draw_round"], [s["rank_1"], s["rank_2"], s["rank_3"], s["rank_4"]]
+    except Exception as exc:  # noqa: BLE001
+        print(f"  (조합 성적 읽기 실패 — 카드3 기본형: {exc})")
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="weekly_out")
@@ -114,7 +128,7 @@ def main() -> int:
             raise SystemExit(f"[중단] DB 최신 {rnd}회 ≠ 날짜상 최신 {exp}회 — 당첨번호 반영 후 다시 실행")
 
     out = Path(a.out)
-    pngs = cards.build(draws, rnd, out, date_text=draw_date_text(rnd))
+    pngs = cards.build(draws, rnd, out, date_text=draw_date_text(rnd), ours=latest_our_stats(rnd))
     (out / f"{rnd}_caption.txt").write_text(cards.caption(draws, rnd), encoding="utf-8")
     (out / f"{rnd}_captions.json").write_text(
         json.dumps(cards.captions_all(draws, rnd), ensure_ascii=False, indent=1), encoding="utf-8")
