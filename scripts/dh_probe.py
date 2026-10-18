@@ -31,5 +31,18 @@ for url in ("https://www.dhlottery.co.kr/store.do?method=topStore&pageGubun=L645
     except Exception as e:  # noqa: BLE001
         out.append(f"[{url}] 실패 {e}")
 
+# 2차: 당첨 판매점 조회 조건 확인
+try:
+    t = requests.get("https://www.dhlottery.co.kr/wnprchsplcsrch/home", timeout=45, headers=H).text
+    for key in ("selectLtWnShp.do", "selectLtEpsdInfo.do"):
+        for m in re.finditer(re.escape(key), t):
+            out.append(f"\n[ctx {key}]\n" + t[max(0, m.start() - 700):m.start() + 900])
+    for params in ({"srchLtEpsd": 1246, "srchWnShpRnk": 1}, {"ltEpsd": 1246, "rnk": 1}, {"srchLtEpsd": 1246}):
+        r = requests.get("https://www.dhlottery.co.kr/wnprchsplcsrch/selectLtWnShp.do", params=params, timeout=45,
+                         headers={**H, "X-Requested-With": "XMLHttpRequest"})
+        out.append(f"\n[selectLtWnShp {params}] {r.status_code} {r.text[:900]}")
+except Exception as e:  # noqa: BLE001
+    out.append(f"[2차] 실패 {e}")
+
 open(sys.argv[1], "w", encoding="utf-8").write("\n".join(out) + "\n")
 print("\n".join(out))
