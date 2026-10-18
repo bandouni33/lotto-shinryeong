@@ -321,7 +321,10 @@ def build(draws: dict[int, dict], rnd: int, out_dir: Path, *, date_text: str) ->
     return paths
 
 
-def caption(draws: dict[int, dict], rnd: int) -> str:
+def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
+    """source = 채널 이름(설치 링크 UTM 구분용, social_links.store_link)."""
+    import social_links
+
     a = analyze(draws, rnd)
     nums = " ".join(str(n) for n in a["nums"])
     t = tarot_for_round(rnd)
@@ -331,7 +334,8 @@ def caption(draws: dict[int, dict], rnd: int) -> str:
             f"최근 10회 자주 나온 번호: {', '.join(str(n) for n, _ in a['hot'])}\n\n"
             f"{rnd + 1}회를 기다리며 뽑은 이번 주 타로: {t['name']}\n“{t['line']}”\n\n"
             "첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
-            f"자세한 사용법: {BLOG_URL}\n"
+            f"📲 설치: {social_links.store_link(source)}\n"
+            f"📖 사용설명서: {social_links.MANUAL_URL}\n"
             "인스타·스레드: @lottoshinryeong\n\n"
             "※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상.\n"
             f"#로또 #로또{rnd}회 #로또당첨번호 #로또번호 #로또통계 #타로 #로또신령")
@@ -342,13 +346,16 @@ THREADS_LIMIT = 500  # 스레드 글자 제한(이모지·URL 포함)
 
 def caption_threads(draws: dict[int, dict], rnd: int) -> str:
     """스레드용 짧은 문구(500자 이내) — 해시태그는 1개만 붙는 플랫폼이라 끝에 하나만."""
+    import social_links
+
     a = analyze(draws, rnd)
     nums = " ".join(str(n) for n in a["nums"])
     t = tarot_for_round(rnd)
     txt = (f"🔮 제{rnd}회 로또 당첨번호\n{nums} + 보너스 {a['bonus']}\n"
            f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n"
            f"이번 주 타로: {t['name']} “{t['line']}”\n\n"
-           f"사용법: {BLOG_URL}\n"
+           f"설치: {social_links.store_link('threads')}\n"
+           f"사용법: {social_links.MANUAL_URL}\n"
            "※ 참고·재미용, 당첨 보장 없음 · 복권은 만 19세 이상\n#로또")
     return txt[:THREADS_LIMIT]
 
@@ -358,14 +365,13 @@ def youtube_meta(draws: dict[int, dict], rnd: int) -> dict:
     a = analyze(draws, rnd)
     nums = " ".join(str(n) for n in a["nums"])
     return {"title": f"제{rnd}회 로또 당첨번호 {nums} + {a['bonus']} | 로또신령 #Shorts"[:100],
-            "description": caption(draws, rnd) + "\n#Shorts"}
+            "description": caption(draws, rnd, "youtube") + "\n#Shorts"}
 
 
 def captions_all(draws: dict[int, dict], rnd: int) -> dict:
     """채널별 문구 한 벌 — 게시 단계(publish.py)는 이 값만 쓴다(문구를 따로 만들지 않는다)."""
-    main = caption(draws, rnd)
     yt = youtube_meta(draws, rnd)
-    return {"instagram": main, "facebook": main, "threads": caption_threads(draws, rnd),
+    return {"instagram": caption(draws, rnd, "instagram"), "facebook": caption(draws, rnd, "facebook"), "threads": caption_threads(draws, rnd),
             "youtube_title": yt["title"], "youtube_description": yt["description"]}
 
 

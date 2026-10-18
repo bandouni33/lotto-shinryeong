@@ -21,6 +21,19 @@ CHANNELS = [
 ]
 
 
+PLAY_URL = "https://play.google.com/store/apps/details?id=com.bandouni.lottoshinryeong"
+MANUAL_URL = "https://blog.naver.com/bandouni/224444112459"   # 사용설명서 글
+
+
+def store_link(source: str, medium: str = "social", campaign: str = "weekly") -> str:
+    """채널별 유입을 구분하는 구글 플레이 설치 링크(2026-10-18 승인 1번).
+    Play 콘솔 '획득 보고서'에서 utm_source 별로 설치 수가 보인다."""
+    from urllib.parse import quote
+
+    ref = f"utm_source={source}&utm_medium={medium}&utm_campaign={campaign}"
+    return f"{PLAY_URL}&referrer={quote(ref, safe='')}"
+
+
 def active_channels() -> list[dict]:
     return [c for c in CHANNELS if c["active"]]
 
