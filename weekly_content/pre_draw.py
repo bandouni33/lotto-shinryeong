@@ -73,7 +73,8 @@ def card_flow(draws: dict[int, dict], latest: int) -> "cards.Image.Image":
 def _caption_tail(source: str) -> str:
     import social_links
 
-    return ("\n\n첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
+    return (f"\n\n🔎 회차별 당첨번호·번호 통계: {social_links.SITE_URL}/stats/"
+            "\n첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
             f"📲 설치: {social_links.store_link(source, campaign='predraw')}\n"
             f"📖 사용설명서: {social_links.MANUAL_URL}\n"
             "\n※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상.")

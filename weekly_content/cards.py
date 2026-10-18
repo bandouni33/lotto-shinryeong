@@ -349,6 +349,7 @@ def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
             f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n"
             f"최근 10회 자주 나온 번호: {', '.join(str(n) for n, _ in a['hot'])}\n\n"
             f"{rnd + 1}회를 기다리며 뽑은 이번 주 타로: {t['name']}\n“{t['line']}”\n\n"
+            f"🔎 {rnd}회 번호 구성·로또신령 조합 성적: {social_links.round_url(rnd)}\n\n"
             "첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
             f"📲 설치: {social_links.store_link(source)}\n"
             f"📖 사용설명서: {social_links.MANUAL_URL}\n"
@@ -370,6 +371,7 @@ def caption_threads(draws: dict[int, dict], rnd: int) -> str:
     txt = (f"🔮 제{rnd}회 로또 당첨번호\n{nums} + 보너스 {a['bonus']}\n"
            f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n"
            f"이번 주 타로: {t['name']} “{t['line']}”\n\n"
+           f"자세히: {social_links.round_url(rnd)}\n"
            f"설치: {social_links.store_link('threads')}\n"
            f"사용법: {social_links.MANUAL_URL}\n"
            "※ 참고·재미용, 당첨 보장 없음 · 복권은 만 19세 이상\n#로또")

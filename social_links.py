@@ -21,6 +21,14 @@ CHANNELS = [
 ]
 
 
+SITE_URL = "https://bandouni33.github.io"   # 홈페이지(2026-10-18 공개, 저장소 bandouni33/bandouni33.github.io)
+
+
+def round_url(rnd: int) -> str:
+    """홈페이지 회차 페이지 주소 — 게시 문구가 이 함수만 쓴다(사이트 build.py 의 /round/<회차>/ 와 같은 규칙)."""
+    return f"{SITE_URL}/round/{int(rnd)}/"
+
+
 PLAY_URL = "https://play.google.com/store/apps/details?id=com.bandouni.lottoshinryeong"
 MANUAL_URL = "https://blog.naver.com/bandouni/224444112459"   # 사용설명서 글
 
