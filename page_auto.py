@@ -229,6 +229,81 @@ _SPIRIT2_QUAKE_LAYERS = (
 )
 
 
+# 2026-10-18(사용자 지시 — "배경 흔들림만으론 밋밋, 인물 뒤로 강렬한 빛·애니메이션, 더 디테일하게"):
+# 흔들리는 배경 위·인물 뒤에 ① 시작 섬광 ② 머리 뒤 후광(맥박) ③ 회전하는 빛줄기 ④ 퍼져 나가는 기운 고리,
+# 인물 앞에 ⑤ 손 위 구슬 빛 ⑥ 피어오르는 빛 알갱이를 겹친다. 모두 원 안(절대 위치)이라 칸 크기·배치는 그대로.
+# 좌표는 원 기준 % — 머리 약 (45%, 27%), 손 위 구슬 약 (60%, 76%)(인물 이미지 실측).
+_FX_HEAD = ("45%", "27%")
+_FX_ORB = ("60%", "76%")
+# 빛 알갱이: (가로 %, 크기 px, 지연 s, 주기 s, 옆으로 흐르는 px, 앞/뒤)
+_FX_SPARKS = (
+    (18, 5, 0.0, 1.6, 10, "b"), (27, 4, 0.5, 1.9, -8, "f"), (35, 6, 0.2, 1.5, 6, "b"), (41, 3, 0.9, 1.7, -5, "f"),
+    (50, 5, 0.35, 1.4, 9, "f"), (56, 4, 0.75, 1.8, -10, "b"), (63, 6, 0.1, 1.6, 7, "f"), (70, 3, 0.6, 1.5, -6, "b"),
+    (78, 5, 0.25, 1.9, 8, "f"), (84, 4, 0.85, 1.6, -7, "b"), (46, 4, 1.1, 1.5, 4, "f"), (31, 5, 1.25, 1.7, -9, "f"),
+    (60, 3, 1.4, 1.4, 5, "b"), (22, 4, 1.0, 1.8, 6, "f"),
+)
+
+
+def _spirit2_fx(cls: str) -> tuple[str, str, str]:
+    """(css, 인물 뒤 html, 인물 앞 html) — 조합 생성 3초 동안의 빛 연출."""
+    hx, hy = _FX_HEAD
+    ox, oy = _FX_ORB
+    rx = f"{(40 + float(hx[:-1])) / 1.8:.1f}%"
+    ry = f"{(40 + float(hy[:-1])) / 1.8:.1f}%"
+    k = f"{cls}-fx"
+    css = [
+        f".{k}{{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;}}",
+        # ① 시작 섬광(0.6초) — 전체가 금빛으로 번쩍
+        f"@keyframes {k}-flash{{0%{{opacity:0}}12%{{opacity:.85}}100%{{opacity:0}}}}",
+        f".{k}-flash{{background:radial-gradient(circle at {hx} {hy},#fff8dc 0%,#ffd76a 30%,rgba(255,170,40,.0) 75%);"
+        f"opacity:0;animation:{k}-flash .7s ease-out 0s 1 both;}}",
+        # ② 후광 — 머리 뒤에서 커졌다 작아지는 금빛 맥박
+        f"@keyframes {k}-halo{{0%{{transform:scale(.55);opacity:.0}}25%{{transform:scale(1.05);opacity:1}}"
+        f"55%{{transform:scale(.9);opacity:.8}}80%{{transform:scale(1.12);opacity:1}}100%{{transform:scale(.95);opacity:.85}}}}",
+        f".{k}-halo{{background:radial-gradient(circle at {hx} {hy},rgba(255,250,215,.95) 0%,rgba(255,214,110,.85) 13%,"
+        f"rgba(255,170,60,.45) 30%,rgba(255,140,40,0) 52%);transform-origin:{hx} {hy};animation:{k}-halo 1.5s ease-in-out 0s infinite both;}}",
+        # ③ 빛줄기 — 머리 뒤에서 사방으로 뻗어 천천히 회전(가장자리는 흐리게)
+        f"@keyframes {k}-rays{{0%{{transform:rotate(0deg) scale(.8);opacity:0}}15%{{opacity:.9}}"
+        f"100%{{transform:rotate(70deg) scale(1.1);opacity:.75}}}}",
+        # 회전해도 모서리가 비지 않게 판을 사방 40% 넓힌다 → 머리 좌표를 넓힌 판 기준으로 바꿔 쓴다.
+        f".{k}-rays{{inset:-40%;background:repeating-conic-gradient(from 0deg at {rx} {ry},"
+        f"rgba(255,236,160,.6) 0deg 3deg,rgba(255,236,160,0) 3deg 12deg);"
+        f"-webkit-mask-image:radial-gradient(circle at {rx} {ry},#000 4%,rgba(0,0,0,.55) 16%,transparent 34%);"
+        f"mask-image:radial-gradient(circle at {rx} {ry},#000 4%,rgba(0,0,0,.55) 16%,transparent 34%);"
+        f"transform-origin:{rx} {ry};animation:{k}-rays 3s linear 0s infinite both;}}",
+        # ④ 기운 고리 — 머리 뒤에서 퍼져 나가는 빛 고리(0.9초마다)
+        f"@keyframes {k}-ring{{0%{{transform:scale(.15);opacity:.95}}100%{{transform:scale(1.6);opacity:0}}}}",
+        f".{k}-ring{{background:radial-gradient(circle at {hx} {hy},rgba(255,230,150,0) 22%,rgba(255,230,150,.9) 25%,"
+        f"rgba(255,200,90,.35) 29%,rgba(255,200,90,0) 33%);transform-origin:{hx} {hy};opacity:0;"
+        f"animation:{k}-ring .9s ease-out .15s infinite both;}}",
+        # ⑤ 손 위 구슬 빛 — 빠르게 맥동
+        f"@keyframes {k}-orb{{0%,100%{{transform:scale(.7);opacity:.55}}50%{{transform:scale(1.15);opacity:1}}}}",
+        f".{k}-orb{{background:radial-gradient(circle at {ox} {oy},rgba(255,255,235,.95) 0%,rgba(255,220,120,.7) 7%,"
+        f"rgba(120,200,255,.35) 14%,rgba(120,200,255,0) 24%);transform-origin:{ox} {oy};animation:{k}-orb .6s ease-in-out 0s infinite both;}}",
+        # ⑥ 빛 알갱이 — 아래에서 위로 피어오르며 반짝
+        f"@keyframes {k}-spark{{0%{{transform:translate(0,0) scale(.4);opacity:0}}15%{{opacity:1}}"
+        f"70%{{opacity:.9}}100%{{transform:translate(var(--dx),-170px) scale(1.1);opacity:0}}}}",
+        f".{k}-sp{{position:absolute;bottom:4%;border-radius:50%;"
+        f"background:radial-gradient(circle,#fffbe6 0%,#ffd76a 45%,rgba(255,200,80,0) 72%);"
+        f"box-shadow:0 0 6px 2px rgba(255,215,120,.8);mix-blend-mode:screen;opacity:0;"
+        f"animation:{k}-spark var(--d) ease-out var(--l) infinite both;}}",
+    ]
+    def sparks(side: str) -> str:
+        out = []
+        for x, size, delay, dur, dx, sd in _FX_SPARKS:
+            if sd != side:
+                continue
+            out.append(
+                f'<i class="{k}-sp" style="left:{x}%;width:{size}px;height:{size}px;'
+                f'--d:{dur}s;--l:{delay}s;--dx:{dx}px;"></i>'
+            )
+        return "".join(out)
+    back = (f'<div class="{k} {k}-rays"></div><div class="{k} {k}-halo"></div>'
+            f'<div class="{k} {k}-ring"></div>{sparks("b")}')
+    front = f'<div class="{k} {k}-orb"></div><div class="{k} {k}-flash"></div>{sparks("f")}'
+    return "".join(css), back, front
+
+
 def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str:
     """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
     영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정. 배경판 그림은 style 에 한 번만 싣고 층들은
@@ -259,14 +334,15 @@ def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str
         layers.append(f'<div class="{cls} {cls}-{name}"></div>')
     # preload: 적립금 확인창이 떠 있는 동안 미리 숨겨 두는 층 — '확인 후 진행'을 누르는 순간 브라우저가 바로 보이게
     # 한다(wallet_ui 확인창 스크립트). 서버 처리(1~2초)를 기다리지 않고 움직임이 시작되게(2026-10-18 사용자 지시).
+    fx_css, fx_back, fx_front = _spirit2_fx(cls)
     pre = ' data-ln-preload="1"' if preload else ""
     hide = "display:none;" if preload else ""
     return f"""
           <div class="auto-spirit2-gen"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
-            <div class="{cls}"></div>{''.join(layers)}
-            <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
+            <div class="{cls}"></div>{''.join(layers)}{fx_back}
+            <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">{fx_front}
           </div>
-          <style>{''.join(css)}</style>"""
+          <style>{''.join(css)}{fx_css}</style>"""
 
 
 def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None,
