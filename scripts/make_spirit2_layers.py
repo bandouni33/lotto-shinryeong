@@ -1,7 +1,7 @@
 """자동조합 '조합시작' 신령 이미지 연출용 영역 가림막(mask) 생성 — 2026-10-10.
 
 로또신령2.jpg 를 영역별(나무·건물·땅·폭포 등)로 나눈 부드러운 가림막 PNG(흰색 + 알파)를 만든다.
-page_auto._SPIRIT2_QUAKE_LAYERS 가 이 파일 이름을 쓴다. 영역은 원본 그림 기준 백분율 다각형이다.
+scripts/make_spirit2_gen_anim.py(조합 생성 연출 그림 굽기)가 이 파일들을 쓴다. 영역은 원본 그림 기준 백분율 다각형이다.
 인물 오려내기(로또신령2_인물.webp)와 배경판(로또신령2_배경.jpg)은 rembg(isnet)·OpenCV inpaint 로 만들었다.
 
 실행: python scripts/make_spirit2_layers.py  → spirit2_layers/*.png

@@ -197,100 +197,30 @@ html, body {{
 # 문제 없어 그대로 둠).
 AUTO_GEN_ANIM_SECONDS = 3.0
 AUTO_GEN_PENDING_KEY = "auto_gen_pending"
-# 인물 오려낸 이미지 + 인물 자리를 주변 색으로 메운 배경판(출렁일 때 뒤쪽에 인물이 한 번 더 비치지 않게).
-_SPIRIT2_PERSON_FILE = "로또신령2_인물.webp"
-_SPIRIT2_PLATE_FILE = "로또신령2_배경.jpg"
-
-
-def _file_base64(path: str) -> str:
-    try:
-        with open(path, "rb") as fh:
-            return base64.b64encode(fh.read()).decode()
-    except OSError:
-        return ""
-
-
-# 2026-10-10(사용자 지시 4차 — "부분별로 더 쪼개서, 하늘·구름은 움직이지 않게, 땅·건물은 살짝, 나무는 바람에
-# 휩쓸리듯, 더 느리게"): 배경을 영역 가림막(spirit2_layers/*.png — scripts/make_spirit2_layers.py 로 생성)
-# 별로 따로 움직인다. 하늘은 그대로. 땅·산·절벽·난간·누각은 아주 살짝 천천히 떨리고, 나무·꽃은 한쪽으로 기울며
-# 흔들린다(회전 중심을 각 영역 아래쪽에 두고 기울기 skewX). 밑에는 움직이지 않는 배경판이 깔려 빈틈이 없다.
-# (가림막 이름, [(%, x px, y px, 회전 deg, 기울기 deg)], 주기 s, 시작 지연 s, 회전 중심) — 위에서부터 겹치는 순서.
-# 시작 지연은 0 — 모두 멈춘 모습(원래 그림)에서 출발해 주기 차이로 서로 어긋난다(시작 순간 튀지 않게).
-_SPIRIT2_LAYER_DIR = "spirit2_layers"
-_SPIRIT2_QUAKE_LAYERS = (
-    # 땅·산·절벽·난간 — 살짝(±1px 안팎), 느리게
-    ("mtn_left", ((0, 0, 0, 0, 0), (30, -0.8, 0.4, 0, 0), (65, 0.7, -0.4, 0, 0), (100, 0, 0, 0, 0)), 1.9, 0, "15% 40%"),
-    ("mtn_right", ((0, 0, 0, 0, 0), (35, 0.8, -0.3, 0, 0), (70, -0.7, 0.4, 0, 0), (100, 0, 0, 0, 0)), 2.1, 0, "80% 45%"),
-    ("cliff_right", ((0, 0, 0, 0, 0), (40, -0.9, 0.3, 0, 0), (75, 0.6, -0.4, 0, 0), (100, 0, 0, 0, 0)), 1.7, 0, "95% 80%"),
-    ("rail", ((0, 0, 0, 0, 0), (45, 0.6, 0.2, 0, 0), (100, 0, 0, 0, 0)), 1.8, 0, "50% 100%"),
-    # 나무·꽃 — 바람에 한쪽으로 휩쓸리듯(기울기), 천천히
-    ("trees_left", ((0, 0, 0, 0, 0), (35, 1.5, 0, 0, -2.5), (55, 0.8, 0, 0, -1.2), (80, 1.8, 0, 0, -3), (100, 0, 0, 0, 0)), 3.0, 0, "15% 70%"),
-    ("trees_right", ((0, 0, 0, 0, 0), (30, 1.2, 0, 0, -2), (60, 0.5, 0, 0, -0.8), (85, 1.5, 0, 0, -2.6), (100, 0, 0, 0, 0)), 3.2, 0, "75% 70%"),
-    ("flowers_left", ((0, 0, 0, 0, 0), (30, 2.5, -0.5, 1.2, -4), (55, 1, 0, 0.4, -1.5), (80, 3, -0.5, 1.5, -5), (100, 0, 0, 0, 0)), 2.6, 0, "0% 92%"),
-    ("trees_right_low", ((0, 0, 0, 0, 0), (35, 2, -0.4, 0.8, -3.5), (60, 0.8, 0, 0.3, -1.2), (85, 2.4, -0.4, 1, -4.2), (100, 0, 0, 0, 0)), 2.8, 0, "92% 92%"),
-    # 누각 — 살짝(나무 위에 겹쳐 건물 모양 유지)
-    ("building", ((0, 0, 0, 0, 0), (40, 0.9, 0.3, 0.15, 0), (75, -0.7, -0.3, -0.12, 0), (100, 0, 0, 0, 0)), 2.0, 0, "10% 66%"),
-)
-
-
-def _auto_gen_loop_count(dur: float) -> int:
-    """한 변형이 AUTO_GEN_ANIM_SECONDS 안에서 끝나도록 배경층 반복 횟수를 정한다.
-
-    예전엔 infinite 로 계속 흔들렸다(3초 화면이 그냥 지나가며 잘렸다). 이제 연출 길이가 정해져
-    있으므로 "그 시간 안에 끝나는 횟수"로 자른다. 각 주기의 시작·끝이 제자리(transform 없음)라
-    도중에 멈춰도 끊겨 보이지 않는다."""
-    return max(1, int((AUTO_GEN_ANIM_SECONDS - 0.2) / max(dur, 0.1)))
-
-
-
-
-def _auto_gen_wrap_class(token: str) -> str:
-    """연출 한 벌의 클래스 접두어 — 마크업·CSS·변형 선택 스크립트가 같은 이름을 쓴다."""
-    return f"auto-sq-{token}"
+# 2026-10-20(사용자 영상 — "연출 적용 안 돼 있음"): 안드로이드 앱 WebView 가 소프트웨어 렌더링
+# (androidLayerType='software', 깜빡임 대응)이라 CSS 로 겹친 층(영역 가림막 9 + 빛 효과 6 + 알갱이 14)을
+# 실시간 합성하지 못해 연출이 안 보이거나 깨졌다. → 같은 연출(영역별 배경 흔들림·빛줄기·후광·기운 고리·구슬 빛·
+# 빛 알갱이)을 3초짜리 반복 애니메이션 WebP 한 장으로 미리 구워(scripts/make_spirit2_gen_anim.py) 홈페이지
+# 저장소(GitHub Pages)에 두고 그림 한 장만 재생한다. 시작 섬광만 CSS 한 겹(섞기 없음, 투명도만).
+# 그림을 못 받으면(오프라인 등) 그 자리는 빈 채로 원래 정지 이미지가 그대로 보인다.
+SPIRIT2_GEN_ANIM_URL = "https://bandouni33.github.io/fx/spirit2_gen.webp?v=1"
 
 
 def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str:
-    """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로
-    따른다(절대 위치, 칸 크기 불변). 영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정.
-    배경판 그림은 style 에 한 번만 싣고 층들은 그 그림을 배경으로 재사용한다(용량).
-
-    클릭마다 token 이 달라 애니메이션이 새로 시작한다.
-    preload=True 면 적립금 확인창이 떠 있는 동안 같은 층을 숨겨 미리 실어 둔다(클릭 즉시 시작용)."""
-    person = _file_base64(_SPIRIT2_PERSON_FILE)
-    plate = _file_base64(_SPIRIT2_PLATE_FILE)
-    if not person or not plate:
-        return ""
-    cls = _auto_gen_wrap_class(token)
-    css = [
-        f".{cls}{{position:absolute;inset:0;background-image:url(data:image/jpeg;base64,{plate});"
-        "background-size:cover;background-position:center;"
-        "-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;}"
-    ]
-    layers = []
-    for name, frames, dur, delay, origin in _SPIRIT2_QUAKE_LAYERS:
-        mask = _file_base64(os.path.join(_SPIRIT2_LAYER_DIR, f"{name}.png"))
-        if not mask:
-            continue
-        kf = "".join(
-            f"{p}%{{transform:translate({x}px,{y}px) rotate({r}deg) skewX({k}deg);}}" for p, x, y, r, k in frames
-        )
-        css.append(f"@keyframes {cls}-{name}{{{kf}}}")
-        css.append(
-            f".{cls}-{name}{{-webkit-mask-image:url(data:image/png;base64,{mask});mask-image:url(data:image/png;base64,{mask});"
-            f"transform-origin:{origin};animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s "
-            f"{_auto_gen_loop_count(dur)};}}"
-        )
-        layers.append(f'<div class="{cls} {cls}-{name}"></div>')
-    # preload: 적립금 확인창이 떠 있는 동안 미리 숨겨 두는 층 — '확인 후 진행'을 누르는 순간 브라우저가 바로 보이게
-    # 한다(wallet_ui 확인창 스크립트). 서버 처리(1~2초)를 기다리지 않고 움직임이 시작되게(2026-10-18 사용자 지시).
+    """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
+    preload: 적립금 확인창이 떠 있는 동안 숨겨 두는 층 — '확인 후 진행'을 누르는 순간 브라우저가 바로 보이게
+    한다(wallet_ui 확인창 스크립트). token 은 클릭마다 달라 섬광이 새로 시작된다."""
+    k = f"auto-sq-{token}"
     pre = ' data-ln-preload="1"' if preload else ""
     hide = "display:none;" if preload else ""
     return f"""
-          <div class="auto-spirit2-gen {cls}-wrap"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
-            <div class="{cls}"></div>{''.join(layers)}
-            <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
+          <div class="auto-spirit2-gen"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
+            <img src="{SPIRIT2_GEN_ANIM_URL}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
+            <div class="{k}-flash" style="position:absolute;inset:0;"></div>
           </div>
-          <style>{''.join(css)}</style>"""
+          <style>@keyframes {k}-fl{{0%{{opacity:0}}12%{{opacity:.8}}100%{{opacity:0}}}}
+          .{k}-flash{{background:radial-gradient(circle at 45% 27%,#fff8dc 0%,rgba(255,215,106,.85) 30%,rgba(255,170,40,0) 75%);
+          opacity:0;animation:{k}-fl .7s ease-out 0s 1 both;}}</style>"""
 
 
 def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None,
@@ -304,8 +234,10 @@ def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = N
     else:
         gen = ""
     ripple_style = ' style="position:relative;"' if gen else ""
+    # 연출 그림을 화면에 미리 받아 둔다(브라우저 캐시) — 첫 조합 때도 바로 재생되게. 보이지 않는 1장.
+    prefetch = f'<img src="{SPIRIT2_GEN_ANIM_URL}" alt="" aria-hidden="true" style="display:none">'
     return f"""
-    <div class="{slot_class}">
+    <div class="{slot_class}">{prefetch}
       <div class="auto-spirit2-wrap">
         <div class="auto-spirit2-ripple"{ripple_style}>
           <img class="auto-spirit2-img auto-spirit2-img-base"
