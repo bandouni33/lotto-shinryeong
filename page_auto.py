@@ -1394,7 +1394,12 @@ def render():
     # 저장내역 패널 하단으로 화면이 밀려 내려가 홈 버튼이 안 보였다(사용자 신고
     # 2026-09-10). iframe sandbox엔 allow-top-navigation만 없고 스크롤 제어는
     # 되므로 최상위 문서에 스크립트를 심어 거기서 window.scrollTo를 부른다.
+    # 2026-10-20(사용자 영상 "끝날 때 아이콘 2개"): 이 스크롤 칸이 구매 직후 렌더에만 생기고 다음 렌더엔 없어서
+    # 뒤 요소들 순번이 한 칸씩 당겨졌다 → Streamlit 이 옛 화면(조합시작·신령 이미지)을 새 화면 아래에 잠깐 남겨
+    # 두 벌로 보였다(로컬 재현: 옛 요소 14개 잔존). 칸을 항상 두고(st.empty) 그 안에만 그려 순번을 고정한다.
+    _auto_scroll_slot = st.empty()
     if st.session_state.pop("auto_scroll_top", False):
+      with _auto_scroll_slot:
         components.html(
             """
             <script>
