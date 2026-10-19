@@ -3,6 +3,7 @@
 import base64
 import importlib
 import os
+import textwrap
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
@@ -186,19 +187,197 @@ html, body {{
 </html>"""
 
 
-def _spirit2_image_block(base64: str, slot_class: str) -> str:
-    """정적 원형 크롭 이미지 (물결 애니메이션은 추후 원형 비율에 맞게 재조정해서 복원 예정)."""
+# 2026-10-10(사용자 지시): 조합시작(적립금 확인 후) 때 신령 이미지가 3초 동안 움직이고(배경 전체가 지진처럼
+# 요동), 그 뒤에 조합 완료(저장내역·완료 안내)가 보인다. 인물은 고정 —
+# 인물만 오려낸 이미지(로또신령2_인물.webp, 배경 제거)를 출렁이는 배경 위에 그대로 겹친다.
+# 결제(적립금 차감·조합 배정)는 예전처럼 확인 즉시 끝나고, 이 3초는 화면 표시만 늦춘다.
+#
+# 2026-10-19(사용자 지시): 2026-10-18에 시도했던 "5초·5종 순환" 연출은 변형 2~5가 기존 지진 요동
+# 위에 빛 효과를 겹치는 구조라 산만해 보여 되돌렸다(번개조합은 변형별로 완전히 새로 그리는 구조라
+# 문제 없어 그대로 둠).
+AUTO_GEN_ANIM_SECONDS = 3.0
+AUTO_GEN_PENDING_KEY = "auto_gen_pending"
+# 인물 오려낸 이미지 + 인물 자리를 주변 색으로 메운 배경판(출렁일 때 뒤쪽에 인물이 한 번 더 비치지 않게).
+_SPIRIT2_PERSON_FILE = "로또신령2_인물.webp"
+_SPIRIT2_PLATE_FILE = "로또신령2_배경.jpg"
+
+
+def _file_base64(path: str) -> str:
+    try:
+        with open(path, "rb") as fh:
+            return base64.b64encode(fh.read()).decode()
+    except OSError:
+        return ""
+
+
+# 2026-10-10(사용자 지시 4차 — "부분별로 더 쪼개서, 하늘·구름은 움직이지 않게, 땅·건물은 살짝, 나무는 바람에
+# 휩쓸리듯, 더 느리게"): 배경을 영역 가림막(spirit2_layers/*.png — scripts/make_spirit2_layers.py 로 생성)
+# 별로 따로 움직인다. 하늘은 그대로. 땅·산·절벽·난간·누각은 아주 살짝 천천히 떨리고, 나무·꽃은 한쪽으로 기울며
+# 흔들린다(회전 중심을 각 영역 아래쪽에 두고 기울기 skewX). 밑에는 움직이지 않는 배경판이 깔려 빈틈이 없다.
+# (가림막 이름, [(%, x px, y px, 회전 deg, 기울기 deg)], 주기 s, 시작 지연 s, 회전 중심) — 위에서부터 겹치는 순서.
+# 시작 지연은 0 — 모두 멈춘 모습(원래 그림)에서 출발해 주기 차이로 서로 어긋난다(시작 순간 튀지 않게).
+_SPIRIT2_LAYER_DIR = "spirit2_layers"
+_SPIRIT2_QUAKE_LAYERS = (
+    # 땅·산·절벽·난간 — 살짝(±1px 안팎), 느리게
+    ("mtn_left", ((0, 0, 0, 0, 0), (30, -0.8, 0.4, 0, 0), (65, 0.7, -0.4, 0, 0), (100, 0, 0, 0, 0)), 1.9, 0, "15% 40%"),
+    ("mtn_right", ((0, 0, 0, 0, 0), (35, 0.8, -0.3, 0, 0), (70, -0.7, 0.4, 0, 0), (100, 0, 0, 0, 0)), 2.1, 0, "80% 45%"),
+    ("cliff_right", ((0, 0, 0, 0, 0), (40, -0.9, 0.3, 0, 0), (75, 0.6, -0.4, 0, 0), (100, 0, 0, 0, 0)), 1.7, 0, "95% 80%"),
+    ("rail", ((0, 0, 0, 0, 0), (45, 0.6, 0.2, 0, 0), (100, 0, 0, 0, 0)), 1.8, 0, "50% 100%"),
+    # 나무·꽃 — 바람에 한쪽으로 휩쓸리듯(기울기), 천천히
+    ("trees_left", ((0, 0, 0, 0, 0), (35, 1.5, 0, 0, -2.5), (55, 0.8, 0, 0, -1.2), (80, 1.8, 0, 0, -3), (100, 0, 0, 0, 0)), 3.0, 0, "15% 70%"),
+    ("trees_right", ((0, 0, 0, 0, 0), (30, 1.2, 0, 0, -2), (60, 0.5, 0, 0, -0.8), (85, 1.5, 0, 0, -2.6), (100, 0, 0, 0, 0)), 3.2, 0, "75% 70%"),
+    ("flowers_left", ((0, 0, 0, 0, 0), (30, 2.5, -0.5, 1.2, -4), (55, 1, 0, 0.4, -1.5), (80, 3, -0.5, 1.5, -5), (100, 0, 0, 0, 0)), 2.6, 0, "0% 92%"),
+    ("trees_right_low", ((0, 0, 0, 0, 0), (35, 2, -0.4, 0.8, -3.5), (60, 0.8, 0, 0.3, -1.2), (85, 2.4, -0.4, 1, -4.2), (100, 0, 0, 0, 0)), 2.8, 0, "92% 92%"),
+    # 누각 — 살짝(나무 위에 겹쳐 건물 모양 유지)
+    ("building", ((0, 0, 0, 0, 0), (40, 0.9, 0.3, 0.15, 0), (75, -0.7, -0.3, -0.12, 0), (100, 0, 0, 0, 0)), 2.0, 0, "10% 66%"),
+)
+
+
+def _auto_gen_loop_count(dur: float) -> int:
+    """한 변형이 AUTO_GEN_ANIM_SECONDS 안에서 끝나도록 배경층 반복 횟수를 정한다.
+
+    예전엔 infinite 로 계속 흔들렸다(3초 화면이 그냥 지나가며 잘렸다). 이제 연출 길이가 정해져
+    있으므로 "그 시간 안에 끝나는 횟수"로 자른다. 각 주기의 시작·끝이 제자리(transform 없음)라
+    도중에 멈춰도 끊겨 보이지 않는다."""
+    return max(1, int((AUTO_GEN_ANIM_SECONDS - 0.2) / max(dur, 0.1)))
+
+
+
+
+def _auto_gen_wrap_class(token: str) -> str:
+    """연출 한 벌의 클래스 접두어 — 마크업·CSS·변형 선택 스크립트가 같은 이름을 쓴다."""
+    return f"auto-sq-{token}"
+
+
+def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str:
+    """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로
+    따른다(절대 위치, 칸 크기 불변). 영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정.
+    배경판 그림은 style 에 한 번만 싣고 층들은 그 그림을 배경으로 재사용한다(용량).
+
+    클릭마다 token 이 달라 애니메이션이 새로 시작한다.
+    preload=True 면 적립금 확인창이 떠 있는 동안 같은 층을 숨겨 미리 실어 둔다(클릭 즉시 시작용)."""
+    person = _file_base64(_SPIRIT2_PERSON_FILE)
+    plate = _file_base64(_SPIRIT2_PLATE_FILE)
+    if not person or not plate:
+        return ""
+    cls = _auto_gen_wrap_class(token)
+    css = [
+        f".{cls}{{position:absolute;inset:0;background-image:url(data:image/jpeg;base64,{plate});"
+        "background-size:cover;background-position:center;"
+        "-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;}"
+    ]
+    layers = []
+    for name, frames, dur, delay, origin in _SPIRIT2_QUAKE_LAYERS:
+        mask = _file_base64(os.path.join(_SPIRIT2_LAYER_DIR, f"{name}.png"))
+        if not mask:
+            continue
+        kf = "".join(
+            f"{p}%{{transform:translate({x}px,{y}px) rotate({r}deg) skewX({k}deg);}}" for p, x, y, r, k in frames
+        )
+        css.append(f"@keyframes {cls}-{name}{{{kf}}}")
+        css.append(
+            f".{cls}-{name}{{-webkit-mask-image:url(data:image/png;base64,{mask});mask-image:url(data:image/png;base64,{mask});"
+            f"transform-origin:{origin};animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s "
+            f"{_auto_gen_loop_count(dur)};}}"
+        )
+        layers.append(f'<div class="{cls} {cls}-{name}"></div>')
+    # preload: 적립금 확인창이 떠 있는 동안 미리 숨겨 두는 층 — '확인 후 진행'을 누르는 순간 브라우저가 바로 보이게
+    # 한다(wallet_ui 확인창 스크립트). 서버 처리(1~2초)를 기다리지 않고 움직임이 시작되게(2026-10-18 사용자 지시).
+    pre = ' data-ln-preload="1"' if preload else ""
+    hide = "display:none;" if preload else ""
+    return f"""
+          <div class="auto-spirit2-gen {cls}-wrap"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
+            <div class="{cls}"></div>{''.join(layers)}
+            <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
+          </div>
+          <style>{''.join(css)}</style>"""
+
+
+def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None,
+                         preload_token: str | None = None) -> str:
+    """정적 원형 크롭 이미지. gen_token 이 있으면(조합 생성 중) 위에 출렁이는 층을 겹친다.
+    preload_token 이 있으면 같은 층을 숨겨서 미리 실어 둔다(확인 클릭 즉시 시작용)."""
+    if gen_token:
+        gen = _spirit2_gen_layer(base64, gen_token)
+    elif preload_token:
+        gen = _spirit2_gen_layer(base64, preload_token, preload=True)
+    else:
+        gen = ""
+    ripple_style = ' style="position:relative;"' if gen else ""
     return f"""
     <div class="{slot_class}">
       <div class="auto-spirit2-wrap">
-        <div class="auto-spirit2-ripple">
+        <div class="auto-spirit2-ripple"{ripple_style}>
           <img class="auto-spirit2-img auto-spirit2-img-base"
                src="data:image/jpeg;base64,{base64}"
-               alt="로또신령2">
+               alt="로또신령2">{gen}
         </div>
       </div>
     </div>
     """
+
+
+def _finish_auto_generation_if_due() -> str | None:
+    """조합 생성 표시 단계 관리. AUTO_GEN_ANIM_SECONDS 가 지났으면 미뤄 둔 결과(저장내역 추가·깜빡임·완료 안내)를
+    반영하고 None, 진행 중이면 애니메이션 token 을 돌려준다. 화면 맨 앞에서 부른다(결과 칸들이 위쪽에 있으므로)."""
+    import time as _t
+
+    pending = st.session_state.get(AUTO_GEN_PENDING_KEY)
+    if not pending:
+        return None
+    started = pending.get("started")
+    if started is None:
+        pending["started"] = _t.time()
+        pending["token"] = str(int(pending["started"] * 1000))
+        return pending["token"]
+    if not pending.get("revealed_at"):
+        # 2026-10-18: 확인 클릭 때 미리 실어 둔 층을 이번 렌더에서 처음 보인다 — display:none 이었으므로
+        # CSS 애니메이션도 이 순간 시작한다. 연출 길이는 "보이기 시작한 때"부터 세야 5초가 잘리지 않는다
+        # (클릭~서버 처리 시간을 그대로 빼면 보이는 연출이 그만큼 짧아진다).
+        pending["revealed_at"] = _t.time()
+        pending["started"] = pending["revealed_at"]
+        return pending.get("token")
+    if _t.time() - started < AUTO_GEN_ANIM_SECONDS:
+        return pending.get("token")
+    st.session_state.pop(AUTO_GEN_PENDING_KEY, None)
+    entry = pending.get("entry")
+    if entry:
+        _append_purchase_history(entry)
+    st.session_state["auto_history_blink"] = True
+    st.session_state["auto_generation_complete"] = True
+    return None
+
+
+def _render_auto_generation_timer() -> None:
+    """화면 맨 끝에서 부른다 — 생성 표시 중이면 남은 시간 뒤에 숨은 버튼을 눌러 다시 그리게 한다(결과 표시).
+
+    서버에서 기다렸다 st.rerun() 하면 그 실행이 정상 종료되지 않아, 방금 닫힌 적립금 안내창이 결과 화면 직전에
+    잠깐 다시 보였다(로컬 녹화 확인). 그래서 이번 실행은 정상으로 끝내고, 브라우저가 시간 맞춰 다시 그리게 한다.
+    버튼 칸은 맨 끝에 두고 겉껍데기까지 숨겨 위쪽 배치에 영향이 없다. 스크립트가 안 돌아도 다음 조작 때 끝난다."""
+    import json as _json
+    import time as _t
+
+    pending = st.session_state.get(AUTO_GEN_PENDING_KEY)
+    if not pending or pending.get("started") is None:
+        return
+    remaining_ms = max(0, int((AUTO_GEN_ANIM_SECONDS - (_t.time() - pending["started"])) * 1000))
+    wrap = "auto_gen_timer_wrap"
+    with st.container(key=wrap):
+        st.markdown(
+            f"<style>.st-key-{wrap},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}'
+            f'.auto-spirit2-gen[data-ln-preload]{{display:block !important;}}</style>',
+            unsafe_allow_html=True,
+        )
+        st.button("auto-gen-done", key="auto_gen_done_btn")
+        components.html(
+            "<script>setTimeout(function(){try{var b=window.parent.document.querySelector("
+            + _json.dumps(".st-key-auto_gen_done_btn button")
+            + ");if(b)b.click();}catch(e){}}, "
+            + str(remaining_ms)
+            + ");</script>",
+            height=0,
+        )
 
 
 def _marketing_db():
@@ -221,7 +400,10 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
     for item in stats:
         pattern_count = item.get("pattern_count")
         ref = None
-        if not is_mock:
+        # 2026-10-04(사용자 승인): 이미 확정된 스냅샷 행은 그 값을 그대로 쓴다 — 표가
+        # combo_round_stats를 정본으로 삼아야 "풀이 지워져도 숫자가 남는다"가 성립한다.
+        # 확정 전 행(당 회차·미리보기 행)만 예전처럼 참고등수를 우선한다.
+        if not is_mock and not item.get("finalized_at"):
             try:
                 ref = mdb.get_reference_ranks(item["draw_round"])
             except Exception:
@@ -237,7 +419,8 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
                 "2등": ranks["rank_2"],
                 "3등": ranks["rank_3"],
                 "4등": ranks["rank_4"],
-                "5등": ranks["rank_5"],
+                # 2026-10-17(사용자 지시): 4차가 상위 7위로 넓어져 5등 수가 너무 커짐 → 표는 1~4등만
+                # (DB의 rank_5 기록은 그대로 둔다 — 표시만 뺌).
             }
         )
     df = pd.DataFrame(rows)
@@ -297,7 +480,15 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     mdb.init_marketing_tables()
     mdb.ensure_marketing_pool_seeds()
     _sync_completed_draw_win_ranks()
-    stats = mdb.get_draw_extraction_stats(limit=20)
+    # 2026-10-04(사용자 승인): 표의 출처를 라이브 lotto_combinations 집계에서
+    # 확정 스냅샷(combo_round_stats)으로 바꿨다. 이 한 줄이 이번 사안의 핵심이다 —
+    # 예전에는 정리 로직이 오래된 회차 풀을 지우면 그 회차 행이 표에서 통째로
+    # 사라졌고(1243회차 누락 사고), 이제는 스냅샷에 남은 회차·숫자가 그대로 유지된다.
+    # 정렬(draw_round DESC)·하한 회차(MIN_DISPLAY_DRAW_ROUND)는 기존 조회와 동일하다.
+    # 2026-10-04(사용자 지시): 화면 표시는 **최근 5회차**로 제한한다 — 그전엔 limit이 20이라
+    # 회차가 쌓일수록 표가 계속 길어졌다. **조회 limit만 제한하는 것이고 스냅샷에 쌓인 과거
+    # 기록(1234~1245)은 그대로 영구 보존한다** — 여기에 삭제·정리 로직을 추가하지 말 것.
+    stats = mdb.get_round_stats_snapshot(limit=5)
 
     # 2026-08-30: "3종필터 업로드하면 적용패턴수가 바로 계산되는데 이 표에는
     # 왜 반영이 안 되냐" — 원인은 이 표가 "실제로 조합까지 저장·배포된 회차"만
@@ -318,6 +509,15 @@ def _load_stats_table() -> tuple[pd.DataFrame, bool]:
     # 숫자가 더 커서 1위를 차지해버려 next_round가 이미 존재해도 중복으로
     # 미리보기 행이 또 끼워 넣어졌다(실제로 발생 확인, 2026-09-05) — "1위
     # 행"이 아니라 "목록 전체에 next_round가 있는지"로 판단하도록 수정.
+    # 2026-10-10(사용자 지시): 다음 회차 조합이 아직 생성되지 않았으면(일요일 13:30 전) 미리보기 행을 넣지 않는다 —
+    # 추첨 직후 다음 회차 행이 먼저 보여 "벌써 조합이 만들어졌다"로 보였다. 풀이 생성된 뒤 스냅샷 행이 아직
+    # 없을 때만(드문 경우) 예전처럼 미리보기 행을 넣는다.
+    if next_round is not None:
+        try:
+            if mdb.get_combination_count_by_draw(next_round) <= 0:
+                next_round = None
+        except Exception:
+            next_round = None
     if next_round is not None and not any(s["draw_round"] == next_round for s in stats):
         live_count = _load_latest_filter_pattern_count()
         stats.insert(
@@ -433,7 +633,11 @@ def _sms_schedule_label(purchase_method: str, sms_days: list[str] | str) -> str:
     return "문자 발송: 즉시 조합 (테스트 기간 — 화면 확인)"
 
 
-def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
+def _purchase_banner_html(data: dict, *, compact: bool = False, highlight: bool = False) -> str:
+    # 깜박임 클래스·CSS는 공용 combo_history_ui 한 곳에서만 관리한다.
+    from combo_history_ui import JUST_SAVED_CLASS
+
+    _hl_cls = f" {JUST_SAVED_CLASS}" if highlight else ""
     allocated = data.get("allocated") or []
     draw_round = data.get("draw_round", "")
     combo_count = data.get("combo_count", len(allocated))
@@ -471,13 +675,14 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
         combo_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
 
     if compact:
+        # 위와 같은 이유로 절단하지 않는다 — 조각 단위 배치는 호출부가 한다.
         grid_rows = ""
-        for item in allocated[:5]:
+        for item in allocated:
             combo = (item.get("combo") or [])[:6]
             balls = "".join(_ball_span(n) for n in combo)
             grid_rows += f'<div class="auto-banner-ball-row">{balls}</div>'
         return (
-            '<div class="auto-purchase-banner-plain">'
+            f'<div class="auto-purchase-banner-plain{_hl_cls}">'
             f'<div class="auto-banner-combos">{grid_rows}</div>'
             "</div>"
         )
@@ -511,7 +716,7 @@ def _purchase_banner_html(data: dict, *, compact: bool = False) -> str:
     compact_cls = " auto-purchase-banner-compact" if compact else ""
 
     return (
-        f'<div class="auto-purchase-banner{compact_cls}">'
+        f'<div class="auto-purchase-banner{compact_cls}{_hl_cls}">'
         f'<div class="auto-banner-head">'
         f'<span class="auto-banner-badge">✓</span>'
         f"<div>"
@@ -548,21 +753,47 @@ def _history_grid_rows_html(item: dict) -> str:
     번호 줄만, 카드 wrapper 없이 반환한다(좌우 2열로 합칠 때 재사용)."""
     draw_round = item.get("draw_round", "")
     win_set, bonus_number = _winning_numbers_for_draw(draw_round) if draw_round != "" else (set(), None)
+    # 2026-10-04(사용자 지시): 앞 5개만 그리던 절단을 없앨다 — 5개 초과분이 화면에서
+    # 통째로 사라지던 **데이터 누락**의 원인이었다(배치 문제가 아니라 렌더 절단).
+    # 5개씩 조각내는 배치는 호출부가 하고, 여기서는 받은 것을 전부 그린다.
     rows = ""
-    for it in (item.get("allocated") or [])[:5]:
+    for it in (item.get("allocated") or []):
         combo = (it.get("combo") or [])[:6]
         balls = "".join(_history_ball_span(n, win_set, bonus_number) for n in combo)
         rows += f'<div class="auto-banner-ball-row">{balls}</div>'
     return rows
 
 
-def _history_pair_card_html(item_left: dict, item_right: dict) -> str:
+def _history_pair_card_html(
+    item_left: dict,
+    item_right: dict,
+    highlight: bool = False,
+    highlight_left: bool | None = None,
+    highlight_right: bool | None = None,
+) -> str:
+    """2026-10-05(사용자 지시): 강조는 왼쪽·오른쪽 조각을 **각각 독립 판정**한다
+    (번개조합 combo_history_ui.same_source_pair_card_html과 같은 규칙).
+    양쪽 다 → 카드 전체(예전 모양), 한쪽만 → 그 열만. highlight=는 기존 호환(양쪽)."""
+    from combo_history_ui import JUST_SAVED_CLASS
+
+    hl_left = highlight if highlight_left is None else bool(highlight_left)
+    hl_right = highlight if highlight_right is None else bool(highlight_right)
+    both = hl_left and hl_right
+    _cls = "auto-history-pair-card"
+    if both:
+        _cls += f" {JUST_SAVED_CLASS}"
+    left_cls = "auto-history-pair-col auto-history-pair-col-left"
+    right_cls = "auto-history-pair-col"
+    if hl_left and not both:
+        left_cls += f" {JUST_SAVED_CLASS}"
+    if hl_right and not both:
+        right_cls += f" {JUST_SAVED_CLASS}"
     return f"""
-    <div class="auto-history-pair-card">
-      <div class="auto-history-pair-col auto-history-pair-col-left">
+    <div class="{_cls}">
+      <div class="{left_cls}">
         {_history_grid_rows_html(item_left)}
       </div>
-      <div class="auto-history-pair-col">
+      <div class="{right_cls}">
         {_history_grid_rows_html(item_right)}
       </div>
     </div>
@@ -840,14 +1071,16 @@ def _render_auto_history_content():
     if not mid:
         return
     history_items, load_error = _collect_purchase_history_items(mid)
+    from combo_history_ui import render_history_notice  # 빈 상태 안내 공용(2026-10-15)
+
     if not history_items:
         if load_error:
-            st.caption("저장내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.")
+            render_history_notice("저장내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.")
         else:
-            st.caption("아직 저장한 내역이 없습니다. 조합시작 후 이곳에 저장됩니다.")
+            render_history_notice("아직 저장한 내역이 없습니다. 조합시작 후 이곳에 저장됩니다.")
         return
     if load_error:
-        st.caption("일부 내역을 불러오지 못했어요. 잠시 후 새로고침하면 전체가 보입니다.")
+        render_history_notice("일부 내역을 불러오지 못했어요. 잠시 후 새로고침하면 전체가 보입니다.")
     # 여러 회차 구매가 섞여 쌓일 수 있는데, 예전엔 조합 숫자만 보여주고 몇
     # 회차 것인지 표시가 없어서 어떤 조합이 어느 회차인지, 왜 동그라미가
     # 없는지(미추첨인지 낙첨인지) 헷갈릴 수 있었다 — 회차별로 묶어서 머리글을
@@ -855,21 +1088,357 @@ def _render_auto_history_content():
     grouped_history: dict = {}
     for item in history_items:
         grouped_history.setdefault(item.get("draw_round"), []).append(item)
+    # 2026-09-26(사용자 지시): 방금 구매한 조합이 눈에 보이게 — 목록 맨 첫 카드
+    # 1개만 잠깐 깜박인다. 클래스·CSS는 공용 combo_history_ui 한 곳(번개·안티와 동일).
+    from combo_history_ui import consume_just_saved
+
+    _highlight_next = consume_just_saved("auto_history_blink")
     for round_idx, (draw_round, items) in enumerate(grouped_history.items()):
         round_color = _AUTO_HISTORY_PAIR_ROUND_COLORS[round_idx % len(_AUTO_HISTORY_PAIR_ROUND_COLORS)]
         st.markdown(
             f'<div class="auto-history-round-head" style="color:{round_color};">{draw_round}회차</div>',
             unsafe_allow_html=True,
         )
-        i = 0
-        n = len(items)
-        while i < n:
-            if i + 1 < n:
-                st.markdown(_history_pair_card_html(items[i], items[i + 1]), unsafe_allow_html=True)
-                i += 2
+        # 2026-10-04(사용자 지시): 회차 안의 조합을 **5개 조각 단위**로 끊어 좌/우로
+        # 짝짓는다. 구매 1건에 15개가 배정돼도 5+5+5가 전부 보인다.
+        from combo_history_ui import chunk_is_from_newest, chunk_pairs
+
+        flat: list[tuple[dict, int]] = []
+        for item_idx, item in enumerate(items):
+            for allocated in (item.get("allocated") or []):
+                flat.append((allocated, item_idx))
+        # '방금 구매' 강조는 **가장 최근 구매(items[0])에서만 나온 조각**에 붙는다.
+        newest_hl = _highlight_next
+        for left_part, right_part in chunk_pairs(flat):
+            src_item = items[left_part[0][1]]
+            left_item = dict(src_item)
+            left_item["allocated"] = [alloc for alloc, _idx in left_part]
+            left_item["combo_count"] = len(left_part)
+            highlight = newest_hl and chunk_is_from_newest(left_part)
+            if right_part:
+                right_item = dict(items[right_part[0][1]])
+                right_item["allocated"] = [alloc for alloc, _idx in right_part]
+                right_item["combo_count"] = len(right_part)
+                # 2026-10-05: 오른쪽 조각도 따로 판정(다른 구매분이면 강조 안 함).
+                highlight_right = newest_hl and chunk_is_from_newest(right_part)
+                st.markdown(
+                    _history_pair_card_html(
+                        left_item, right_item,
+                        highlight_left=highlight, highlight_right=highlight_right,
+                    ),
+                    unsafe_allow_html=True,
+                )
             else:
-                st.markdown(_purchase_banner_html(items[i], compact=True), unsafe_allow_html=True)
-                i += 1
+                st.markdown(
+                    _purchase_banner_html(left_item, compact=True, highlight=highlight),
+                    unsafe_allow_html=True,
+                )
+        _highlight_next = False
+
+
+# 2026-10-10: 자동조합 "최종 레이아웃 강제 오버라이드" CSS — 한 곳(이 상수)에만 둔다.
+# 예전엔 render() 맨 끝에서만 주입해, 그 사이(통계표 DB 조회 등) 동안 즉시/5개·조합시작/저장내역이
+# 좌우 끝으로 흩어져 보였다가 제자리로 모였다(사용자 신고). 이제 레이아웃을 그리기 직전에 한 번,
+# 맨 끝에서 한 번(캐스케이드 순서상 항상 이기도록 — 기존 이유 그대로) 같은 상수를 두 번 주입한다.
+_AUTO_FINAL_LAYOUT_CSS = """
+        <style>
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: flex-start !important;
+            gap: 6px !important;
+            width: 100% !important;
+        }
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] * {
+            flex-shrink: 0 !important;
+        }
+        .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            display: block !important;
+        }
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5,
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 > div[data-testid="stVerticalBlock"],
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 [data-testid="stMarkdown"],
+        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 .auto-stats-table-wrap {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        /* 구매방식·수량 / 구매확정·구매내역 — 아래 캐릭터 이미지와 같은 폭 기준(360px 중앙정렬)
+           컨테이너 안에서, 두 항목을 하나의 짝으로 묶어 항상 가운데(캐릭터 아이콘과 같은 축)에
+           배치한다. 예전엔 위쪽 줄은 20%/80%, 아래 줄은 30%/70% 지점으로 서로 다르게 벌려놔서
+           두 줄이 서로 다른 폭으로 벌어져 보였다 — 두 줄 모두 같은 방식(중앙 정렬 + 고정 간격)으로
+           통일해서 좌우 균형이 맞도록 한다. */
+        .st-key-auto_purchase_method_zone_6n36s5 {
+            width: 100% !important;
+            max-width: var(--auto-visual-col-width) !important;
+            margin: 0 auto !important;
+        }
+        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            justify-content: center !important;
+            align-items: center !important;
+            gap: 14px !important;
+            box-sizing: border-box !important;
+        }
+        /* 2026-08-30: 이 규칙은 원래 "auto_confirm_history_row_6n36s5"라는 컨테이너
+           키를 겨냥해 쓰여 있었는데, 실제 구매확정·구매내역 버튼 줄의 키는
+           "auto_phone_btn_row_6n36s5"라 하나도 안 먹히고 있었다(고아 셀렉터) —
+           그래서 이 줄이 캐릭터 아이콘·구매방식 줄과 다른 폭·정렬로 보이던 것.
+           바로 위 구매방식 줄(auto_purchase_method_zone_6n36s5)과 완전히 같은
+           폭(--auto-visual-col-width)·중앙정렬 방식으로 맞춰서 두 줄이 캐릭터
+           아이콘과 같은 축에 나란히 정렬되게 한다. */
+        .st-key-auto_phone_btn_row_6n36s5 {
+            width: 100% !important;
+            max-width: var(--auto-visual-col-width) !important;
+            margin: 0 auto !important;
+        }
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            justify-content: center !important;
+            align-items: center !important;
+            gap: 14px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            box-sizing: border-box !important;
+        }
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
+        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            height: auto !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] {
+            width: 106px !important;
+            min-width: 106px !important;
+            max-width: 106px !important;
+        }
+        /* ⚠️ 구매 안내 expander — 내용 크기만큼만 폭을 줄이고 가로 중앙 정렬 */
+        .st-key-auto_guide_expander_zone_6n36s5 {
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] {
+            width: auto !important;
+            max-width: max-content !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details {
+            width: auto !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            width: auto !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            padding: 10px 18px !important;
+            white-space: nowrap !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary svg {
+            flex: 0 0 auto !important;
+            margin: 0 !important;
+        }
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary span {
+            margin: 0 !important;
+            white-space: nowrap !important;
+        }
+        /* 캐릭터 이미지는 항상 "구매내역" 팝업(z-index:40) 뒤에 있도록 낮은 z-index 고정 */
+        .st-key-auto_spirit_below_confirm_6n36s5 {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
+            position: relative !important;
+            z-index: 40 !important;
+        }
+        html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
+            overflow-y: auto !important;
+            max-height: none !important;
+        }
+        /* 구매방식·구매수량·구매확정·구매내역 — 공통 사이즈 조정 (높이 -10%, 폰트 한 단계 확대) */
+        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"],
+        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"] > div,
+        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] > div,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"],
+        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"] > div,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
+            height: 32px !important;
+            min-height: 32px !important;
+            max-height: 32px !important;
+            font-size: 16px !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] span,
+        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] span {
+            font-size: 16px !important;
+        }
+        /* 구매방식·구매수량 — 현재 Streamlit 버전은 BaseWeb select 대신
+           React Aria ComboBox(input[type="text"] + div[role="group"])를 쓰므로
+           위 data-baseweb 규칙이 매치되지 않는다. 실제 DOM 기준으로 재적용. */
+        .st-key-auto_purchase_method_6n36s5 div[role="group"],
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
+            height: 32px !important;
+            min-height: 32px !important;
+            max-height: 32px !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 input[type="text"],
+        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
+            font-size: 16px !important;
+        }
+        /* input[type=text]가 브라우저 기본 폭(약 211px)을 그대로 차지해서 화살표 버튼이
+           박스 밖으로 밀려나 overflow:hidden에 잘려 안 보이던 문제 — input은 남는 공간만
+           차지하고 버튼은 자기 크기만큼만 차지하도록 flex 배분을 명시. */
+        .st-key-auto_purchase_method_6n36s5 input[type="text"],
+        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
+            flex: 1 1 auto !important;
+            width: 0 !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"] button,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button {
+            flex: 0 0 auto !important;
+        }
+        /* 즉시/월간·5개/10개 — 클릭 가능한 선택 요소로 보이도록 테두리·그림자·hover 반응 추가 */
+        .st-key-auto_purchase_method_6n36s5 div[role="group"],
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
+            box-sizing: border-box !important;
+            overflow: visible !important;
+            border: 2px solid #6C3CE0 !important;
+            box-shadow: 0 2px 6px rgba(108, 60, 224, 0.35) !important;
+            cursor: pointer !important;
+            transition: box-shadow 0.15s ease, border-color 0.15s ease !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"]:hover,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:hover,
+        .st-key-auto_purchase_method_6n36s5 div[role="group"]:focus-within,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:focus-within {
+            border-color: #8B5CF6 !important;
+            box-shadow: 0 3px 10px rgba(108, 60, 224, 0.55) !important;
+        }
+        .st-key-auto_purchase_method_6n36s5 div[role="group"] button svg,
+        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button svg {
+            width: 1.6rem !important;
+            height: 1.6rem !important;
+            color: #6C3CE0 !important;
+            fill: #6C3CE0 !important;
+        }
+        /* 구매확정·구매내역 버튼 — 106px → 7%↓(98.58) → 4%↑(102.52) → 3%↑(105.6px) */
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
+            width: 105.6px !important;
+            min-width: 105.6px !important;
+            max-width: 105.6px !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+        }
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button div {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary span {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+        }
+        /* 화살표는 Material Symbols 아이콘 폰트로 렌더링된다. 번들 코드를 더 파보니
+           "icon"/"type" prop이 있는 특수 expander(체크·에러·스피너)만 data-testid를
+           "stExpanderIcon*"로 오버라이드하고, 우리처럼 그런 prop이 없는 일반 expander는
+           기본 아이콘 컴포넌트를 타서 기본 testid인 "stIconMaterial" 그대로 남는다 —
+           그래서 stExpanderIcon만 노렸던 지난 시도가 안 먹혔다. 둘 다 잡는다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stExpanderIcon"],
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
+            gap: 0 !important;
+            justify-content: center !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > p {
+            width: 100% !important;
+            text-align: center !important;
+            margin: 0 auto !important;
+            flex: 1 1 auto !important;
+        }
+        /* 구매확정·구매내역 — 버튼/summary 자체에 font-size·weight를 줘도 안쪽 <p>가
+           Streamlit 기본 스타일(구매확정 p는 weight 400, 구매내역 p는 weight 900으로
+           서로 달랐다)을 그대로 써서 두 버튼 글씨체가 달라 보였다 — 실제로 텍스트를
+           그리는 p/span에 직접 같은 값을 지정해야 반영된다. font-family까지 명시해서
+           혹시 모를 폴백 폰트 차이도 없앤다. */
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button span {
+            font-family: "Source Sans", sans-serif !important;
+            font-size: 17px !important;
+            font-weight: 700 !important;
+        }
+        /* 구매내역 쪽 p는 폭이 텍스트 크기만큼만 좁게 잡혀서(68px) 106px 버튼 안에서
+           살짝 왼쪽으로 치우쳐 보이거나(데스크톱), 모바일 폭에서는 아예 0px로 접혀
+           안 보이는 문제까지 있었다 — flex-grow 하나에만 기대지 않고, 감싸는 모든
+           단계(outer span → text-wrap div → stMarkdownContainer → p)를 전부
+           display:block + width:100%로 강제해서 어떤 화면 폭에서도 안정적으로
+           구매확정 쪽과 동일하게 꽉 채워 중앙정렬되게 한다. */
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span > div,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stMarkdownContainer"] {
+            display: block !important;
+            width: 100% !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+        }
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
+        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 auto !important;
+            text-align: center !important;
+        }
+        </style>
+        """
 
 
 def render():
@@ -887,6 +1456,8 @@ def render():
         # 렌더를 하나 놓치더라도 바로 다음 렌더에서 다시 시도돼 결국은 저장된다.
         _sync_guest_id_cookie(guest_id)
 
+    _auto_gen_token = _finish_auto_generation_if_due()
+
     # 조합시작(구매) 직후 1회: 화면을 최상단으로 되돌린다 — 예전엔 구매 후
     # 저장내역 패널 하단으로 화면이 밀려 내려가 홈 버튼이 안 보였다(사용자 신고
     # 2026-09-10). iframe sandbox엔 allow-top-navigation만 없고 스크롤 제어는
@@ -897,9 +1468,12 @@ def render():
             <script>
             (function() {
                 try {
-                    var s = window.top.document.createElement('script');
-                    s.textContent = "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}";
-                    window.top.document.head.appendChild(s);
+                    // 2026-10-10: top 이 아니라 parent(앱 문서), 실제 스크롤 칸(stMain)도 함께 —
+                    // 운영 주소는 앱이 Cloud 껍데기 안 iframe 이라 top 에서는 아무것도 안 움직였다.
+                    var s = window.parent.document.createElement('script');
+                    s.textContent = "try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}"
+                        + "try{var m=document.querySelector('[data-testid=\\"stMain\\"]');if(m){m.scrollTo({top:0,behavior:'smooth'});}}catch(e){}";
+                    window.parent.document.head.appendChild(s);
                     s.parentNode.removeChild(s);
                 } catch (e) {
                     try { window.parent.scrollTo(0, 0); } catch (e2) {}
@@ -1586,6 +2160,18 @@ def render():
         .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] {
             min-width: 0 !important;
         }
+        /* 2026-10-10(사용자 신고 "저장내역이 조합시작보다 살짝 밑으로 처짐"): 저장내역 열에는 공용
+           버튼(combo_history_ui.render_history_button)이 넣는 높이 0짜리 style 칸이 버튼 위에 하나 더
+           있어, 열 안 간격(16px)만큼 열이 길어지고 세로 가운데 정렬로 8px 내려가 보였다(로컬 렌더 실측:
+           조합시작 y=180, 저장내역 y=188). 이 버튼 줄의 두 열만 안 간격을 없애 높이를 같게 맞춘다. */
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        /* 위에서 줄어든 열 높이(16px)만큼 위·아래 8px 씩 채워, 조합시작 위치와 아래 이미지 위치는 예전 그대로 둔다. */
+        .st-key-auto_phone_btn_row_6n36s5 div[data-testid="stHorizontalBlock"] {
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+        }
         .st-key-auto_page_columns_6n36s5 {
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
@@ -2059,7 +2645,7 @@ def render():
         .auto-stats-table th:nth-child(2),
         .auto-stats-table td:nth-child(2) { width: 13.6%; }
         .auto-stats-table th:nth-child(n+3),
-        .auto-stats-table td:nth-child(n+3) { width: 17.2%; }
+        .auto-stats-table td:nth-child(n+3) { width: 18.1%; }  /* 2026-10-17: 1~4등 4칸 균등(72.4%÷4) */
         .auto-back-main-btn {
             display: flex;
             align-items: center;
@@ -2516,7 +3102,12 @@ def render():
     # 차지하는 작은 로고 링크를 대신 둔다.
     from shared_ui_styles import brand_home_link_css, brand_home_link_html
 
-    st.markdown(brand_home_link_css() + brand_home_link_html(), unsafe_allow_html=True)
+    # 2026-10-10: 레이아웃을 그리기 전에 최종 CSS를 먼저 깔아 둔다(상수 설명 참고 — 흩어졌다 모이는
+    # 현상 방지). 따로 st.markdown 을 하나 더 만들면 요소 간격이 생겨 화면이 14px 밀리므로 이 줄에 붙인다.
+    st.markdown(
+        textwrap.dedent(_AUTO_FINAL_LAYOUT_CSS).strip() + brand_home_link_css() + brand_home_link_html(),
+        unsafe_allow_html=True,
+    )
 
     spirit2_base64 = _get_icon_base64("로또신령2.jpg")
 
@@ -2685,27 +3276,25 @@ def render():
                         from wallet_ui import render_generation_complete_notice
 
                         render_generation_complete_notice("auto")
+                        # 2026-10-11(사용자 지시 — 자동·번개·번호검증 공통): 방금 저장한 카드가 5줄 모두
+                        # 보이게 화면을 옮긴다. 칸은 화면 맨 끝에서 그린다(위쪽 배치에 영향 없게).
+                        st.session_state["auto_scroll_to_saved"] = True
 
                     # 2026-08-29: "다음회차 준비 안됨" 배너는 구매내역(지난 회차 조회)과
                     # 무관하므로, 버튼 2열 전체 밑·저장내역 패널보다 위에 전체 폭으로
                     # 둔다 — 구매 관련 안내라는 게 분명하게 보이도록.
-                    if not next_pool["ok"]:
+                    # 2026-10-12(사용자 지시): 이용 가능 = 다음 회차 조합 준비 완료 ~ 토 19:55. 그 밖에는
+                    # "준비중입니다"(sales_window 한 곳). 방금 누른 안내가 같은 문구면 한 번만 보인다.
+                    if (not _is_auto_deploy_window_open()
+                            and st.session_state.get("auto_purchase_notice") != AUTO_DEPLOY_WINDOW_BANNER):
                         st.markdown(
-                            f'<div class="auto-next-draw-pool-banner">{NEXT_DRAW_POOL_BANNER}</div>',
+                            f'<div class="auto-next-draw-pool-banner">{AUTO_DEPLOY_WINDOW_BANNER}</div>',
                             unsafe_allow_html=True,
                         )
 
-                    # 구매내역 펼침 내용은 좁은 열 안이 아니라 버튼 2열 전체 밑에
-                    # 별도의 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면 번호 6개가
-                    # 잘려 보이고, 화면 중앙 팝업으로 띄우면 "구매 확정" 버튼을
-                    # 가려버리는 문제가 있었다(2026-08-23).
-                    from combo_history_ui import render_history_panel
-
-                    render_history_panel(
-                        container_key="auto_purchase_history_zone_6n36s5",
-                        blink_flag_key="auto_history_blink",
-                        content_renderer=_render_auto_history_content,
-                    )
+                    # 2026-10-17(사용자 지시): 저장내역 펼침 패널은 여기(버튼 바로 밑)가 아니라 아래
+                    # 신령 이미지와 '회차별 당첨번호 배출' 표 사이에 그린다 — 버튼 밑에 있으면 조합시작
+                    # 3초 동안 신령 이미지가 패널에 밀려 화면 밖으로 내려가 움직임이 안 보였다.
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
@@ -2730,7 +3319,18 @@ def render():
                             # 발송 대상 확인용이었음).
                             mid = current_member_id()
                             if not mid:
+                                # 2026-09-26: 여기서 무음 return이었다 — 창만 닫히고
+                                # 화면에 아무 문구도 남지 않아 "눌러도 반응이 없다"로
+                                # 보였다(실기기 신고). 문구·규격은 번개조합
+                                # (page_thunder.py)·안티액땜조합(page_hedge.py)과
+                                # 동일하게 login_gate.GATE_INLINE_HINT 한 곳만 쓴다.
+                                from login_gate import GATE_INLINE_HINT
+
+                                st.session_state["auto_purchase_error"] = GATE_INLINE_HINT
                                 return
+                            import time as _t_click
+
+                            _gen_started = _t_click.time()  # 연출 기준 시점(처음 보이는 렌더에서 이 값으로 다시 맞춘다)
                             outcome = process_auto_purchase(
                                 mid,
                                 selected_quantity,
@@ -2744,13 +3344,20 @@ def render():
                                     purchase_method,
                                     st.session_state.get("auto_sms_days", []),
                                 )
-                                _append_purchase_history(entry)
-                                st.session_state["auto_history_blink"] = True
+                                # 2026-10-10(사용자 지시): 저장내역 추가·깜빡임·완료 안내는 신령 이미지가
+                                # AUTO_GEN_ANIM_SECONDS(5초) 움직인 뒤에 보인다(_finish_auto_generation_if_due). 결제는 이미 끝났다.
+                                # 2026-10-18: 확인 클릭 즉시 미리 실어 둔 층이 움직이므로, 시작 시각을 그때로 잡고 같은
+                                # token 을 이어 쓴다 — 서버 처리 시간만큼 움직임이 길어지지 않게(전체 약 3초).
+                                _pre = st.session_state.pop("auto_gen_preload_token", None)
+                                st.session_state[AUTO_GEN_PENDING_KEY] = {
+                                    "entry": entry,
+                                    "started": _gen_started,
+                                    "token": _pre or str(int(_gen_started * 1000)),
+                                }
                                 # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역
                                 # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
                                 # 다음 렌더에서 최상단으로 한 번 스크롤한다.
                                 st.session_state["auto_scroll_top"] = True
-                                st.session_state["auto_generation_complete"] = True
                             elif outcome.get("error") == "insufficient_balance":
                                 # 2026-09-08(사용자 지시): 번개조합·안티·액땜조합과
                                 # 동일 — "부족합니다" 문구만 띄우지 않고 그 자리에서
@@ -2783,24 +3390,44 @@ def render():
                     if _auto_purchase_error:
                         st.error(_auto_purchase_error)
 
-                    from wallet_ui import INSUFFICIENT_BALANCE_OPEN, insufficient_balance_dialog
-
-                    if st.session_state.get(INSUFFICIENT_BALANCE_OPEN):
-                        insufficient_balance_dialog()
+                    # 2026-09-26 통일: 적립금 부족/충전창은 wallet_ui.render_wallet_bar()
+                    # 한 곳에서만 띄운다(화면별 사본 제거) — 여기는 플래그만 세운다.
 
             with col_visual:
                 pass
 
         # ── 신령 이미지 + 회차별 당첨번호 배출 (2열 밖·전체 너비) ──
+        _auto_preload_token = None
+        if (not _auto_gen_token and not AUTO_PURCHASE_SKIP_AUTH
+                and st.session_state.get("auto_show_points")):
+            import time as _t_pre
+
+            _auto_preload_token = str(int(_t_pre.time() * 1000))
+            st.session_state["auto_gen_preload_token"] = _auto_preload_token
         with st.container(key="auto_spirit_below_confirm_6n36s5"):
             if spirit2_base64:
                 st.markdown(
+                    # 생성 중에도 미리 실어 둔 층과 같은 모양(숨김 표시 포함)으로 그린다 — 글자 하나라도 다르면
+                    # 화면이 층을 새로 만들며 움직임이 잠깐 끊긴다. 보이게 하는 규칙은 맨 끝 타이머 칸이 싣는다.
                     _spirit2_image_block(
                         spirit2_base64,
                         "auto-spirit2-slot-right",
+                        None,
+                        _auto_gen_token or _auto_preload_token,
                     ),
                     unsafe_allow_html=True,
                 )
+
+        # 구매내역 펼침 내용은 좁은 열 안이 아니라 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면
+        # 번호 6개가 잘려 보이고, 팝업으로 띄우면 "구매 확정" 버튼을 가렸다(2026-08-23).
+        # 2026-10-17(사용자 지시): 자리 = 신령 이미지 아래·회차별 당첨번호 배출 표 위(연출이 보이게).
+        from combo_history_ui import render_history_panel
+
+        render_history_panel(
+            container_key="auto_purchase_history_zone_6n36s5",
+            blink_flag_key="auto_history_blink",
+            content_renderer=_render_auto_history_content,
+        )
 
         stats_df, is_mock = _load_stats_table_cached(_admin_stats_cache_key())
         with st.container(key="auto_stats_section_6n36s5"):
@@ -2827,305 +3454,11 @@ def render():
     # 버전으로 올라가면서, 위쪽에 있는 동일 내용의 CSS가 소스 순서상 밀려 적용되지 않는
     # 문제가 있었다. 페이지 렌더링 맨 마지막에 한 번 더(동일 규칙을) 주입해서
     # 캐스케이드 순서상 항상 이기도록 한다.
-    st.markdown(
-        """
-        <style>
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            align-items: flex-start !important;
-            gap: 6px !important;
-            width: 100% !important;
-        }
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-            flex: 0 0 auto !important;
-            width: auto !important;
-            min-width: 0 !important;
-        }
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] * {
-            flex-shrink: 0 !important;
-        }
-        .st-key-auto_page_columns_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            display: block !important;
-        }
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5,
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 > div[data-testid="stVerticalBlock"],
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 [data-testid="stMarkdown"],
-        .st-key-auto_page_wrap_6n36s5 .st-key-auto_stats_section_6n36s5 .auto-stats-table-wrap {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            overflow: visible !important;
-            position: relative !important;
-            z-index: 1 !important;
-        }
-        /* 구매방식·수량 / 구매확정·구매내역 — 아래 캐릭터 이미지와 같은 폭 기준(360px 중앙정렬)
-           컨테이너 안에서, 두 항목을 하나의 짝으로 묶어 항상 가운데(캐릭터 아이콘과 같은 축)에
-           배치한다. 예전엔 위쪽 줄은 20%/80%, 아래 줄은 30%/70% 지점으로 서로 다르게 벌려놔서
-           두 줄이 서로 다른 폭으로 벌어져 보였다 — 두 줄 모두 같은 방식(중앙 정렬 + 고정 간격)으로
-           통일해서 좌우 균형이 맞도록 한다. */
-        .st-key-auto_purchase_method_zone_6n36s5 {
-            width: 100% !important;
-            max-width: var(--auto-visual-col-width) !important;
-            margin: 0 auto !important;
-        }
-        .st-key-auto_purchase_method_zone_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            justify-content: center !important;
-            align-items: center !important;
-            gap: 14px !important;
-            box-sizing: border-box !important;
-        }
-        /* 2026-08-30: 이 규칙은 원래 "auto_confirm_history_row_6n36s5"라는 컨테이너
-           키를 겨냥해 쓰여 있었는데, 실제 구매확정·구매내역 버튼 줄의 키는
-           "auto_phone_btn_row_6n36s5"라 하나도 안 먹히고 있었다(고아 셀렉터) —
-           그래서 이 줄이 캐릭터 아이콘·구매방식 줄과 다른 폭·정렬로 보이던 것.
-           바로 위 구매방식 줄(auto_purchase_method_zone_6n36s5)과 완전히 같은
-           폭(--auto-visual-col-width)·중앙정렬 방식으로 맞춰서 두 줄이 캐릭터
-           아이콘과 같은 축에 나란히 정렬되게 한다. */
-        .st-key-auto_phone_btn_row_6n36s5 {
-            width: 100% !important;
-            max-width: var(--auto-visual-col-width) !important;
-            margin: 0 auto !important;
-        }
-        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            justify-content: center !important;
-            align-items: center !important;
-            gap: 14px !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            height: auto !important;
-            min-height: 0 !important;
-            box-sizing: border-box !important;
-        }
-        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1),
-        .st-key-auto_phone_btn_row_6n36s5 > div[data-testid="stLayoutWrapper"] > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
-            flex: 0 0 auto !important;
-            width: auto !important;
-            max-width: none !important;
-            min-width: 0 !important;
-            height: auto !important;
-        }
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] {
-            width: 106px !important;
-            min-width: 106px !important;
-            max-width: 106px !important;
-        }
-        /* ⚠️ 구매 안내 expander — 내용 크기만큼만 폭을 줄이고 가로 중앙 정렬 */
-        .st-key-auto_guide_expander_zone_6n36s5 {
-            width: 100% !important;
-            display: flex !important;
-            justify-content: center !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] {
-            width: auto !important;
-            max-width: max-content !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details {
-            width: auto !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
-            width: auto !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 8px !important;
-            padding: 10px 18px !important;
-            white-space: nowrap !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary svg {
-            flex: 0 0 auto !important;
-            margin: 0 !important;
-        }
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary p,
-        .st-key-auto_guide_expander_zone_6n36s5 div[data-testid="stExpander"] summary span {
-            margin: 0 !important;
-            white-space: nowrap !important;
-        }
-        /* 캐릭터 이미지는 항상 "구매내역" 팝업(z-index:40) 뒤에 있도록 낮은 z-index 고정 */
-        .st-key-auto_spirit_below_confirm_6n36s5 {
-            position: relative !important;
-            z-index: 1 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] {
-            position: relative !important;
-            z-index: 40 !important;
-        }
-        html, body, .stApp, [data-testid="stAppViewContainer"], section.main {
-            overflow-y: auto !important;
-            max-height: none !important;
-        }
-        /* 구매방식·구매수량·구매확정·구매내역 — 공통 사이즈 조정 (높이 -10%, 폰트 한 단계 확대) */
-        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"],
-        .st-key-auto_purchase_method_6n36s5 div[data-testid="stSelectbox"] > div,
-        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] > div,
-        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"],
-        .st-key-auto_purchase_quantity_6n36s5 div[data-testid="stSelectbox"] > div,
-        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] > div,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
-            height: 32px !important;
-            min-height: 32px !important;
-            max-height: 32px !important;
-            font-size: 16px !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[data-baseweb="select"] span,
-        .st-key-auto_purchase_quantity_6n36s5 div[data-baseweb="select"] span {
-            font-size: 16px !important;
-        }
-        /* 구매방식·구매수량 — 현재 Streamlit 버전은 BaseWeb select 대신
-           React Aria ComboBox(input[type="text"] + div[role="group"])를 쓰므로
-           위 data-baseweb 규칙이 매치되지 않는다. 실제 DOM 기준으로 재적용. */
-        .st-key-auto_purchase_method_6n36s5 div[role="group"],
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
-            height: 32px !important;
-            min-height: 32px !important;
-            max-height: 32px !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 input[type="text"],
-        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
-            font-size: 16px !important;
-        }
-        /* input[type=text]가 브라우저 기본 폭(약 211px)을 그대로 차지해서 화살표 버튼이
-           박스 밖으로 밀려나 overflow:hidden에 잘려 안 보이던 문제 — input은 남는 공간만
-           차지하고 버튼은 자기 크기만큼만 차지하도록 flex 배분을 명시. */
-        .st-key-auto_purchase_method_6n36s5 input[type="text"],
-        .st-key-auto_purchase_quantity_6n36s5 input[type="text"] {
-            flex: 1 1 auto !important;
-            width: 0 !important;
-            min-width: 0 !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[role="group"] button,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button {
-            flex: 0 0 auto !important;
-        }
-        /* 즉시/월간·5개/10개 — 클릭 가능한 선택 요소로 보이도록 테두리·그림자·hover 반응 추가 */
-        .st-key-auto_purchase_method_6n36s5 div[role="group"],
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] {
-            box-sizing: border-box !important;
-            overflow: visible !important;
-            border: 2px solid #6C3CE0 !important;
-            box-shadow: 0 2px 6px rgba(108, 60, 224, 0.35) !important;
-            cursor: pointer !important;
-            transition: box-shadow 0.15s ease, border-color 0.15s ease !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[role="group"]:hover,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:hover,
-        .st-key-auto_purchase_method_6n36s5 div[role="group"]:focus-within,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"]:focus-within {
-            border-color: #8B5CF6 !important;
-            box-shadow: 0 3px 10px rgba(108, 60, 224, 0.55) !important;
-        }
-        .st-key-auto_purchase_method_6n36s5 div[role="group"] button svg,
-        .st-key-auto_purchase_quantity_6n36s5 div[role="group"] button svg {
-            width: 1.6rem !important;
-            height: 1.6rem !important;
-            color: #6C3CE0 !important;
-            fill: #6C3CE0 !important;
-        }
-        /* 구매확정·구매내역 버튼 — 106px → 7%↓(98.58) → 4%↑(102.52) → 3%↑(105.6px) */
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"],
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button {
-            width: 105.6px !important;
-            min-width: 105.6px !important;
-            max-width: 105.6px !important;
-        }
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            text-align: center !important;
-        }
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button div {
-            width: 100% !important;
-            text-align: center !important;
-            margin: 0 auto !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            text-align: center !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary p,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary span {
-            width: 100% !important;
-            text-align: center !important;
-            margin: 0 auto !important;
-        }
-        /* 화살표는 Material Symbols 아이콘 폰트로 렌더링된다. 번들 코드를 더 파보니
-           "icon"/"type" prop이 있는 특수 expander(체크·에러·스피너)만 data-testid를
-           "stExpanderIcon*"로 오버라이드하고, 우리처럼 그런 prop이 없는 일반 expander는
-           기본 아이콘 컴포넌트를 타서 기본 testid인 "stIconMaterial" 그대로 남는다 —
-           그래서 stExpanderIcon만 노렸던 지난 시도가 안 먹혔다. 둘 다 잡는다. */
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stExpanderIcon"],
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
-            display: none !important;
-            width: 0 !important;
-            height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            gap: 0 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary {
-            gap: 0 !important;
-            justify-content: center !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > span,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] > details > summary > p {
-            width: 100% !important;
-            text-align: center !important;
-            margin: 0 auto !important;
-            flex: 1 1 auto !important;
-        }
-        /* 구매확정·구매내역 — 버튼/summary 자체에 font-size·weight를 줘도 안쪽 <p>가
-           Streamlit 기본 스타일(구매확정 p는 weight 400, 구매내역 p는 weight 900으로
-           서로 달랐다)을 그대로 써서 두 버튼 글씨체가 달라 보였다 — 실제로 텍스트를
-           그리는 p/span에 직접 같은 값을 지정해야 반영된다. font-family까지 명시해서
-           혹시 모를 폴백 폰트 차이도 없앤다. */
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button p,
-        .st-key-auto_purchase_confirm_6n36s5 div[data-testid="stButton"] > button span,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button p,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stButton"] > button span {
-            font-family: "Source Sans", sans-serif !important;
-            font-size: 17px !important;
-            font-weight: 700 !important;
-        }
-        /* 구매내역 쪽 p는 폭이 텍스트 크기만큼만 좁게 잡혀서(68px) 106px 버튼 안에서
-           살짝 왼쪽으로 치우쳐 보이거나(데스크톱), 모바일 폭에서는 아예 0px로 접혀
-           안 보이는 문제까지 있었다 — flex-grow 하나에만 기대지 않고, 감싸는 모든
-           단계(outer span → text-wrap div → stMarkdownContainer → p)를 전부
-           display:block + width:100%로 강제해서 어떤 화면 폭에서도 안정적으로
-           구매확정 쪽과 동일하게 꽉 채워 중앙정렬되게 한다. */
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary > span > div,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary [data-testid="stMarkdownContainer"] {
-            display: block !important;
-            width: 100% !important;
-            flex: 1 1 auto !important;
-            min-width: 0 !important;
-        }
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary p,
-        .st-key-auto_purchase_history_zone_6n36s5 div[data-testid="stExpander"] summary span {
-            display: block !important;
-            width: 100% !important;
-            margin: 0 auto !important;
-            text-align: center !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(_AUTO_FINAL_LAYOUT_CSS, unsafe_allow_html=True)
+
+    # 조합 생성 표시 중이면 남은 시간 뒤 다시 그려 결과를 보인다(맨 끝 — 위쪽 배치 불변).
+    _render_auto_generation_timer()
+    if st.session_state.pop("auto_scroll_to_saved", False):
+        from combo_history_ui import render_scroll_to_just_saved
+
+        render_scroll_to_just_saved()
