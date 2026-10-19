@@ -8,7 +8,7 @@ append해서, 결과가 위에서부터 채워지지 않고 아래에서부터 �
 
 불변식:
   P1. 위에서 지우고 아래에 붙이던 예전 구조(fillOnePlaceholder)가 정의/호출 어디에도 남아 있지 않다.
-  P2. 세 렌더 경로(V2, V3, 기본 renderGame)가 모두 insertResultRow로 자리를 교체한다
+  P2. 다섯 렌더 경로(V2, V3, V4, V5, 기본 renderGame)가 모두 insertResultRow로 자리를 교체한다
       (resultArea에 직접 appendChild(row)하는 코드가 남아 있지 않다).
   P3. insertResultRow는 첫 빈 자리를 replaceChild로 그 자리에서 교체하고, 빈 자리가 없으면
       appendChild로 폴백한다.
@@ -76,18 +76,24 @@ def test_p1_old_remove_then_append_structure_is_gone() -> None:
     )
 
 
-def test_p2_all_three_render_paths_replace_in_place() -> None:
-    """P2 - V2, V3, 기본 renderGame 세 경로가 모두 자리 교체를 쓴다."""
+def test_p2_all_render_paths_replace_in_place() -> None:
+    """P2 - V2, V3, V4, V5, 기본 renderGame 다섯 경로가 모두 자리 교체를 쓴다."""
     src = _source()
-    assert src.count(INSERT_CALL) == 3, (
-        f"자리 교체 호출이 정확히 3곳(V2, V3, 기본)이어야 한다: {src.count(INSERT_CALL)}곳"
+    assert src.count(INSERT_CALL) == 5, (
+        f"자리 교체 호출이 정확히 5곳(V2, V3, V4, V5, 기본)이어야 한다: {src.count(INSERT_CALL)}곳"
     )
     assert RESULT_AREA_APPEND not in src, (
         "resultArea에 직접 appendChild(row)하는 코드가 남아 있다 - 그 경로만 결과가 "
         "맨 아래에 붙는다"
     )
-    # 세 함수 안에 각각 들어 있는지(한 함수에 몰려 있지 않은지) 확인한다.
-    for fn in ("function renderGameV2(nums) {{", "function renderGameV3(nums) {{", "function renderGame(nums) {{"):
+    # 다섯 함수 안에 각각 들어 있는지(한 함수에 몰려 있지 않은지) 확인한다.
+    for fn in (
+        "function renderGameV2(nums) {{",
+        "function renderGameV3(nums) {{",
+        "function renderGameV4(nums) {{",
+        "function renderGameV5(nums) {{",
+        "function renderGame(nums) {{",
+    ):
         start = src.find(fn)
         assert start != -1, f"{fn} 정의를 찾지 못했다"
         end = src.find("\n            function ", start + 10)
@@ -236,7 +242,7 @@ def _node_version(node: str) -> str:
 def _main() -> int:
     tests = [
         test_p1_old_remove_then_append_structure_is_gone,
-        test_p2_all_three_render_paths_replace_in_place,
+        test_p2_all_render_paths_replace_in_place,
         test_p3_insert_replaces_first_placeholder_and_falls_back,
         test_p4_extracted_js_fills_from_the_top_for_every_count,
     ]

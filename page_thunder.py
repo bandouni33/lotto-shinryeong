@@ -36,6 +36,14 @@ THUNDER_COLOR_DELETE = "#64748B"   # 삭제수: 회색
 THUNDER_COLOR_FIXED = "#FF9800"    # 고정수: 오렌지
 THUNDER_COLOR_LUCKY = "#F0ABFC"    # 행운수: 연핑크
 
+# ── 조합 생성 연출 5종 순환(2026-10-18 사용자 지시) — 단일 기준점 ──
+# 화면(iframe) 안에서는 이 두 값이 JS 상수 REVEAL_ANIM_MS·REVEAL_VARIANTS 로 들어가고,
+# v1의 잔광 CSS(@keyframes resultRowSettle)도 같은 시간을 쓴다. 값을 바꿀 때는 여기만 고친다.
+# 방문자별 순환은 브라우저 localStorage(게스트별 키 thunder_reveal_cycle_<guest>)에서 JS가
+# 하므로 서버·DB 호출이 없다 — 연출만 바뀌고 조합 생성·차감 경로는 건드리지 않는다.
+THUNDER_REVEAL_ANIM_MS = 6000
+THUNDER_REVEAL_VARIANTS = 5
+
 
 # 번개조합 같은 세션 저장 통로(2026-10-10) — 보드 iframe 이 다 만든 조합을 이 숨은 입력칸에 넣으면
 # _on_th_save_input 이 TH_SAVE_PENDING_KEY 로 옮기고, render() 맨 앞의 저장 처리(예전 ?th_save= 와 같은 코드)가 쓴다.
@@ -833,8 +841,21 @@ def render():
             }}
             .result-row.reveal {{
                 opacity: 0;
+                position: relative;
                 will-change: transform, opacity;
                 animation: resultRowReveal 1s cubic-bezier(0.34, 1.45, 0.64, 1) forwards;
+            }}
+            /* 버전1도 다른 변형과 연출 길이를 맞춘다(2026-10-18) — 입장(1s)·볼 글로우(1.1s)는
+               손대지 않고, 그 뒤 남은 시간 동안 아주 옅은 잔광만 천천히 걷힌다(v1의 톤 그대로). */
+            .result-row.reveal::after {{
+                content: '';
+                position: absolute;
+                inset: -2px;
+                border-radius: 14px;
+                pointer-events: none;
+                opacity: 0;
+                background: radial-gradient(ellipse at 50% 60%, rgba(216, 180, 254, 0.5) 0%, rgba(168, 85, 247, 0.16) 55%, rgba(0, 0, 0, 0) 78%);
+                animation: resultRowSettle {THUNDER_REVEAL_ANIM_MS}ms ease-out 200ms both;
             }}
             /* 2026-09-12: 아직 안 나온 게임의 빈 자리 — 실제 결과 줄(.result-row)과
                같은 박스 크기라 생성 시작부터 목표 게임 수(count)만큼 미리 깔아두면
@@ -859,6 +880,11 @@ def render():
             .result-row.reveal .ball {{
                 will-change: box-shadow, filter;
                 animation: ballGlowReveal 1.1s ease-out forwards;
+            }}
+            /* 잔광(::after)이 볼을 덮지 않게 볼을 위층에 둔다(레이아웃 영향 없음) */
+            .result-row.reveal .ball {{
+                position: relative;
+                z-index: 1;
             }}
             .result-row.reveal .ball:nth-child(1) {{ animation-delay: 0.04s; }}
             .result-row.reveal .ball:nth-child(2) {{ animation-delay: 0.08s; }}
@@ -907,6 +933,67 @@ def render():
                 pointer-events: none;
             }}
             .mystic-v3-row .ball {{
+                will-change: transform, opacity, filter;
+            }}
+
+            /* 버전4·5 (2026-10-18 추가 — 5종 순환) */
+            .mystic-v4-row, .mystic-v5-row {{
+                position: relative;
+                overflow: visible;
+            }}
+            .mystic-v4-track, .mystic-v5-track {{
+                display: flex;
+                justify-content: center;
+                gap: 8px;
+                position: relative;
+                z-index: 2;
+            }}
+            /* v4 번개 낙뢰 — 창백한 섬광 + 지그재그 줄기 */
+            .mystic-v4-flash {{
+                position: absolute;
+                inset: -2px;
+                border-radius: 14px;
+                background: linear-gradient(180deg, rgba(224, 242, 254, 0.95) 0%, rgba(56, 189, 248, 0.35) 45%, rgba(129, 140, 248, 0) 100%);
+                opacity: 0;
+                z-index: 0;
+                pointer-events: none;
+            }}
+            .mystic-v4-bolt {{
+                position: absolute;
+                top: 0;
+                width: 14px;
+                height: 100%;
+                opacity: 0;
+                z-index: 1;
+                pointer-events: none;
+                background: linear-gradient(180deg, #ffffff 0%, #7dd3fc 55%, #a78bfa 100%);
+                clip-path: polygon(45% 0%, 62% 0%, 50% 42%, 68% 42%, 38% 100%, 46% 54%, 30% 54%);
+                filter: drop-shadow(0 0 10px rgba(125, 211, 252, 0.95));
+            }}
+            .mystic-v4-row .ball {{
+                will-change: transform, opacity, filter;
+            }}
+            /* v5 오색 상운 — 색이 흐르는 구름 */
+            .mystic-v5-cloud {{
+                position: absolute;
+                inset: -4px;
+                border-radius: 16px;
+                opacity: 0;
+                z-index: 0;
+                pointer-events: none;
+                background: linear-gradient(110deg, rgba(250, 204, 21, 0.42) 0%, rgba(74, 222, 128, 0.38) 26%, rgba(56, 189, 248, 0.42) 52%, rgba(192, 132, 252, 0.46) 76%, rgba(251, 113, 133, 0.4) 100%);
+                background-size: 300% 300%;
+            }}
+            .mystic-v5-halo {{
+                position: absolute;
+                inset: -10px;
+                border-radius: 20px;
+                opacity: 0;
+                z-index: 0;
+                pointer-events: none;
+                background: radial-gradient(ellipse at 50% 118%, rgba(255, 255, 255, 0.55) 0%, rgba(192, 132, 252, 0.26) 44%, rgba(15, 23, 42, 0) 76%);
+            }}
+            .mystic-v5-row .ball {{
                 will-change: transform, opacity, filter;
             }}
 
@@ -965,6 +1052,13 @@ def render():
                         inset 2px 2px 4px rgba(255,255,255,0.6);
                 }}
             }}
+            /* 버전1 잔광 — THUNDER_REVEAL_ANIM_MS(6초)에 맞춘 길이 */
+            @keyframes resultRowSettle {{
+                0% {{ opacity: 0; }}
+                18% {{ opacity: 0.45; }}
+                55% {{ opacity: 0.2; }}
+                100% {{ opacity: 0; }}
+            }}
         </style>
     </head>
     <body>
@@ -1007,6 +1101,11 @@ def render():
             // 보인다 — 첫 게임은 1.5초 뒤부터, 이후 2초 간격.
             const THUNDER_FIRST_GAME_DELAY_MS = 1500;
             const THUNDER_PATTERN_MAX_TRIES = 200;
+            // 2026-10-18(사용자 지시): 연출을 3종→5종으로 늘리고, 다섯 변형 모두 같은 시간
+            // (기준값은 page_thunder.THUNDER_REVEAL_ANIM_MS — CSS resultRowSettle도 같은 값을 쓴다) 동안
+            // 보여준다. 순환은 아래 consumeRevealVersion이 localStorage에서 한다(서버·DB 호출 없음).
+            const REVEAL_ANIM_MS = {THUNDER_REVEAL_ANIM_MS};
+            const REVEAL_VARIANTS = {THUNDER_REVEAL_VARIANTS};
             const patternRules = {js_pattern_rules};
             const hasBirthdays = {'true' if has_birthdays else 'false'};
             let luckyLoaded = false;
@@ -1127,9 +1226,9 @@ def render():
                 try {{
                     v = parseInt(localStorage.getItem(REVEAL_STORE) || String(activeRevealVersion), 10);
                 }} catch (e) {{}}
-                if (isNaN(v) || v < 1 || v > 3) v = 1;
+                if (isNaN(v) || v < 1 || v > REVEAL_VARIANTS) v = 1;
                 const current = v;
-                const next = (v % 3) + 1;
+                const next = (v % REVEAL_VARIANTS) + 1;
                 try {{ localStorage.setItem(REVEAL_STORE, String(next)); }} catch (e) {{}}
                 return current;
             }}
@@ -1661,7 +1760,7 @@ def render():
                 return ball;
             }}
 
-            /* 버전2: 심해 오라 — 볼이 어둠 속에서 1.6배까지 튀어오르며 계시 (v1과 무관) */
+            /* 버전2: 심해 오라 — 볼이 어둠 속에서 1.6배까지 튀어오르며 계시 (v1과 무관, 6초) */
             function renderGameV2(nums) {{
                 const row = document.createElement('div');
                 row.className = 'result-row mystic-v2-row';
@@ -1690,7 +1789,11 @@ def render():
                     {{ opacity: 1, transform: 'scaleY(1)', offset: 0.25 }},
                     {{ opacity: 0.85, transform: 'scaleY(0.55)', offset: 0.75 }},
                     {{ opacity: 0, transform: 'scaleY(0)' }}
-                ], {{ duration: 3000, easing: 'ease-in-out', fill: 'forwards' }});
+                ], {{ duration: REVEAL_ANIM_MS, easing: 'ease-in-out', fill: 'forwards' }});
+
+                // 다섯 변형 공통: 마지막 빨이 끝나는 순간이 연출 끝(REVEAL_ANIM_MS)이다.
+                const ballMs = 2600;
+                const staggerMs = Math.round((REVEAL_ANIM_MS - ballMs) / Math.max(1, nums.length - 1));
 
                 balls.forEach((ball, i) => {{
                     const tid = setTimeout(() => {{
@@ -1712,13 +1815,13 @@ def render():
                             {{ opacity: 0.7, transform: 'translateY(-50px) scale(1.65) rotate(-20deg)', filter: 'blur(0) brightness(2.2) drop-shadow(0 0 28px #22d3ee) drop-shadow(0 0 48px #a855f7)', offset: 0.42 }},
                             {{ opacity: 1, transform: 'translateY(22px) scale(0.82) rotate(10deg)', filter: 'brightness(1.15)', offset: 0.72 }},
                             {{ opacity: 1, transform: 'translateY(0) scale(1) rotate(0deg)', filter: 'none' }}
-                        ], {{ duration: 2600, easing: 'cubic-bezier(0.1, 1.45, 0.22, 1)', fill: 'forwards' }});
-                    }}, i * 320);
+                        ], {{ duration: ballMs, easing: 'cubic-bezier(0.1, 1.45, 0.22, 1)', fill: 'forwards' }});
+                    }}, i * staggerMs);
                     activeGenTimers.push(tid);
                 }});
             }}
 
-            /* 버전3: 균열 너머 영혼 — 5.5초간 사라졌다 나타났다 후 수렴 (v1과 무관) */
+            /* 버전3: 균열 너머 영혼 — 6초간 사라졌다 나타났다 후 수렴 (v1과 무관) */
             function renderGameV3(nums) {{
                 const row = document.createElement('div');
                 row.className = 'result-row mystic-v3-row';
@@ -1746,10 +1849,10 @@ def render():
                     {{ opacity: 0.95, transform: 'scale(1.08) rotate(6deg)', offset: 0.35 }},
                     {{ opacity: 0.5, transform: 'scale(1.15) rotate(-8deg)', offset: 0.7 }},
                     {{ opacity: 0, transform: 'scale(1.3) rotate(0deg)' }}
-                ], {{ duration: 5500, fill: 'forwards' }});
+                ], {{ duration: REVEAL_ANIM_MS, fill: 'forwards' }});
 
                 const started = performance.now();
-                const duration = 5500;
+                const duration = REVEAL_ANIM_MS;
                 const baseShadow = '0 4px 0 #000000, 0 7px 16px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04)';
 
                 const flickerTimer = setInterval(() => {{
@@ -1797,6 +1900,133 @@ def render():
                 activeGenIntervals.push(flickerTimer);
             }}
 
+            /* 버전4(2026-10-18 신규): 번개 낙뢰 — 창백한 섬광이 세 번 반짝이고 지그재그
+               줄기가 볼 위로 떨어진 뒤, 볼이 전류를 맞은 듯 튀어오른다. 길이는 다른 변형과 같은 6초. */
+            function renderGameV4(nums) {{
+                const row = document.createElement('div');
+                row.className = 'result-row mystic-v4-row';
+
+                const flash = document.createElement('div');
+                flash.className = 'mystic-v4-flash';
+                row.appendChild(flash);
+
+                const track = document.createElement('div');
+                track.className = 'mystic-v4-track';
+                row.appendChild(track);
+
+                const balls = nums.map(n => {{
+                    const b = createBallEl(n);
+                    b.style.opacity = '0';
+                    track.appendChild(b);
+                    return b;
+                }});
+
+                insertResultRow(document.getElementById('resultArea'), row);
+                scrollToResultsIfFirst();
+
+                flash.animate([
+                    {{ opacity: 0 }},
+                    {{ opacity: 0.95, offset: 0.05 }},
+                    {{ opacity: 0.05, offset: 0.2 }},
+                    {{ opacity: 0.7, offset: 0.32 }},
+                    {{ opacity: 0.02, offset: 0.45 }},
+                    {{ opacity: 0.45, offset: 0.55 }},
+                    {{ opacity: 0 }}
+                ], {{ duration: REVEAL_ANIM_MS, fill: 'forwards' }});
+
+                // 지그재그 줄기 — 섬광 박자에 맞춰 세 번 내리친다(모두 연출 안에서 끝난다).
+                [[16, 420], [56, 1400], [82, 2600]].forEach(([leftPercent, delayMs]) => {{
+                    const bolt = document.createElement('div');
+                    bolt.className = 'mystic-v4-bolt';
+                    bolt.style.left = leftPercent + '%';
+                    row.appendChild(bolt);
+                    const tid = setTimeout(() => {{
+                        bolt.animate([
+                            {{ opacity: 0, transform: 'scaleY(0.2) scaleX(0.4)' }},
+                            {{ opacity: 1, transform: 'scaleY(1.05) scaleX(1)', offset: 0.18 }},
+                            {{ opacity: 0.85, transform: 'scaleY(1) scaleX(1)', offset: 0.35 }},
+                            {{ opacity: 0, transform: 'scaleY(1) scaleX(1)' }}
+                        ], {{ duration: 900, easing: 'ease-out', fill: 'forwards' }});
+                        setTimeout(() => bolt.remove(), 1000);
+                    }}, delayMs);
+                    activeGenTimers.push(tid);
+                }});
+
+                const ballMs = 1800;
+                const staggerMs = Math.round((REVEAL_ANIM_MS - ballMs) / Math.max(1, nums.length - 1));
+                balls.forEach((ball, i) => {{
+                    const tid = setTimeout(() => {{
+                        ball.style.opacity = '1';
+                        ball.animate([
+                            {{ opacity: 0, transform: 'translateY(-120px) scale(0.6)', filter: 'brightness(2.4) blur(6px)' }},
+                            {{ opacity: 1, transform: 'translateY(6px) scale(1.08)', filter: 'brightness(1.9) drop-shadow(0 0 18px #7dd3fc)', offset: 0.55 }},
+                            {{ opacity: 1, transform: 'translateY(-4px) scale(1)', filter: 'brightness(1.2)', offset: 0.78 }},
+                            {{ opacity: 1, transform: 'translateY(0) scale(1)', filter: 'none' }}
+                        ], {{ duration: ballMs, easing: 'cubic-bezier(0.22, 1.3, 0.36, 1)', fill: 'forwards' }});
+                    }}, i * staggerMs);
+                    activeGenTimers.push(tid);
+                }});
+            }}
+
+            /* 버전5(2026-10-18 신규): 오색 상운 — 오색 빛구름이 흐르며 볼을 감싸고,
+               볼은 구름 사이로 떠오르듯 나타난다. 길이는 6초. */
+            function renderGameV5(nums) {{
+                const row = document.createElement('div');
+                row.className = 'result-row mystic-v5-row';
+
+                const halo = document.createElement('div');
+                halo.className = 'mystic-v5-halo';
+                row.appendChild(halo);
+
+                const cloud = document.createElement('div');
+                cloud.className = 'mystic-v5-cloud';
+                row.appendChild(cloud);
+
+                const track = document.createElement('div');
+                track.className = 'mystic-v5-track';
+                row.appendChild(track);
+
+                const balls = nums.map(n => {{
+                    const b = createBallEl(n);
+                    b.style.opacity = '0';
+                    track.appendChild(b);
+                    return b;
+                }});
+
+                insertResultRow(document.getElementById('resultArea'), row);
+                scrollToResultsIfFirst();
+
+                halo.animate([
+                    {{ opacity: 0, transform: 'scale(0.85)' }},
+                    {{ opacity: 1, transform: 'scale(1.04)', offset: 0.3 }},
+                    {{ opacity: 0.6, transform: 'scale(1)', offset: 0.7 }},
+                    {{ opacity: 0, transform: 'scale(1.02)' }}
+                ], {{ duration: REVEAL_ANIM_MS, easing: 'ease-in-out', fill: 'forwards' }});
+
+                // 색이 흐르는 구름 — background-position을 옮겨 오색이 띠처럼 지나간다.
+                cloud.animate([
+                    {{ opacity: 0, backgroundPosition: '0% 50%' }},
+                    {{ opacity: 0.9, backgroundPosition: '55% 50%', offset: 0.35 }},
+                    {{ opacity: 0.7, backgroundPosition: '100% 50%', offset: 0.72 }},
+                    {{ opacity: 0, backgroundPosition: '140% 50%' }}
+                ], {{ duration: REVEAL_ANIM_MS, easing: 'linear', fill: 'forwards' }});
+
+                const ballMs = 2400;
+                const staggerMs = Math.round((REVEAL_ANIM_MS - ballMs) / Math.max(1, nums.length - 1));
+                balls.forEach((ball, i) => {{
+                    const tid = setTimeout(() => {{
+                        ball.style.opacity = '1';
+                        ball.animate([
+                            {{ opacity: 0, transform: 'translateY(90px) scale(0.7)', filter: 'hue-rotate(-40deg) brightness(0.7) blur(10px)' }},
+                            {{ opacity: 0.85, transform: 'translateY(-14px) scale(1.12)', filter: 'hue-rotate(20deg) brightness(1.5) drop-shadow(0 0 20px rgba(250, 204, 21, 0.75))', offset: 0.5 }},
+                            {{ opacity: 1, transform: 'translateY(6px) scale(0.96)', filter: 'brightness(1.1)', offset: 0.8 }},
+                            {{ opacity: 1, transform: 'translateY(0) scale(1)', filter: 'none' }}
+                        ], {{ duration: ballMs, easing: 'cubic-bezier(0.16, 1.2, 0.3, 1)', fill: 'forwards' }});
+                    }}, i * staggerMs);
+                    activeGenTimers.push(tid);
+                }});
+            }}
+
             function renderGame(nums) {{
                 const ver = runRevealVersion;
                 if (ver === 2 || ver === '2') {{
@@ -1805,6 +2035,14 @@ def render():
                 }}
                 if (ver === 3 || ver === '3') {{
                     renderGameV3(nums);
+                    return;
+                }}
+                if (ver === 4 || ver === '4') {{
+                    renderGameV4(nums);
+                    return;
+                }}
+                if (ver === 5 || ver === '5') {{
+                    renderGameV5(nums);
                     return;
                 }}
 

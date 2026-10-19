@@ -2,6 +2,7 @@
 
 import base64
 import importlib
+import json
 import os
 import textwrap
 from datetime import datetime, time
@@ -187,11 +188,27 @@ html, body {{
 </html>"""
 
 
-# 2026-10-10(사용자 지시): 조합시작(적립금 확인 후) 때 신령 이미지가 3초 동안 움직이고(배경 전체가 지진처럼 요동,
-# 3초 내내 같은 세기), 그 뒤에 조합 완료(저장내역·완료 안내)가 보인다. 인물은 고정 —
+# 2026-10-10(사용자 지시): 조합시작(적립금 확인 후) 때 신령 이미지가 움직이고(배경 전체가 지진처럼 요동),
+# 그 뒤에 조합 완료(저장내역·완료 안내)가 보인다. 인물은 고정 —
 # 인물만 오려낸 이미지(로또신령2_인물.webp, 배경 제거)를 출렁이는 배경 위에 그대로 겹친다.
-# 결제(적립금 차감·조합 배정)는 예전처럼 확인 즉시 끝나고, 이 3초는 화면 표시만 늦춘다.
-AUTO_GEN_ANIM_SECONDS = 3.0
+# 결제(적립금 차감·조합 배정)는 예전처럼 확인 즉시 끝나고, 이 시간은 화면 표시만 늦춘다.
+#
+# 2026-10-18(사용자 지시): 3초 → 5초로 늘리고, 번개조합처럼 연출을 5종 순환으로 바꾼다
+# (게스트별 localStorage — _AUTO_REVEAL_STORE_PREFIX · _auto_reveal_pick_script). 기존 연출(지진 요동)이
+# 변형 1이고, 2~5는 그 위에 빛 파문·빛 입자·오색 구름·번개 섬광을 겹친다(모두 CSS 애니메이션만 —
+# 서버·DB 호출 없음). 연출 길이·종류의 단일 기준점은 이 두 상수다(AGENTS.md §2 V행).
+AUTO_GEN_ANIM_SECONDS = 5.0
+AUTO_GEN_VARIANT_COUNT = 5
+_AUTO_REVEAL_STORE_PREFIX = "auto_reveal_cycle_"
+_AUTO_REVEAL_LAST_PREFIX = "auto_reveal_last_"
+# 변형 이름(문서·테스트용) — 순서가 곧 변형 번호다.
+_AUTO_GEN_VARIANTS = (
+    "기본 — 인물 고정, 배경 영역별 지진 요동(2026-10-10 연출 그대로)",
+    "빛의 물결 — 아래에서 올라오는 빛 파문",
+    "신령의 숨결 — 떠오르는 빛 입자와 옅은 숨결",
+    "오색 상운 — 색이 흐르는 구름",
+    "번개 계시 — 섬광과 지그재그 번개",
+)
 AUTO_GEN_PENDING_KEY = "auto_gen_pending"
 # 인물 오려낸 이미지 + 인물 자리를 주변 색으로 메운 배경판(출렁일 때 뒤쪽에 인물이 한 번 더 비치지 않게).
 _SPIRIT2_PERSON_FILE = "로또신령2_인물.webp"
@@ -229,15 +246,215 @@ _SPIRIT2_QUAKE_LAYERS = (
 )
 
 
+def _auto_gen_loop_count(dur: float) -> int:
+    """한 변형이 AUTO_GEN_ANIM_SECONDS 안에서 끝나도록 배경층 반복 횟수를 정한다.
+
+    예전엔 infinite 로 계속 흔들렸다(3초 화면이 그냥 지나가며 잘렸다). 이제 연출 길이가 정해져
+    있으므로 "그 시간 안에 끝나는 횟수"로 자른다. 각 주기의 시작·끝이 제자리(transform 없음)라
+    도중에 멈춰도 끊겨 보이지 않는다."""
+    return max(1, int((AUTO_GEN_ANIM_SECONDS - 0.2) / max(dur, 0.1)))
+
+
+# 변형 2~5의 겉모습 — 요소별 (정적 모양, @keyframes 본문, 시간곡선). 모두 CSS 애니메이션만 쓴다.
+_AUTO_GEN_EFFECT_STYLES = {
+    "wave": (
+        "left:50%;bottom:8%;width:118%;height:58%;transform:translate(-50%,0) scale(0.2);border-radius:50%;"
+        "background:radial-gradient(ellipse at 50% 100%,rgba(224,231,255,0.85) 0%,rgba(129,140,248,0.45) 38%,rgba(15,23,42,0) 72%);",
+        "0%{opacity:0;transform:translate(-50%,0) scale(0.15);}"
+        "25%{opacity:0.9;}"
+        "100%{opacity:0;transform:translate(-50%,-16%) scale(1.55);}",
+        "ease-out",
+    ),
+    "mote": (
+        "bottom:8%;width:5px;height:5px;border-radius:50%;"
+        "background:radial-gradient(circle,#fffdf2 0%,#fcd34d 55%,rgba(252,211,77,0) 100%);"
+        "box-shadow:0 0 8px 2px rgba(252,211,77,0.55);",
+        "0%{opacity:0;transform:translateY(0) scale(0.6);}"
+        "20%{opacity:1;}"
+        "100%{opacity:0;transform:translateY(-78px) scale(1.1);}",
+        "ease-out",
+    ),
+    "breath": (
+        "inset:-6px;border-radius:50%;"
+        "background:radial-gradient(circle at 50% 62%,rgba(255,247,214,0.55) 0%,rgba(250,204,21,0.18) 46%,rgba(15,23,42,0) 74%);",
+        "0%{opacity:0;}30%{opacity:0.85;}65%{opacity:0.35;}100%{opacity:0;}",
+        "ease-in-out",
+    ),
+    "aurora": (
+        "inset:-4px;border-radius:50%;mix-blend-mode:screen;background-size:320% 320%;"
+        "background:linear-gradient(115deg,rgba(250,204,21,0.5),rgba(74,222,128,0.42),rgba(56,189,248,0.5),rgba(192,132,252,0.52),rgba(251,113,133,0.45));",
+        "0%{opacity:0;background-position:0% 50%;}"
+        "30%{opacity:0.85;}"
+        "75%{opacity:0.6;background-position:100% 50%;}"
+        "100%{opacity:0;background-position:140% 50%;}",
+        "linear",
+    ),
+    "flash": (
+        "inset:-2px;border-radius:50%;"
+        "background:radial-gradient(circle at 50% 40%,rgba(255,255,255,0.95) 0%,rgba(125,211,252,0.5) 45%,rgba(15,23,42,0) 78%);",
+        "0%{opacity:0;}8%{opacity:0.95;}22%{opacity:0.05;}100%{opacity:0;}",
+        "ease-out",
+    ),
+    "bolt": (
+        "top:-6%;width:10%;height:112%;"
+        "background:linear-gradient(180deg,#fff 0%,#7dd3fc 55%,#a78bfa 100%);"
+        "clip-path:polygon(45% 0%,64% 0%,51% 42%,70% 42%,36% 100%,45% 54%,28% 54%);"
+        "filter:drop-shadow(0 0 8px rgba(125,211,252,0.95));",
+        "0%{opacity:0;transform:scaleY(0.15);}"
+        "20%{opacity:1;transform:scaleY(1.04);}"
+        "40%{opacity:0.8;}"
+        "100%{opacity:0;transform:scaleY(1);}",
+        "ease-out",
+    ),
+}
+
+# 변형별 (변형 번호, 요소, 한 번 길이 s, 반복 횟수, ((지연 s, 가로 %), ...)) — 타이밍의 단일 기준점.
+# 지연 + 길이×반복이 AUTO_GEN_ANIM_SECONDS 를 넘으면 안 된다(테스트가 강제한다).
+_AUTO_GEN_VARIANT_EFFECTS = (
+    (2, "wave", 3.2, 1, ((0.0, 50), (0.8, 50), (1.6, 50))),
+    (3, "mote", 3.4, 1, tuple((round(0.12 * i, 2), 12 + i * 10) for i in range(8))),
+    (3, "breath", 4.6, 1, ((0.0, 50),)),
+    (4, "aurora", 4.6, 1, ((0.0, 50), (0.0, 50))),
+    (5, "flash", 1.5, 3, ((0.0, 50),)),
+    (5, "bolt", 2.2, 1, ((0.6, 26), (2.0, 68))),
+)
+
+# 가로 위치를 요소마다 따로 주는 것들(mote·bolt) — 나머지는 CSS 가 제자리를 잡는다.
+_AUTO_GEN_POSITIONED_ELEMENTS = ("mote", "bolt")
+
+# 생성 연출 변형 순환 스크립트(2026-10-18) — 번개조합 consumeRevealVersion 과 같은 방식이다.
+# __TOKEN__ 같은 자리는 _auto_reveal_pick_script 가 채운다. 서버·DB 를 부르지 않고
+# 브라우저 localStorage 만 쓴다(같은 token 으로 다시 그려질 때는 고른 변형을 그대로 재사용).
+_AUTO_REVEAL_PICK_JS = """
+(function() {
+  var TOTAL = __TOTAL__;
+  var STORE = __STORE__;
+  var LAST = __LAST__;
+  var WRAP = __WRAP__;
+  var TOKEN = __TOKEN__;
+  function store() {
+    try { var s = window.localStorage; s.getItem(LAST); return s; } catch (e) {}
+    try { return window.parent.localStorage; } catch (e) {}
+    return null;
+  }
+  function paint(v) {
+    try {
+      var w = window.parent.document.querySelector('.' + WRAP);
+      if (!w) { return; }
+      for (var i = 1; i <= TOTAL; i++) { w.classList.remove(WRAP + '-v' + i); }
+      w.classList.add(WRAP + '-v' + v);
+    } catch (e) {}
+  }
+  var s = store();
+  var picked = 0;
+  try {
+    var raw = s ? s.getItem(LAST) : null;
+    if (raw && raw.indexOf(TOKEN + ':') === 0) { picked = parseInt(raw.split(':')[1], 10); }
+  } catch (e) {}
+  if (!(picked >= 1 && picked <= TOTAL)) {
+    var v = 1;
+    try { v = parseInt((s && s.getItem(STORE)) || '1', 10); } catch (e) {}
+    if (!(v >= 1 && v <= TOTAL)) { v = 1; }
+    picked = v;
+    try {
+      if (s) {
+        s.setItem(STORE, String((v % TOTAL) + 1));
+        s.setItem(LAST, TOKEN + ':' + picked);
+      }
+    } catch (e) {}
+  }
+  paint(picked);
+})();
+"""
+
+
+def _auto_gen_wrap_class(token: str) -> str:
+    """연출 한 벌의 클래스 접두어 — 마크업·CSS·변형 선택 스크립트가 같은 이름을 쓴다."""
+    return f"auto-sq-{token}"
+
+
+def _auto_reveal_pick_script(token: str, guest_id: str) -> str:
+    """이번 조합 생성에 쓸 연출 변형(1~5)을 게스트별로 순환시키는 스크립트.
+
+    번개조합(page_thunder consumeRevealVersion)과 같은 방식이다 — 게스트별 localStorage 칸에
+    '다음 변형'을 남기고, 이번 변형을 골라 화면(부모 문서)의 연출 칸에 …-v<N> 클래스를 붙인다.
+    같은 token 으로 다시 그려질 때(같은 생성의 재렌더)는 이미 고른 변형을 그대로 쓰고 저장값을
+    또 넘기지 않는다 — 안 그러면 재렌더마다 순환이 한 칸씩 새어 한 번 생성에 변형이 여러 개 섞인다."""
+    return (
+        _AUTO_REVEAL_PICK_JS.replace("__TOTAL__", str(AUTO_GEN_VARIANT_COUNT))
+        .replace("__STORE__", json.dumps(_AUTO_REVEAL_STORE_PREFIX + str(guest_id)))
+        .replace("__LAST__", json.dumps(_AUTO_REVEAL_LAST_PREFIX + str(guest_id)))
+        .replace("__WRAP__", json.dumps(_auto_gen_wrap_class(token)))
+        .replace("__TOKEN__", json.dumps(str(token)))
+    )
+
+
+def _render_auto_reveal_pick(gen_token: str | None, guest_id: str) -> None:
+    """생성 연출이 도는 동안만 — 어느 변형(1~5)을 보여줄지 브라우저가 정하도록 숨은 칸 하나를 둔다.
+
+    칸은 겉껍데기까지 숨겨 위쪽 배치에 영향이 없다(_render_auto_generation_timer 와 같은 방식).
+    스크립트가 못 돌아도(구형 웹뷰) 연출은 변형 1 그대로 보인다."""
+    if not gen_token:
+        return
+    wrap_key = f"auto_reveal_pick_{gen_token}"
+    with st.container(key=wrap_key):
+        st.markdown(
+            f"<style>.st-key-{wrap_key},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap_key}){{display:none !important;}}</style>',
+            unsafe_allow_html=True,
+        )
+        components.html(f"<script>{_auto_reveal_pick_script(gen_token, guest_id)}</script>", height=0)
+
+
+def _spirit2_variant_markup(cls: str) -> str:
+    """변형 2~5의 겉모습 층 — 인물 뒤에 깔린다(마크업 순서).
+
+    변형 클래스(…-v2 … …-v5)가 붙기 전에는 어떤 층도 보이지 않으므로, 첫 순간에는 변형 1
+    (기존 지진 요동)만 보인다. 변형 클래스는 _auto_reveal_pick_script 가 붙인다."""
+    parts = []
+    for _variant, element, _dur, _count, instances in _AUTO_GEN_VARIANT_EFFECTS:
+        for delay, left in instances:
+            position = f"left:{left}%;" if element in _AUTO_GEN_POSITIONED_ELEMENTS else ""
+            parts.append(
+                f'<div class="{cls}-{element}" style="{position}animation-delay:{delay:g}s"></div>'
+            )
+    return "".join(parts)
+
+
+def _spirit2_variant_css(cls: str) -> str:
+    """변형 2~5의 CSS — 변형 클래스가 붙은 뒤에만 각자의 애니메이션이 시작된다."""
+    css = [
+        f".{cls}-wave,.{cls}-mote,.{cls}-breath,.{cls}-aurora,.{cls}-flash,.{cls}-bolt"
+        "{position:absolute;pointer-events:none;opacity:0;}"
+    ]
+    for element, (shape, frames, _easing) in _AUTO_GEN_EFFECT_STYLES.items():
+        css.append(f".{cls}-{element}{{{shape}}}")
+        css.append(f"@keyframes {cls}-{element}{{{frames}}}")
+    for variant, element, dur, count, _instances in _AUTO_GEN_VARIANT_EFFECTS:
+        easing = _AUTO_GEN_EFFECT_STYLES[element][2]
+        repeat = f" {count}" if count > 1 else ""
+        css.append(
+            f".{cls}-v{variant} .{cls}-{element}{{animation:{cls}-{element} {dur:g}s {easing}{repeat};}}"
+        )
+    # 오색 상운은 두 겹 — 뒤 겹은 반대 방향으로 흐르고 색을 한 번 더 튼다.
+    css.append(
+        f".{cls}-v4 .{cls}-aurora ~ .{cls}-aurora{{animation-direction:reverse;filter:hue-rotate(50deg);}}"
+    )
+    return "".join(css)
+
+
 def _spirit2_gen_layer(base64: str, token: str) -> str:
-    """조합 생성 3초 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로 따른다(절대 위치, 칸 크기 불변).
-    영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정. 배경판 그림은 style 에 한 번만 싣고 층들은
-    그 그림을 배경으로 재사용한다(용량). 클릭마다 token 이 달라 애니메이션이 새로 시작."""
+    """조합 생성 연출(AUTO_GEN_ANIM_SECONDS) 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로
+    따른다(절대 위치, 칸 크기 불변). 영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정.
+    배경판 그림은 style 에 한 번만 싣고 층들은 그 그림을 배경으로 재사용한다(용량).
+
+    2026-10-18: 배경 요동(변형 1)은 그대로 두고, 그 위에 변형 2~5의 층을 함께 실어 보낸다 — 어느
+    변형을 보여줄지는 _auto_reveal_pick_script 가 브라우저에서 정한다(CSS 애니메이션만, 서버 호출 없음)."""
     person = _file_base64(_SPIRIT2_PERSON_FILE)
     plate = _file_base64(_SPIRIT2_PLATE_FILE)
     if not person or not plate:
         return ""
-    cls = f"auto-sq-{token}"
+    cls = _auto_gen_wrap_class(token)
     css = [
         f".{cls}{{position:absolute;inset:0;background-image:url(data:image/jpeg;base64,{plate});"
         "background-size:cover;background-position:center;"
@@ -254,15 +471,16 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
         css.append(f"@keyframes {cls}-{name}{{{kf}}}")
         css.append(
             f".{cls}-{name}{{-webkit-mask-image:url(data:image/png;base64,{mask});mask-image:url(data:image/png;base64,{mask});"
-            f"transform-origin:{origin};animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s infinite;}}"
+            f"transform-origin:{origin};animation:{cls}-{name} {dur:g}s ease-in-out {delay:g}s "
+            f"{_auto_gen_loop_count(dur)};}}"
         )
         layers.append(f'<div class="{cls} {cls}-{name}"></div>')
     return f"""
-          <div class="auto-spirit2-gen" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
-            <div class="{cls}"></div>{''.join(layers)}
+          <div class="auto-spirit2-gen {cls}-wrap" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
+            <div class="{cls}"></div>{''.join(layers)}{_spirit2_variant_markup(cls)}
             <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
           </div>
-          <style>{''.join(css)}</style>"""
+          <style>{''.join(css)}{_spirit2_variant_css(cls)}</style>"""
 
 
 def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None) -> str:
@@ -283,8 +501,8 @@ def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = N
 
 
 def _finish_auto_generation_if_due() -> str | None:
-    """조합 생성 표시 단계 관리. 3초가 지났으면 미뤄 둔 결과(저장내역 추가·깜빡임·완료 안내)를 반영하고
-    None, 진행 중이면 애니메이션 token 을 돌려준다. 화면 맨 앞에서 부른다(결과 칸들이 위쪽에 있으므로)."""
+    """조합 생성 표시 단계 관리. AUTO_GEN_ANIM_SECONDS 가 지났으면 미뤄 둔 결과(저장내역 추가·깜빡임·완료 안내)를
+    반영하고 None, 진행 중이면 애니메이션 token 을 돌려준다. 화면 맨 앞에서 부른다(결과 칸들이 위쪽에 있으므로)."""
     import time as _t
 
     pending = st.session_state.get(AUTO_GEN_PENDING_KEY)
@@ -3251,7 +3469,7 @@ def render():
 
                     # 2026-10-17(사용자 지시): 저장내역 펼침 패널은 여기(버튼 바로 밑)가 아니라 아래
                     # 신령 이미지와 '회차별 당첨번호 배출' 표 사이에 그린다 — 버튼 밑에 있으면 조합시작
-                    # 3초 동안 신령 이미지가 패널에 밀려 화면 밖으로 내려가 움직임이 안 보였다.
+                    # 연출(2026-10-18부터 5초) 동안 신령 이미지가 패널에 밀려 화면 밖으로 내려가 움직임이 안 보였다.
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
@@ -3299,7 +3517,7 @@ def render():
                                     st.session_state.get("auto_sms_days", []),
                                 )
                                 # 2026-10-10(사용자 지시): 저장내역 추가·깜빡임·완료 안내는 신령 이미지가
-                                # 3초 움직인 뒤에 보인다(_finish_auto_generation_if_due). 결제는 이미 끝났다.
+                                # AUTO_GEN_ANIM_SECONDS(5초) 움직인 뒤에 보인다(_finish_auto_generation_if_due). 결제는 이미 끝났다.
                                 st.session_state[AUTO_GEN_PENDING_KEY] = {"entry": entry, "started": None}
                                 # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역
                                 # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
@@ -3354,6 +3572,8 @@ def render():
                     ),
                     unsafe_allow_html=True,
                 )
+                # 어느 변형(1~5)을 보여줄지 브라우저(localStorage, 게스트별)가 정하게 하는 숨은 칸.
+                _render_auto_reveal_pick(_auto_gen_token, guest_id)
 
         # 구매내역 펼침 내용은 좁은 열 안이 아니라 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면
         # 번호 6개가 잘려 보이고, 팝업으로 띄우면 "구매 확정" 버튼을 가렸다(2026-08-23).
