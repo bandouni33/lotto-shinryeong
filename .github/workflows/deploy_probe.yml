@@ -1,0 +1,25 @@
+name: 운영 반영 확인
+
+# 운영 화면에 최신 코드 표식이 있는지 확인해 weekly_content/checks/deploy_probe_result.txt 로 커밋(비밀 없음).
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium
+      - run: python scripts/deploy_probe.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weekly_content/checks/deploy_probe_result.txt
+          git commit -m "운영 반영 확인 결과" && git pull --rebase -q && git push -q || true
