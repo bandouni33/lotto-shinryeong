@@ -10,7 +10,7 @@
 
   S1. 저장된 조합이 실제로 DB에 들어간다(회차 포함).
   S2. 저장 직후 저장내역 패널이 열리고 최신 배치 1개에만 표시가 붙는다.
-  S3. "조합생성이 완료되었습니다" 안내가 실제로 뜬다.
+  S3. (2026-10-20 사용자 지시로 완료 안내 제거) 완료 녹색 안내가 뜨지 않는다.
   S4. 페이지가 예외로 죽지 않는다.
 
 DB는 _db_isolation.isolated_db()로만 만진다.
@@ -90,7 +90,8 @@ def test_S1_to_S4_save_path_through_the_entry_point():
         assert ">01<" in marked[0], "S2: 저장한 조합 카드가 아니다"
 
         messages = _messages(at)
-        assert "완료" in messages, f"S3: 생성 완료 안내가 안 떴다: {messages[:120]!r}"
+        # 2026-10-20: 완료 녹색 안내는 사용자 지시로 없앴다 — 이제는 안 떠야 한다.
+        assert "조합생성이 완료" not in messages, f"S3: 없앤 완료 안내가 떴다: {messages[:120]!r}"
 
         # 저장 파라미터는 1회 소비돼 주소에 남지 않는다(새로고침 시 중복 저장 방지).
         assert not at.query_params.get("th_save"), (
@@ -129,7 +130,7 @@ def test_S5_in_session_save_through_hidden_input():
         combos = sorted(tuple(c["combo"]) for b in batches for c in (b.get("combos") or []))
         assert combos == [(13, 14, 15, 16, 17, 18)], f"S5: 숨은 입력칸 저장 결과가 다르다: {combos}"
         assert at.session_state["thunder_history_blink_panel_open"] is True, "S5: 저장내역 패널이 안 펼쳐졌다"
-        assert "완료" in _messages(at), "S5: 생성 완료 안내가 안 떴다"
+        assert "조합생성이 완료" not in _messages(at), "S5: 없앤 완료 안내가 떴다"
         assert at.text_input(key=page_thunder.TH_SAVE_INPUT_KEY).value == "", "S5: 입력칸이 비워지지 않았다"
 
         at.run()  # 다시 실행해도 같은 조합이 또 저장되지 않는다

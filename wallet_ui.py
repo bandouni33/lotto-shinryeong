@@ -1813,9 +1813,10 @@ def render_generation_complete_notice(kind: str) -> None:
     조합시작 버튼 바로 밑에서 호출하면 된다. 문구는 legal_notices.py의
     GENERATION_COMPLETE_NOTICES 한 곳에서만 관리 — 바꿀 때마다 4화면 전부
     찾아다니며 고치지 않게 한다."""
-    from legal_notices import GENERATION_COMPLETE_NOTICES
-
-    st.success(GENERATION_COMPLETE_NOTICES.get(kind, "✅ 완료되었습니다."))
+    # 2026-10-20(사용자 지시 "아무 의미없는 저장됐다는 녹색글씨 전체 지울것"): 안내를 그리지 않는다.
+    # 저장내역 깜빡임·자동 스크롤로 결과가 보이므로 문구는 불필요. 호출부(자동·번개·안티액땜)는 그대로 둔다
+    # — 다시 켤 때 여기 한 곳만 되돌리면 된다(문구는 legal_notices.GENERATION_COMPLETE_NOTICES).
+    return None
 
 
 def inject_app_haptic() -> None:
