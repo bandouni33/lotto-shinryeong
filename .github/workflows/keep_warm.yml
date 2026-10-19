@@ -1,0 +1,27 @@
+name: 서버 데워두기
+
+# 2026-10-18(사용자 승인 ①): 이용자가 적어 서버가 식으면 첫 화면이 느리다 → 10분마다 실제 브라우저로 한 번 연다.
+# scripts/keep_warm.py 참고. 비밀 값 없음. 효과는 운영 render_timing(warm=1 / 일반 방문) 비교로 확인.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/keep_warm.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium
+      - run: python scripts/keep_warm.py

@@ -43,6 +43,7 @@ def _record_render_timing(trace: dict | None) -> None:
         f"started={st.session_state.get('_ln_rt_started', '?')} total_ms={total_ms} "
         f"since_session_ms={since_ms} db_calls={t.get('calls', '?')} db_ms={t.get('db_ms', '?')} "
         f"native={st.query_params.get('native', '')} plat={st.query_params.get('native_platform', '')} "
+        f"warm={st.query_params.get('warm', '')} "
         f"marks={','.join(f'{k}:{v}' for k, v in _LN_MARKS)}"
     )
     import security_log

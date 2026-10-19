@@ -193,7 +193,7 @@ html, body {{
 # 인물만 오려낸 이미지(로또신령2_인물.webp, 배경 제거)를 출렁이는 배경 위에 그대로 겹친다.
 # 결제(적립금 차감·조합 배정)는 예전처럼 확인 즉시 끝나고, 이 시간은 화면 표시만 늦춘다.
 #
-# 2026-10-18(사용자 지시): 3초 → 5초로 늘리고, 번개조합처럼 연출을 5종 순환으로 바꾼다
+# 2026-10-18(사용자 지시): 3초 → 5초로 늘리고, 번개조합처럼 연출을 5종 순환으로 바꿔다
 # (게스트별 localStorage — _AUTO_REVEAL_STORE_PREFIX · _auto_reveal_pick_script). 기존 연출(지진 요동)이
 # 변형 1이고, 2~5는 그 위에 빛 파문·빛 입자·오색 구름·번개 섬광을 겹친다(모두 CSS 애니메이션만 —
 # 서버·DB 호출 없음). 연출 길이·종류의 단일 기준점은 이 두 상수다(AGENTS.md §2 V행).
@@ -443,13 +443,14 @@ def _spirit2_variant_css(cls: str) -> str:
     return "".join(css)
 
 
-def _spirit2_gen_layer(base64: str, token: str) -> str:
+def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str:
     """조합 생성 연출(AUTO_GEN_ANIM_SECONDS) 동안 이미지 위에 겹치는 층 — 기존 이미지 칸 크기를 그대로
     따른다(절대 위치, 칸 크기 불변). 영역별로 따로 움직이고(_SPIRIT2_QUAKE_LAYERS) 하늘·인물은 고정.
     배경판 그림은 style 에 한 번만 싣고 층들은 그 그림을 배경으로 재사용한다(용량).
 
     2026-10-18: 배경 요동(변형 1)은 그대로 두고, 그 위에 변형 2~5의 층을 함께 실어 보낸다 — 어느
-    변형을 보여줄지는 _auto_reveal_pick_script 가 브라우저에서 정한다(CSS 애니메이션만, 서버 호출 없음)."""
+    변형을 보여줄지는 _auto_reveal_pick_script 가 브라우저에서 정한다(CSS 애니메이션만, 서버 호출 없음).
+    preload=True 면 적립금 확인창이 떠 있는 동안 같은 층을 숨겨 미리 실어 둔다(클릭 즉시 시작용)."""
     person = _file_base64(_SPIRIT2_PERSON_FILE)
     plate = _file_base64(_SPIRIT2_PLATE_FILE)
     if not person or not plate:
@@ -475,17 +476,28 @@ def _spirit2_gen_layer(base64: str, token: str) -> str:
             f"{_auto_gen_loop_count(dur)};}}"
         )
         layers.append(f'<div class="{cls} {cls}-{name}"></div>')
+    # preload: 적립금 확인창이 떠 있는 동안 미리 숨겨 두는 층 — '확인 후 진행'을 누르는 순간 브라우저가 바로 보이게
+    # 한다(wallet_ui 확인창 스크립트). 서버 처리(1~2초)를 기다리지 않고 움직임이 시작되게(2026-10-18 사용자 지시).
+    pre = ' data-ln-preload="1"' if preload else ""
+    hide = "display:none;" if preload else ""
     return f"""
-          <div class="auto-spirit2-gen {cls}-wrap" aria-hidden="true" style="position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
+          <div class="auto-spirit2-gen {cls}-wrap"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
             <div class="{cls}"></div>{''.join(layers)}{_spirit2_variant_markup(cls)}
             <img src="data:image/webp;base64,{person}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
           </div>
           <style>{''.join(css)}{_spirit2_variant_css(cls)}</style>"""
 
 
-def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None) -> str:
-    """정적 원형 크롭 이미지. gen_token 이 있으면(조합 생성 중) 위에 출렁이는 층을 겹친다."""
-    gen = _spirit2_gen_layer(base64, gen_token) if gen_token else ""
+def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = None,
+                         preload_token: str | None = None) -> str:
+    """정적 원형 크롭 이미지. gen_token 이 있으면(조합 생성 중) 위에 출렁이는 층을 겹친다.
+    preload_token 이 있으면 같은 층을 숨겨서 미리 실어 둔다(확인 클릭 즉시 시작용)."""
+    if gen_token:
+        gen = _spirit2_gen_layer(base64, gen_token)
+    elif preload_token:
+        gen = _spirit2_gen_layer(base64, preload_token, preload=True)
+    else:
+        gen = ""
     ripple_style = ' style="position:relative;"' if gen else ""
     return f"""
     <div class="{slot_class}">
@@ -513,6 +525,13 @@ def _finish_auto_generation_if_due() -> str | None:
         pending["started"] = _t.time()
         pending["token"] = str(int(pending["started"] * 1000))
         return pending["token"]
+    if not pending.get("revealed_at"):
+        # 2026-10-18: 확인 클릭 때 미리 실어 둔 층을 이번 렌더에서 처음 보인다 — display:none 이었으므로
+        # CSS 애니메이션도 이 순간 시작한다. 연출 길이는 "보이기 시작한 때"부터 세야 5초가 잘리지 않는다
+        # (클릭~서버 처리 시간을 그대로 빼면 보이는 연출이 그만큼 짧아진다).
+        pending["revealed_at"] = _t.time()
+        pending["started"] = pending["revealed_at"]
+        return pending.get("token")
     if _t.time() - started < AUTO_GEN_ANIM_SECONDS:
         return pending.get("token")
     st.session_state.pop(AUTO_GEN_PENDING_KEY, None)
@@ -541,7 +560,8 @@ def _render_auto_generation_timer() -> None:
     with st.container(key=wrap):
         st.markdown(
             f"<style>.st-key-{wrap},"
-            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}'
+            f'.auto-spirit2-gen[data-ln-preload]{{display:block !important;}}</style>',
             unsafe_allow_html=True,
         )
         st.button("auto-gen-done", key="auto_gen_done_btn")
@@ -3469,7 +3489,7 @@ def render():
 
                     # 2026-10-17(사용자 지시): 저장내역 펼침 패널은 여기(버튼 바로 밑)가 아니라 아래
                     # 신령 이미지와 '회차별 당첨번호 배출' 표 사이에 그린다 — 버튼 밑에 있으면 조합시작
-                    # 연출(2026-10-18부터 5초) 동안 신령 이미지가 패널에 밀려 화면 밖으로 내려가 움직임이 안 보였다.
+                    # 3초 동안 신령 이미지가 패널에 밀려 화면 밖으로 내려가 움직임이 안 보였다.
 
                     if not AUTO_PURCHASE_SKIP_AUTH and st.session_state.get("auto_show_points"):
                         from wallet_ui import points_notice_dialog
@@ -3503,6 +3523,9 @@ def render():
 
                                 st.session_state["auto_purchase_error"] = GATE_INLINE_HINT
                                 return
+                            import time as _t_click
+
+                            _gen_started = _t_click.time()  # 연출 기준 시점(처음 보이는 렌더에서 이 값으로 다시 맞춘다)
                             outcome = process_auto_purchase(
                                 mid,
                                 selected_quantity,
@@ -3518,7 +3541,14 @@ def render():
                                 )
                                 # 2026-10-10(사용자 지시): 저장내역 추가·깜빡임·완료 안내는 신령 이미지가
                                 # AUTO_GEN_ANIM_SECONDS(5초) 움직인 뒤에 보인다(_finish_auto_generation_if_due). 결제는 이미 끝났다.
-                                st.session_state[AUTO_GEN_PENDING_KEY] = {"entry": entry, "started": None}
+                                # 2026-10-18: 확인 클릭 즉시 미리 실어 둔 층이 움직이므로, 시작 시각을 그때로 잡고 같은
+                                # token 을 이어 쓴다 — 서버 처리 시간만큼 움직임이 길어지지 않게(전체 약 3초).
+                                _pre = st.session_state.pop("auto_gen_preload_token", None)
+                                st.session_state[AUTO_GEN_PENDING_KEY] = {
+                                    "entry": entry,
+                                    "started": _gen_started,
+                                    "token": _pre or str(int(_gen_started * 1000)),
+                                }
                                 # 2026-09-10(사용자 지시): 구매 후 화면이 저장내역
                                 # 하단으로 밀려 내려가 홈 버튼이 안 보인다는 신고 —
                                 # 다음 렌더에서 최상단으로 한 번 스크롤한다.
@@ -3562,13 +3592,23 @@ def render():
                 pass
 
         # ── 신령 이미지 + 회차별 당첨번호 배출 (2열 밖·전체 너비) ──
+        _auto_preload_token = None
+        if (not _auto_gen_token and not AUTO_PURCHASE_SKIP_AUTH
+                and st.session_state.get("auto_show_points")):
+            import time as _t_pre
+
+            _auto_preload_token = str(int(_t_pre.time() * 1000))
+            st.session_state["auto_gen_preload_token"] = _auto_preload_token
         with st.container(key="auto_spirit_below_confirm_6n36s5"):
             if spirit2_base64:
                 st.markdown(
+                    # 생성 중에도 미리 실어 둔 층과 같은 모양(숨김 표시 포함)으로 그린다 — 글자 하나라도 다르면
+                    # 화면이 층을 새로 만들며 움직임이 잠깐 끊긴다. 보이게 하는 규칙은 맨 끝 타이머 칸이 싣는다.
                     _spirit2_image_block(
                         spirit2_base64,
                         "auto-spirit2-slot-right",
-                        _auto_gen_token,
+                        None,
+                        _auto_gen_token or _auto_preload_token,
                     ),
                     unsafe_allow_html=True,
                 )
@@ -3577,7 +3617,7 @@ def render():
 
         # 구매내역 펼침 내용은 좁은 열 안이 아니라 전체 폭 줄로 그린다 — 좁은 열 안에서 펼치면
         # 번호 6개가 잘려 보이고, 팝업으로 띄우면 "구매 확정" 버튼을 가렸다(2026-08-23).
-        # 2026-10-17(사용자 지시): 자리 = 신령 이미지 아래·회차별 당첨번호 배출 표 위(3초 움직임이 보이게).
+        # 2026-10-17(사용자 지시): 자리 = 신령 이미지 아래·회차별 당첨번호 배출 표 위(연출이 보이게).
         from combo_history_ui import render_history_panel
 
         render_history_panel(

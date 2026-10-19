@@ -6,13 +6,14 @@
   "threads",
   "youtube"
  ],
- "posted": {},
+ "posted": {
+  "facebook": "1447656485087383_122104495953432677",
+  "instagram": "18101496434058977"
+ },
  "skipped": {
   "youtube": "YT_CLIENT_ID/SECRET/REFRESH_TOKEN 없음"
  },
  "failed": {
-  "facebook": "사진 올리기 실패: 400 {\"error\": {\"message\": \"Any of the pages_read_engagement, pages_manage_metadata,\\n        pages_read_user_content, pages_manage_ads, pages_show_list or\\n        pages_messaging permission(s) must be granted before impersonating a\\n        user's page.\", \"type\": \"OAuthException\", \"code\": 190, \"fbtrace",
-  "instagram": "사진 올리기 실패: 400 {\"error\": {\"message\": \"Any of the pages_read_engagement, pages_manage_metadata,\\n        pages_read_user_content, pages_manage_ads, pages_show_list or\\n        pages_messaging permission(s) must be granted before impersonating a\\n        user's page.\", \"type\": \"OAuthException\", \"code\": 190, \"fbtrace",
-  "threads": "사진 올리기 실패: 400 {\"error\": {\"message\": \"Any of the pages_read_engagement, pages_manage_metadata,\\n        pages_read_user_content, pages_manage_ads, pages_show_list or\\n        pages_messaging permission(s) must be granted before impersonating a\\n        user's page.\", \"type\": \"OAuthException\", \"code\": 190, \"fbtrace"
+  "threads": "400 {\"error\": {\"message\": \"Error validating access token: You cannot access the app till you log in to www.threads.com and follow the instructions given.\", \"type\": \"OAuthException\", \"code\": 190, \"error_subcode\": 0, \"fbtrace_id\": \"Avwg7NqCrfOqGvrGEzDxYbj\"}}"
  }
 }

@@ -151,10 +151,12 @@ class PublishTest(unittest.TestCase):
         self.assertEqual(len(th_items), 5 + 1)
 
     def test_P9_channel_gap(self):
-        """채널 사이 5분 간격: 4채널 게시면 대기 3번(각 300초)."""
+        """채널 사이 10~30분 무작위 간격: 4채널 게시면 긴 대기 3번, 각각 600~1800초."""
         waits = []
         pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(FakeSession()), log=_log(), sleep=waits.append)
-        self.assertEqual([w for w in waits if w == pub.CHANNEL_GAP_SEC], [300, 300, 300])
+        gaps = [w for w in waits if w >= pub.CHANNEL_GAP_MIN_SEC]
+        self.assertEqual(len(gaps), 3)
+        self.assertTrue(all(600 <= w <= 1800 for w in gaps))
 
     def test_P4_missing_keys_and_failure_isolated(self):
         env = dict(ALL_ENV)
