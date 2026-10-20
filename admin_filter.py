@@ -449,6 +449,165 @@ def _build_step2_rules(edited_df: pd.DataFrame) -> tuple[list[dict], list[str]]:
     return rules, skipped
 
 
+# ── 2단계 결과·3차 필터링·저장 (2026-10-20 사용자 지시) ─────────────────────────────
+AF_STEP2_RESULT_KEY = "af_step2_result"
+AF_STEP3_RESULT_KEY = "af_step3_result"
+AF_PREVIEW_ROWS = 15  # 1단계 통과 조합 미리보기와 같은 줄 수(공통 규격)
+
+
+def _combo_final3_path() -> str:
+    base = get_combo_final_path()
+    root, ext = os.path.splitext(base)
+    return f"{root}_3차{ext or '.csv'}"
+
+
+def _rank_by_likely_patterns(combos: "np.ndarray", rules: list[dict], seed: int | None = None):
+    """유력패턴(관리자 '기준값패턴' — 번개조합·안티/액땜조합·운영자 대시보드 '조합 수량 조정'과 같은 기준) 적합도 순.
+
+    조합마다 '대상 번호와 겹치는 개수가 최소~최대 안' 인 규칙 수를 세고(=lotto_stats.score_combo_against_pattern_rules
+    와 같은 정의), 많은 순으로 정렬한다. 같은 점수끼리는 무작위 순서(번호가 작은 조합만 뽑히지 않게).
+    대량(수십만~수백만 개)이라 numpy 로 묶어서 계산한다. 반환: (정렬 순서 index 배열, 점수 배열)."""
+    import numpy as np
+
+    n = combos.shape[0]
+    T = np.zeros((45, len(rules)), dtype=np.int16)
+    lo = np.array([int(r["min"]) for r in rules], dtype=np.int16)
+    hi = np.array([int(r["max"]) for r in rules], dtype=np.int16)
+    for j, r in enumerate(rules):
+        for t in r["targets"]:
+            if 1 <= int(t) <= 45:
+                T[int(t) - 1, j] = 1
+    score = np.zeros(n, dtype=np.int16)
+    step = 200_000
+    for a in range(0, n, step):
+        c = combos[a:a + step]
+        oh = np.zeros((c.shape[0], 45), dtype=np.int16)
+        oh[np.repeat(np.arange(c.shape[0]), 6), (c - 1).ravel()] = 1
+        cnt = oh @ T
+        score[a:a + step] = ((cnt >= lo) & (cnt <= hi)).sum(axis=1)
+    rnd = np.random.default_rng(seed).random(n)
+    order = np.lexsort((rnd, -score))
+    return order, score
+
+
+def _run_step3(want: int) -> None:
+    import numpy as np
+    from lotto_stats import get_resolved_pattern_rules
+
+    rules = get_resolved_pattern_rules()
+    if not rules:
+        st.warning("⚠️ 유력패턴 기준이 아직 준비되지 않아 3차 필터링을 할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+        return
+    df = _normalize_combo_df(pd.read_csv(get_combo_final_path()))
+    combos = df.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int).to_numpy()
+    with st.spinner(f"{len(df):,}개 조합을 유력패턴 순으로 정렬하는 중..."):
+        order, score = _rank_by_likely_patterns(combos, rules)
+        top = order[: int(want)]
+        out = pd.DataFrame(np.sort(combos[top], axis=1), columns=[f"번호{i + 1}" for i in range(6)])
+    out.to_csv(_combo_final3_path(), index=False)
+    st.session_state[AF_STEP3_RESULT_KEY] = {
+        "count": int(len(out)), "from": int(len(df)), "rules": len(rules),
+        "min_score": int(score[top].min()) if len(top) else 0, "max_score": int(score[top].max()) if len(top) else 0,
+    }
+
+
+def _render_af_step2_results() -> None:
+    """2단계 결과(안내·미리보기) → 3차 필터링 → 결과물 저장. 결과가 있는 동안 매 실행 그린다(파일 기준)."""
+    res = st.session_state.get(AF_STEP2_RESULT_KEY)
+    final_path = get_combo_final_path()
+    if not res or not os.path.exists(final_path):
+        return
+    if res.get("skipped"):
+        st.warning("⚠️ 아래 행은 해당숫자를 읽을 수 없어 이번 연산에서 뺐습니다: " + ", ".join(res["skipped"]))
+    if res["count"] <= 0:
+        st.warning("⚠️ 산출된 조합이 0개입니다. 엑셀의 최소/최대 조건들이 서로 충돌하지 않는지 확인해주세요.")
+        return
+    success_html = f"""
+    <div style="
+        background-color: rgba(46, 204, 113, 0.15);
+        border: 1px solid rgba(46, 204, 113, 0.4);
+        padding: 15px;
+        border-radius: 8px;
+        color: #FFFFFF !important;
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        text-align: center;
+        margin-top: 15px;
+        margin-bottom: 15px;
+    ">
+        🎉 최종 조합 {res["count"]:,}개 추출 완료!
+    </div>
+    """
+    st.markdown(success_html, unsafe_allow_html=True)
+    preview = _normalize_combo_df(pd.read_csv(final_path, nrows=AF_PREVIEW_ROWS))
+    st.data_editor(
+        preview,
+        column_config=_combo_column_config(preview),
+        use_container_width=False,
+        hide_index=True,
+        disabled=True,
+        key="af_final_combo_editor_6n36s5",
+    )
+
+    # ── 3차: 유력패턴 우선 N개 ──
+    st.markdown('<div class="af-step3-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+    max_n = int(res["count"])
+    want = st.number_input(
+        "3차 필터링으로 남길 조합 수(개)",
+        min_value=1,
+        max_value=max_n,
+        value=min(50, max_n),
+        step=10,
+        key="af_step3_count_6n36s5",
+    )
+    if st.button(
+        f"🎯 유력패턴 우선한 3차 필터링 {int(want):,}개",
+        key="af_step3_run_6n36s5",
+        use_container_width=True,
+    ):
+        st.session_state["_af_scroll_to"] = ".af-step3-marker"
+        try:
+            _run_step3(int(want))
+        except Exception as e:  # noqa: BLE001
+            import traceback
+
+            traceback.print_exc()
+            st.error(f"3차 필터링 중 오류가 발생했습니다. ({e})")
+
+    r3 = st.session_state.get(AF_STEP3_RESULT_KEY)
+    path3 = _combo_final3_path()
+    use3 = bool(r3) and os.path.exists(path3)
+    if use3:
+        st.info(
+            f"🎯 3차 필터링: {r3['from']:,}개 중 유력패턴 적합도 상위 **{r3['count']:,}개** "
+            f"(유력패턴 {r3['rules']}개 중 {r3['min_score']}~{r3['max_score']}개 부합)"
+        )
+        df3 = _normalize_combo_df(pd.read_csv(path3))
+        st.data_editor(
+            df3,
+            column_config=_combo_column_config(df3),
+            use_container_width=False,
+            hide_index=True,
+            disabled=True,
+            key="af_step3_combo_editor_6n36s5",
+        )
+
+    save_path = path3 if use3 else final_path
+
+    def _csv_bytes(path=save_path) -> bytes:
+        return pd.read_csv(path).to_csv(index=False).encode("utf-8-sig")
+
+    st.markdown("### 💾 결과물 저장하기")
+    st.markdown('<div class="af-final-download-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
+    st.download_button(
+        label="📥 최종 조합 결과 PC에 저장하기 (CSV)",
+        data=_csv_bytes,
+        file_name="최종_고급필터_조합_3차.csv" if use3 else "최종_고급필터_조합.csv",
+        mime="text/csv",
+        key="af_final_download_6n36s5",
+    )
+
+
 def _load_advanced_filter_from_disk() -> pd.DataFrame | None:
     """디스크에 저장된 고급필터 규칙 불러오기."""
     path = get_advanced_filter_cache_path()
@@ -2261,6 +2420,9 @@ with st.container(key="af_bottom_center"):
         else:
             try:
                 _run_step1_with_saved_settings()
+                st.session_state["_af_scroll_to"] = ".af-step1-info-marker"
+                st.session_state.pop(AF_STEP2_RESULT_KEY, None)  # 1단계가 바뀌면 옛 2·3단계 결과는 보이지 않게
+                st.session_state.pop(AF_STEP3_RESULT_KEY, None)
             except Exception as e:
                 st.error(f"1단계 연산 중 오류가 발생했습니다: {e}")
             finally:
@@ -2339,86 +2501,46 @@ with st.container(key="af_bottom_center"):
 
         if st.session_state.get("af_run_step2"):
             st.session_state["af_run_step2"] = False
-            if False:  # settings_saved 검증 우회 (Streamlit rerun 세션 꼬임)
-                st.warning("⚠️ 세팅이 저장되지 않았거나 저장 후 값이 변경되었습니다. [세팅완료 저장]을 다시 눌러주세요.")
-            else:
-                try:
-                    step1_path = resolve_step1_path_for_read()
-                    if not step1_path:
-                        raise FileNotFoundError(get_combo_step1_path())
+            # 결과·안내가 버튼 아래에 새로 붙으므로 화면을 그 자리로 옮긴다(맨 끝 _render_af_scroll_to).
+            st.session_state["_af_scroll_to"] = ".st-key-af_step2_apply_6n36s5"
+            # 2026-10-20(사용자 신고): 결과가 이 실행에서만 그려져, 다른 조작(자동 로그아웃 안내의 '계속 이용하기' 등)으로
+            # 화면이 다시 그려지면 사라졌다 → 결과는 파일·세션에 남기고 아래 _render_af_step2_results 가 매번 그린다.
+            st.session_state.pop(AF_STEP2_RESULT_KEY, None)
+            st.session_state.pop(AF_STEP3_RESULT_KEY, None)
+            try:
+                step1_path = resolve_step1_path_for_read()
+                if not step1_path:
+                    raise FileNotFoundError(get_combo_step1_path())
 
-                    # 1단계 필터링 통과 조합만 입력으로 사용 (전체 풀 사용 금지)
-                    step1_df = _normalize_combo_df(pd.read_csv(step1_path))
-                    step1_df = step1_df.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
+                # 1단계 필터링 통과 조합만 입력으로 사용 (전체 풀 사용 금지)
+                step1_df = _normalize_combo_df(pd.read_csv(step1_path))
+                step1_df = step1_df.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
 
-                    rules, skipped = _build_step2_rules(edited_df)
-                    if skipped:
-                        st.warning("⚠️ 아래 행은 해당숫자를 읽을 수 없어 이번 연산에서 뺐습니다: " + ", ".join(skipped))
+                rules, skipped = _build_step2_rules(edited_df)
 
-                    with st.spinner("2단계 고급필터 연산 중..."):
-                        final_df = lotto_engine.run_step2_filtering(step1_df, rules)
+                with st.spinner("2단계 고급필터 연산 중..."):
+                    final_df = lotto_engine.run_step2_filtering(step1_df, rules)
+                # 구독형으로 바뀌면서 실행당 과금은 없앴다 — 구독 자체가 af_bottom_center 상단에서 결제/게이트를 처리한다.
+                final_df.to_csv(get_combo_final_path(), index=False)
+                st.session_state[AF_STEP2_RESULT_KEY] = {"count": int(len(final_df)), "skipped": skipped}
+            except FileNotFoundError:
+                st.error(f"🚨 1단계 결과 파일('{get_combo_step1_path()}')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
+            except Exception as e:  # noqa: BLE001 — 2026-10-20: 예외가 앱 공용 '서비스 점검' 화면으로 번지지 않게
+                import traceback
 
-                    if len(final_df) > 0:
-                        final_count = len(final_df)
-                        # 구독형으로 바뀌면서 실행당 과금은 없앴다 — 구독 자체가
-                        # af_bottom_center 상단에서 이미 결제/게이트를 처리한다.
-                        success_html = f"""
-                        <div style="
-                            background-color: rgba(46, 204, 113, 0.15);
-                            border: 1px solid rgba(46, 204, 113, 0.4);
-                            padding: 15px;
-                            border-radius: 8px;
-                            color: #FFFFFF !important;
-                            font-size: 18px !important;
-                            font-weight: 700 !important;
-                            text-align: center;
-                            margin-top: 15px;
-                            margin-bottom: 15px;
-                        ">
-                            🎉 최종 조합 {final_count:,}개 추출 완료!
-                        </div>
-                        """
-                        st.markdown(success_html, unsafe_allow_html=True)
-                        st.data_editor(
-                            _normalize_combo_df(final_df),
-                            column_config=_combo_column_config(final_df),
-                            use_container_width=False,
-                            hide_index=True,
-                            disabled=True,
-                            key="af_final_combo_editor_6n36s5",
-                        )
+                traceback.print_exc()
+                st.error(f"2단계 연산 중 오류가 발생했습니다. 엑셀의 해당숫자·최소·최대 값을 확인해주세요. ({e})")
 
-                        final_df.to_csv(get_combo_final_path(), index=False)
-
-                        csv_data = final_df.to_csv(index=False, encoding="utf-8-sig")
-
-                        st.markdown("### 💾 결과물 저장하기")
-                        st.markdown('<div class="af-final-download-marker" aria-hidden="true"></div>', unsafe_allow_html=True)
-                        st.download_button(
-                            label="📥 최종 조합 결과 PC에 저장하기 (CSV)",
-                            data=csv_data,
-                            file_name="최종_고급필터_조합.csv",
-                            mime="text/csv",
-                            key="af_final_download_6n36s5",
-                        )
-                    else:
-                        st.warning("⚠️ 산출된 조합이 0개입니다. 엑셀의 최소/최대 조건들이 서로 충돌하지 않는지 확인해주세요.")
-
-                except FileNotFoundError:
-                    st.error(f"🚨 1단계 결과 파일('{get_combo_step1_path()}')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
-                except Exception as e:  # noqa: BLE001 — 2026-10-20: 예외가 앱 공용 '서비스 점검' 화면으로 번지지 않게
-                    import traceback
-
-                    traceback.print_exc()
-                    st.error(f"2단계 연산 중 오류가 발생했습니다. 엑셀의 해당숫자·최소·최대 값을 확인해주세요. ({e})")
+        _render_af_step2_results()
 
 
 # ==========================================================
 # 2026-10-20(사용자 지시): 무조작 자동 로그아웃 — 고급필터는 오래 고민하는 화면이라 바로 끊지 않는다.
 # 무조작 2분(auth_providers.IDLE_LOGOUT_SECONDS) → "3분 뒤 자동 로그아웃" 안내창(남은 시간 표시, [계속 이용하기])
 # → 그래도 반응이 없으면 로그아웃. 화면을 만지면(누르기·입력·스크롤) 안내창이 닫히고 처음부터 다시 센다.
-# 서버는 마지막 요청 시각으로 무조작을 판단하므로, 화면을 만지는 동안 90초마다 숨은 버튼으로 서버에
-# 알린다(입력칸에 글자를 넣는 중에는 건너뜀). 감시·버튼 칸은 숨김이라 배치에 영향 없음. 로그인 중일 때만.
+# 판정은 화면 쪽에서 한다 — 서버에 '이용 중' 신호를 보내려고 화면을 다시 그리면 2단계 결과(그 실행에서만 보이는
+# 표)가 지워져 버려서(로컬 확인) 신호는 보내지 않고, 서버 쪽 판정은 이 화면만 넉넉히(auth_providers
+# ADVANCED_SERVER_IDLE_SECONDS) 둔다. 감시·버튼 칸은 숨김이라 배치에 영향 없음. 로그인 중일 때만.
 def _render_af_idle_guard() -> None:
     import streamlit.components.v1 as _cmp
     from auth_providers import ADVANCED_IDLE_GRACE_SECONDS, IDLE_LOGOUT_SECONDS, current_member_id, logout
@@ -2432,7 +2554,6 @@ def _render_af_idle_guard() -> None:
             f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
             unsafe_allow_html=True,
         )
-        st.button("af-idle-keepalive", key="af_idle_keepalive_btn")
         if st.button("af-idle-logout", key="af_idle_logout_btn"):
             logout()
             # 로그아웃 때 지워지는 공용 안내 칸(wallet_toast_error) 대신 이 화면 전용 표시를 쓴다 — 다음 실행 시작에서
@@ -2443,11 +2564,9 @@ def _render_af_idle_guard() -> None:
         # iframe 안에서 돌린 타이머·이벤트는 함께 사라지기 때문(이미 심겨 있으면 '서버에 다녀옴'만 알린다).
         guard_js = (
             """(function(){
-var W=window, D=document, WARN=%d*1000, GRACE=%d*1000, PING=90000;
-var S={act:Date.now(), ping:Date.now(), box:null, iv:null};
+var W=window, D=document, WARN=%d*1000, GRACE=%d*1000;
+var S={act:Date.now(), box:null, iv:null};
 function btn(k){ return D.querySelector('.st-key-'+k+' button'); }
-function editing(){ var a=D.activeElement; if(!a) return false; var t=(a.tagName||'').toLowerCase();
-  return t==='input'||t==='textarea'||a.isContentEditable; }
 function hide(){ if(S.box){ S.box.remove(); S.box=null; } }
 function show(){ if(S.box) return; var b=D.createElement('div'); b.id='af-idle-warn';
   b.setAttribute('role','alertdialog');
@@ -2459,20 +2578,18 @@ function show(){ if(S.box) return; var b=D.createElement('div'); b.id='af-idle-w
     '<button type="button" style="margin-top:12px;width:100%%;padding:10px;border:0;border-radius:10px;'+
     'background:#e8c770;color:#151b36;font-weight:800;font-size:15px">계속 이용하기</button>';
   D.body.appendChild(b); S.box=b; }
-function poke(){ var k=btn('af_idle_keepalive_btn'); if(k){ S.ping=Date.now(); k.click(); } }
-function activity(){ var n=Date.now(); var wasWarn=!!S.box; S.act=n; hide();
-  if((wasWarn || n-S.ping>PING) && !editing()) poke(); }
+function activity(){ S.act=Date.now(); hide(); }
 var EV=['pointerdown','keydown','wheel','touchstart','scroll'];
 EV.forEach(function(e){ D.addEventListener(e,activity,true); });
 function stop(){ clearInterval(S.iv); hide(); EV.forEach(function(e){ D.removeEventListener(e,activity,true); }); W.__afIdle=null; }
 S.iv=setInterval(function(){
-  if(!btn('af_idle_keepalive_btn')){ stop(); return; }
+  if(!btn('af_idle_logout_btn')){ stop(); return; }
   var idle=Date.now()-S.act;
   if(idle>=WARN){ show(); var left=Math.max(0,WARN+GRACE-idle), m=Math.floor(left/60000), s=Math.floor(left%%60000/1000);
     var el=D.getElementById('af-idle-left'); if(el) el.textContent=m+':'+(s<10?'0':'')+s;
     if(left<=0){ var l=btn('af_idle_logout_btn'); stop(); if(l) l.click(); } }
 },1000);
-W.__afIdle={served:function(){ S.ping=Date.now(); }};
+W.__afIdle={served:function(){ S.act=Date.now(); }};
 })();"""
             % (IDLE_LOGOUT_SECONDS, ADVANCED_IDLE_GRACE_SECONDS)
         )
@@ -2486,3 +2603,34 @@ W.__afIdle={served:function(){ S.ping=Date.now(); }};
 
 
 _render_af_idle_guard()
+
+
+# 2026-10-20(사용자 지시 "단계가 진행될 때마다 해당 위치를 볼 수 있게"): 1단계·2단계 연산이 끝나면 결과가
+# 아래에 붙는데 화면이 위에 머물러 새 내용을 모르고 지나쳤다 → 그 렌더 끝에서 해당 위치로 부드럽게 옮긴다
+# (1단계: 통과 조합 안내, 2단계: 2단계 버튼 — 그 아래 경고·완료·결과표가 이어서 보인다). 숨김 칸이라 배치 영향 없음.
+def _render_af_scroll_to() -> None:
+    import streamlit.components.v1 as _cmp
+
+    target = st.session_state.pop("_af_scroll_to", None)
+    wrap = "af_scroll_to_wrap"
+    # 칸은 항상 둔다(있다 없다 하면 뒤 요소 순번이 밀려 옛 화면이 잠깐 남는다 — 10-20 '아이콘 2개'와 같은 원인).
+    with st.container(key=wrap):
+        st.markdown(
+            f"<style>.st-key-{wrap},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
+            unsafe_allow_html=True,
+        )
+        if not target:
+            return
+        _cmp.html(
+            # 결과표(캔버스)가 늦게 커지면 처음 이동 때는 아래 공간이 모자라 덜 내려간다 → 몇 번 더 맞춘다.
+            "<script>(function(){var D=window.parent.document,n=0,done=0;"
+            "function go(){var el=D.querySelector(" + json.dumps(target) + ");"
+            "if(el){var y=el.getBoundingClientRect().top;if(Math.abs(y)>40){try{el.scrollIntoView({behavior:'smooth',block:'start'});}"
+            "catch(e){el.scrollIntoView();}}if(++done<4)setTimeout(go,[400,900,1600][done-1]);return;}"
+            "if(++n<20)setTimeout(go,150);}go();})();</script><!-- %d -->" % int(time.time() * 1000),
+            height=0,
+        )
+
+
+_render_af_scroll_to()

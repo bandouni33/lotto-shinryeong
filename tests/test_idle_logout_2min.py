@@ -80,8 +80,8 @@ class ConstantContractTests(unittest.TestCase):
         self.assertIn("idle_seconds >= _idle_limit_for_request()", body,
                       "판정이 기준 함수를 쓰지 않는다 — 값을 바꿔도 동작이 안 바뀔 수 있다")
         limit = AUTH_SRC.split("def _idle_limit_for_request")[1].split("\ndef ")[0]
-        self.assertIn("return IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS", limit)
-        self.assertIn("return IDLE_LOGOUT_SECONDS", limit.replace(" + ADVANCED_IDLE_GRACE_SECONDS", ""))
+        self.assertIn("IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS", limit)
+        self.assertIn("    return IDLE_LOGOUT_SECONDS\n", limit + "\n")
         self.assertIsNone(re.search(r"idle_seconds\s*>=\s*\d+", AUTH_SRC),
                           "idle 판정에 맨 숫자가 남아 있다(사본이 둘이 된다)")
 

@@ -31,6 +31,9 @@ _LOGOUT_EXACT_KEYS = frozenset(
         "saved_settings",
         "settings_saved",
         "af_advanced_filter_df",
+        # 2026-10-20: 고급필터 2·3단계 결과(세션에 남겨 다시 그림) — 로그아웃하면 다음 사람에게 안 보이게
+        "af_step2_result",
+        "af_step3_result",
         "af_mobile_notice_dismissed",
         "auto_purchase_history",
         "auto_purchase_seq",

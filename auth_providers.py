@@ -570,15 +570,17 @@ def _link_guest_to_member_safe(guest_id: str, member_id: int, ua_hash: str | Non
 #     아래 restore_member_from_guest 주석 참고).
 IDLE_LOGOUT_SECONDS = 120
 # 2026-10-20(사용자 지시 — 고급필터는 이용자가 오래 고민하는 창인데 너무 빨리 로그아웃됨): 고급필터 화면만
-# 무조작 IDLE_LOGOUT_SECONDS 뒤 "3분 뒤 자동 로그아웃" 안내창을 띄우고(admin_filter 의 화면 쪽 감시), 그래도
-# 반응이 없으면 그때 로그아웃한다. 서버 판정도 이 화면 요청에는 그만큼(2분+3분) 늦춘다. 다른 화면은 그대로.
+# 무조작 IDLE_LOGOUT_SECONDS 뒤 "3분 뒤 자동 로그아웃" 안내창을 띄우고, 그래도 반응이 없으면 로그아웃한다 —
+# 판정은 화면 쪽(admin_filter._render_af_idle_guard: 누르기·스크롤도 '이용 중'으로 봄). 서버는 화면을 만지는 것만으로는
+# 요청을 받지 못하므로(신호용 재실행은 2단계 결과를 지움) 이 화면 요청의 서버 판정은 넉넉히 둔 안전망이다.
 ADVANCED_IDLE_GRACE_SECONDS = 180
+ADVANCED_SERVER_IDLE_SECONDS = 30 * 60
 
 
 def _idle_limit_for_request() -> int:
     try:
         if st.query_params.get("page") == "advanced":
-            return IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS
+            return max(ADVANCED_SERVER_IDLE_SECONDS, IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS)
     except Exception:
         pass
     return IDLE_LOGOUT_SECONDS
