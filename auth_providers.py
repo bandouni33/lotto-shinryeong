@@ -1073,6 +1073,9 @@ def handle_oauth_callback() -> bool:
         return False
 
     finalize_login(provider, provider_uid)
+    # 2026-10-20(사용자 승인 — 웹 로그인 때마다 브라우저 탭이 쌓임): 웹 카카오 로그인은 팝업 창에서 하고, 이 콜백이
+    # 끝난 화면(=팝업)은 원래 창에 '로그인 끝'을 알린 뒤 스스로 닫는다(wallet_ui.inject_manual_dialog_back_bridge).
+    st.session_state["_ln_web_login_done"] = True
     # 2026-09-19: state에 실려 돌아온 재개 의도를 여기서(로그인 성공 시에만) 되산다 —
     # session_state는 이 콜백 요청에서 세로 비어 있기 때문.
     _restore_resume_from_state(resume_from_state, resume_data_from_state)

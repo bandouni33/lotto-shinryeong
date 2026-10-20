@@ -1873,10 +1873,39 @@ def inject_manual_dialog_back_bridge() -> None:
         실행) — 이 브릿지 객체만은 단순 window.parent 참조로는 실기기에서 안 잡히는
         경우가 이미 그 함수 독스트링에서 확인돼 있어 그대로 따른다.
     """
+    # 2026-10-20(사용자 승인 — 웹에서 카카오 로그인할 때마다 브라우저 탭이 하나씩 쌓였다): 웹(브라우저) 로그인 버튼은
+    # Streamlit Cloud 보안 구조상 같은 탭으로 못 열어 새 탭으로 열었고(10-03), 로그인이 끝난 앱이 그 새 탭에 남았다.
+    # → ① 웹 로그인 링크를 누르면 작은 팝업 창으로 연다(막히면 예전처럼 새 탭). ② 로그인 콜백이 끝난 화면은
+    # '로그인 끝'을 같은 브라우저의 다른 창에 알리고 스스로 닫는다(스크립트로 연 창만 닫힘 — 일반 탭이면 그대로).
+    # ③ 로그인 안내가 떠 있던 원래 창은 그 알림을 받으면 새로고침 → 같은 기기 연결로 로그인 상태가 된다.
+    # 앱(설치형)은 로그인 링크가 없어(네이티브 SDK) ①이 걸리지 않는다. 같은 iframe 안이라 화면 배치 변화 없음.
+    login_done = bool(st.session_state.pop("_ln_web_login_done", False))
+    login_done_js = (
+        "try{var W0=window.parent;try{var bc0=new W0.BroadcastChannel('ln-auth');bc0.postMessage({t:'login',ts:Date.now()});bc0.close();}catch(e){}"
+        "try{W0.localStorage.setItem('ln-auth-login',String(Date.now()));}catch(e){}"
+        "setTimeout(function(){try{W0.top.close();}catch(e){}},700);}catch(e){}"
+        if login_done else ""
+    )
     components.html(
         """
         <script>
         (function () {
+            // 웹 카카오 로그인 팝업·완료 알림(위 Python 주석 참고) — 앱 문서에 한 번만 심는다.
+            var PW = window.parent, PD = PW.document;
+            if (!PW.__lnAuthPopup) {
+                PW.__lnAuthPopup = true;
+                var code = "(function(){var W=window,D=document;"
+                  + "D.addEventListener('click',function(ev){try{var a=ev.target&&ev.target.closest&&ev.target.closest('.st-key-auth_banner_kakao a[href]');"
+                  + "if(!a||(a.href||'').indexOf('kauth.kakao.com')<0)return;"
+                  + "var w=W.open(a.href,'ln_kakao_login','popup=yes,width=480,height=760');"
+                  + "if(w){ev.preventDefault();ev.stopPropagation();try{w.focus();}catch(e){}}}catch(e){}},true);"
+                  + "function onLogin(){if(D.querySelector('.st-key-auth_banner_kakao')){W.location.reload();}}"
+                  + "try{var bc=new W.BroadcastChannel('ln-auth');bc.onmessage=function(e){if(e.data&&e.data.t==='login')onLogin();};}catch(e){}"
+                  + "W.addEventListener('storage',function(e){if(e.key==='ln-auth-login')onLogin();});"
+                  + "})();";
+                var sc = PD.createElement('script'); sc.textContent = code; PD.head.appendChild(sc);
+            }
+            """ + login_done_js + """
             // 2026-10-18(사용자 지시): 적립금 확인창(points_notice_dialog — 자동·번개·안티액땜·타로 공통)에서
             // '확인 후 진행'·'취소'를 누르면 서버 처리(차감·배정 1~2초)가 끝날 때까지 창이 그대로 남아 멈춘 듯
             // 보였다 → 누르는 즉시 창을 화면에서만 감춘다(처리·결과는 그대로 서버). 같은 창이 다른 내용으로 다시
