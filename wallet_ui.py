@@ -2034,8 +2034,12 @@ def render_wallet_bar(*, show_my_info_trigger: bool = True) -> int | None:
     # 2026-10-09: 실패 안내(결제 확인 실패 등)도 같은 칸을 쓴다 — st.toast 는 바로 뒤 st.rerun()에
     # 묻혀 안 보일 수 있어서, 완료 안내와 같은 "세션에 세워 두고 다음 실행에서 한 번 보여주기"로 통일.
     toast_error = st.session_state.pop("wallet_toast_error", None)
+    # 2026-10-20(사용자 영상 — 자동조합 끝날 때 신령 이미지·버튼 두 벌): 안내 칸이 있는 실행과 없는 실행에서
+    # 뒤 요소 순번이 한 칸씩 달라져, 다시 그리는 동안 옛 화면이 새 화면 아래 남았다. 빈 칸(st.empty — 공간
+    # 없음)을 항상 두고 그 안에만 그려 순번을 고정한다.
+    _toast_slot = st.empty()
     if toast or toast_error:
-        with st.container(key=WALLET_TOAST_BOX_KEY):
+        with _toast_slot.container(key=WALLET_TOAST_BOX_KEY):
             if toast:
                 st.success(toast)
             if toast_error:
