@@ -569,6 +569,19 @@ def _link_guest_to_member_safe(guest_id: str, member_id: int, ua_hash: str | Non
 #   · 실효 판정은 이 서버 값이다(앱 쪽 자체 감지는 실기기에서 네 번 연속 실패했다 —
 #     아래 restore_member_from_guest 주석 참고).
 IDLE_LOGOUT_SECONDS = 120
+# 2026-10-20(사용자 지시 — 고급필터는 이용자가 오래 고민하는 창인데 너무 빨리 로그아웃됨): 고급필터 화면만
+# 무조작 IDLE_LOGOUT_SECONDS 뒤 "3분 뒤 자동 로그아웃" 안내창을 띄우고(admin_filter 의 화면 쪽 감시), 그래도
+# 반응이 없으면 그때 로그아웃한다. 서버 판정도 이 화면 요청에는 그만큼(2분+3분) 늦춘다. 다른 화면은 그대로.
+ADVANCED_IDLE_GRACE_SECONDS = 180
+
+
+def _idle_limit_for_request() -> int:
+    try:
+        if st.query_params.get("page") == "advanced":
+            return IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS
+    except Exception:
+        pass
+    return IDLE_LOGOUT_SECONDS
 RESTORE_RECHECK_SECONDS = 30
 # 2026-10-08(사용자 승인 — 로딩 시간): 기기(guest_id)별 최근 확인 결과를 이 프로세스 안에 잠깐 둔다.
 # 이 앱은 화면을 옮길 때마다 새 세션이 열리므로 세션 단위가 아니라 기기 단위여야 효과가 있다.
@@ -658,7 +671,7 @@ def restore_member_from_guest() -> int | None:
         except Exception:
             idle_seconds = None
 
-        if idle_seconds is not None and idle_seconds >= IDLE_LOGOUT_SECONDS:
+        if idle_seconds is not None and idle_seconds >= _idle_limit_for_request():
             logout()
             return None
 

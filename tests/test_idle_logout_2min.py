@@ -75,8 +75,13 @@ class ConstantContractTests(unittest.TestCase):
 
     def test_I1_judgement_uses_the_constant_not_a_bare_number(self):
         body = AUTH_SRC.split("def restore_member_from_guest")[1].split("def ")[0]
-        self.assertIn("idle_seconds >= IDLE_LOGOUT_SECONDS", body,
-                      "판정이 상수를 쓰지 않는다 — 값을 바꿔도 동작이 안 바뀔 수 있다")
+        # 2026-10-20: 고급필터 화면만 안내창 3분을 더 주므로 판정은 _idle_limit_for_request() 를 거친다 —
+        # 그 함수가 기준 상수(IDLE_LOGOUT_SECONDS)에서 출발하는지까지 확인한다.
+        self.assertIn("idle_seconds >= _idle_limit_for_request()", body,
+                      "판정이 기준 함수를 쓰지 않는다 — 값을 바꿔도 동작이 안 바뀔 수 있다")
+        limit = AUTH_SRC.split("def _idle_limit_for_request")[1].split("\ndef ")[0]
+        self.assertIn("return IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS", limit)
+        self.assertIn("return IDLE_LOGOUT_SECONDS", limit.replace(" + ADVANCED_IDLE_GRACE_SECONDS", ""))
         self.assertIsNone(re.search(r"idle_seconds\s*>=\s*\d+", AUTH_SRC),
                           "idle 판정에 맨 숫자가 남아 있다(사본이 둘이 된다)")
 

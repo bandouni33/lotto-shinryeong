@@ -635,6 +635,9 @@ def _prompt_user_email() -> None:
 
 _prompt_user_email()
 
+if st.session_state.pop("_af_idle_logged_out", False):
+    st.warning("⏱️ 장시간 조작이 없어 자동 로그아웃되었습니다. 다시 로그인해 주세요.")
+
 def load_recent_win_numbers():
     possible_paths = ["lotto-app/로또최근당첨내역.xlsb", "로또최근당첨내역.xlsb", "lotto-app/로또최근당첨내역.xlsx", "로또최근당첨내역.xlsx"]
     for path in possible_paths:
@@ -2408,3 +2411,78 @@ with st.container(key="af_bottom_center"):
 
                     traceback.print_exc()
                     st.error(f"2단계 연산 중 오류가 발생했습니다. 엑셀의 해당숫자·최소·최대 값을 확인해주세요. ({e})")
+
+
+# ==========================================================
+# 2026-10-20(사용자 지시): 무조작 자동 로그아웃 — 고급필터는 오래 고민하는 화면이라 바로 끊지 않는다.
+# 무조작 2분(auth_providers.IDLE_LOGOUT_SECONDS) → "3분 뒤 자동 로그아웃" 안내창(남은 시간 표시, [계속 이용하기])
+# → 그래도 반응이 없으면 로그아웃. 화면을 만지면(누르기·입력·스크롤) 안내창이 닫히고 처음부터 다시 센다.
+# 서버는 마지막 요청 시각으로 무조작을 판단하므로, 화면을 만지는 동안 90초마다 숨은 버튼으로 서버에
+# 알린다(입력칸에 글자를 넣는 중에는 건너뜀). 감시·버튼 칸은 숨김이라 배치에 영향 없음. 로그인 중일 때만.
+def _render_af_idle_guard() -> None:
+    import streamlit.components.v1 as _cmp
+    from auth_providers import ADVANCED_IDLE_GRACE_SECONDS, IDLE_LOGOUT_SECONDS, current_member_id, logout
+
+    if not current_member_id():
+        return
+    wrap = "af_idle_guard_wrap"
+    with st.container(key=wrap):
+        st.markdown(
+            f"<style>.st-key-{wrap},"
+            f'div[data-testid="stLayoutWrapper"]:has(> .st-key-{wrap}){{display:none !important;}}</style>',
+            unsafe_allow_html=True,
+        )
+        st.button("af-idle-keepalive", key="af_idle_keepalive_btn")
+        if st.button("af-idle-logout", key="af_idle_logout_btn"):
+            logout()
+            # 로그아웃 때 지워지는 공용 안내 칸(wallet_toast_error) 대신 이 화면 전용 표시를 쓴다 — 다음 실행 시작에서
+            # 서버 무조작 판정이 로그아웃을 한 번 더 하며 공용 안내를 지워 버린다.
+            st.session_state["_af_idle_logged_out"] = True
+            st.rerun()
+        # 감시 코드는 앱 문서(부모)에 직접 심는다 — 이 칸(iframe)은 화면이 다시 그려질 때마다 새로 만들어져
+        # iframe 안에서 돌린 타이머·이벤트는 함께 사라지기 때문(이미 심겨 있으면 '서버에 다녀옴'만 알린다).
+        guard_js = (
+            """(function(){
+var W=window, D=document, WARN=%d*1000, GRACE=%d*1000, PING=90000;
+var S={act:Date.now(), ping:Date.now(), box:null, iv:null};
+function btn(k){ return D.querySelector('.st-key-'+k+' button'); }
+function editing(){ var a=D.activeElement; if(!a) return false; var t=(a.tagName||'').toLowerCase();
+  return t==='input'||t==='textarea'||a.isContentEditable; }
+function hide(){ if(S.box){ S.box.remove(); S.box=null; } }
+function show(){ if(S.box) return; var b=D.createElement('div'); b.id='af-idle-warn';
+  b.setAttribute('role','alertdialog');
+  b.style.cssText='position:fixed;left:50%%;bottom:24px;transform:translateX(-50%%);z-index:100000;width:min(92vw,420px);'+
+    'background:#1d2447;border:1px solid #e8c770;border-radius:14px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.45);'+
+    'color:#fff;font:600 15px/1.5 sans-serif;text-align:center;';
+  b.innerHTML='<div style="color:#e8c770;font-weight:800;margin-bottom:6px">자동 로그아웃 안내</div>'+
+    '<div>조작이 없어 <b id="af-idle-left">3:00</b> 뒤 자동 로그아웃됩니다.</div>'+
+    '<button type="button" style="margin-top:12px;width:100%%;padding:10px;border:0;border-radius:10px;'+
+    'background:#e8c770;color:#151b36;font-weight:800;font-size:15px">계속 이용하기</button>';
+  D.body.appendChild(b); S.box=b; }
+function poke(){ var k=btn('af_idle_keepalive_btn'); if(k){ S.ping=Date.now(); k.click(); } }
+function activity(){ var n=Date.now(); var wasWarn=!!S.box; S.act=n; hide();
+  if((wasWarn || n-S.ping>PING) && !editing()) poke(); }
+var EV=['pointerdown','keydown','wheel','touchstart','scroll'];
+EV.forEach(function(e){ D.addEventListener(e,activity,true); });
+function stop(){ clearInterval(S.iv); hide(); EV.forEach(function(e){ D.removeEventListener(e,activity,true); }); W.__afIdle=null; }
+S.iv=setInterval(function(){
+  if(!btn('af_idle_keepalive_btn')){ stop(); return; }
+  var idle=Date.now()-S.act;
+  if(idle>=WARN){ show(); var left=Math.max(0,WARN+GRACE-idle), m=Math.floor(left/60000), s=Math.floor(left%%60000/1000);
+    var el=D.getElementById('af-idle-left'); if(el) el.textContent=m+':'+(s<10?'0':'')+s;
+    if(left<=0){ var l=btn('af_idle_logout_btn'); stop(); if(l) l.click(); } }
+},1000);
+W.__afIdle={served:function(){ S.ping=Date.now(); }};
+})();"""
+            % (IDLE_LOGOUT_SECONDS, ADVANCED_IDLE_GRACE_SECONDS)
+        )
+        _cmp.html(
+            "<script>(function(){var W=window.parent,D=W.document;"
+            "if(W.__afIdle){W.__afIdle.served();return;}"
+            "var sc=D.createElement('script');sc.textContent=" + json.dumps(guard_js) + ";D.head.appendChild(sc);"
+            "})();</script><!-- %d -->" % int(time.time()),
+            height=0,
+        )
+
+
+_render_af_idle_guard()
