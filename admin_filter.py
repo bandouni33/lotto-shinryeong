@@ -397,6 +397,58 @@ def _parse_k295_excel(uploaded_file) -> pd.DataFrame:
     return df_filter.reset_index(drop=True)
 
 
+def _norm_pattern_name(name) -> str:
+    return "".join(str(name).split())
+
+
+def _build_step2_rules(edited_df: pd.DataFrame) -> tuple[list[dict], list[str]]:
+    """2단계(나만의 고급필터) 규칙 만들기 — 2026-10-20(사용자 신고: 업로드 후 2단계 누르면 '서비스 점검 중').
+
+    사용자 엑셀에 해당숫자가 'AUTO'인 행(전 출현번호·이웃수·후보패턴 이웃수 등)이 있으면 숫자로 읽다가 예외가
+    났다. AUTO 행은 배포용 1차 필터와 같은 정의(combo_filter_v2.latest_auto_target_sets — 최신 회차 당첨번호
+    6개+보너스 기준)로 대상 번호를 계산해 적용한다(사용자 선택). 읽을 수 없는 행은 빼고 이름을 돌려준다."""
+    rules: list[dict] = []
+    skipped: list[str] = []
+    auto_sets = None
+    for i, row in edited_df.iterrows():
+        label = str(row.get("패턴이름") or "").strip()
+        if label in ("", "None", "nan"):
+            label = f"{i + 1}번째 줄"
+        raw = str(row["해당숫자"]).strip()
+        try:
+            mn, mx = int(row["최소"]), int(row["최대"])
+        except (TypeError, ValueError):
+            skipped.append(label)
+            continue
+        if raw.upper() == "AUTO":
+            if auto_sets is None:
+                import importlib
+
+                import combo_filter_v2
+                import draw_results_db
+
+                if not hasattr(combo_filter_v2, "latest_auto_target_sets"):  # Cloud 옛 모듈(재부팅 전) 대비
+                    combo_filter_v2 = importlib.reload(combo_filter_v2)
+                sets = combo_filter_v2.latest_auto_target_sets(draw_results_db.get_all_draw_results())
+                auto_sets = {_norm_pattern_name(k): v for k, v in sets.items()}
+            targets = auto_sets.get(_norm_pattern_name(row.get("패턴이름")))
+            if targets is None:
+                skipped.append(f"{label}(AUTO 계산 없음)")
+                continue
+            rules.append({"targets": set(targets), "min": mn, "max": mx})
+            continue
+        try:
+            nums = {int(t) for t in raw.replace(",", " ").split()}
+        except ValueError:
+            skipped.append(label)
+            continue
+        if not nums:
+            skipped.append(label)
+            continue
+        rules.append({"targets": nums, "min": mn, "max": mx})
+    return rules, skipped
+
+
 def _load_advanced_filter_from_disk() -> pd.DataFrame | None:
     """디스크에 저장된 고급필터 규칙 불러오기."""
     path = get_advanced_filter_cache_path()
@@ -2296,11 +2348,9 @@ with st.container(key="af_bottom_center"):
                     step1_df = _normalize_combo_df(pd.read_csv(step1_path))
                     step1_df = step1_df.apply(pd.to_numeric, errors="coerce").fillna(0).astype(int)
 
-                    rules = []
-                    for _, row in edited_df.iterrows():
-                        clean_str = str(row["해당숫자"]).replace(",", " ")
-                        nums = set(map(int, clean_str.split()))
-                        rules.append({"targets": nums, "min": int(row["최소"]), "max": int(row["최대"])})
+                    rules, skipped = _build_step2_rules(edited_df)
+                    if skipped:
+                        st.warning("⚠️ 아래 행은 해당숫자를 읽을 수 없어 이번 연산에서 뺐습니다: " + ", ".join(skipped))
 
                     with st.spinner("2단계 고급필터 연산 중..."):
                         final_df = lotto_engine.run_step2_filtering(step1_df, rules)
@@ -2353,3 +2403,8 @@ with st.container(key="af_bottom_center"):
 
                 except FileNotFoundError:
                     st.error(f"🚨 1단계 결과 파일('{get_combo_step1_path()}')을 찾을 수 없습니다. 1단계 연산을 먼저 실행해주세요.")
+                except Exception as e:  # noqa: BLE001 — 2026-10-20: 예외가 앱 공용 '서비스 점검' 화면으로 번지지 않게
+                    import traceback
+
+                    traceback.print_exc()
+                    st.error(f"2단계 연산 중 오류가 발생했습니다. 엑셀의 해당숫자·최소·최대 값을 확인해주세요. ({e})")

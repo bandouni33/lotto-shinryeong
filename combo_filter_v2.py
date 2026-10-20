@@ -237,6 +237,40 @@ CAND_NEIGHBOR_200_RULE = "후보패턴 이웃수(200회)"
 CAND_NEIGHBOR_WINDOW = 200
 
 
+def auto_target_sets(history_asc: list[dict], anchor_round: int, *, need_200: bool = True,
+                     gap_order: list[int] | None = None) -> dict[str, set[int]]:
+    """1차 AUTO 규칙 4종의 대상 번호 — anchor_round(직전 회차) 당첨번호 6개+보너스 기준.
+    2026-10-20: 배포용 생성(compute_stage_masks)과 고급필터 2단계(사용자 엑셀의 'AUTO' 행)가 같은 정의를
+    쓰도록 한 곳으로 뽑았다(계산 내용은 그대로)."""
+    rounds = [h["draw_round"] for h in history_asc]
+    anchor = history_asc[rounds.index(anchor_round)]
+    anchors7 = anchor["nums"] + [anchor["bonus"]]
+    if gap_order is None:
+        gap_order = _gap_order_for_anchor(history_asc, anchor_round)
+    neighbor: set[int] = set()
+    for n in anchors7:
+        neighbor.add(n)
+        if n > 1:
+            neighbor.add(n - 1)
+        if n < 45:
+            neighbor.add(n + 1)
+    out = {
+        "전 출현번호": set(anchors7),
+        "이웃수": neighbor,
+        "후보패턴 이웃수": _cand_neighbor_of(gap_order, anchors7),
+    }
+    if need_200:
+        order200 = _gap_order_for_anchor(history_asc, anchor_round, CAND_NEIGHBOR_WINDOW)
+        out[CAND_NEIGHBOR_200_RULE] = _cand_neighbor_of(order200, anchors7)
+    return out
+
+
+def latest_auto_target_sets(history_desc: list[dict]) -> dict[str, set[int]]:
+    """최신 회차 기준 AUTO 대상 번호(다음 회차 조합용) — draw_results_db.get_all_draw_results() 그대로 받는다."""
+    history_asc = _prep_history([dict(h) for h in history_desc])
+    return auto_target_sets(history_asc, history_asc[-1]["draw_round"])
+
+
 def build_base_masks(rules: tuple | None = None) -> dict:
     """회차와 무관한 재료(전체 조합·원핫·1차 고정 마스크·2차 이격수 마스크·규칙표)를
     한 번 만든다. 한 실행에서 여러 회차를 계산할 때(추적표 행 전진) 이걸 재사용하면
@@ -279,33 +313,16 @@ def compute_stage_masks(history_asc: list[dict], anchor_round: int,
 
     gap_order = _gap_order_for_anchor(history_asc, anchor_round)
 
-    target_prev = set(anchors7)
-    target_neighbor = set()
-    for n in anchors7:
-        target_neighbor.add(n)
-        if n > 1:
-            target_neighbor.add(n - 1)
-        if n < 45:
-            target_neighbor.add(n + 1)
-    target_cand_neighbor = _cand_neighbor_of(gap_order, anchors7)
-    target_cand_neighbor_200: set[int] | None = None
-    if any(ar["name"] == CAND_NEIGHBOR_200_RULE for ar in auto_rules):
-        order200 = _gap_order_for_anchor(history_asc, anchor_round, CAND_NEIGHBOR_WINDOW)
-        target_cand_neighbor_200 = _cand_neighbor_of(order200, anchors7)
+    _auto_sets = auto_target_sets(history_asc, anchor_round,
+                                  need_200=any(ar["name"] == CAND_NEIGHBOR_200_RULE for ar in auto_rules),
+                                  gap_order=gap_order)
 
     auto_pass = np.ones(combos.shape[0], dtype=bool)
     auto_targets: dict[str, list[int]] = {}
     for ar in auto_rules:
-        if ar["name"] == "전 출현번호":
-            tv = _targets_to_vec(target_prev)
-        elif ar["name"] == "이웃수":
-            tv = _targets_to_vec(target_neighbor)
-        elif ar["name"] == "후보패턴 이웃수":
-            tv = _targets_to_vec(target_cand_neighbor)
-        elif ar["name"] == CAND_NEIGHBOR_200_RULE:
-            tv = _targets_to_vec(target_cand_neighbor_200 or set())
-        else:
+        if ar["name"] not in _auto_sets:
             continue
+        tv = _targets_to_vec(_auto_sets[ar["name"]])
         auto_targets[ar["name"]] = [i + 1 for i in range(45) if tv[i]]
         cnt = combo_oh @ tv
         auto_pass &= _band(cnt, ar["min"], ar["max"])
