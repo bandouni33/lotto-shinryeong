@@ -203,7 +203,21 @@ AUTO_GEN_PENDING_KEY = "auto_gen_pending"
 # 빛 알갱이)을 3초짜리 반복 애니메이션 WebP 한 장으로 미리 구워(scripts/make_spirit2_gen_anim.py) 홈페이지
 # 저장소(GitHub Pages)에 두고 그림 한 장만 재생한다. 시작 섬광만 CSS 한 겹(섞기 없음, 투명도만).
 # 그림을 못 받으면(오프라인 등) 그 자리는 빈 채로 원래 정지 이미지가 그대로 보인다.
-SPIRIT2_GEN_ANIM_URL = "https://bandouni33.github.io/fx/spirit2_gen.webp?v=1"
+# 2026-10-20(사용자 지시 "아이콘은 놔두고 그 위에 효과만, 5종 각각 다르게"): 신령 이미지는 그대로 두고 위에 투명한
+# 빛 효과 그림 한 장만 겹친다. 5종(후광·빛줄기 / 빛 알갱이 상승 / 구슬 빛 폭발 / 테두리 기운 고리 / 별똥별)을 조합마다
+# 차례로 돌린다(세션마다 시작 순서 무작위). 그림 생성: scripts/make_spirit2_fx_variants.py, 호스팅: 홈페이지 fx/.
+# 복원지점: 브랜치 restore/2026-10-20-before-fx5 (단일 구운 연출 상태).
+SPIRIT2_GEN_FX_VARIANTS = ("v1", "v2", "v3", "v4", "v5")
+SPIRIT2_GEN_FX_URL = "https://bandouni33.github.io/fx/spirit2_fx_{name}.webp?v=1"
+AUTO_FX_IDX_KEY = "auto_fx_idx"
+
+
+def _auto_fx_url() -> str:
+    """이번(다음) 조합에 쓸 효과 그림 주소 — 미리 받기·미리 싣기·생성 중 모두 같은 값이라 화면이 다시 만들어지지 않는다."""
+    import random as _r
+
+    idx = st.session_state.setdefault(AUTO_FX_IDX_KEY, _r.randrange(len(SPIRIT2_GEN_FX_VARIANTS)))
+    return SPIRIT2_GEN_FX_URL.format(name=SPIRIT2_GEN_FX_VARIANTS[int(idx) % len(SPIRIT2_GEN_FX_VARIANTS)])
 
 
 def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str:
@@ -215,7 +229,7 @@ def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str
     hide = "display:none;" if preload else ""
     return f"""
           <div class="auto-spirit2-gen"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
-            <img src="{SPIRIT2_GEN_ANIM_URL}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
+            <img src="{_auto_fx_url()}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
             <div class="{k}-flash" style="position:absolute;inset:0;"></div>
           </div>
           <style>@keyframes {k}-fl{{0%{{opacity:0}}12%{{opacity:.8}}100%{{opacity:0}}}}
@@ -235,7 +249,7 @@ def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = N
         gen = ""
     ripple_style = ' style="position:relative;"' if gen else ""
     # 연출 그림을 화면에 미리 받아 둔다(브라우저 캐시) — 첫 조합 때도 바로 재생되게. 보이지 않는 1장.
-    prefetch = f'<img src="{SPIRIT2_GEN_ANIM_URL}" alt="" aria-hidden="true" style="display:none">'
+    prefetch = f'<img src="{_auto_fx_url()}" alt="" aria-hidden="true" style="display:none">'
     return f"""
     <div class="{slot_class}">{prefetch}
       <div class="auto-spirit2-wrap">
@@ -272,6 +286,7 @@ def _finish_auto_generation_if_due() -> str | None:
     if _t.time() - started < AUTO_GEN_ANIM_SECONDS:
         return pending.get("token")
     st.session_state.pop(AUTO_GEN_PENDING_KEY, None)
+    st.session_state[AUTO_FX_IDX_KEY] = int(st.session_state.get(AUTO_FX_IDX_KEY, 0)) + 1  # 다음 조합은 다음 효과
     entry = pending.get("entry")
     if entry:
         _append_purchase_history(entry)
