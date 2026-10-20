@@ -210,6 +210,9 @@ AUTO_GEN_PENDING_KEY = "auto_gen_pending"
 SPIRIT2_GEN_FX_VARIANTS = ("v1", "v2", "v3", "v4", "v5")
 SPIRIT2_GEN_FX_URL = "https://bandouni33.github.io/fx/spirit2_fx_{name}.webp?v=1"
 AUTO_FX_IDX_KEY = "auto_fx_idx"
+# 2026-10-20(사용자 지시 "배경 움직임은 원래대로 모두 유지"): 옛 영역별 흔들림(하늘 고정·땅 살짝·나무·꽃 바람)을 같은 값으로
+# 구운 그림(scripts/make_spirit2_quake_anim.py)을 빛 효과 아래에 깐다 — 안드로이드 소프트웨어 렌더링에서도 재생.
+SPIRIT2_QUAKE_URL = "https://bandouni33.github.io/fx/spirit2_quake.webp?v=1"
 
 
 def _auto_fx_url() -> str:
@@ -229,6 +232,7 @@ def _spirit2_gen_layer(base64: str, token: str, *, preload: bool = False) -> str
     hide = "display:none;" if preload else ""
     return f"""
           <div class="auto-spirit2-gen"{pre} aria-hidden="true" style="{hide}position:absolute;inset:2px;border-radius:50%;overflow:hidden;pointer-events:none;">
+            <img src="{SPIRIT2_QUAKE_URL}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
             <img src="{_auto_fx_url()}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;">
             <div class="{k}-flash" style="position:absolute;inset:0;"></div>
           </div>
@@ -249,7 +253,8 @@ def _spirit2_image_block(base64: str, slot_class: str, gen_token: str | None = N
         gen = ""
     ripple_style = ' style="position:relative;"' if gen else ""
     # 연출 그림을 화면에 미리 받아 둔다(브라우저 캐시) — 첫 조합 때도 바로 재생되게. 보이지 않는 1장.
-    prefetch = f'<img src="{_auto_fx_url()}" alt="" aria-hidden="true" style="display:none">'
+    prefetch = (f'<img src="{SPIRIT2_QUAKE_URL}" alt="" aria-hidden="true" style="display:none">'
+                f'<img src="{_auto_fx_url()}" alt="" aria-hidden="true" style="display:none">')
     return f"""
     <div class="{slot_class}">{prefetch}
       <div class="auto-spirit2-wrap">
