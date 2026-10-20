@@ -573,14 +573,17 @@ IDLE_LOGOUT_SECONDS = 120
 # 무조작 IDLE_LOGOUT_SECONDS 뒤 "3분 뒤 자동 로그아웃" 안내창을 띄우고, 그래도 반응이 없으면 로그아웃한다 —
 # 판정은 화면 쪽(admin_filter._render_af_idle_guard: 누르기·스크롤도 '이용 중'으로 봄). 서버는 화면을 만지는 것만으로는
 # 요청을 받지 못하므로(신호용 재실행은 2단계 결과를 지움) 이 화면 요청의 서버 판정은 넉넉히 둔 안전망이다.
-ADVANCED_IDLE_GRACE_SECONDS = 180
+# 2026-10-20(사용자 지시 2차 — 고급필터는 설치형 이용자라 3분은 짧다): 무조작 5분 뒤 안내창, 안내 후 5분 더.
+ADVANCED_IDLE_WARN_SECONDS = 300
+ADVANCED_IDLE_GRACE_SECONDS = 300
 ADVANCED_SERVER_IDLE_SECONDS = 30 * 60
 
 
 def _idle_limit_for_request() -> int:
     try:
         if st.query_params.get("page") == "advanced":
-            return max(ADVANCED_SERVER_IDLE_SECONDS, IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS)
+            return max(ADVANCED_SERVER_IDLE_SECONDS, IDLE_LOGOUT_SECONDS + ADVANCED_IDLE_GRACE_SECONDS,
+                       ADVANCED_IDLE_WARN_SECONDS + ADVANCED_IDLE_GRACE_SECONDS)
     except Exception:
         pass
     return IDLE_LOGOUT_SECONDS

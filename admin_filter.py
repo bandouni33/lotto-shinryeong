@@ -2536,14 +2536,14 @@ with st.container(key="af_bottom_center"):
 
 # ==========================================================
 # 2026-10-20(사용자 지시): 무조작 자동 로그아웃 — 고급필터는 오래 고민하는 화면이라 바로 끊지 않는다.
-# 무조작 2분(auth_providers.IDLE_LOGOUT_SECONDS) → "3분 뒤 자동 로그아웃" 안내창(남은 시간 표시, [계속 이용하기])
+# 무조작 5분(auth_providers.ADVANCED_IDLE_WARN_SECONDS) → "5분 뒤 자동 로그아웃" 안내창(남은 시간 표시, [계속 이용하기])
 # → 그래도 반응이 없으면 로그아웃. 화면을 만지면(누르기·입력·스크롤) 안내창이 닫히고 처음부터 다시 센다.
 # 판정은 화면 쪽에서 한다 — 서버에 '이용 중' 신호를 보내려고 화면을 다시 그리면 2단계 결과(그 실행에서만 보이는
 # 표)가 지워져 버려서(로컬 확인) 신호는 보내지 않고, 서버 쪽 판정은 이 화면만 넉넉히(auth_providers
 # ADVANCED_SERVER_IDLE_SECONDS) 둔다. 감시·버튼 칸은 숨김이라 배치에 영향 없음. 로그인 중일 때만.
 def _render_af_idle_guard() -> None:
     import streamlit.components.v1 as _cmp
-    from auth_providers import ADVANCED_IDLE_GRACE_SECONDS, IDLE_LOGOUT_SECONDS, current_member_id, logout
+    from auth_providers import ADVANCED_IDLE_GRACE_SECONDS, ADVANCED_IDLE_WARN_SECONDS, current_member_id, logout
 
     if not current_member_id():
         return
@@ -2574,9 +2574,9 @@ function show(){ if(S.box) return; var b=D.createElement('div'); b.id='af-idle-w
     'background:#1d2447;border:1px solid #e8c770;border-radius:14px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.45);'+
     'color:#fff;font:600 15px/1.5 sans-serif;text-align:center;';
   b.innerHTML='<div style="color:#e8c770;font-weight:800;margin-bottom:6px">자동 로그아웃 안내</div>'+
-    '<div>조작이 없어 <b id="af-idle-left">3:00</b> 뒤 자동 로그아웃됩니다.</div>'+
+    '<div>조작이 없어 <b id="af-idle-left">%d:00</b> 뒤 자동 로그아웃됩니다.</div>'+
     '<button type="button" style="margin-top:12px;width:100%%;padding:10px;border:0;border-radius:10px;'+
-    'background:#e8c770;color:#151b36;font-weight:800;font-size:15px">계속 이용하기</button>';
+    'background:#e8c770;color:#151b36;font-weight:800;font-size:15px">계속 이용하기 (5분 연장)</button>';
   D.body.appendChild(b); S.box=b; }
 function activity(){ S.act=Date.now(); hide(); }
 var EV=['pointerdown','keydown','wheel','touchstart','scroll'];
@@ -2591,7 +2591,7 @@ S.iv=setInterval(function(){
 },1000);
 W.__afIdle={served:function(){ S.act=Date.now(); }};
 })();"""
-            % (IDLE_LOGOUT_SECONDS, ADVANCED_IDLE_GRACE_SECONDS)
+            % (ADVANCED_IDLE_WARN_SECONDS, ADVANCED_IDLE_GRACE_SECONDS, ADVANCED_IDLE_GRACE_SECONDS // 60)
         )
         _cmp.html(
             "<script>(function(){var W=window.parent,D=W.document;"
