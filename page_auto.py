@@ -208,11 +208,11 @@ AUTO_GEN_PENDING_KEY = "auto_gen_pending"
 # 차례로 돌린다(세션마다 시작 순서 무작위). 그림 생성: scripts/make_spirit2_fx_variants.py, 호스팅: 홈페이지 fx/.
 # 복원지점: 브랜치 restore/2026-10-20-before-fx5 (단일 구운 연출 상태).
 SPIRIT2_GEN_FX_VARIANTS = ("v1", "v2", "v3", "v4", "v5")
-SPIRIT2_GEN_FX_URL = "https://bandouni33.github.io/fx/spirit2_fx_{name}.webp?v=1"
+SPIRIT2_GEN_FX_URL = "https://lottoshinryeong.com/fx/spirit2_fx_{name}.webp?v=1"
 AUTO_FX_IDX_KEY = "auto_fx_idx"
 # 2026-10-20(사용자 지시 "배경 움직임은 원래대로 모두 유지"): 옛 영역별 흔들림(하늘 고정·땅 살짝·나무·꽃 바람)을 같은 값으로
 # 구운 그림(scripts/make_spirit2_quake_anim.py)을 빛 효과 아래에 깐다 — 안드로이드 소프트웨어 렌더링에서도 재생.
-SPIRIT2_QUAKE_URL = "https://bandouni33.github.io/fx/spirit2_quake.webp?v=1"
+SPIRIT2_QUAKE_URL = "https://lottoshinryeong.com/fx/spirit2_quake.webp?v=1"
 
 
 def _auto_fx_url() -> str:

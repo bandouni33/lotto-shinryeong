@@ -21,7 +21,7 @@ CHANNELS = [
 ]
 
 
-SITE_URL = "https://bandouni33.github.io"   # 홈페이지(2026-10-18 공개, 저장소 bandouni33/bandouni33.github.io)
+SITE_URL = "https://lottoshinryeong.com"   # 홈페이지(2026-10-18 공개, 저장소 bandouni33/bandouni33.github.io · 10-21 자체 도메인)
 
 
 def round_url(rnd: int) -> str:
