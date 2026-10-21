@@ -145,6 +145,10 @@ def main() -> int:
         print(f"  (부적 생성 실패 — 카드만 게시: {exc})")
         talis = None
     shorts = make_shorts(([talis] if talis else []) + pngs, out / f"{rnd}_shorts.mp4")
+    if shorts:
+        from weekly_content import clip_kit
+
+        clip_kit.write(out, rnd, "sat")   # 네이버 클립 수동 업로드용 문구(실행 기록 Artifacts)
     print(f"[완료] {rnd}회 카드 {len(pngs)}장 · 문구 · 쇼츠={'있음' if shorts else '없음'} · "
           f"→ {out}")
     return 0

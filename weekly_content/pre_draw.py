@@ -145,6 +145,10 @@ def main() -> int:
     out = Path(a.out)
     pngs = build(a.kind, draws, latest, out)
     shorts = make_shorts(pngs, out / f"{latest + 1}_shorts.mp4")
+    if shorts:
+        from weekly_content import clip_kit
+
+        clip_kit.write(out, latest + 1, a.kind)   # 네이버 클립 수동 업로드용 문구(실행 기록 Artifacts)
     print(f"[완료] {a.kind} {latest + 1}회 카드 {len(pngs)}장 · 쇼츠={'있음' if shorts else '없음'} → {out}")
     return 0
 
