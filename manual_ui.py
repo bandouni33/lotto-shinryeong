@@ -400,9 +400,9 @@ def manual_homepage_link_html() -> str:
     return (
         '<style>div[data-testid="stDialog"] a.ln-manual-home,div[data-testid="stDialog"] a.ln-manual-home:visited{'
         'display:inline-block;min-width:96px;text-align:center;padding:4px 12px;border-radius:999px;'
-        'background:rgba(28,28,56,.9);color:#ffd479 !important;font-weight:700;font-size:11px;'
-        'border:1px solid rgba(255,179,0,.45);text-decoration:none !important;box-sizing:border-box;}</style>'
-        '<div style="text-align:right;margin:0 0 6px 0;">'
+        'background:#c6ff00;color:#0b0b1a !important;font-weight:800;font-size:12px;'
+        'border:1px solid #a4d400;box-shadow:0 0 8px rgba(198,255,0,.55);text-decoration:none !important;box-sizing:border-box;}</style>'
+        '<div style="text-align:left;margin:0 0 6px 0;">'
         f'<a class="ln-manual-home" href="{SITE_URL}/" target="_blank" rel="noopener noreferrer">홈페이지</a></div>'
     )
 
