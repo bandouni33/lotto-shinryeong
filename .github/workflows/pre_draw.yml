@@ -36,13 +36,14 @@ jobs:
       - name: 늦은 예약 실행 확인
         # 2026-10-22(사용자 승인): GitHub 예약 실행이 몇 시간씩 밀려(실측 2~6시간) 밤늦게 게시될 수 있다.
         # 정시 실행은 예약 작업이 workflow_dispatch(publish=yes)로 누르고, 이 예약(schedule)은 예비다 —
-        # 예비가 목·금 19:45~20:59 KST 밖에서 돌면 게시하지 않는다(같은 회차 중복은 DB 기록으로 이미 막힌다).
+        # 2026-10-22(사용자 결정 "밤늦게라도 게시"): 늦어도 그날 23:59 KST 까지는 게시하고, 날짜가 넘어간(다른 요일) 실행만 건너뛴다
+        # (같은 회차 중복은 DB 기록으로 이미 막힌다).
         id: late
         run: |
           late=false
           if [ "${{ github.event_name }}" = "schedule" ]; then
             d=$(TZ=Asia/Seoul date +%u); hm=$(TZ=Asia/Seoul date +%H%M)
-            if { [ "$d" != "4" ] && [ "$d" != "5" ]; } || [ "$hm" -lt 1945 ] || [ "$hm" -gt 2059 ]; then late=true; fi
+            if { [ "$d" != "4" ] && [ "$d" != "5" ]; } || [ "$hm" -lt 1945 ]; then late=true; fi
           fi
           echo "late=$late" >> "$GITHUB_OUTPUT"; echo "늦은 실행: $late (KST $(TZ=Asia/Seoul date '+%a %H:%M'))"
       - name: 종류 정하기
