@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import sys
+import json
 import unittest
 from pathlib import Path
 
@@ -39,7 +40,7 @@ class SiteExportTest(unittest.TestCase):
 
     def test_E3_public_keys_only(self):
         self.assertEqual(set(self.d), {"schema", "generated_at", "latest_round", "draws", "our_stats", "tarot",
-                                       "balls", "links", "members", "headline", "question", "answer"})   # talismans 는 export() 에서 추가
+                                       "balls", "links", "members", "headline", "question", "answer", "manual"})   # talismans 는 export() 에서 추가
         self.assertEqual(len(self.d["members"]), 45)
         self.assertEqual(self.d["tarot"]["round"], 1247)
         from weekly_content import cards
@@ -54,6 +55,19 @@ class SiteExportTest(unittest.TestCase):
         self.assertEqual(self.d["links"]["manual_posts"][0]["url"], social_links.MANUAL_URL)
         self.assertEqual(self.d["balls"]["7"]["fill"], ball_style.ball_fill(7))
         self.assertNotIn("유튜브", [c["name"] for c in self.d["links"]["channels"]])
+
+    def test_E5_manual_same_as_app(self):
+        """홈페이지 사용설명서 = 앱 사용설명서(manual_ui) 그대로 — 한쪽만 바뀌지 않게(2026-10-22 사용자 지시)."""
+        import manual_ui
+        from legal_notices import MANUAL_PRIVACY_NOTICE
+        m = self.d["manual"]
+        self.assertEqual([s["title"] for s in m["sections"]], [s["title"] for s in manual_ui.manual_sections()])
+        for got, src in zip(m["sections"], manual_ui.manual_sections()):
+            for k in ("badge", "summary", "steps", "price", "notes"):
+                self.assertEqual(got[k], src[k])
+        self.assertEqual(m["privacy"], MANUAL_PRIVACY_NOTICE)
+        self.assertEqual(m["footer"], manual_ui.MANUAL_FOOTER_TEXT)
+        json.dumps(m, ensure_ascii=False)
 
 
 if __name__ == "__main__":

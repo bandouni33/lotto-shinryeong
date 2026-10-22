@@ -449,13 +449,16 @@ def manual_section_html(section: dict) -> str:
     )
 
 
+MANUAL_FOOTER_TEXT = (
+    "적립금·이용 시간은 앱과 같은 기준에서 자동으로 표시됩니다. "
+    "문의는 메인화면 맨 아래 [고객불만 / 개선요구사항]으로 남겨 주세요."
+)
+
+
 def manual_footer_html() -> str:
-    return (
-        '<div class="ln-manual-foot">'
-        "적립금·이용 시간은 앱과 같은 기준에서 자동으로 표시됩니다. "
-        "문의는 메인화면 맨 아래 [고객불만 / 개선요구사항]으로 남겨 주세요."
-        "</div>"
-    )
+    # 문구는 MANUAL_FOOTER_TEXT 한 곳 — 홈페이지 사용설명서(site_export)도 같은 값을 쓴다.
+    return f'<div class="ln-manual-foot">{_esc(MANUAL_FOOTER_TEXT)}</div>'
+
 
 
 # ── 화면 연결부 ─────────────────────────────────────────────────────────────

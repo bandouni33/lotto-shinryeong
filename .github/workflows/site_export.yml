@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
     paths: ["weekly_content/site_export.py", "weekly_content/number_story.py", "weekly_content/talisman.py", "weekly_content/round_result.py",
-            "social_links.py", ".github/workflows/site_export.yml"]
+            "social_links.py", "manual_ui.py", "legal_notices.py", ".github/workflows/site_export.yml"]
   workflow_dispatch: {}
 
 permissions:

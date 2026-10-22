@@ -65,7 +65,19 @@ def build_data(draws: list[dict], round_stats: list[dict], now: dt.datetime | No
                   "manual_posts": [{"title": t, "url": u} for t, u in social_links.MANUAL_POSTS],
                   "channels": [{"name": c["name"], "url": c["url"], "color": c["color"]}
                                for c in social_links.active_channels()]},
+        # 2026-10-22(사용자 지시 "항상 일치·통일"): 홈페이지 사용설명서는 앱 사용설명서(manual_ui)를 그대로 옮긴다 — 문구 단일 출처.
+        "manual": manual_export(),
     }
+
+
+def manual_export() -> dict:
+    """앱 사용설명서 내용(항목·개인정보 고지·맺음말) — 앱 화면과 같은 함수에서 꺼낸다."""
+    import manual_ui
+    from legal_notices import MANUAL_PRIVACY_NOTICE
+    keys = ("no", "icon", "title", "badge", "summary", "steps", "price", "notes")
+    return {"sections": [{k: s[k] for k in keys} for s in manual_ui.manual_sections()],
+            "privacy": MANUAL_PRIVACY_NOTICE,
+            "footer": manual_ui.MANUAL_FOOTER_TEXT}
 
 
 TALISMAN_KEEP = 12   # 홈페이지 회차 부적 — 최근 N회차만 새로 그린다(이미 있으면 건너뜀, 같은 번호면 같은 그림)
