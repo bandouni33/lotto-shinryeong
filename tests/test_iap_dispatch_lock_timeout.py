@@ -245,6 +245,7 @@ run().then(
 );
 """
 
+IAP_TIMEOUT_KO = "결제 요청 응답이 늦어지고 있습니다. 잠시 후 다시 시도해 주세요."
 _CACHE: dict[str, dict] = {}
 
 
@@ -341,7 +342,7 @@ def test_I2_hung_fetch_products_releases_the_lock_and_allows_retry() -> None:
     assert after["lock"] is False, "fetchProducts가 멈추면 락이 영원히 안 풀린다 — 고치려던 증상 그대로다"
     assert after["iapRequest"] is None, "타임아웃 뒤 요청 상태가 안 풀렸다"
     assert len(after["alerts"]) == 1, f"타임아웃인데 사용자 알림이 없다: {after['alerts']!r}"
-    assert after["alerts"][0]["message"] == "iap_dispatch_timeout", (
+    assert after["alerts"][0]["message"] == IAP_TIMEOUT_KO, (
         f"결제 타임아웃인데 카카오 문구가 그대로 노출된다: {after['alerts']!r}"
     )
     assert after["requestCalls"] == 0, "상품을 못 받았는데 결제창을 띄웠다"
@@ -363,10 +364,10 @@ def test_I3_hung_request_purchase_releases_the_lock() -> None:
     assert after["lock"] is False, "requestPurchase가 멈추면 락이 영원히 안 풀린다"
     assert after["iapRequest"] is None, "타임아웃 뒤 요청 상태가 안 풀렸다"
     assert len(after["alerts"]) == 1, f"타임아웃인데 사용자 알림이 없다: {after['alerts']!r}"
-    assert after["alerts"][0]["message"] == "iap_dispatch_timeout", (
+    assert after["alerts"][0]["message"] == IAP_TIMEOUT_KO, (
         f"결제 타임아웃 문구가 다르다(카카오 문구 노출): {after['alerts']!r}"
     )
-    print("  (I3 멈춘 결제요청: 20초 상당 뒤 락 해제·알림 1건 - 문구 'iap_dispatch_timeout')")
+    print("  (I3 멈춘 결제요청: 20초 상당 뒤 락 해제·알림 1건 - 한글 안내 문구)")
 
 
 def test_I4_dispatch_failure_alerts_and_releases_the_lock() -> None:

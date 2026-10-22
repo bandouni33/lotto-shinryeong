@@ -881,10 +881,25 @@ export default function StreamlitWebView({ page, title, showBack = true, extraPa
         }
       } catch (e) {
         if (!cancelled) {
-          Alert.alert(
-            '결제를 시작할 수 없습니다',
-            e instanceof Error ? e.message : '알 수 없는 오류'
-          );
+          // 2026-10-22: 애플·구글이 주는 영어 오류문(예: "User cancelled the purchase flow")을 그대로 보이지 않고 한글로 안내한다.
+          // 통신사 휴대폰결제 차단 등으로 애플이 결제를 거절해도 '사용자 취소'로 돌아오므로 결제수단 확인을 안내한다.
+          const raw = e instanceof Error ? e.message : '';
+          const code = e && typeof e === 'object' && 'code' in e ? String(e.code) : '';
+          const isCancel = /cancel/i.test(code) || /cancel/i.test(raw);
+          if (isCancel) {
+            Alert.alert(
+              '결제가 완료되지 않았습니다',
+              '결제가 취소되었거나 승인되지 않았습니다.\n결제수단(휴대폰 결제 차단·한도 등)을 확인한 뒤 다시 시도해 주세요.'
+            );
+          } else {
+            const msg =
+              /^iap_dispatch_timeout$/.test(raw)
+                ? '결제 요청 응답이 늦어지고 있습니다. 잠시 후 다시 시도해 주세요.'
+                : /[가-힣]/.test(raw)
+                  ? raw
+                  : '결제 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+            Alert.alert('결제를 시작할 수 없습니다', msg);
+          }
         }
       } finally {
         purchaseInFlightRef.current = false;
