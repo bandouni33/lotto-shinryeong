@@ -391,6 +391,22 @@ def manual_privacy_notice_html() -> str:
     return f'<div class="ln-manual-privacy">{MANUAL_PRIVACY_NOTICE}</div>'
 
 
+def manual_homepage_link_html() -> str:
+    """설명서 맨 위 '홈페이지' 버튼 — 주소는 social_links.SITE_URL 한 곳(앱 공식 채널 칩과 같은 값)."""
+    from social_links import SITE_URL
+
+    # 모양은 메인 '사용설명서' 버튼과 같은 규격(남색 바탕·금색 글자·둥근 테두리). 다이얼로그 기본 링크 색(밑줄·진한 색)을
+    # 이기도록 다이얼로그 범위 규칙으로 준다.
+    return (
+        '<style>div[data-testid="stDialog"] a.ln-manual-home,div[data-testid="stDialog"] a.ln-manual-home:visited{'
+        'display:inline-block;min-width:96px;text-align:center;padding:4px 12px;border-radius:999px;'
+        'background:rgba(28,28,56,.9);color:#ffd479 !important;font-weight:700;font-size:11px;'
+        'border:1px solid rgba(255,179,0,.45);text-decoration:none !important;box-sizing:border-box;}</style>'
+        '<div style="text-align:right;margin:0 0 6px 0;">'
+        f'<a class="ln-manual-home" href="{SITE_URL}/" target="_blank" rel="noopener noreferrer">홈페이지</a></div>'
+    )
+
+
 def manual_hint_html() -> str:
     """차례 바로 아래에 두는 한 줄 안내 — 아래 항목 버튼을 눌러야 자세한 설명이
     펼쳐진다는 걸 이용자가 알 수 있게 한다(2026-09-23 사용자 지시)."""
@@ -468,6 +484,8 @@ def _render_manual_close_row(exp_key: str) -> None:
 def manual_dialog() -> None:
     """표지 → 목차 → 안내문구 → 7개 항목(접힘, 각각 우측상단 닫기) → 각주."""
     st.markdown(manual_css(), unsafe_allow_html=True)
+    # 2026-10-22(사용자 지시): 설명서 맨 위에 '홈페이지' 버튼(새 창) — 회차·통계·블로그 설명서가 모두 있다.
+    st.markdown(manual_homepage_link_html(), unsafe_allow_html=True)
     # 제목 바로 밑·차례(첫 항목 타로점) 위 — 2026-09-26 사용자 지시 위치.
     st.markdown(manual_privacy_notice_html(), unsafe_allow_html=True)
     st.markdown(manual_overview_html(), unsafe_allow_html=True)
@@ -520,6 +538,7 @@ def render_manual_trigger_button() -> None:
     min-height: 0 !important;
     height: auto !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+    min-width: 96px !important;  /* 2026-10-22: 위 '내정보' 버튼과 같은 폭(shared_ui_styles 와 같은 값) */
 }
 </style>
         """,
@@ -527,7 +546,7 @@ def render_manual_trigger_button() -> None:
     )
     with st.container(key="manual_trigger_wrap"):
         st.button(
-            "📖 사용설명서",
+            "사용설명서",  # 2026-10-22(사용자 지시): 이모지 빼서 버튼을 '내정보'와 같은 크기로
             key="manual_trigger_btn",
             use_container_width=True,
             on_click=_open_manual,

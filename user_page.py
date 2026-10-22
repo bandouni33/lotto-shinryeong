@@ -90,6 +90,9 @@ _CORE_RELOAD_ORDER = (
     "wallet_ui",
     "combo_history_ui",
     "win_event_banner",
+    # 2026-10-22: 홈페이지 주소(자체 도메인)·'홈페이지' 버튼 반영이 Cloud 재부팅 없이 되게 — 둘 다 상태 없는 모듈
+    "social_links",
+    "manual_ui",
 )
 _PAGE_MODULES_USING_CORE = ("page_thunder", "page_birthday", "page_hedge", "page_auto", "tarot_page")
 

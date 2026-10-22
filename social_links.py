@@ -60,7 +60,10 @@ def active_channels() -> list[dict]:
 
 def links_html() -> str:
     """앱 메인 하단 '공식 채널' 한 줄(새 창으로 열림)."""
-    chips = "".join(
+    # 2026-10-22(사용자 지시): 맨 앞에 '홈페이지' 칩(자체 도메인). 카드용 CHANNELS 목록에는 넣지 않는다.
+    home = (f'<a class="sns-chip" href="{SITE_URL}/" target="_blank" rel="noopener noreferrer">'
+            '<span class="sns-dot" style="background:#e8c770"></span>홈페이지</a>')
+    chips = home + "".join(
         f'<a class="sns-chip" href="{c["url"]}" target="_blank" rel="noopener noreferrer">'
         f'<span class="sns-dot" style="background:{c["color"]}"></span>{c["name"]}</a>'
         for c in active_channels())

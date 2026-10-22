@@ -283,6 +283,7 @@ def wallet_bar_button_css() -> str:
     min-height: 0 !important;
     height: auto !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+    min-width: 96px !important;  /* 2026-10-22: 아래 '사용설명서' 버튼과 같은 폭(manual_ui 와 같은 값) */
 }}
 </style>
 """
