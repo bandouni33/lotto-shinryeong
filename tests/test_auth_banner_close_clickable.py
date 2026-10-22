@@ -123,7 +123,9 @@ def test_Z5_manual_button_is_still_pinned_over_the_banner():
     )
     m = re.search(r"top:\s*(\d+)px\s*!important", MANUAL_BODY)
     assert m, "사용설명서 버튼의 top 이 없다"
-    assert int(m.group(1)) == 56, (
+    # 2026-10-22: 사용설명서 56 → 104px(위에 '홈페이지' 버튼 56px, 같은 z-index 999). 배너(54~146, z 1000)가
+    # 여전히 두 버튼 위에 있어 × 클릭 관계는 그대로다.
+    assert int(m.group(1)) == 104, (
         f"사용설명서 버튼 top 이 {m.group(1)}px 로 바뀌었다 — 배너의 × 와 겹치는지 "
         "다시 실측하고 이 테스트를 갱신할 것"
     )

@@ -1902,6 +1902,15 @@ def inject_manual_dialog_back_bridge() -> None:
                   + "function onLogin(){if(D.querySelector('.st-key-auth_banner_kakao')){W.location.reload();}}"
                   + "try{var bc=new W.BroadcastChannel('ln-auth');bc.onmessage=function(e){if(e.data&&e.data.t==='login')onLogin();};}catch(e){}"
                   + "W.addEventListener('storage',function(e){if(e.key==='ln-auth-login')onLogin();});"
+                  // 2026-10-22(사용자 지시 — 앱에서 홈페이지를 누르면 브라우저 앱이 따로 떠 '앱 2개'가 됐다):
+                  // 앱(설치형) 안에서는 홈페이지 링크(a[data-ln-home])를 같은 화면(최상위 문서)에서 연다.
+                  // 돌아올 주소(앱 신호 파라미터만)를 app_ret 로 실어 보내 홈페이지의 '앱으로 돌아가기'가 쓴다. 웹은 새 탭 그대로.
+                  + "D.addEventListener('click',function(ev){try{var a=ev.target&&ev.target.closest&&ev.target.closest('a[data-ln-home]');if(!a)return;"
+                  + "var T=W.top,inApp=false;try{inApp=!!T.ReactNativeWebView||/[?&]native=1(&|$)/.test(T.location.search);}catch(e){}"
+                  + "if(!inApp)return;ev.preventDefault();ev.stopPropagation();"
+                  + "var cur=new URL(T.location.href),r=new URL(cur.origin+cur.pathname);"
+                  + "['native','native_platform','apple_login','iap','spa_nav','gid'].forEach(function(k){var v=cur.searchParams.get(k);if(v!==null)r.searchParams.set(k,v);});"
+                  + "var u=new URL(a.href);u.searchParams.set('app_ret',r.toString());T.location.href=u.toString();}catch(e){}},true);"
                   + "})();";
                 var sc = PD.createElement('script'); sc.textContent = code; PD.head.appendChild(sc);
             }
