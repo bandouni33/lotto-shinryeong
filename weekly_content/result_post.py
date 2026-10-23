@@ -78,25 +78,31 @@ def card_shops(res: dict) -> "cards.Image.Image":
 
 
 def captions(res: dict) -> dict:
-    import social_links
-
     rnd, r1 = res["round"], res["ranks"][0]
     kinds = ", ".join(f"{k} {v}" for k, v in res["first_kinds"].items())
     regions = ", ".join(f"{k} {v}곳" for k, v in res["first_regions"][:5])
     lines = "\n".join(f"{r['rank']}등 {r['count']:,}명 · {eok(r['amount'])}" for r in res["ranks"][1:])
     shops = "\n".join(f"· {s['region']} {s['name']} ({s['kind']})" for s in res["first_shops"][:16])
 
-    def tail(src):
-        return (f"\n\n🔎 판매점 전체·번호 구성: {social_links.round_url(rnd)}\n"
-                f"📲 로또신령 설치: {social_links.store_link(src, campaign='result')}\n"
-                "※ 동행복권 공식 발표 기준 · 복권은 만 19세 이상")
+    from weekly_content import sns_copy as sc
 
-    head = (f"📢 제{rnd}회 로또 추첨결과\n\n1등 {r1['count']}명 · 1명당 {eok(r1['amount'])}"
-            + (f" ({kinds})" if kinds else "") + f"\n{lines}\n\n🏆 1등 명당: {regions}\n{shops}")
-    tags = f"\n#로또 #로또{rnd}회 #로또1등 #로또명당 #로또신령"
-    th = (f"📢 {rnd}회 1등 {r1['count']}명, 1명당 {eok(r1['amount'])}\n1등 명당: {regions}\n\n"
-          f"판매점 전체: {social_links.round_url(rnd)}\n#로또")[:cards.THREADS_LIMIT]
-    return {"instagram": head + tail("instagram") + tags, "facebook": head + tail("facebook") + tags, "threads": th,
+    net = sc.net_prize(r1["amount"])
+    # 2026-10-22: 첫 줄 훅 = '세금 떼면 얼마?'(홈페이지 실수령액 계산기와 같은 식) · 링크·해시태그는 sns_copy 한 곳
+    head = (f"💰 제{rnd}회 로또 1등 {r1['count']}명, 1명당 {eok(r1['amount'])}.\n"
+            f"세금 떼면 손에 쥐는 돈은 약 {eok(net)}이에요.\n\n"
+            + (f"1등 구매 방식: {kinds}\n" if kinds else ""))
+    head += f"{lines}\n\n🏆 1등 명당: {regions}\n{shops}\n\n우리 동네 판매점도 있나요? 👇 댓글로 지역을 남겨주세요."
+
+    def tail(src):
+        return (f"\n\n{sc.footer(src, f'/round/{rnd}/', '판매점 전체·번호 구성')}"
+                "\n(동행복권 공식 발표 기준)")
+
+    tags_ig = sc.hashtags(rnd, sc.KW_PRIZE, sc.KW_DRAW, channel="instagram")
+    tags_fb = sc.hashtags(rnd, sc.KW_PRIZE, sc.KW_DRAW, channel="facebook")
+    th = (f"💰 {rnd}회 1등 {r1['count']}명, 1명당 {eok(r1['amount'])}\n세금 떼면 약 {eok(net)}\n"
+          f"1등 명당: {regions}\n\n{sc.footer('threads', f'/round/{rnd}/')}\n#로또")[:cards.THREADS_LIMIT]
+    return {"instagram": head + tail("instagram") + "\n" + tags_ig, "facebook": head + tail("facebook") + "\n" + tags_fb,
+            "threads": th,
             "youtube_title": f"{rnd}회 로또 1등 {r1['count']}명 · 명당 | 로또신령"[:100],
             "youtube_description": head + tail("youtube")}
 

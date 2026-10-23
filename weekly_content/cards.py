@@ -343,6 +343,8 @@ def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
 
     from weekly_content import number_story
 
+    from weekly_content import sns_copy as sc
+
     a = analyze(draws, rnd)
     nums = " ".join(str(n) for n in a["nums"])
     t = tarot_for_round(rnd)
@@ -366,13 +368,10 @@ def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
             f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n"
             f"최근 10회 자주 나온 번호: {', '.join(str(n) for n, _ in a['hot'])}\n\n"
             f"{rnd + 1}회를 기다리며 뽑은 이번 주 타로: {t['name']}\n“{t['line']}”\n\n"
-            f"🔎 {rnd}회 번호 구성·로또신령 조합 성적: {social_links.round_url(rnd)}\n\n"
-            "첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
-            f"📲 설치: {social_links.store_link(source)}\n"
-            f"📖 사용설명서: {social_links.MANUAL_URL}\n"
-            "인스타·스레드: @lottoshinryeong\n\n"
-            "※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상.\n"
-            f"#로또 #로또{rnd}회 #로또당첨번호 #로또번호 #로또통계 #타로 #로또신령")
+            "이번 주 내 번호는 몇 개 맞았나요? 👇 댓글로 개수만 남겨주세요.\n\n"
+            # 2026-10-22: 링크·해시태그·고지는 sns_copy 한 곳(목·금·토 게시 공통, 홈페이지 링크로 통일)
+            f"{sc.footer(source, f'/round/{rnd}/', f'{rnd}회 번호 구성·1등 명당')}\n"
+            f"{sc.hashtags(rnd, sc.KW_DRAW, sc.KW_PRIZE, sc.KW_STATS, ['타로'], channel=source)}")
 
 
 THREADS_LIMIT = 500  # 스레드 글자 제한(이모지·URL 포함)
@@ -392,11 +391,11 @@ def caption_threads(draws: dict[int, dict], rnd: int) -> str:
            else "이번 주엔 아무도 컴백하지 않았어요. 공백기 계속…")
     qa = (f"🗳 목요일 문답 결과 — 후보 {cand}\n→ {res}\n\n" if rnd >= number_story.FIRST_QUESTION_ROUND
           else f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n")
+    from weekly_content import sns_copy as sc
+
     txt = (f"🔮 제{rnd}회 로또 당첨번호\n{nums} + 보너스 {a['bonus']}\n\n" + qa +
-           f"자세히: {social_links.round_url(rnd)}\n"
-           f"설치: {social_links.store_link('threads')}\n"
-           f"사용법: {social_links.MANUAL_URL}\n"
-           "※ 참고·재미용, 당첨 보장 없음 · 복권은 만 19세 이상\n#로또")
+           "내 번호는 몇 개 맞았나요? 댓글로!\n\n"
+           f"{sc.footer('threads', f'/round/{rnd}/')}\n{sc.hashtags(rnd, channel='threads')}")
     return txt[:THREADS_LIMIT]
 
 

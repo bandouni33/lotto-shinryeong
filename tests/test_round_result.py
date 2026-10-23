@@ -72,7 +72,10 @@ class RoundResultTest(unittest.TestCase):
         caps = json.loads((tmp / "1246_captions.json").read_text(encoding="utf-8"))
         self.assertIn("1등 16명", caps["facebook"])
         self.assertLessEqual(len(caps["threads"]), 500)
-        self.assertIn("utm_source%3Dinstagram", caps["instagram"])
+        # 2026-10-22: 링크는 홈페이지 하나로(인스타는 본문 링크가 안 눌려 '프로필 링크' 안내, 페북은 회차 페이지 주소 1개)
+        self.assertIn("프로필 링크", caps["instagram"])
+        self.assertIn("https://lottoshinryeong.com/round/1246/", caps["facebook"])
+        self.assertIn("세금 떼면", caps["facebook"])
 
 
 if __name__ == "__main__":

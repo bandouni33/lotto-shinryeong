@@ -70,46 +70,47 @@ def card_flow(draws: dict[int, dict], latest: int) -> "cards.Image.Image":
     return im
 
 
-def _caption_tail(source: str) -> str:
-    import social_links
-
-    return (f"\n\n🔎 회차별 당첨번호·번호 통계: {social_links.SITE_URL}/stats/"
-            "\n첫 가입 500P로 번호 조합 무료 체험 → 구글 플레이·앱스토어에서 '로또신령'\n"
-            f"📲 설치: {social_links.store_link(source, campaign='predraw')}\n"
-            f"📖 사용설명서: {social_links.MANUAL_URL}\n"
-            "\n※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상.")
-
-
 def captions(kind: str, draws: dict[int, dict], latest: int) -> dict:
+    """2026-10-22 개편(사용자 지시 — 호기심·감성 훅, 홈페이지 활용, 검색 키워드):
+    첫 줄은 감정(타로 문장)·시간 압박(판매 마감) 같은 훅, 가운데는 데이터 '사실'(번호를 추천하지 않는다),
+    끝은 댓글로 답할 수 있는 질문. 링크·해시태그·고지는 sns_copy 한 곳."""
+    from weekly_content import number_story, sns_copy as sc
+
     nxt = latest + 1
+    hia = number_story.headline(draws, latest)["hiatus"]          # 공백기 상위 6(번호, 몇 주째)
+    top = hia[0]
+    cand = ", ".join(str(x["n"]) for x in hia)
     if kind == "thu":
         t = cards.tarot_for_round(latest)
-        head = (f"🔮 {nxt}회를 기다리는 이번 주 신령 타로\n\n{t['name']} ({t['name_en']})\n“{t['line']}”\n\n"
-                "이번 주 마음은 어떤 카드에 가까운가요? 앱에서 내 카드를 직접 뽑아보세요.")
-        tags = f"\n#로또 #로또{nxt}회 #타로 #오늘의타로 #로또신령"
-        th_head = f"🔮 {nxt}회 이번 주 신령 타로: {t['name']}\n“{t['line']}”"
+        head = (f"🔮 “{t['line']}”\n\n"
+                f"이번 주 신령이 뽑아준 카드는 '{t['name']}({t['name_en']})'.\n"
+                "힘든 한 주였다면, 이 한 줄만 마음에 담아 가세요.\n\n"
+                f"그리고 하나 더 — {top['n']}번은 {top['gap']}주째 한 번도 나오지 않았어요.\n"
+                f"오래 쉬고 있는 번호: {cand}\n"
+                f"토요일 {nxt}회, 이 중 누가 돌아올까요? 👇 댓글로 번호 하나만 찍어보세요. 토요일 밤 결과 공개!")
+        groups, path, what = (sc.KW_TAROT, sc.KW_DRAW, sc.KW_STATS), "/members/", "번호 45개의 공백기·출현 기록"
+        th_head = (f"🔮 “{t['line']}”\n이번 주 카드: {t['name']}\n\n"
+                   f"🗳 {nxt}회 신령 문답 — {top['n']}번은 {top['gap']}주째 공백.\n"
+                   f"오래 쉰 번호 {cand} 중 이번 주 돌아올 번호는?\n댓글로 하나만! 토요일 밤 결과 공개")
     else:
         hot, cold = flow(draws, latest)
-        head = (f"📊 {nxt}회 앞두고 보는 번호 흐름(1~{latest}회 공식 당첨번호)\n\n"
-                f"최근 50회 가장 많이 나온 번호: {', '.join(f'{n}({c}회)' for n, c in hot)}\n"
-                f"가장 오래 안 나온 번호: {', '.join(f'{n}({g}회째)' for n, g in cold)}\n\n"
-                "토요일 저녁 8시 판매 마감 전에 확인하세요.")
-        tags = f"\n#로또 #로또{nxt}회 #로또번호 #로또통계 #로또신령"
-        th_head = (f"📊 {nxt}회 번호 흐름\n많이 나온 번호 {', '.join(str(n) for n, _ in hot)}\n"
-                   f"오래 안 나온 번호 {', '.join(str(n) for n, _ in cold)}")
-    import social_links
-
-    if kind == "thu":   # 2026-10-18 스레드 = 신령과의 문답: 목요일 질문 → 토요일 결과(cards.caption_threads)
-        from weekly_content import number_story
-
-        q = number_story.question(draws, latest)
-        th_head = (f"🗳 {nxt}회 신령 문답\n공백기 멤버 중 이번 주 컴백할 번호는?\n"
-                   f"후보: {', '.join(map(str, q['candidates']))}\n댓글로 한 명 골라주세요. 토요일 밤 결과 공개!")
-    threads = (f"{th_head}\n\n설치: {social_links.store_link('threads', campaign='predraw')}\n"
-               "※ 참고·재미용 · 복권은 만 19세 이상\n#로또")[:cards.THREADS_LIMIT]
-    return {"instagram": head + _caption_tail("instagram") + tags, "facebook": head + _caption_tail("facebook") + tags,
-            "threads": threads, "youtube_title": f"{nxt}회 로또 {'이번 주 신령 타로' if kind == 'thu' else '번호 흐름'} | 로또신령",
-            "youtube_description": head + _caption_tail("youtube")}
+        head = (f"⏰ {nxt}회 판매 마감은 토요일 저녁 8시. 번호 고르기 전에 30초만 보세요.\n\n"
+                f"🔥 최근 50회 가장 많이 나온 번호: {', '.join(f'{n}({c}회)' for n, c in hot)}\n"
+                f"🧊 가장 오래 잠든 번호: {', '.join(f'{n}({g}회째)' for n, g in cold)}\n\n"
+                "자주 나온 번호를 믿나요, 오래 쉰 번호를 믿나요?\n"
+                "👇 댓글로 🔥 또는 🧊 하나만 남겨주세요.\n"
+                "내 번호가 1회부터 지금까지 몇 번 나왔는지는 홈페이지 '번호 통계'에서 바로 확인돼요.")
+        groups, path, what = (sc.KW_STATS, sc.KW_DRAW, sc.KW_TIME), "/stats/", "번호 통계"
+        th_head = (f"⏰ {nxt}회 판매 마감 토 20:00\n"
+                   f"🔥 많이 나온 번호 {', '.join(str(n) for n, _ in hot)}\n"
+                   f"🧊 오래 잠든 번호 {', '.join(str(n) for n, _ in cold)}\n\n"
+                   "당신은 🔥파? 🧊파? 댓글로!")
+    out = {c: f"{head}\n\n{sc.footer(c, path, what)}\n{sc.hashtags(nxt, *groups, channel=c)}"
+           for c in ("instagram", "facebook")}
+    out["threads"] = f"{th_head}\n\n{sc.footer('threads', path)}\n{sc.hashtags(nxt, channel='threads')}"[:cards.THREADS_LIMIT]
+    out["youtube_title"] = f"{nxt}회 로또 {'이번 주 신령 타로' if kind == 'thu' else '번호 흐름'} | 로또신령"
+    out["youtube_description"] = f"{head}\n\n{sc.footer('youtube', path, what)}"
+    return out
 
 
 def build(kind: str, draws: dict[int, dict], latest: int, out: Path) -> list[Path]:
