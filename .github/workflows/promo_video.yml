@@ -1,0 +1,39 @@
+name: 홍보 영상 게시
+
+# 2026-10-24(사용자 요청 "다른 곳에 순차 업로드"): 홈페이지 media/ 에 올린 홍보 영상 1편을
+# 페이스북(영상)·인스타(릴스)·스레드(영상)에 순서대로 게시한다. 채널 스위치·10~30분 간격·중복 방지는 주간 게시와 같다.
+# 수동 실행만(예약 없음). SNS 자동화는 '게시'만 한다.
+on:
+  workflow_dispatch:
+    inputs:
+      promo_id:
+        description: "영상 번호(같은 번호는 다시 올리지 않음, 예: 20261024)"
+        required: true
+      video_url:
+        description: "영상 주소(https://lottoshinryeong.com/media/... 만 허용)"
+        required: true
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    concurrency:
+      group: weekly-content
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 게시
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          WEEKLY_PUBLISH_CHANNELS: ${{ vars.WEEKLY_PUBLISH_CHANNELS }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+        run: python -m weekly_content.promo_video --id "${{ github.event.inputs.promo_id }}" --url "${{ github.event.inputs.video_url }}"

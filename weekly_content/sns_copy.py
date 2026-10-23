@@ -32,11 +32,11 @@ def site(path: str = "/") -> str:
     return social_links.SITE_URL + path
 
 
-def hashtags(rnd: int, *groups: list[str], channel: str) -> str:
+def hashtags(rnd: int | None, *groups: list[str], channel: str) -> str:
     """채널별 해시태그 한 줄. 인스타 15개까지, 페이스북 5개까지, 스레드는 1개."""
     if channel == "threads":
         return "#로또"
-    tags = ["로또", f"로또{rnd}회"]
+    tags = ["로또"] + ([f"로또{rnd}회"] if rnd else [])   # rnd 없음 = 회차와 무관한 게시(홍보 영상 등)
     for g in groups:
         for t in g:
             if t not in tags:
