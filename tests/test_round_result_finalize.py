@@ -179,3 +179,9 @@ class ActualTallyFinalizeTest(unittest.TestCase):
         self.assertTrue(rrf.finalize_latest_round().startswith("ok:"))   # 다시 돌려도 값 그대로(멱등)
         again = [s for s in marketing_db.get_round_stats_snapshot(5) if s["draw_round"] == 1247][0]
         self.assertEqual(again["finalized_at"], row["finalized_at"])
+
+
+def test_A2_script_entry_comes_last():
+    """2026-10-24 실패 재발 방지: 함수가 '__main__' 실행 블록 뒤에 있으면 스크립트 실행 때 NameError(테스트 import 는 통과)."""
+    src = (ROOT / "round_result_finalize.py").read_text(encoding="utf-8")
+    assert src.index('if __name__ == "__main__":') > max(src.index("def _finalize_actual"), src.index("def main"))

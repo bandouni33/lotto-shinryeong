@@ -61,24 +61,6 @@ def finalize_latest_round() -> str:
     )
 
 
-def main() -> int:
-    print(f"[round_result_finalize] {finalize_latest_round()}")
-    return 0
-
-
-if __name__ == "__main__":
-    # hourly_draw_sync.py 와 같은 이유(db_turso 의 non-daemon 스레드가 종료를 붙잡음)로 즉시 종료.
-    try:
-        code = main()
-    except Exception as exc:  # noqa: BLE001
-        import traceback
-
-        traceback.print_exc()
-        print(f"[round_result_finalize] 실패: {exc}")
-        code = 1
-    os._exit(code)
-
-
 def _finalize_actual(rnd: int) -> str:
     """2026-10-24(사용자 지시): 배포용 4차 필터링 조합 + 번개·번호검증 생성분의 실제 등수를 바로 집계·확정.
     당첨번호는 DB(draw_results) 값으로 대조한다. 이미 확정된 행은 finalize 가 건드리지 않는다(멱등)."""
@@ -102,3 +84,21 @@ def _finalize_actual(rnd: int) -> str:
     done = marketing_db.finalize_round_stats(rnd)
     return f"ok: {rnd}회 실제 생성 조합 등수 {ranks} (1~5등), 스냅샷 확정 {'완료' if done else '이미 됨'}"
 
+
+def main() -> int:
+    print(f"[round_result_finalize] {finalize_latest_round()}")
+    return 0
+
+
+if __name__ == "__main__":
+    # hourly_draw_sync.py 와 같은 이유(db_turso 의 non-daemon 스레드가 종료를 붙잡음)로 즉시 종료.
+    try:
+        code = main()
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+
+        traceback.print_exc()
+        print(f"[round_result_finalize] 실패: {exc}")
+        print(f"::error title=등수 확정 실패::{type(exc).__name__}: {str(exc)[:300]}")   # 로그 대신 주석으로도 확인
+        code = 1
+    os._exit(code)
