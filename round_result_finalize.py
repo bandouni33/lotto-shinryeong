@@ -34,6 +34,8 @@ def finalize_latest_round() -> str:
     latest = int(latest)
     if latest < REFERENCE_START_ROUND:
         return f"skip: {latest}회는 참고등수 대상(1241회~)이 아님"
+    if latest >= marketing_db.ACTUAL_TALLY_START_ROUND:
+        return _finalize_actual(latest)
     if marketing_db.get_reference_ranks(latest) is not None:
         # 등수 근거는 있는데 스냅샷 확정만 빠졌을 수도 있다(이전 실행이 중간에 끊긴 경우) — 확정만 시도.
         done = marketing_db.finalize_round_stats(latest)
@@ -75,3 +77,28 @@ if __name__ == "__main__":
         print(f"[round_result_finalize] 실패: {exc}")
         code = 1
     os._exit(code)
+
+
+def _finalize_actual(rnd: int) -> str:
+    """2026-10-24(사용자 지시): 배포용 4차 필터링 조합 + 번개·번호검증 생성분의 실제 등수를 바로 집계·확정.
+    당첨번호는 DB(draw_results) 값으로 대조한다. 이미 확정된 행은 finalize 가 건드리지 않는다(멱등)."""
+    import draw_results_db
+    import marketing_db
+
+    snapshot_rounds = {int(x["draw_round"]) for x in marketing_db.get_round_stats_snapshot(limit=10)}
+    if rnd not in snapshot_rounds:
+        return f"skip: {rnd}회 스냅샷 행 없음(그 회차 조합을 배포하지 않음)"
+    row = next((h for h in draw_results_db.get_all_draw_results() if int(h["draw_round"]) == rnd), None)
+    if not row:
+        return f"skip: {rnd}회 당첨번호 없음"
+    nums, bonus = [int(n) for n in row["numbers"]], int(row["bonus"])
+    if not marketing_db.is_win_rank_synced(rnd, "lotto_combinations"):
+        marketing_db.update_win_ranks_for_draw(rnd, nums, bonus)
+        marketing_db.mark_win_rank_synced(rnd, "lotto_combinations")
+    if not marketing_db.is_win_rank_synced(rnd, "guest_generated_combos"):
+        marketing_db.update_win_ranks_for_generated_draw(rnd, nums, bonus)
+        marketing_db.mark_win_rank_synced(rnd, "guest_generated_combos")
+    ranks = marketing_db.get_actual_rank_counts(rnd)
+    done = marketing_db.finalize_round_stats(rnd)
+    return f"ok: {rnd}회 실제 생성 조합 등수 {ranks} (1~5등), 스냅샷 확정 {'완료' if done else '이미 됨'}"
+

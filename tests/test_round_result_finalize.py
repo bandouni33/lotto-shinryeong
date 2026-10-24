@@ -147,3 +147,35 @@ class RoundResultFinalizeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ActualTallyFinalizeTest(unittest.TestCase):
+    """2026-10-24 사용자 지시: 1247회부터 당첨번호 반영 즉시 '배포 4차 조합 + 번개·번호검증 생성분' 실제 등수로 확정."""
+
+    def setUp(self):
+        self._iso = _db_isolation.isolated_db()
+        self._iso.__enter__()
+        self.addCleanup(self._iso.__exit__, None, None, None)
+
+    def test_A1_pool_and_generated_counted_immediately(self):
+        import marketing_db
+        import round_result_finalize as rrf
+
+        _seed([1246, 1247])   # 당첨번호 1 2 3 4 5 6 + 7
+        marketing_db.bulk_insert_lotto_combinations(1247, [(1, 2, 3, 4, 5, 6), (1, 2, 3, 4, 5, 7), (10, 11, 12, 13, 14, 15)])
+        marketing_db.snapshot_round_stats(1247, 6465)
+        marketing_db.save_guest_generated_combos("g", "thunder", 1247, [(1, 2, 3, 4, 5, 9)])   # 3등
+        conn = marketing_db._connect()
+        conn.execute("UPDATE guest_generated_combos SET created_at = '2026-10-24T01:00:00'")   # 마감 전
+        conn.commit()
+        conn.close()
+        with _FakeRules() as fr:
+            msg = rrf.finalize_latest_round()
+            self.assertEqual(fr.calls, 0)   # 참고등수 계산은 쓰지 않는다
+        self.assertTrue(msg.startswith("ok:"), msg)
+        row = [s for s in marketing_db.get_round_stats_snapshot(5) if s["draw_round"] == 1247][0]
+        self.assertEqual((row["rank_1"], row["rank_2"], row["rank_3"]), (1, 1, 1))
+        self.assertIsNotNone(row["finalized_at"])
+        self.assertTrue(rrf.finalize_latest_round().startswith("ok:"))   # 다시 돌려도 값 그대로(멱등)
+        again = [s for s in marketing_db.get_round_stats_snapshot(5) if s["draw_round"] == 1247][0]
+        self.assertEqual(again["finalized_at"], row["finalized_at"])

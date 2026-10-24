@@ -2099,6 +2099,56 @@ def snapshot_round_stats(draw_round: int, pattern_count: int | None) -> bool:
     return created
 
 
+# ── 2026-10-24(사용자 지시) 회차별 배출표 1~4등 = 실제 생성 조합 집계 ──
+# "배포용 4차 필터링 조합(lotto_combinations) + 번개조합 생성분 + 번호검증(반대·액땜) 생성분, 고급필터는 제외.
+#  당첨번호 확인되면 집계 후 즉시 표기." 이 회차부터 적용 — 그 전 회차(이미 확정된 행)는 못 박기 원칙대로 그대로.
+ACTUAL_TALLY_START_ROUND = 1247
+ACTUAL_TALLY_SOURCES = ("thunder", "anti", "aekddaem")   # guest_generated_combos.source — 번개·번호검증(반대·액땜)
+_LOTTO_SYNC_SOURCE, _GENERATED_SYNC_SOURCE = "lotto_combinations", "guest_generated_combos"
+
+
+def draw_cutoff_utc_iso(draw_round: int) -> str:
+    """그 회차 추첨 마감(토 19:55 KST)을 서버 저장 시각 형식(UTC, 시간대 표기 없음)으로.
+    번개·번호검증은 판매 시간 제한이 없어 추첨 뒤~공식 반영 전에도 그 회차로 저장될 수 있다 —
+    당첨번호를 넣어 만든 조합이 집계를 부풀리지 않게 마감 전에 만든 조합만 센다.
+    (created_at 은 datetime.now() — Streamlit Cloud·Actions 서버 시간 UTC)"""
+    from datetime import date, time as dtime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+
+    d = date(2002, 12, 7) + timedelta(days=7 * (int(draw_round) - 1))
+    cut = datetime.combine(d, dtime(19, 55), tzinfo=ZoneInfo("Asia/Seoul")).astimezone(timezone.utc)
+    return cut.replace(tzinfo=None).isoformat()
+
+
+def get_actual_rank_counts(draw_round: int) -> tuple[int, int, int, int, int] | None:
+    """실제 생성 조합의 1~5등 개수 합계. 배포 풀 등수 동기화 전이면 None(추첨 전 0 못 박기 방지)."""
+    draw_round = int(draw_round)
+    if not is_win_rank_synced(draw_round, _LOTTO_SYNC_SOURCE):
+        return None
+    counts = {r: int(c) for r, c in get_win_rank_counts_by_draw(draw_round).items()}
+    marks = ",".join("?" for _ in ACTUAL_TALLY_SOURCES)
+    conn = _connect()
+    has_gen = conn.execute(
+        f"SELECT 1 FROM guest_generated_combos WHERE draw_round = ? AND source IN ({marks}) LIMIT 1",
+        (draw_round, *ACTUAL_TALLY_SOURCES),
+    ).fetchone()
+    rows = conn.execute(
+        f"""
+        SELECT win_rank, COUNT(*) FROM guest_generated_combos
+        WHERE draw_round = ? AND win_rank IS NOT NULL AND source IN ({marks}) AND created_at < ?
+        GROUP BY win_rank
+        """,
+        (draw_round, *ACTUAL_TALLY_SOURCES, draw_cutoff_utc_iso(draw_round)),
+    ).fetchall()
+    conn.close()
+    if has_gen and not is_win_rank_synced(draw_round, _GENERATED_SYNC_SOURCE):
+        return None
+    for row in rows:
+        r, c = int(row[0]), int(row[1])
+        counts[r] = counts.get(r, 0) + c
+    return tuple(int(counts.get(rank, 0)) for rank in (1, 2, 3, 4, 5))  # type: ignore[return-value]
+
+
 def _settled_ranks_for_draw(draw_round: int) -> tuple[int, int, int, int, int] | None:
     """그 회차의 "확정된 등수" — 표시 우선순위와 같은 순서로 판단한다:
       1) 참고등수(draw_reference_ranks)가 있으면 그 값(1241회차 이상 규칙)
@@ -2108,6 +2158,8 @@ def _settled_ranks_for_draw(draw_round: int) -> tuple[int, int, int, int, int] |
     3)을 반환하는 게 중요하다 — 추첨 전 회차를 0으로 못 박으면 "당첨 0건"으로
     영구 기록돼 버린다(그래서 finalize가 이 경우 아무 것도 하지 않는다).
     """
+    if int(draw_round) >= ACTUAL_TALLY_START_ROUND:   # 2026-10-24: 실제 생성 조합 집계(참고등수 안 씀)
+        return get_actual_rank_counts(draw_round)
     ref = get_reference_ranks(draw_round)
     if ref is not None:
         return (

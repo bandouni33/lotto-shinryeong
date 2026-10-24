@@ -355,7 +355,9 @@ def _stats_to_dataframe(stats: list[dict], is_mock: bool) -> pd.DataFrame:
         # 2026-10-04(사용자 승인): 이미 확정된 스냅샷 행은 그 값을 그대로 쓴다 — 표가
         # combo_round_stats를 정본으로 삼아야 "풀이 지워져도 숫자가 남는다"가 성립한다.
         # 확정 전 행(당 회차·미리보기 행)만 예전처럼 참고등수를 우선한다.
-        if not is_mock and not item.get("finalized_at"):
+        # 2026-10-24(사용자 지시): 1247회부터는 실제 생성 조합 집계(확정 즉시 표기) — 참고등수로 대신 채우지 않는다.
+        if (not is_mock and not item.get("finalized_at")
+                and int(item["draw_round"]) < getattr(mdb, "ACTUAL_TALLY_START_ROUND", 10 ** 9)):
             try:
                 ref = mdb.get_reference_ranks(item["draw_round"])
             except Exception:

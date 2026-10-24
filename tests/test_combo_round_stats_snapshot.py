@@ -131,7 +131,13 @@ class ComboRoundStatsSnapshotTests(unittest.TestCase):
         self.assertEqual(self._by_round()[R_NEW]["rank_1"], 0)
 
     def test_finalize_prefers_reference_ranks_over_live_counts(self):
-        """1241회차 이상 규칙 — 참고등수가 있으면 라이브 집계 대신 그 값을 쓴다(표시와 동일)."""
+        """1241~1246회 규칙 — 참고등수가 있으면 라이브 집계 대신 그 값을 쓴다(표시와 동일).
+        (1247회부터는 실제 생성 조합 집계 — 이 테스트는 옛 규칙 확인용으로 시작 회차를 잠시 올린다)"""
+        from unittest import mock
+
+        p = mock.patch.object(mdb, "ACTUAL_TALLY_START_ROUND", 10 ** 9)
+        p.start()
+        self.addCleanup(p.stop)
         self._pool(R_MID)
         self._set_first_win_rank(R_MID, 3)
         self._sync(R_MID)
@@ -140,6 +146,37 @@ class ComboRoundStatsSnapshotTests(unittest.TestCase):
         self.assertTrue(mdb.finalize_round_stats(R_MID))
         row = self._row(R_MID)
         self.assertEqual((row[2], row[3], row[4], row[5], row[6]), (0, 1, 18, 169, 1157))
+
+    def test_actual_tally_pool_plus_thunder_and_hedge_before_cutoff(self):
+        """2026-10-24 사용자 지시: 1247회~ 배포 4차 조합 + 번개·번호검증 생성분(마감 전 생성만) 실제 등수 합계."""
+        self._pool(R_MID)
+        self._set_first_win_rank(R_MID, 3)          # 배포 풀 3등 1
+        self._sync(R_MID)
+        before = "2000-01-01T00:00:00"
+        after = "9999-01-01T00:00:00"
+        conn = mdb._connect()
+        rows = [("g", "thunder", R_MID, 1, before), ("g", "anti", R_MID, 4, before), ("g", "aekddaem", R_MID, 3, before),
+                ("g", "thunder", R_MID, 1, after),      # 추첨 마감 뒤 생성 → 제외
+                ("g", "premium", R_MID, 1, before)]     # 그 밖의 출처 → 제외
+        conn.executemany(
+            "INSERT INTO guest_generated_combos (guest_id, source, draw_round, num1, num2, num3, num4, num5, num6,"
+            " win_rank, created_at) VALUES (?, ?, ?, 1, 2, 3, 4, 5, 6, ?, ?)", rows)
+        conn.commit()
+        conn.close()
+        self.assertIsNone(mdb.get_actual_rank_counts(R_MID))   # 생성분 등수 동기화 전 → 확정 안 함
+        mdb.mark_win_rank_synced(R_MID, "guest_generated_combos")
+        mdb.snapshot_round_stats(R_MID, 6465)
+        self.assertTrue(mdb.finalize_round_stats(R_MID))
+        row = self._row(R_MID)
+        self.assertEqual((row[2], row[3], row[4], row[5], row[6]), (1, 0, 2, 1, 0))
+
+    def test_actual_tally_waits_for_pool_sync(self):
+        self._pool(R_MID)
+        mdb.snapshot_round_stats(R_MID, 6465)
+        self.assertFalse(mdb.finalize_round_stats(R_MID))      # 추첨 전(동기화 전) 0 못 박기 방지
+
+    def test_draw_cutoff_is_saturday_1955_kst(self):
+        self.assertEqual(mdb.draw_cutoff_utc_iso(1247), "2026-10-24T10:55:00")
 
     def test_finalize_pending_only_returns_eligible_rounds(self):
         self._pool(R_OLD)
