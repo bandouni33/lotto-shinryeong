@@ -14,6 +14,7 @@ def test_five_pages_with_screens():
         for sc in p["screens"]:
             assert (th.SCREENS / f"{sc}.jpg").exists()
     assert th.screen_for(4, 1247) == "adv" and th.screen_for(4, 1248) == "adv_2"
+    assert len({th.screen_for(2, r) for r in range(1247, 1253)}) == 6   # 번개조합 6주 연속 모두 다른 화면
     ims = th.build(1247)
     assert len(ims) == 5 and all(im.size == (1080, 1350) for im in ims)
 
