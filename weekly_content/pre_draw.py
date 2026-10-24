@@ -146,7 +146,12 @@ def main() -> int:
     latest = max(draws)
     out = Path(a.out)
     pngs = build(a.kind, draws, latest, out)
-    shorts = make_shorts(pngs, out / f"{latest + 1}_shorts.mp4", medley=(a.kind == "thu"), ppt=(a.kind == "thu"))
+    plan = None
+    if a.kind == "thu":   # 2026-10-24 수정 제안: 약 1분·장 넘김 효과·장별 음악 장르가 매주 바뀜
+        from weekly_content import thursday
+
+        plan = thursday.video_plan(latest + 1)
+    shorts = make_shorts(pngs, out / f"{latest + 1}_shorts.mp4", plan=plan)
     if shorts:
         from weekly_content import clip_kit
 

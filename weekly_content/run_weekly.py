@@ -54,7 +54,7 @@ def draw_date_text(rnd: int) -> str:
 
 
 def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, medley: bool = False,
-                ppt: bool = False) -> Path | None:
+                ppt: bool = False, plan: dict | None = None) -> Path | None:
     """세로 9:16 짧은 영상(네이버 클립·쇼츠용).
 
     2026-10-17(사용자 지적 '빛바랜 화질'): 예전엔 색공간 표시 없이 BT.601 로 변환돼 재생기(BT.709 가정)에서
@@ -65,33 +65,56 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, 
         return None
     # 2026-10-24 목요일 'PPT 느낌'(ppt=True, 사용자 지시): 장당 시간 2배, 장이 바뀔 때 '슥' 소리 + 서서히 나타남(디졸브),
     # 장마다 살짝 줌인. 줌은 3배 크게 키운 뒤 줄여 그려 글자가 떨리지 않게(정수 반올림 떨림 방지).
-    if ppt:
-        sec, xf = sec * 2, 1.2
+    # 2026-10-24 목요일 수정 제안(plan, thursday.video_plan): 장 시간 = 글자 수 비례(전체 약 1분), 장 넘김 효과·
+    # 장별 음악 장르·줌 방향이 매주 바뀌고, 장이 들어올 때마다 빛줄기가 카드 위를 쓸고 지나간다.
+    if plan:
+        ppt, medley, xf = True, True, plan["xf"]
+        durs = list(plan["secs"])
+    else:
+        if ppt:
+            sec, xf = sec * 2, 1.2
+        durs = [sec + 0.8] + [sec] * (len(pngs) - 1)
     args = ["ffmpeg", "-y", "-loglevel", "error"]
-    durs = [sec + 0.8] + [sec] * (len(pngs) - 1)
     for p, d in zip(pngs, durs):
-        args += ["-loop", "1", "-framerate", "30", "-t", f"{d:.1f}", "-i", str(p)]
+        args += ["-loop", "1", "-framerate", "30", "-t", f"{d:.2f}", "-i", str(p)]
+    streak = None
+    if plan:
+        streak = _light_streak(out.with_suffix(".streak.png"))
+        for d in durs:   # 장마다 따로 입력(하나를 split 하면 늦게 쓰는 장 몫이 메모리에 쌓여 OOM)
+            args += ["-loop", "1", "-framerate", "30", "-t", f"{d:.2f}", "-i", str(streak)]
 
     def fg_chain(i: int, d: float) -> str:
         if not ppt:
             return f"[b{i}]scale=1080:1350:flags=lanczos[fg{i}];"
         n = int(d * 30)
-        return (f"[b{i}]scale=3240:4050:flags=lanczos,zoompan=z='1+0.05*on/{n}':d=1:"
-                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1350:fps=30[fg{i}];")
+        mo = plan["motions"][i] if plan else "in"
+        z = f"1.06-0.05*on/{n}" if mo == "out" else f"1+0.05*on/{n}"
+        y = "(ih-ih/zoom)*0.15" if mo == "in_top" else "ih/2-(ih/zoom/2)"
+        return (f"[b{i}]scale=3240:4050:flags=lanczos,zoompan=z='{z}':d=1:"
+                f"x='iw/2-(iw/zoom/2)':y='{y}':s=1080x1350:fps=30[fg{i}];")
 
-    chains = "".join(
+    def shine(i: int) -> str:   # 빛줄기: 장이 나타난 직후 0.3~1.3초 사이 왼쪽→오른쪽
+        if not plan:
+            return ""
+        t0 = 0.3 if i == 0 else xf * 0.6
+        return (f"[c{i}][s{i}]overlay=x='-420+(t-{t0:.2f})*1500':y=285:"
+                f"enable='between(t,{t0:.2f},{t0 + 1.1:.2f})'[d{i}];[d{i}]")
+
+    chains = "".join(f"[{len(pngs) + i}:v]format=rgba[s{i}];" for i in range(len(pngs))) if plan else ""
+    chains += "".join(
         f"[{i}:v]split[a{i}][b{i}];"
         f"[a{i}]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:3,"
         f"eq=brightness=-0.18:saturation=1.1[bg{i}];"
         + fg_chain(i, durs[i]) +
-        f"[bg{i}][fg{i}]overlay=0:(H-h)/2,setsar=1,fps=30,"
+        (f"[bg{i}][fg{i}]overlay=0:(H-h)/2[c{i}];" + shine(i) if plan else f"[bg{i}][fg{i}]overlay=0:(H-h)/2,")
+        + "setsar=1,fps=30,"
         f"scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[v{i}];"
         for i in range(len(pngs)))
     # 2026-10-24(사용자 지시 '페이지 넘기기 좀 느리게'): 장당 3.2초→4.5초, 넘기는 동작 0.4초→0.8초
     prev, off, parts = "v0", durs[0] - xf, []
     for i in range(1, len(pngs)):
         tag = "out" if i == len(pngs) - 1 else f"x{i}"
-        trans = "fade" if ppt else "slideleft"
+        trans = plan["trans"][i - 1] if plan else ("fade" if ppt else "slideleft")
         parts.append(f"[{prev}][v{i}]xfade=transition={trans}:duration={xf}:offset={off:.2f}[{tag}]")
         prev, off = tag, off + durs[i] - xf
     # 2026-10-24(사용자 지시 '음악 삽입 필수'): 코드로 만든 배경음악(저작권 문제 없음)을 영상 길이에 맞춰 넣는다.
@@ -108,18 +131,39 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, 
         for d in durs[:-1]:
             t += d - xf
             starts.append(t)
-        wav = bgm.write_medley(out.with_suffix(".bgm.wav"), segs, seed, whoosh_at=starts if ppt else None)
+        sparks = [t for t, tr in zip(starts, plan["trans"]) if tr in plan["light"]] if plan else None
+        wav = bgm.write_medley(out.with_suffix(".bgm.wav"), segs, seed, whoosh_at=starts if ppt else None,
+                               styles=plan["styles"] if plan else None, sparkle_at=sparks)
     else:
         wav = bgm.write_wav(out.with_suffix(".bgm.wav"), round(total + 0.5, 2), seed=seed)
     args += ["-i", str(wav)]
-    args += ["-filter_complex", chains + ";".join(parts), "-map", "[out]", "-map", f"{len(pngs)}:a",
+    a_idx = len(pngs) * (2 if streak else 1)
+    args += ["-filter_complex", chains + ";".join(parts), "-map", "[out]", "-map", f"{a_idx}:a",
              "-c:a", "aac", "-b:a", "160k", "-shortest", "-r", "30",
              "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-tune", "stillimage", "-profile:v", "high",
              "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
              "-color_range", "tv", "-movflags", "+faststart", str(out)]
     subprocess.run(args, check=True)
     wav.unlink(missing_ok=True)
+    if streak:
+        streak.unlink(missing_ok=True)
     return out
+
+
+def _light_streak(path: Path) -> Path:
+    """카드 위를 쓸고 지나가는 비스듬한 빛줄기(가운데 밝고 양옆으로 사라짐) — 420x1350 투명 PNG."""
+    from PIL import Image
+
+    import numpy as np
+
+    w, h = 420, 1350
+    xs = np.arange(w)[None, :] - (np.arange(h)[:, None] - h / 2) * 0.2   # 위가 오른쪽으로 기운 띠
+    d = np.abs(xs - w / 2) / (w * 0.22)
+    a = (np.clip(1 - d, 0, 1) ** 2 * 120).astype(np.uint8)
+    rgba = np.zeros((h, w, 4), np.uint8)
+    rgba[..., 0], rgba[..., 1], rgba[..., 2], rgba[..., 3] = 255, 244, 214, a
+    Image.fromarray(rgba, "RGBA").save(path)
+    return path
 
 
 def main() -> int:

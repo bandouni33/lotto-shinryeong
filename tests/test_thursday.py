@@ -20,3 +20,22 @@ def test_first_round_uses_user_text_and_rotates():
     assert th.page_text(1, 1247)[0] == ["아무 근거 없이", "무작위로 구매하고 계시나요?"]
     assert th.page_text(2, 1247)[0] == ["이번 주 좋은 꿈 꾸셨나요?"]
     assert th.page_text(0, 1248) != th.page_text(0, 1247)   # 매주 감정 단어가 바뀐다
+
+
+def test_video_plan_about_one_minute_and_weekly_variety():
+    p1, p2 = th.video_plan(1247), th.video_plan(1248)
+    for p in (p1, p2):
+        total = sum(p["secs"]) - p["xf"] * (th.TOTAL - 1)
+        assert abs(total - th.VIDEO_SEC) < 0.5                  # 약 1분
+        assert p["secs"][4] > p["secs"][0]                       # 글자 많은 장(고급필터)이 더 길다
+        assert len(set(p["trans"])) == th.TOTAL - 1              # 한 영상 안에서 넘김 효과가 모두 다름
+        assert all(a != b for a, b in zip(p["styles"], p["styles"][1:]))   # 이웃한 장은 다른 음악
+    assert p1["trans"] != p2["trans"] and p1["styles"] != p2["styles"]      # 매주 바뀜
+    assert th.video_plan(1247) == p1                             # 같은 회차 = 같은 연출
+
+
+def test_bgm_styles_render():
+    from weekly_content import bgm
+    for name in th.MUSIC_ORDER:
+        a = bgm.render_style(2.0, "t", name)
+        assert a.shape == (int(2.0 * bgm.SR), 2) and abs(a).max() > 0.1

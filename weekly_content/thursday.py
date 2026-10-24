@@ -109,3 +109,36 @@ def card(page: int, rnd: int) -> Image.Image:
 
 def build(rnd: int) -> list[Image.Image]:
     return [card(i, rnd) for i in range(TOTAL)]
+
+
+# ── 영상 연출(2026-10-24 사용자 수정 제안) ──
+# "기능별 기본 유지(매주 변경사항: 감성 부분·음악·페이지 변경 스킬)" → 장 구성은 그대로, 매주 회차로
+#   ① 장 넘김 효과 ② 장별 음악 장르 ③ 줌 방향 이 돌아가며 바뀐다(같은 회차 = 항상 같은 연출).
+# "글자 수에 맞게 속도 늘려도 될 듯(1분)" → 장 시간은 글자 수에 비례, 전체 약 60초.
+VIDEO_SEC = 60.0
+XF = 1.2
+# PPT 느낌 넘김 효과(ffmpeg xfade) — 매주 이 중 4개(서로 다름)
+TRANSITIONS = ["circleopen",   # 중앙에서 둥글게 열리며 등장
+               "fadewhite",    # 빛이 번쩍하며 넘어감(+'반짝' 소리)
+               "smoothup",     # 아래에서 떠오름
+               "zoomin",       # 확 다가오며 전환
+               "radial",       # 시계 방향으로 쓸어 넘김
+               "horzopen",     # 가운데에서 위아래로 펼쳐짐
+               "coverup",      # 다음 장이 아래에서 날아 들어와 덮음
+               "dissolve"]     # 반짝이는 입자로 스며듦
+LIGHT = {"fadewhite"}
+# 이웃한 장끼리 장조↔단조·느림↔빠름이 엇갈리는 순서(bgm.STYLES). 매주 시작점만 돈다.
+MUSIC_ORDER = ["dreamy", "bright", "chill", "epic", "funky"]
+MOTIONS = ["in", "in_top", "out"]   # 장마다 살짝 줌인 / 글자 쪽으로 줌인 / 살짝 줌아웃
+
+
+def video_plan(rnd: int) -> dict:
+    w = (rnd - FIRST_ROUND) % 1000
+    chars = [len("".join(h + b)) for h, b in (page_text(i, rnd) for i in range(TOTAL))]
+    raw = [6 + 0.11 * c for c in chars]
+    scale = (VIDEO_SEC + XF * (TOTAL - 1)) / sum(raw)
+    secs = [round(r * scale, 2) for r in raw]
+    trans = [TRANSITIONS[(w * 3 + i) % len(TRANSITIONS)] for i in range(TOTAL - 1)]
+    styles = [MUSIC_ORDER[(w + i) % len(MUSIC_ORDER)] for i in range(TOTAL)]
+    motions = [MOTIONS[(w + i) % len(MOTIONS)] for i in range(TOTAL)]
+    return {"secs": secs, "xf": XF, "trans": trans, "styles": styles, "motions": motions, "light": sorted(LIGHT)}

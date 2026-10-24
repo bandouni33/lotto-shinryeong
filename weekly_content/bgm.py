@@ -45,11 +45,14 @@ def whoosh(dur: float = 0.7):
     return np.stack([sig * 0.9, sig], axis=1) * 0.55
 
 
-def write_medley(out: Path, durs: list[float], seed: str, xf: float = 0.6, whoosh_at: list[float] | None = None) -> Path:
+def write_medley(out: Path, durs: list[float], seed: str, xf: float = 0.6, whoosh_at: list[float] | None = None,
+                 styles: list[str] | None = None, sparkle_at: list[float] | None = None) -> Path:
     """장(페이지)이 바뀔 때마다 다른 곡 — 2026-10-24 사용자 지시(목요일 게시물). 곡 사이는 xf 초 겹쳐 자연스럽게.
-    whoosh_at(초) 이 있으면 그 순간마다 '슥' 소리를 얹는다."""
+    whoosh_at(초) 이 있으면 그 순간마다 '슥' 소리를, sparkle_at 이면 '반짝' 소리를 얹는다.
+    styles(장마다 STYLES 이름) 가 있으면 장마다 다른 장르의 곡(이웃한 장끼리 대비)."""
     n_xf = int(xf * SR)
-    parts = [render(d + xf, f"{seed}:{i}") for i, d in enumerate(durs)]
+    parts = [render_style(d + xf, f"{seed}:{i}", styles[i]) if styles else render(d + xf, f"{seed}:{i}")
+             for i, d in enumerate(durs)]
     out_arr = parts[0]
     for p in parts[1:]:
         ramp = np.linspace(0, 1, n_xf)[:, None]
@@ -62,6 +65,11 @@ def write_medley(out: Path, durs: list[float], seed: str, xf: float = 0.6, whoos
             s0 = max(0, int((t0 - 0.15) * SR))
             e0 = min(len(out_arr), s0 + len(w))
             out_arr[s0:e0] += w[: e0 - s0]
+    for t0 in sparkle_at or []:
+        sp = sparkle()
+        s0 = max(0, int(t0 * SR))
+        e0 = min(len(out_arr), s0 + len(sp))
+        out_arr[s0:e0] += sp[: e0 - s0]
     return _save(out, out_arr)
 
 
@@ -167,3 +175,142 @@ def render(dur: float, seed: int | str):
     fade[-fo:] = np.minimum(fade[-fo:], np.linspace(1, 0, fo))
     mix *= fade[:, None]
     return mix
+
+
+# ── 2026-10-24 목요일 '페이지마다 반전 느낌 나게 다른 음악(살짝 비트 있게)' — 장르(스타일)별 곡 ──
+# 이웃한 장끼리 장조↔단조·느림↔빠름이 엇갈리게 배치(thursday.music_styles). 같은 seed = 같은 곡.
+MAJOR = [PROGRESSIONS[1], [(53, 57, 60), (48, 52, 55), (55, 59, 62), (57, 60, 64)],   # C G Am F / F C G Am
+         [(48, 52, 55), (57, 60, 64), (53, 57, 60), (55, 59, 62)]]                     # C Am F G
+MINOR = [PROGRESSIONS[0], PROGRESSIONS[2], PROGRESSIONS[4]]                           # Am F C G / Dm Bb F C / Am G F E
+STYLES = {
+    # 몽환(단조·느림): 반박자 스네어, 종소리 아르페지오, 패드 크게
+    "dreamy": dict(prog=MINOR, bpm=(94, 102), kick=(0, 2.5), snare=(2,), hat=8, swing=0.0, bass="long",
+                   arp=("bell", 8), pad=0.13),
+    # 밝음(장조·빠름): 매 박 킥, 2·4 스네어, 16분 하이햇, 사각파 아르페지오
+    "bright": dict(prog=MAJOR, bpm=(126, 134), kick=(0, 1, 2, 3), snare=(1, 3), hat=16, swing=0.0, bass="eighth",
+                   arp=("square", 8), pad=0.08),
+    # 칠(장조·느림): 힙합 킥, 스윙 하이햇, 일렉 피아노
+    "chill": dict(prog=MAJOR, bpm=(98, 106), kick=(0, 1.5, 2.75), snare=(1, 3), hat=8, swing=0.18, bass="kick",
+                  arp=("epiano", 4), pad=0.10),
+    # 웅장(단조·빠름): 네 박 킥 + 박수, 오프비트 하이햇, 옥타브 베이스, 16분 톱니 아르페지오
+    "epic": dict(prog=MINOR, bpm=(130, 138), kick=(0, 1, 2, 3), snare=(1, 3), hat=-1, swing=0.0, bass="octave",
+                 arp=("saw", 16), pad=0.10),
+    # 펑키(장조·중간): 싱코페이션 킥·베이스, 16분 하이햇, 짧게 튕기는 소리
+    "funky": dict(prog=MAJOR, bpm=(112, 120), kick=(0, 0.75, 2, 2.5), snare=(1, 3), hat=16, swing=0.0,
+                  bass="synco", arp=("pluck", 8), pad=0.07),
+}
+
+
+def _tone(kind: str, f: float, k):
+    w = 2 * np.pi * f * k
+    if kind == "bell":
+        return (np.sin(w) + 0.4 * np.sin(2.76 * w) * np.exp(-k * 6)) * np.exp(-k * 3.5)
+    if kind == "square":
+        return (np.sin(w) + np.sin(3 * w) / 3 + np.sin(5 * w) / 5) * np.exp(-k * 7)
+    if kind == "epiano":
+        return (np.sin(w) + 0.5 * np.sin(w * 1.003) + 0.25 * np.sin(2 * w)) * np.exp(-k * 2.5)
+    if kind == "saw":
+        return sum(np.sin(h * w) / h for h in range(1, 7)) * np.exp(-k * 10)
+    return (np.sin(w) + 0.5 * np.sin(2 * w)) * np.exp(-k * 14)   # pluck
+
+
+def render_style(dur: float, seed: int | str, style: str):
+    import zlib
+
+    st = STYLES[style]
+    key = zlib.crc32(f"{style}:{seed}".encode("utf-8"))
+    pick = np.random.default_rng(key)
+    bpm = int(pick.integers(st["bpm"][0], st["bpm"][1] + 1))
+    shift = int(pick.integers(-3, 5))
+    chords = [tuple(m + shift for m in c) for c in st["prog"][int(pick.integers(len(st["prog"])))]]
+    shape = ARP_SHAPES[int(pick.integers(len(ARP_SHAPES)))]
+    beat = 60 / bpm
+    bar = 4 * beat
+    n = int(SR * dur)
+    mix = np.zeros((n, 2))
+    rng = np.random.default_rng(key)
+
+    def note(m):
+        return 440.0 * 2 ** ((m - 69) / 12)
+
+    def add(t0, sig, pan=0.5):
+        s0 = int(t0 * SR)
+        if s0 >= n:
+            return
+        sig = sig[: n - s0]
+        mix[s0:s0 + len(sig), 0] += sig * (1 - pan) * 2
+        mix[s0:s0 + len(sig), 1] += sig * pan * 2
+
+    def ks(sec):
+        return np.arange(int(sec * SR)) / SR
+
+    nbar = int(dur / bar) + 1
+    for b in range(nbar):   # 패드
+        ch = chords[b % 4]
+        k = ks(bar * 1.1)
+        sig = sum(0.5 * np.sin(2 * np.pi * note(m) * k) + 0.12 * np.sin(2 * np.pi * 2 * note(m) * k + 0.3) for m in ch)
+        sig = sig * np.minimum(1, k / 0.4) * np.minimum(1, (k[-1] - k) / 0.4 + 1e-3) * st["pad"]
+        add(b * bar, sig)
+    tone, per_bar = st["arp"]   # 아르페지오
+    step = bar / per_bar
+    for i in range(int(dur / step)):
+        ch = chords[int(i * step / bar) % 4]
+        k = ks(min(0.6, step * 2.2))
+        f = note(ch[shape[i % 4]] + (24 if i % 8 == 7 else 12))
+        add(i * step, _tone(tone, f, k) * np.minimum(1, k / 0.004) * 0.06, 0.5 + 0.3 * np.sin(i * 0.7))
+    for b in range(nbar):   # 리듬(첫 마디는 쉬고 들어감)
+        if b == 0:
+            continue
+        t_bar = b * bar
+        ch = chords[b % 4]
+        for kb in st["kick"]:
+            k = ks(0.3)
+            f = 120 * np.exp(-k * 20) + 48
+            add(t_bar + kb * beat, np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-k * 11) * 0.42)
+        for sb in st["snare"]:
+            k = ks(0.18)
+            sn = (rng.standard_normal(len(k)) * 0.7 + 0.6 * np.sin(2 * np.pi * 190 * k)) * np.exp(-k * 22) * 0.16
+            add(t_bar + sb * beat, sn)
+        if st["hat"] == -1:   # 오프비트 오픈 하이햇
+            for q in range(4):
+                k = ks(0.12)
+                add(t_bar + (q + 0.5) * beat, rng.standard_normal(len(k)) * np.exp(-k * 30) * 0.05)
+        else:
+            per = st["hat"] // 4
+            for q in range(4 * per):
+                tq = t_bar + q * beat / per + (st["swing"] * beat / per if q % 2 else 0)
+                k = ks(0.04)
+                add(tq, rng.standard_normal(len(k)) * np.exp(-k * 110) * (0.035 if q % 2 == 0 else 0.018))
+        root = note(ch[0] - 12)
+        if st["bass"] == "long":
+            hits = [(0, bar * 0.95)]
+        elif st["bass"] == "kick":
+            hits = [(kb * beat, beat * 0.9) for kb in st["kick"]]
+        elif st["bass"] == "synco":
+            hits = [(x * beat, beat * 0.4) for x in (0, 0.75, 1.5, 2, 2.5, 3.25)]
+        else:
+            hits = [(x * beat / 2, beat * 0.45) for x in range(8)]
+        for j, (t0, ln) in enumerate(hits):
+            k = ks(ln)
+            f = root * (2 if st["bass"] == "octave" and j % 2 else 1)
+            add(t_bar + t0, np.sin(2 * np.pi * f * k) * np.minimum(1, k / 0.005) *
+                np.minimum(1, (k[-1] - k) / 0.02 + 1e-3) * np.exp(-k * (1.5 if st["bass"] == "long" else 6)) * 0.22)
+    fade = np.ones(n)
+    fi, fo = min(int(0.6 * SR), n), min(int(1.5 * SR), n)
+    fade[:fi] = np.linspace(0, 1, fi)
+    fade[-fo:] = np.minimum(fade[-fo:], np.linspace(1, 0, fo))
+    mix *= fade[:, None]
+    return mix / (max(1e-9, float(np.abs(mix).max())) / 0.8)   # 장마다 크기를 맞춰 이어 붙였을 때 들쭉날쭉 없게
+
+
+def sparkle(dur: float = 0.9):
+    """'반짝' 빛 소리(높은 종소리 몇 개가 위로) — 빛 효과 장면 전환에 얹는다."""
+    n = int(dur * SR)
+    out = np.zeros((n, 2))
+    for j, m in enumerate((88, 91, 95, 100)):
+        s0 = int(j * 0.06 * SR)
+        k = np.arange(n - s0) / SR
+        sig = np.sin(2 * np.pi * 440 * 2 ** ((m - 69) / 12) * k) * np.exp(-k * 7) * 0.18
+        out[s0:, 0] += sig * (1.2 - j * 0.15)
+        out[s0:, 1] += sig * (0.8 + j * 0.15)
+    return out
