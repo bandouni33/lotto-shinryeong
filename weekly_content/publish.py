@@ -383,6 +383,19 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
     return result
 
 
+def annotate(res: dict) -> None:
+    """채널별 실패·건너뜀을 Actions 주석(::error/::notice)으로도 남긴다 — 실행 기록 로그를 못 여는 환경에서도
+    API(check-runs annotations)로 원인을 읽을 수 있게(2026-10-24). 토큰은 실패 문구에 들어가지 않는다."""
+    def clean(x):
+        return str(x).replace("%", "%25").replace("\r", " ").replace("\n", " ")[:300]
+    for ch, why in (res.get("failed") or {}).items():
+        print(f"::error title=SNS 게시 실패 ({ch})::{clean(why)}")
+    for ch, why in (res.get("skipped") or {}).items():
+        print(f"::notice title=SNS 게시 건너뜀 ({ch})::{clean(why)}")
+    for ch, pid in (res.get("posted") or {}).items():
+        print(f"::notice title=SNS 게시 완료 ({ch})::{clean(pid)}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="weekly_out")
@@ -398,6 +411,7 @@ def main() -> int:
         return 0
     res = publish(Path(a.dir), dry_run=a.dry_run, kind=a.kind)
     print(json.dumps(res, ensure_ascii=False, indent=1))
+    annotate(res)
     return 1 if res["failed"] else 0
 
 

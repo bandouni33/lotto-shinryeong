@@ -131,6 +131,7 @@ def main() -> int:
         return 0
     res = run(a.id, a.url)
     print(json.dumps(res, ensure_ascii=False, indent=1))
+    pb.annotate(res)
     return 1 if res["failed"] else 0
 
 
