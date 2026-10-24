@@ -63,7 +63,7 @@ class WeeklyContentTest(unittest.TestCase):
                 self.assertEqual(Image.open(p).size, (1080, 1350))
             self.assertEqual(cards.PENDING_TEXT, "동행복권 집계중")
             cap = cards.caption(d, 60)
-            self.assertIn("당첨을 보장하지 않습니다", cap)
+            self.assertNotIn("참고·재미용", cap)   # 2026-10-24 사용자 지시: 게시물에 참고사항 넣지 않음
             self.assertIn("로또신령 홈페이지", cap)  # 2026-10-22 링크는 홈페이지로 통일(인스타는 프로필 링크 안내)
             for bad in ("예측", "확률 상승", "보장합니다", "1등 배출"):
                 self.assertNotIn(bad, cap)

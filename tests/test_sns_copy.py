@@ -37,5 +37,5 @@ def test_links_go_to_homepage_only():
         assert "play.google.com" not in c["facebook"] and "blog.naver.com" not in c["facebook"]
         assert c["facebook"].count("https://") == 1, "페이스북 본문 링크는 1개"
         assert "https://" not in c["instagram"], "인스타 본문 링크는 눌리지 않는다 — 프로필 링크 안내"
-        assert len(c["threads"]) <= 500 and "당첨 보장 없음" in c["threads"]
-        assert "당첨을 보장하지 않습니다" in c["instagram"] and "당첨을 보장하지 않습니다" in c["facebook"]
+        assert len(c["threads"]) <= 500
+        assert all("참고·재미용" not in c[k] for k in ("instagram", "facebook", "threads")), "참고사항 넣지 않음(10-24)"

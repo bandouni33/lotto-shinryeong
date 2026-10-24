@@ -51,7 +51,7 @@ def card_ranks(res: dict) -> "cards.Image.Image":
         _center(d, y + 30, f"총 판매액 {eok(res['sales'])}", font(28, "Medium"), MUTED)
     if res.get("ours"):   # 2026-10-24: 로또신령 배포 조합의 1·2등 배출(이 게시물을 올리는 조건)
         o = res["ours"]
-        _center(d, y + 72, f"로또신령 조합  1등 {o[0]:,}개 · 2등 {o[1]:,}개 배출", font(34, "Black"), GOLD)
+        _center(d, y + 72, f"로또신령 조합  1등 {o[0]:,} · 2등 {o[1]:,} · 3등 {o[2]:,}개 배출", font(34, "Black"), GOLD)
     cards._footer(im, 1, 2, LABEL)
     return im
 
@@ -95,18 +95,16 @@ def captions(res: dict) -> dict:
             f"세금 떼면 손에 쥐는 돈은 약 {eok(net)}이에요.\n\n"
             + (f"1등 구매 방식: {kinds}\n" if kinds else ""))
     o = res.get("ours")
-    if o:   # 2026-10-24: 로또신령 배포 조합의 1·2등 배출 — 실측치(combo_round_stats)
-        head = (f"🎉 이번 주 로또신령 조합에서 1등 {o[0]:,}개 · 2등 {o[1]:,}개가 나왔어요!\n"
-                "(앱이 배포한 조합 중 당첨번호와 일치한 개수 · 공식 추첨결과 기준)\n\n") + head
+    if o:   # 2026-10-24: 로또신령 배포 조합의 1·2·3등 배출 — 실측치(combo_round_stats), 참고사항 문구 없이
+        head = f"🎉 이번 주 로또신령 조합에서 1등 {o[0]:,}개 · 2등 {o[1]:,}개 · 3등 {o[2]:,}개가 나왔어요!\n\n" + head
     head += f"{lines}\n\n🏆 1등 명당: {regions}\n{shops}\n\n우리 동네 판매점도 있나요? 👇 댓글로 지역을 남겨주세요."
 
     def tail(src):
-        return (f"\n\n{sc.footer(src, f'/round/{rnd}/', '판매점 전체·번호 구성')}"
-                "\n(동행복권 공식 발표 기준)")
+        return f"\n\n{sc.footer(src, f'/round/{rnd}/', '판매점 전체·번호 구성')}"
 
     tags_ig = sc.hashtags(rnd, sc.KW_PRIZE, sc.KW_DRAW, channel="instagram")
     tags_fb = sc.hashtags(rnd, sc.KW_PRIZE, sc.KW_DRAW, channel="facebook")
-    th = ((f"🎉 로또신령 조합 1등 {o[0]:,}개·2등 {o[1]:,}개 배출!\n" if o else "") +
+    th = ((f"🎉 로또신령 조합 1등 {o[0]:,}개·2등 {o[1]:,}개·3등 {o[2]:,}개 배출!\n" if o else "") +
           f"💰 {rnd}회 1등 {r1['count']}명, 1명당 {eok(r1['amount'])}\n세금 떼면 약 {eok(net)}\n"
           f"1등 명당: {regions}\n\n{sc.footer('threads', f'/round/{rnd}/')}\n#로또")[:cards.THREADS_LIMIT]
     return {"instagram": head + tail("instagram") + "\n" + tags_ig, "facebook": head + tail("facebook") + "\n" + tags_fb,

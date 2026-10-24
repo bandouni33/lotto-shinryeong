@@ -178,7 +178,7 @@ class PublishTest(unittest.TestCase):
         self.assertLessEqual(len(caps["threads"]), 500)
         self.assertLessEqual(len(caps["youtube_title"]), 100)
         for k in ("instagram", "facebook", "threads", "youtube_description"):
-            self.assertIn("당첨을 보장" if k != "threads" else "당첨 보장 없음", caps[k])
+            self.assertNotIn("참고·재미용", caps[k])   # 2026-10-24: 참고사항 넣지 않음
 
 
 if __name__ == "__main__":

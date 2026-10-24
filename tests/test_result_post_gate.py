@@ -39,4 +39,5 @@ def test_build_with_ours_when_second_prize(monkeypatch, tmp_path):
     assert _run(monkeypatch, tmp_path, row(0, 2)) == 0
     import json
     caps = json.loads((tmp_path / "1247_captions.json").read_text(encoding="utf-8"))
-    assert "1등 0개 · 2등 2개" in caps["facebook"] and "2등 2개" in caps["threads"]
+    assert "1등 0개 · 2등 2개 · 3등 5개" in caps["facebook"] and "3등 5개" in caps["threads"]
+    assert "참고·재미용" not in caps["facebook"]

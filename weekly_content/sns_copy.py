@@ -23,8 +23,6 @@ KW_TIME = ["로또판매시간"]
 KW_STATS = ["로또번호", "로또통계", "로또번호추천"]
 KW_TAROT = ["타로", "오늘의타로", "주간운세", "타로운세"]
 
-DISCLAIMER = "※ 참고·재미용 정보이며 당첨을 보장하지 않습니다. 복권은 만 19세 이상."
-DISCLAIMER_SHORT = "※ 참고·재미용, 당첨 보장 없음 · 복권은 만 19세 이상"
 
 
 def site(path: str = "/") -> str:
@@ -49,17 +47,16 @@ def hashtags(rnd: int | None, *groups: list[str], channel: str) -> str:
 
 
 def footer(channel: str, path: str = "/", what: str = "") -> str:
-    """링크·안내·고지 — 홈페이지 한 곳으로 모은다. what = 그 링크에서 볼 수 있는 것(예: '번호 통계')."""
+    """링크·안내 — 홈페이지 한 곳으로 모은다. 2026-10-24(사용자 지시): 모든 게시물에 참고사항(고지 문구)을 넣지 않는다. what = 그 링크에서 볼 수 있는 것(예: '번호 통계')."""
     if channel == "instagram":
         link = "🔗 프로필 링크 → 로또신령 홈페이지" + (f"에서 {what}" if what else "")
     elif channel == "threads":
-        return f"🔗 {site(path)}\n{DISCLAIMER_SHORT}"
+        return f"🔗 {site(path)}"
     else:
         link = f"🔗 {what + ': ' if what else ''}{site(path)}"
     return (f"{link}\n"
             "당첨번호·번호 통계·실수령액 계산·판매시간, 앱 설치·사용설명서까지 홈페이지에 다 있어요.\n"
-            "첫 가입 500P로 번호 조합 무료 체험 — 구글 플레이·앱스토어 '로또신령'\n\n"
-            f"{DISCLAIMER}")
+            "첫 가입 500P로 번호 조합 무료 체험 — 구글 플레이·앱스토어 '로또신령'")
 
 
 def net_prize(won: int) -> int:

@@ -67,4 +67,4 @@ def test_already_posted_channels_are_skipped():
 def test_captions_link_to_homepage():
     c = pv.captions()
     assert "https://lottoshinryeong.com/" in c["facebook"] and "https://" not in c["instagram"]
-    assert len(c["threads"]) <= 500 and "당첨 보장 없음" in c["threads"]
+    assert len(c["threads"]) <= 500

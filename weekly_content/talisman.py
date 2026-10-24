@@ -106,7 +106,6 @@ def build(rnd: int, nums: list[int], bonus: int, *, star_line: str = "", date_te
     sd.text((100, 138), str(rnd), font=_serif(50), fill=INK + (235,), anchor="mm")
     seal = seal.rotate(rng.uniform(-9, 9), expand=True, resample=Image.BICUBIC)
     im.paste(seal, (W - 300, 82), seal)
-    d.text((110, H - 120), "참고·재미용 · 당첨 보장 없음 · 만 19세 이상", font=cards.font(24, "Regular"), fill=DARK)
     return im
 
 

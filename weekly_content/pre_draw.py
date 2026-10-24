@@ -65,7 +65,7 @@ def card_flow(draws: dict[int, dict], latest: int) -> "cards.Image.Image":
                 d = ImageDraw.Draw(im)
                 d.text((cx, top + 285), subs[i], font=font(26, "Medium"), fill=MUTED, anchor="mm")
     d = ImageDraw.Draw(im)
-    _center(d, 1110, f"1~{latest}회 공식 당첨번호 기준 · 매 회차 모든 번호의 확률은 같습니다", font(26, "Regular"), MUTED)
+    _center(d, 1110, f"1~{latest}회 공식 당첨번호 기준", font(26, "Regular"), MUTED)   # 2026-10-24: 참고사항 문구 제외
     cards._footer(im, 1, 2, "로또신령 번호 흐름")
     return im
 
