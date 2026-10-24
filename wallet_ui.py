@@ -16,8 +16,10 @@ from auth_providers import (
     _dev_mock_enabled,
     current_member_id,
     get_kakao_authorize_url,
+    get_naver_authorize_url,
     kakao_configured,
     logout,
+    naver_configured,
     mock_kakao_login,
 )
 from legal_notices import (
@@ -423,10 +425,28 @@ div[data-testid="stVerticalBlock"].st-key-auth_banner_close_x {
 .st-key-auth_banner_kakao .st-key-auth_banner_apple div[data-testid="stButton"] button[kind="primary"] p::before {
     content: "\\F8FF  ";
 }
+/* 2026-10-24: 네이버 로그인 — 네이버 공식 초록(#03C75A)·흰 글씨. 카카오 버튼과 같은 크기·모서리(위 규칙 상속). */
+.st-key-auth_banner_kakao .st-key-auth_banner_naver a {
+    background: #03c75a !important;
+    color: #ffffff !important;
+    border-color: #03c75a !important;
+}
 </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def _render_naver_login_button(return_page: str) -> None:
+    """카카오 바로 아래 '네이버로 시작하기'(2026-10-24 사용자 요청). 키(NAVER_CLIENT_ID/SECRET)가 없으면 아무것도 안 그린다.
+    웹: 카카오와 같은 팝업 로그인(브리지의 nid.naver.com 처리). 앱: 같은 화면에서 네이버 로그인 후 앱 화면으로 복귀
+    (브리지가 최상위 문서를 이동, 돌아올 때 앱 신호는 OAuth state 로 되살림 — auth_providers._app_params_from_state)."""
+    if not naver_configured():
+        return
+    from login_gate import GATE_BUTTON_NAVER
+
+    with st.container(key="auth_banner_naver"):
+        st.link_button(GATE_BUTTON_NAVER, get_naver_authorize_url(return_page), use_container_width=True, type="primary")
 
 
 def _force_kakao_link_same_tab() -> None:
@@ -703,6 +723,7 @@ def _render_auth_banner_form() -> None:
 
                             remember_return_page_at_login_click()
                             _fire_apple_native_login_trigger()
+                _render_naver_login_button(return_page)
             else:
                 st.link_button(
                     GATE_BUTTON,
@@ -710,6 +731,7 @@ def _render_auth_banner_form() -> None:
                     use_container_width=True,
                     type="primary",
                 )
+                _render_naver_login_button(return_page)
                 # 2026-10-03(긴급 완화 — 사용자 승인): 여기서 _force_kakao_link_same_tab()을
                 # 부르지 않는다. target 을 지우면 카카오 인증 페이지가 최상위 새 탭이 아니라
                 # **이 앱 문서 안에서** 열린다. 실사용자 주소에서 앱 문서는 Streamlit Cloud
@@ -1896,7 +1918,10 @@ def inject_manual_dialog_back_bridge() -> None:
                 PW.__lnAuthPopup = true;
                 var code = "(function(){var W=window,D=document;"
                   + "D.addEventListener('click',function(ev){try{var a=ev.target&&ev.target.closest&&ev.target.closest('.st-key-auth_banner_kakao a[href]');"
-                  + "if(!a||(a.href||'').indexOf('kauth.kakao.com')<0)return;"
+                  + "if(!a)return;var hf=a.href||'';if(hf.indexOf('kauth.kakao.com')<0&&hf.indexOf('nid.naver.com')<0)return;"
+                  // 2026-10-24: 앱(설치형) 안의 네이버 로그인은 팝업 대신 같은 화면(최상위)에서 연다 — 새 브라우저가 뜨지 않게.
+                  + "if(hf.indexOf('nid.naver.com')>=0){var T=W.top,app=false;try{app=!!T.ReactNativeWebView||/[?&]native=1(&|$)/.test(T.location.search);}catch(e){}"
+                  + "if(app){ev.preventDefault();ev.stopPropagation();T.location.href=hf;return;}}"
                   + "var w=W.open(a.href,'ln_kakao_login','popup=yes,width=480,height=760');"
                   + "if(w){ev.preventDefault();ev.stopPropagation();try{w.focus();}catch(e){}}}catch(e){}},true);"
                   + "function onLogin(){if(D.querySelector('.st-key-auth_banner_kakao')){W.location.reload();}}"

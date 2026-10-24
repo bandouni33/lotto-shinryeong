@@ -24,6 +24,9 @@ GATE_BUTTON = "카카오로 시작하기"
 # 문구는 애플 Human Interface Guidelines 한국어 표기("Apple로 로그인")를 따른다.
 GATE_BUTTON_APPLE = "Apple로 로그인"
 
+# 2026-10-24(사용자 요청 — 카카오·네이버 간편로그인 절실): 카카오 바로 아래 같은 크기. 네이버 공식 표기.
+GATE_BUTTON_NAVER = "네이버로 시작하기"
+
 # 안내창을 이미 한 번 본 뒤, 로그인 안 한 채로 막힌 기능을 또 눌렀을 때
 # 각 자리에 조용히 남기는 한 줄(안내창 자체는 다시 안 띄움).
 GATE_INLINE_HINT = "로그인이 필요합니다"

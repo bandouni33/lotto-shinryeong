@@ -18,6 +18,10 @@ from wallet_db import SIGNUP_BONUS, grant_signup_bonus, init_wallet_tables, oaut
 KAKAO_AUTH_URL = "https://kauth.kakao.com/oauth/authorize"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 KAKAO_USER_URL = "https://kapi.kakao.com/v2/user/me"
+# 2026-10-24(사용자 요청 — 네이버 간편로그인): 네이버 아이디로 로그인(OAuth 2.0). 키는 NAVER_CLIENT_ID/SECRET.
+NAVER_AUTH_URL = "https://nid.naver.com/oauth2.0/authorize"
+NAVER_TOKEN_URL = "https://nid.naver.com/oauth2.0/token"
+NAVER_USER_URL = "https://openapi.naver.com/v1/nid/me"
 
 
 def _env_or_secret(name: str) -> str:
@@ -52,6 +56,37 @@ def _dev_mock_enabled() -> bool:
 
 def kakao_configured() -> bool:
     return bool(_env_or_secret("KAKAO_REST_API_KEY"))
+
+
+def naver_configured() -> bool:
+    """두 값이 모두 있을 때만 버튼을 보인다(없으면 화면 변화 없음)."""
+    return bool(_env_or_secret("NAVER_CLIENT_ID") and _env_or_secret("NAVER_CLIENT_SECRET"))
+
+
+# 앱(설치형) 안에서 네이버 로그인을 하면 같은 화면에서 네이버 → 우리 서버(redirect_uri)로 돌아오는데, 그 주소엔 앱 신호
+# (native=1 등)가 없다. 돌아온 뒤에도 앱 화면으로 이어지도록 state 의 provider 칸에 앱 신호를 짧게 실어 보낸다.
+_APP_FLAG_PARAMS = {"i": "iap", "s": "spa_nav", "a": "apple_login"}
+
+
+def _naver_state_provider() -> str:
+    q = st.query_params
+    if q.get("native") != "1":
+        return "naver"
+    plat = "ios" if q.get("native_platform") == "ios" else "android"
+    flags = "".join(k for k, name in _APP_FLAG_PARAMS.items() if q.get(name) == "1")
+    return f"naverapp-{plat}-{flags}"
+
+
+def _app_params_from_state(provider_key: str) -> dict[str, str]:
+    """'naverapp-android-is' → {native:1, native_platform:android, iap:1, spa_nav:1}. 형식이 다르면 빈 dict."""
+    parts = (provider_key or "").split("-")
+    if len(parts) != 3 or parts[0] != "naverapp" or parts[1] not in ("android", "ios"):
+        return {}
+    out = {"native": "1", "native_platform": parts[1]}
+    for k in parts[2]:
+        if k in _APP_FLAG_PARAMS:
+            out[_APP_FLAG_PARAMS[k]] = "1"
+    return out
 
 
 def pass_configured() -> bool:
@@ -468,6 +503,16 @@ def get_kakao_authorize_url(return_page: str = "main") -> str:
     return f"{KAKAO_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
 
+def get_naver_authorize_url(return_page: str = "main") -> str:
+    params = {
+        "response_type": "code",
+        "client_id": _env_or_secret("NAVER_CLIENT_ID"),
+        "redirect_uri": _redirect_uri(),
+        "state": _encode_oauth_state(_naver_state_provider(), return_page),
+    }
+    return f"{NAVER_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+
 def get_pass_authorize_url(return_page: str = "main") -> str | None:
     if not pass_configured():
         return None
@@ -505,7 +550,18 @@ def login_member(provider: str, provider_user_id: str) -> tuple[int, bool, bool]
     # 지점은 여기 한 곳 — 화면이나 다른 로그인 경로에 같은 조건을 복사하지 말 것
     # (mock·카카오·PASS·금융인증서·심사용 로그인이 전부 이 함수를 지나간다).
     blocked = is_signup_bonus_blocked(oauth_hash(provider, provider_user_id))
+    # 2026-10-24(네이버 로그인 추가): 같은 기기에서 카카오·네이버로 각각 가입해 가입 적립금을 두 번 받지 않게 한다.
+    from wallet_db import device_got_signup_bonus, mark_device_signup_bonus
+    try:
+        from user_scope import get_or_create_guest_id
+        _gid = get_or_create_guest_id()
+    except Exception:
+        _gid = None
+    if is_new and not blocked and device_got_signup_bonus(_gid):
+        blocked = True
     bonus = grant_signup_bonus(member_id) if (is_new and not blocked) else False
+    if bonus:
+        mark_device_signup_bonus(_gid, member_id)
     return member_id, is_new, bonus
 
 
@@ -812,6 +868,28 @@ def _exchange_kakao_code(code: str) -> tuple[str | None, str | None]:
     return _fetch_kakao_uid_with_token(token)
 
 
+def _exchange_naver_code(code: str, state: str) -> tuple[str | None, str | None]:
+    """인가코드 → 접근 토큰 → 회원 고유 id(네이버 'id'). 토큰·응답 원문은 화면에 내지 않는다."""
+    try:
+        resp = requests.post(NAVER_TOKEN_URL, data={
+            "grant_type": "authorization_code",
+            "client_id": _env_or_secret("NAVER_CLIENT_ID"),
+            "client_secret": _env_or_secret("NAVER_CLIENT_SECRET"),
+            "code": code,
+            "state": state,
+        }, timeout=15)
+        token = resp.json().get("access_token") if resp.status_code == 200 else None
+        if not token:
+            return None, f"네이버 토큰 발급 오류({resp.status_code})"
+        me = requests.get(NAVER_USER_URL, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        uid = ((me.json() or {}).get("response") or {}).get("id") if me.status_code == 200 else None
+        if not uid:
+            return None, f"네이버 회원 정보 오류({me.status_code})"
+        return str(uid), None
+    except (requests.RequestException, ValueError) as exc:
+        return None, f"네이버 로그인 요청 실패: {type(exc).__name__}"
+
+
 def _record_native_login(result: str, detail: str = "", provider: str = "kakao") -> None:
     """앱(네이티브) 토큰 로그인 경로의 도착·결과를 남긴다 — 이 경로만은 실패해도
     서버에 아무 흔적이 안 남아서, 2026-09-27 테스터 전원 로그인 불가 신고 때
@@ -1046,6 +1124,9 @@ def handle_oauth_callback() -> bool:
         provider_uid = _exchange_fincert_code(code)
     elif provider_key == "kakao" and kakao_configured():
         provider_uid, error = _exchange_kakao_code(code)
+    elif provider_key.startswith("naver") and naver_configured():
+        provider = "naver"
+        provider_uid, error = _exchange_naver_code(code, st.query_params.get("state") or "")
     else:
         st.error("간편인증 설정이 올바르지 않습니다. 관리자에게 문의해 주세요.")
         for key in ("code", "state", "error", "error_description"):
@@ -1080,6 +1161,9 @@ def handle_oauth_callback() -> bool:
     # session_state는 이 콜백 요청에서 세로 비어 있기 때문.
     _restore_resume_from_state(resume_from_state, resume_data_from_state)
     st.query_params["page"] = return_page
+    # 2026-10-24: 앱 안 네이버 로그인으로 돌아온 경우 앱 신호를 되살려 앱 화면으로 이어간다.
+    for _k, _v in _app_params_from_state(provider_key).items():
+        st.query_params[_k] = _v
     if saved_guest_id:
         # 세션 안에서만이 아니라 주소창(다음 새로고침/공유 등)에도 원래 gid가
         # 그대로 남아있어야, 로그인 직후 첫 화면부터 계속 같은 guest_id로

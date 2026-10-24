@@ -111,6 +111,14 @@ def init_wallet_tables() -> None:
             blocked_at TEXT NOT NULL
         );
 
+        -- 2026-10-24(네이버 로그인 추가): 같은 기기(guest_id)에서 카카오·네이버로 각각 가입해
+        -- 가입 적립금을 두 번 받지 않게, 적립금을 받은 기기를 남긴다(기기 식별자·회원 번호·시각만).
+        CREATE TABLE IF NOT EXISTS signup_bonus_devices (
+            guest_id TEXT PRIMARY KEY,
+            member_id INTEGER NOT NULL,
+            granted_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             member_id INTEGER NOT NULL,
@@ -373,6 +381,28 @@ def unlink_guest_from_member(guest_id: str) -> None:
     보고 조용히 다시 로그인시켜버린다(실사용 흐름 점검 중 발견된 버그)."""
     conn = _connect()
     conn.execute("DELETE FROM guest_member_links WHERE guest_id = ?", (str(guest_id),))
+    conn.commit()
+    conn.close()
+
+
+def device_got_signup_bonus(guest_id: str | None) -> bool:
+    """이 기기(guest_id)에서 이미 가입 적립금을 받은 회원이 있는지(2026-10-24, 카카오·네이버 중복 가입 대비)."""
+    gid = str(guest_id or "").strip()
+    if not gid:
+        return False
+    conn = _connect()
+    row = conn.execute("SELECT 1 FROM signup_bonus_devices WHERE guest_id = ?", (gid,)).fetchone()
+    conn.close()
+    return bool(row)
+
+
+def mark_device_signup_bonus(guest_id: str | None, member_id: int) -> None:
+    gid = str(guest_id or "").strip()
+    if not gid:
+        return
+    conn = _connect()
+    conn.execute("INSERT OR IGNORE INTO signup_bonus_devices (guest_id, member_id, granted_at) VALUES (?, ?, ?)",
+                 (gid, int(member_id), datetime.now(timezone.utc).isoformat(timespec="seconds")))
     conn.commit()
     conn.close()
 
