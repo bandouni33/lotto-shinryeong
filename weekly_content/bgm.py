@@ -26,8 +26,28 @@ def write_wav(out: Path, dur: float, seed: int | str | None = None) -> Path:
     return _save(out, render(dur, seed if seed is not None else str(out)))
 
 
-def write_medley(out: Path, durs: list[float], seed: str, xf: float = 0.6) -> Path:
-    """장(페이지)이 바뀔 때마다 다른 곡 — 2026-10-24 사용자 지시(목요일 게시물). 곡 사이는 xf 초 겹쳐 자연스럽게."""
+def whoosh(dur: float = 0.7):
+    """'슥' 하고 넘어가는 소리 — 잡음을 저음→고음으로 쓸어 올리고 가운데서 가장 크게(2026-10-24 목요일 PPT 느낌)."""
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    noise = np.random.default_rng(11).standard_normal(n)
+    out = np.zeros(n)
+    win = 256
+    for s0 in range(0, n, win):   # 구간마다 1차 저역 통과 계수를 바꿔 '쉬익' 스윕
+        k = min(0.95, 0.15 + 0.8 * s0 / n)
+        y = out[s0 - 1] if s0 else 0.0
+        for j in range(s0, min(n, s0 + win)):
+            y = y + k * (noise[j] - y)
+            out[j] = y
+    env = np.sin(np.pi * t / dur) ** 2
+    sig = out * env
+    sig /= max(1e-9, float(np.abs(sig).max()))
+    return np.stack([sig * 0.9, sig], axis=1) * 0.55
+
+
+def write_medley(out: Path, durs: list[float], seed: str, xf: float = 0.6, whoosh_at: list[float] | None = None) -> Path:
+    """장(페이지)이 바뀔 때마다 다른 곡 — 2026-10-24 사용자 지시(목요일 게시물). 곡 사이는 xf 초 겹쳐 자연스럽게.
+    whoosh_at(초) 이 있으면 그 순간마다 '슥' 소리를 얹는다."""
     n_xf = int(xf * SR)
     parts = [render(d + xf, f"{seed}:{i}") for i, d in enumerate(durs)]
     out_arr = parts[0]
@@ -35,6 +55,13 @@ def write_medley(out: Path, durs: list[float], seed: str, xf: float = 0.6) -> Pa
         ramp = np.linspace(0, 1, n_xf)[:, None]
         mixed = out_arr[-n_xf:] * (1 - ramp) + p[:n_xf] * ramp
         out_arr = np.concatenate([out_arr[:-n_xf], mixed, p[n_xf:]])
+    if whoosh_at:
+        out_arr = out_arr / (max(1e-9, float(np.abs(out_arr).max())) / 0.75)
+        w = whoosh()
+        for t0 in whoosh_at:
+            s0 = max(0, int((t0 - 0.15) * SR))
+            e0 = min(len(out_arr), s0 + len(w))
+            out_arr[s0:e0] += w[: e0 - s0]
     return _save(out, out_arr)
 
 

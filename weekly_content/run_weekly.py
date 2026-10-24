@@ -53,7 +53,8 @@ def draw_date_text(rnd: int) -> str:
     return (dt.date(2002, 12, 7) + dt.timedelta(weeks=rnd - 1)).strftime("%Y.%m.%d")
 
 
-def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, medley: bool = False) -> Path | None:
+def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, medley: bool = False,
+                ppt: bool = False) -> Path | None:
     """세로 9:16 짧은 영상(네이버 클립·쇼츠용).
 
     2026-10-17(사용자 지적 '빛바랜 화질'): 예전엔 색공간 표시 없이 BT.601 로 변환돼 재생기(BT.709 가정)에서
@@ -62,15 +63,27 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, 
     if not shutil.which("ffmpeg"):
         print("  (ffmpeg 없음 — 쇼츠는 건너뜀)")
         return None
+    # 2026-10-24 목요일 'PPT 느낌'(ppt=True, 사용자 지시): 장당 시간 2배, 장이 바뀔 때 '슥' 소리 + 서서히 나타남(디졸브),
+    # 장마다 살짝 줌인. 줌은 3배 크게 키운 뒤 줄여 그려 글자가 떨리지 않게(정수 반올림 떨림 방지).
+    if ppt:
+        sec, xf = sec * 2, 1.2
     args = ["ffmpeg", "-y", "-loglevel", "error"]
     durs = [sec + 0.8] + [sec] * (len(pngs) - 1)
     for p, d in zip(pngs, durs):
-        args += ["-loop", "1", "-t", f"{d:.1f}", "-i", str(p)]
+        args += ["-loop", "1", "-framerate", "30", "-t", f"{d:.1f}", "-i", str(p)]
+
+    def fg_chain(i: int, d: float) -> str:
+        if not ppt:
+            return f"[b{i}]scale=1080:1350:flags=lanczos[fg{i}];"
+        n = int(d * 30)
+        return (f"[b{i}]scale=3240:4050:flags=lanczos,zoompan=z='1+0.05*on/{n}':d=1:"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1350:fps=30[fg{i}];")
+
     chains = "".join(
         f"[{i}:v]split[a{i}][b{i}];"
         f"[a{i}]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:3,"
         f"eq=brightness=-0.18:saturation=1.1[bg{i}];"
-        f"[b{i}]scale=1080:1350:flags=lanczos[fg{i}];"
+        + fg_chain(i, durs[i]) +
         f"[bg{i}][fg{i}]overlay=0:(H-h)/2,setsar=1,fps=30,"
         f"scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[v{i}];"
         for i in range(len(pngs)))
@@ -78,7 +91,8 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, 
     prev, off, parts = "v0", durs[0] - xf, []
     for i in range(1, len(pngs)):
         tag = "out" if i == len(pngs) - 1 else f"x{i}"
-        parts.append(f"[{prev}][v{i}]xfade=transition=slideleft:duration={xf}:offset={off:.2f}[{tag}]")
+        trans = "fade" if ppt else "slideleft"
+        parts.append(f"[{prev}][v{i}]xfade=transition={trans}:duration={xf}:offset={off:.2f}[{tag}]")
         prev, off = tag, off + durs[i] - xf
     # 2026-10-24(사용자 지시 '음악 삽입 필수'): 코드로 만든 배경음악(저작권 문제 없음)을 영상 길이에 맞춰 넣는다.
     import zlib
@@ -87,9 +101,14 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, 
 
     total = sum(durs) - xf * (len(pngs) - 1)
     seed = f"{out.name}:{zlib.crc32(pngs[-1].read_bytes())}"   # 게시물마다 다른 곡(목·금·토가 서로 다름)
-    if medley:   # 2026-10-24 목요일: 장이 바뀔 때마다 곡도 바뀜
+    if medley:   # 2026-10-24 목요일: 장이 바뀔 때마다 곡도 바뀜(+ ppt 면 넘김 순간마다 '슥' 소리)
         segs = [durs[0] - xf / 2] + [d - xf for d in durs[1:-1]] + [durs[-1] - xf / 2 + 0.5]
-        wav = bgm.write_medley(out.with_suffix(".bgm.wav"), segs, seed)
+        starts = []
+        t = 0.0
+        for d in durs[:-1]:
+            t += d - xf
+            starts.append(t)
+        wav = bgm.write_medley(out.with_suffix(".bgm.wav"), segs, seed, whoosh_at=starts if ppt else None)
     else:
         wav = bgm.write_wav(out.with_suffix(".bgm.wav"), round(total + 0.5, 2), seed=seed)
     args += ["-i", str(wav)]

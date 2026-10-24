@@ -352,19 +352,12 @@ THREADS_LIMIT = 500  # 스레드 글자 제한(이모지·URL 포함)
 
 def caption_threads(draws: dict[int, dict], rnd: int) -> str:
     """스레드용 짧은 문구(500자 이내) — 해시태그는 1개만 붙는 플랫폼이라 끝에 하나만."""
-    import social_links
-
-    from weekly_content import number_story
+    from weekly_content import sns_copy as sc
 
     a = analyze(draws, rnd)
     nums = " ".join(str(n) for n in a["nums"])
-    ans = number_story.answer(draws, rnd)   # 목요일 문답 '이번 주 컴백할 멤버는?' 결과
-    cand = ", ".join(map(str, ans["candidates"]))
-    res = (f"{', '.join(f'{n}번' for n in ans['hit'])} 컴백! 맞히신 분들 축하해요 🎉" if ans["hit"]
-           else "이번 주엔 아무도 컴백하지 않았어요. 공백기 계속…")
-    qa = (f"🗳 목요일 문답 결과 — 후보 {cand}\n→ {res}\n\n" if rnd >= number_story.FIRST_QUESTION_ROUND
-          else f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n")
-    from weekly_content import sns_copy as sc
+    # 2026-10-24: 목요일 스레드가 5장 컨셉으로 바뀌어 '목요일 문답 결과'는 싣지 않는다(문답을 더 이상 묻지 않음)
+    qa = f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n\n"
 
     txt = (f"🔮 제{rnd}회 로또 당첨번호\n{nums} + 보너스 {a['bonus']}\n\n" + qa +
            "내 번호는 몇 개 맞았나요? 댓글로!\n\n"
