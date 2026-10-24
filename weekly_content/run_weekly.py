@@ -53,7 +53,7 @@ def draw_date_text(rnd: int) -> str:
     return (dt.date(2002, 12, 7) + dt.timedelta(weeks=rnd - 1)).strftime("%Y.%m.%d")
 
 
-def make_shorts(pngs: list[Path], out: Path, sec: float = 3.2) -> Path | None:
+def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8) -> Path | None:
     """세로 9:16 짧은 영상(네이버 클립·쇼츠용).
 
     2026-10-17(사용자 지적 '빛바랜 화질'): 예전엔 색공간 표시 없이 BT.601 로 변환돼 재생기(BT.709 가정)에서
@@ -74,16 +74,19 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 3.2) -> Path | None:
         f"[bg{i}][fg{i}]overlay=0:(H-h)/2,setsar=1,fps=30,"
         f"scale=out_color_matrix=bt709:out_range=tv,format=yuv420p[v{i}];"
         for i in range(len(pngs)))
-    prev, off, parts = "v0", durs[0] - 0.4, []
+    # 2026-10-24(사용자 지시 '페이지 넘기기 좀 느리게'): 장당 3.2초→4.5초, 넘기는 동작 0.4초→0.8초
+    prev, off, parts = "v0", durs[0] - xf, []
     for i in range(1, len(pngs)):
         tag = "out" if i == len(pngs) - 1 else f"x{i}"
-        parts.append(f"[{prev}][v{i}]xfade=transition=slideleft:duration=0.4:offset={off:.2f}[{tag}]")
-        prev, off = tag, off + durs[i] - 0.4
+        parts.append(f"[{prev}][v{i}]xfade=transition=slideleft:duration={xf}:offset={off:.2f}[{tag}]")
+        prev, off = tag, off + durs[i] - xf
     # 2026-10-24(사용자 지시 '음악 삽입 필수'): 코드로 만든 배경음악(저작권 문제 없음)을 영상 길이에 맞춰 넣는다.
+    import zlib
+
     from weekly_content import bgm
 
-    total = sum(durs) - 0.4 * (len(pngs) - 1)
-    wav = bgm.write_wav(out.with_suffix(".bgm.wav"), round(total + 0.5, 2))
+    total = sum(durs) - xf * (len(pngs) - 1)
+    wav = bgm.write_wav(out.with_suffix(".bgm.wav"), round(total + 0.5, 2), seed=f"{out.name}:{zlib.crc32(pngs[-1].read_bytes())}")   # 게시물마다 다른 곡(목·금·토가 서로 다름)
     args += ["-i", str(wav)]
     args += ["-filter_complex", chains + ";".join(parts), "-map", "[out]", "-map", f"{len(pngs)}:a",
              "-c:a", "aac", "-b:a", "160k", "-shortest", "-r", "30",

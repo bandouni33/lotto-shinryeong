@@ -201,7 +201,7 @@ def card2(a, rnd):
     _panel(im, (60, 230, W - 60, 640))
     d = ImageDraw.Draw(im)
     rows = [("홀 : 짝", f"{a['odd']} : {a['even']}"), ("저(1~22) : 고(23~45)", f"{a['low']} : {a['high']}"),
-            ("번호 합계", f"{a['sum']}"), ("연속번호", " · ".join(f"{k}연" for k in a["run_lens"]) or "없음")]
+            ("번호 합계", f"{a['sum']}"), ("연속번호", f"{max(a['run_lens'])}연" if a["run_lens"] else "없음")]   # 10-24: 가장 긴 묶음만(혼동 방지)
     y = 265
     for k, v in rows:
         d.text((110, y), k, font=font(38, "Medium"), fill=MUTED)
