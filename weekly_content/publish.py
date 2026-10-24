@@ -324,7 +324,7 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
     n_cards = {"weekly": 4, "thu": 5}.get(kind, 2)   # 2026-10-24: 주간 4장, 목요일 5장, 금·결과 2장
     pngs = [out_dir / f"{rnd}_{i}.png" for i in range(1, n_cards + 1)]
     mp4 = out_dir / f"{rnd}_shorts.mp4"
-    talis = [p for p in (out_dir / f"{rnd}_talisman.png",) if kind == "weekly" and p.exists()]
+    talis: list[Path] = []   # 2026-10-24(사용자 지시 '첫 페이지 부적 삭제'): 인스타 첫 장 부적을 더 이상 올리지 않는다
     missing = [p.name for p in pngs if not p.exists()]
     if missing:
         raise PublishError(f"카드가 없습니다: {missing}")

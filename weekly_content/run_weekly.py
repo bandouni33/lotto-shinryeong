@@ -197,25 +197,13 @@ def main() -> int:
     (out / f"{rnd}_caption.txt").write_text(cards.caption(draws, rnd), encoding="utf-8")
     (out / f"{rnd}_captions.json").write_text(
         json.dumps(cards.captions_all(draws, rnd), ensure_ascii=False, indent=1), encoding="utf-8")
-    # 2026-10-18: 회차 부적(인스타 캐러셀 첫 장·영상 첫 장) — 실패해도 카드 게시는 계속
-    talis = None
-    try:
-        from weekly_content import number_story, talisman
-
-        talis = out / f"{rnd}_talisman.png"
-        talisman.build(rnd, draws[rnd]["nums"], draws[rnd]["bonus"],
-                       star_line=number_story.headline(draws, rnd)["title"],
-                       date_text=draw_date_text(rnd)).save(talis, optimize=True)
-    except Exception as exc:  # noqa: BLE001
-        print(f"  (부적 생성 실패 — 카드만 게시: {exc})")
-        talis = None
+    # 2026-10-24(사용자 지시 '첫 페이지 부적 삭제'): SNS 게시·영상에서 회차 부적을 뺀다(홈페이지 부적은 site_export 가 따로 만듦).
     # 2026-10-24(사용자 지시): 토요일도 목요일과 같은 방식 — 약 1분·PPT 넘김·'슥' 소리·장마다 다른 비트 음악(video_fx).
-    # 장 길이 비중: 부적 9 · 당첨번호 12 · 숫자 분석 16(정보 많음) · 타로 13 · 앱 안내 10. offset=2 → 같은 주 목요일과 다른 연출.
+    # 장 길이 비중: 당첨번호 13 · 숫자 분석 17(정보 많음) · 타로 14 · 앱 안내 10. offset=2 → 같은 주 목요일과 다른 연출.
     from weekly_content import video_fx
 
-    pages = ([talis] if talis else []) + pngs
-    weights = ([9] if talis else []) + [12, 16, 13, 10][: len(pngs)]
-    shorts = make_shorts(pages, out / f"{rnd}_shorts.mp4", plan=video_fx.plan(weights, rnd - 1247, offset=2))
+    weights = [13, 17, 14, 10][: len(pngs)]
+    shorts = make_shorts(pngs, out / f"{rnd}_shorts.mp4", plan=video_fx.plan(weights, rnd - 1247, offset=2))
     if shorts:
         from weekly_content import clip_kit
 

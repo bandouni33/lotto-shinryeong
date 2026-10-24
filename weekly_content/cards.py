@@ -324,7 +324,7 @@ def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
     # 2026-10-18 채널별 특색: 인스타 = 회차 부적 컬렉션, 페북 = 신령엔터 주간 사건 일지
     hook = f"🎯 제{rnd}회 1등 번호, 몇 개 맞으셨나요?\n\n"   # 2026-10-24: 첫 줄 훅(정보 나열은 아래로)
     if source == "instagram":
-        opener = hook + "🧧 첫 장은 이번 주 당첨번호로 그린 부적이에요. 매주 한 장씩 모아보세요.\n\n"
+        opener = hook   # 2026-10-24(사용자 지시 '첫 페이지 부적 삭제'): 부적 안내 문구도 뺀다
     elif source == "facebook":
         extra = []
         if h["comeback"]:
