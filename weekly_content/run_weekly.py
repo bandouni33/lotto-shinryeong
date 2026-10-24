@@ -53,7 +53,7 @@ def draw_date_text(rnd: int) -> str:
     return (dt.date(2002, 12, 7) + dt.timedelta(weeks=rnd - 1)).strftime("%Y.%m.%d")
 
 
-def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8) -> Path | None:
+def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8, medley: bool = False) -> Path | None:
     """세로 9:16 짧은 영상(네이버 클립·쇼츠용).
 
     2026-10-17(사용자 지적 '빛바랜 화질'): 예전엔 색공간 표시 없이 BT.601 로 변환돼 재생기(BT.709 가정)에서
@@ -86,7 +86,12 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 4.5, xf: float = 0.8) 
     from weekly_content import bgm
 
     total = sum(durs) - xf * (len(pngs) - 1)
-    wav = bgm.write_wav(out.with_suffix(".bgm.wav"), round(total + 0.5, 2), seed=f"{out.name}:{zlib.crc32(pngs[-1].read_bytes())}")   # 게시물마다 다른 곡(목·금·토가 서로 다름)
+    seed = f"{out.name}:{zlib.crc32(pngs[-1].read_bytes())}"   # 게시물마다 다른 곡(목·금·토가 서로 다름)
+    if medley:   # 2026-10-24 목요일: 장이 바뀔 때마다 곡도 바뀜
+        segs = [durs[0] - xf / 2] + [d - xf for d in durs[1:-1]] + [durs[-1] - xf / 2 + 0.5]
+        wav = bgm.write_medley(out.with_suffix(".bgm.wav"), segs, seed)
+    else:
+        wav = bgm.write_wav(out.with_suffix(".bgm.wav"), round(total + 0.5, 2), seed=seed)
     args += ["-i", str(wav)]
     args += ["-filter_complex", chains + ";".join(parts), "-map", "[out]", "-map", f"{len(pngs)}:a",
              "-c:a", "aac", "-b:a", "160k", "-shortest", "-r", "30",

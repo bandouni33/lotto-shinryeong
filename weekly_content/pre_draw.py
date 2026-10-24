@@ -81,14 +81,17 @@ def captions(kind: str, draws: dict[int, dict], latest: int) -> dict:
     top = hia[0]
     cand = ", ".join(str(x["n"]) for x in hia)
     if kind == "thu":
+        # 2026-10-24 사용자 컨셉: 5장(타로·자동·번개·검증·고급필터) 문구를 그대로 본문으로 — 장 문구와 항상 일치
+        from weekly_content import thursday
+
         t = cards.tarot_for_round(latest)
-        head = (f"🔮 “{t['line']}”\n\n"
-                f"이번 주 신령이 뽑아준 카드는 '{t['name']}({t['name_en']})'.\n"
-                "힘든 한 주였다면, 이 한 줄만 마음에 담아 가세요.\n\n"
-                f"그리고 하나 더 — {top['n']}번은 {top['gap']}주째 한 번도 나오지 않았어요.\n"
-                f"오래 쉬고 있는 번호: {cand}\n"
-                f"토요일 {nxt}회, 이 중 누가 돌아올까요? 👇 댓글로 번호 하나만 찍어보세요. 토요일 밤 결과 공개!")
-        groups, path, what = (sc.KW_TAROT, sc.KW_DRAW, sc.KW_STATS), "/members/", "번호 45개의 공백기·출현 기록"
+        icons = ["🔮", "💎", "⚡", "🛡", "👑"]
+        pages = [thursday.page_text(i, nxt) for i in range(thursday.TOTAL)]
+        h1, b1 = pages[0]
+        head = (f"{icons[0]} {' '.join(h1)}\n{' '.join(b1)}\n\n" +
+                "\n\n".join(f"{icons[i]} {' '.join(h)}\n{' '.join(bd)}" for i, (h, bd) in enumerate(pages[1:], 1)) +
+                "\n\n👇 여러분은 이번 주 번호를 어떻게 고르세요? 댓글로 알려주세요.")
+        groups, path, what = (sc.KW_TAROT, sc.KW_DRAW, sc.KW_STATS), "/manual/", "기능별 사용설명서"
         th_head = (f"🔮 “{t['line']}”\n이번 주 카드: {t['name']}\n\n"
                    f"🗳 {nxt}회 신령 문답 — {top['n']}번은 {top['gap']}주째 공백.\n"
                    f"오래 쉰 번호 {cand} 중 이번 주 돌아올 번호는?\n댓글로 하나만! 토요일 밤 결과 공개")
@@ -117,10 +120,12 @@ def build(kind: str, draws: dict[int, dict], latest: int, out: Path) -> list[Pat
     if kind not in KINDS:
         raise SystemExit(f"[중단] kind 는 {KINDS} 중 하나")
     out.mkdir(parents=True, exist_ok=True)
-    label = "로또신령 이번 주 타로" if kind == "thu" else "로또신령 번호 흐름"
-    first = (cards.card4(latest, cards.tarot_for_round(latest), foot=(1, 2, label)) if kind == "thu"
-             else card_flow(draws, latest))
-    imgs = [first, cards.card5("구글 플레이 · 앱스토어", foot=(2, 2, label))]
+    if kind == "thu":   # 2026-10-24 사용자 컨셉: 앱 화면 5장 + 문구(매주 변형) — weekly_content/thursday.py
+        from weekly_content import thursday
+
+        imgs = thursday.build(latest + 1)
+    else:
+        imgs = [card_flow(draws, latest), cards.card5("구글 플레이 · 앱스토어", foot=(2, 2, "로또신령 번호 흐름"))]
     tag = latest + 1   # 게시 기록·파일 이름은 '다가오는 회차' 기준
     paths = []
     for i, im in enumerate(imgs, 1):
@@ -145,7 +150,7 @@ def main() -> int:
     latest = max(draws)
     out = Path(a.out)
     pngs = build(a.kind, draws, latest, out)
-    shorts = make_shorts(pngs, out / f"{latest + 1}_shorts.mp4")
+    shorts = make_shorts(pngs, out / f"{latest + 1}_shorts.mp4", medley=(a.kind == "thu"))
     if shorts:
         from weekly_content import clip_kit
 

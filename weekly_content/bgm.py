@@ -23,9 +23,37 @@ ARP_SHAPES = [(0, 1, 2, 1), (0, 2, 1, 2), (2, 1, 0, 1), (0, 1, 2, 2)]
 
 
 def write_wav(out: Path, dur: float, seed: int | str | None = None) -> Path:
+    return _save(out, render(dur, seed if seed is not None else str(out)))
+
+
+def write_medley(out: Path, durs: list[float], seed: str, xf: float = 0.6) -> Path:
+    """장(페이지)이 바뀔 때마다 다른 곡 — 2026-10-24 사용자 지시(목요일 게시물). 곡 사이는 xf 초 겹쳐 자연스럽게."""
+    n_xf = int(xf * SR)
+    parts = [render(d + xf, f"{seed}:{i}") for i, d in enumerate(durs)]
+    out_arr = parts[0]
+    for p in parts[1:]:
+        ramp = np.linspace(0, 1, n_xf)[:, None]
+        mixed = out_arr[-n_xf:] * (1 - ramp) + p[:n_xf] * ramp
+        out_arr = np.concatenate([out_arr[:-n_xf], mixed, p[n_xf:]])
+    return _save(out, out_arr)
+
+
+def _save(out: Path, mix) -> Path:
+    mix = mix / (max(1e-9, float(np.abs(mix).max())) / 0.8)
+    pcm = (mix * 32767).astype(np.int16)
+    out = Path(out)
+    with wave.open(str(out), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes(pcm.tobytes())
+    return out
+
+
+def render(dur: float, seed: int | str):
     import zlib
 
-    key = zlib.crc32(str(seed if seed is not None else out).encode("utf-8"))
+    key = zlib.crc32(str(seed).encode("utf-8"))
     pick = np.random.default_rng(key)
     bpm = int(pick.integers(120, 133))
     shift = int(pick.integers(-3, 5))
@@ -111,12 +139,4 @@ def write_wav(out: Path, dur: float, seed: int | str | None = None) -> Path:
     fade[:fi] = np.linspace(0, 1, fi)
     fade[-fo:] = np.minimum(fade[-fo:], np.linspace(1, 0, fo))
     mix *= fade[:, None]
-    mix /= max(1e-9, float(np.abs(mix).max())) / 0.8
-    pcm = (mix * 32767).astype(np.int16)
-    out = Path(out)
-    with wave.open(str(out), "wb") as w:
-        w.setnchannels(2)
-        w.setsampwidth(2)
-        w.setframerate(SR)
-        w.writeframes(pcm.tobytes())
-    return out
+    return mix

@@ -124,14 +124,15 @@ class PublishTest(unittest.TestCase):
         self.assertFalse(any("photos" in c[1] or "media" in c[1] for c in s2.calls))
 
     def test_P7_predraw_kind_separate_log(self):
-        """목·금 콘텐츠(kind=thu): 카드 2장만 올리고, 게시 기록 키가 '채널:thu' 라 토요일 게시와 섞이지 않음."""
+        """목요일(kind=thu): 카드 5장(2026-10-24 컨셉), 게시 기록 키가 '채널:thu' 라 토요일 게시와 섞이지 않음."""
+        Image.new("RGB", (40, 50), (9, 9, 9)).save(self.tmp / "1246_5.png")
         log = _log()
         pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(FakeSession()), log=log, sleep=lambda *_: None)
         s = FakeSession()
         res = pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(s), log=log, sleep=lambda *_: None, kind="thu")
         self.assertEqual(set(res["posted"]), set(pub.CHANNELS), res)
         photos = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/PG/photos")]
-        self.assertEqual(len(photos), 2)
+        self.assertEqual(len(photos), 5)
         self.assertTrue(all(log.done(1246, f"{c}:thu") for c in pub.CHANNELS))
         res2 = pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(FakeSession()), log=log, sleep=lambda *_: None,
                            kind="thu")
