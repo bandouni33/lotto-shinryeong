@@ -27,9 +27,9 @@ TOTAL = 5
 MOODS = ["불편하신가요", "복잡하신가요", "힘드신가요", "혼란스러우신가요", "지치셨나요", "우울하신가요", "무거우신가요"]
 
 PAGES = [
-    {"screen": "tarot",
+    {"screens": ["tarot", "tarot_2", "tarot_3"],
      "variants": [([f"지금 마음이 {m}?"], ["타로 한 장으로", "마음을 달래보세요."]) for m in MOODS]},
-    {"screen": "auto",
+    {"screens": ["auto", "auto_2"],
      "variants": [
          (["아무 근거 없이", "무작위로 구매하고 계시나요?"],
           ["이제 로또신령에서 4차 필터링까지 거친", "한정 수량으로 새로운 꿈에 도전해 보세요."]),
@@ -38,18 +38,18 @@ PAGES = [
          (["자동 번호, 운에만", "맡기고 계시나요?"],
           ["이제 로또신령에서 4차 필터링까지 거친", "한정 수량으로 새로운 꿈에 도전해 보세요."]),
      ]},
-    {"screen": "thunder",
+    {"screens": ["thunder", "thunder_2"],
      "variants": [
          (["이번 주 좋은 꿈 꾸셨나요?"], ["가족 생일을 넣어서", "행운을 이어가 보세요."]),
          (["이번 주 특별한 날이 있으신가요?"], ["기념일 숫자를 넣어서", "나만의 행운을 만들어 보세요."]),
          (["꼭 넣고 싶은 숫자가 있으신가요?"], ["고정수로 넣고", "번개처럼 여러 게임을 뽑아 보세요."]),
      ]},
-    {"screen": "hedge",
+    {"screens": ["hedge", "hedge_2"],
      "variants": [
          (["이번 주 복권 구매하셨나요?"], ["5등도 잘 안 맞는다면", "반대 조합으로 헷지를 해 보세요."]),
          (["산 번호, 매번 아쉬우셨나요?"], ["QR 한 번이면", "반대 조건 조합까지 바로 만들어요."]),
      ]},
-    {"screen": "adv",
+    {"screens": ["adv", "adv_2", "adv_3", "adv_4"],
      "variants": [
          (["수동으로 구매하고 계신가요?"],
           ["경우의 수를 좁혀가는 1차 필터링,", "나만의 스킬이 있다면 엑셀 업로드로 2차 필터링,",
@@ -64,6 +64,12 @@ FIRST_ROUND = 1247   # 첫 게시 회차 — 이 회차는 각 장의 첫 문구
 def page_text(page: int, rnd: int) -> tuple[list[str], list[str]]:
     vs = PAGES[page]["variants"]
     return vs[(rnd - FIRST_ROUND) % len(vs)]
+
+
+def screen_for(page: int, rnd: int) -> str:
+    """2026-10-24 사용자 지시 '기능 창도 다양화해서 매주 다른 화면': 기능마다 화면 여러 장을 매주 돌려 쓴다."""
+    sc = PAGES[page]["screens"]
+    return sc[(rnd - FIRST_ROUND) % len(sc)]
 
 
 def _rounded(im: Image.Image, r: int) -> Image.Image:
@@ -90,7 +96,7 @@ def card(page: int, rnd: int) -> Image.Image:
     top = y + 34
     bottom = cards.FOOT_Y - 36
     # 앱 화면: 남은 높이에 맞춰 폭 900 안에서 위쪽부터 보이게
-    shot = Image.open(SCREENS / f"{PAGES[page]['screen']}.jpg").convert("RGB")
+    shot = Image.open(SCREENS / f"{screen_for(page, rnd)}.jpg").convert("RGB")
     w = 900
     shot = shot.resize((w, int(shot.height * w / shot.width)))
     h = min(shot.height, bottom - top)

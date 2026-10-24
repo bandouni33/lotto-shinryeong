@@ -10,7 +10,10 @@ from weekly_content import thursday as th  # noqa: E402
 def test_five_pages_with_screens():
     assert th.TOTAL == 5 == len(th.PAGES)
     for p in th.PAGES:
-        assert (th.SCREENS / f"{p['screen']}.jpg").exists()
+        assert len(p["screens"]) >= 2   # 기능마다 화면 여러 장(매주 다른 화면)
+        for sc in p["screens"]:
+            assert (th.SCREENS / f"{sc}.jpg").exists()
+    assert th.screen_for(4, 1247) == "adv" and th.screen_for(4, 1248) == "adv_2"
     ims = th.build(1247)
     assert len(ims) == 5 and all(im.size == (1080, 1350) for im in ims)
 
