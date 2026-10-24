@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""로또신령 주간 리포트 카드(5장, 1080x1350) — 2026-10-12 샘플 단계(사용자 승인 컨셉).
+"""로또신령 주간 리포트 카드(4장, 1080x1350) — 2026-10-24 사용자 지시로 5장 → 4장.
 
-  1 표지: N회 당첨번호 + 보너스 (볼 색은 ball_style 단일 기준점)
+  1 표지: N회 당첨번호 + 보너스 (볼 색은 ball_style 단일 기준점) + 바로 밑 '1등 당첨자·당첨금 · 동행복권 집계중'
   2 숫자 분석: 홀짝·저고·합계·연번·구간 분포, 최근 10회 많이 나온 번호 / 오래 안 나온 번호
-  3 추첨결과·당첨지역: 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널(social_links 활성 채널)
-    (2026-10-17 사용자 지시 — 필터 결과는 앱에서만 공유, SNS 카드에는 싣지 않는다. 채널 목록은 social_links).
-  4 다음 회 재미 요소: 회차로 정해지는 타로 한 장(메이저 22장, 퍼블릭 도메인 RWS) + 한 줄 + 500P 체험
-  5 마무리: 설치 안내 + '참고·재미용, 당첨 보장 없음 / 복권은 만 19세 이상'
+  3 다음 회 재미 요소: 회차로 정해지는 타로 한 장(메이저 22장, 퍼블릭 도메인 RWS) + 한 줄 + 500P 체험
+  4 마무리: 설치 안내
+  모든 카드 아래: 홈페이지 주소(고지 문구는 게시 문구에 — sns_copy.DISCLAIMER)
+  (예전 3번 '추첨결과·당첨지역'은 추첨 직후엔 비어 있어 뺐다 — 1등 결과는 공식 발표 뒤 result_post 게시물)
 
 금지: 예측·보장·확률 상승 표현. 숫자는 전부 당첨 이력에서 계산한 실제 값만 쓴다.
 실행(샘플): python -m weekly_content.cards <전체당첨내역 xlsx> <회차> <출력폴더>
@@ -32,9 +32,11 @@ MUTED = (170, 175, 200)
 CARD_BG = (255, 255, 255, 18)
 _FONT_DIR = Path("/usr/share/fonts/opentype/noto")
 _BUNDLED = ROOT / "weekly_content" / "fonts"
-BLOG_URL = "https://blog.naver.com/bandouni"
 PENDING_TEXT = "동행복권 집계중"
-DISCLAIMER = "참고·재미용 정보이며 당첨을 보장하지 않습니다 · 복권은 만 19세 이상"
+# 2026-10-24(사용자 지시): 카드 맨 아래 고지 문구 대신 홈페이지 주소 — 맨 아래는 화면에서 잘 안 보여 조금 위로.
+# 고지(참고·재미용·만 19세)는 게시 문구(sns_copy.DISCLAIMER)에 그대로 남는다.
+FOOT_TEXT = "홈페이지  lottoshinryeong.com"
+FOOT_Y = 1232
 SPIRIT_IMG = ROOT / "아이콘815.png"
 TAROT_DIR = ROOT / "tarot"
 
@@ -102,9 +104,9 @@ def _panel(im, box, radius=28):
     im.paste(Image.alpha_composite(im.convert("RGBA"), ov).convert("RGB"))
 
 
-def _footer(im, page, total=5, label="로또신령 주간 리포트"):
+def _footer(im, page, total=4, label="로또신령 주간 리포트"):
     d = ImageDraw.Draw(im)
-    _center(d, H - 70, DISCLAIMER, font(24, "Regular"), MUTED)
+    _center(d, FOOT_Y, FOOT_TEXT, font(34, "Bold"), GOLD)
     d.text((W - 110, 40), f"{page}/{total}", font=font(28, "Medium"), fill=MUTED)
     d.text((48, 40), label, font=font(28, "Bold"), fill=GOLD)
 
@@ -115,6 +117,17 @@ def analyze(draws: dict[int, dict], rnd: int) -> dict:
     odd = sum(n % 2 for n in nums)
     low = sum(1 for n in nums if n <= 22)
     runs = sum(1 for a, b in zip(nums, nums[1:]) if b == a + 1)
+    # 2026-10-24(사용자 지시): 연속번호는 '쌍' 개수가 아니라 묶음 길이로 — 22·23·24 = 3연, 27·28 = 2연
+    run_lens, cur = [], 1
+    for x, y in zip(nums, nums[1:]):
+        if y == x + 1:
+            cur += 1
+        else:
+            if cur > 1:
+                run_lens.append(cur)
+            cur = 1
+    if cur > 1:
+        run_lens.append(cur)
     bands = [sum(1 for n in nums if lo <= n <= hi) for lo, hi in ((1, 10), (11, 20), (21, 30), (31, 40), (41, 45))]
     recent = [r for r in sorted(draws) if rnd - 9 <= r <= rnd]
     cnt = {n: sum(1 for r in recent if n in draws[r]["nums"]) for n in range(1, 46)}
@@ -127,7 +140,7 @@ def analyze(draws: dict[int, dict], rnd: int) -> dict:
             last_seen[n] = r
     cold = sorted(range(1, 46), key=lambda n: (last_seen.get(n, 0), n))[:5]
     return {"nums": nums, "bonus": draws[rnd]["bonus"], "odd": odd, "even": 6 - odd, "low": low,
-            "high": 6 - low, "sum": sum(nums), "runs": runs, "bands": bands,
+            "high": 6 - low, "sum": sum(nums), "runs": runs, "run_lens": sorted(run_lens), "bands": bands,
             "hot": [(n, cnt[n]) for n in hot], "cold": [(n, rnd - last_seen.get(n, 0)) for n in cold]}
 
 
@@ -175,7 +188,9 @@ def card1(a, rnd, date_text):
     _center(d, 990, "보너스", font(26, "Medium"), MUTED) if False else None
     d.text((x + 70 - d.textlength("보너스", font=font(26, "Medium")) / 2, 975), "보너스",
            font=font(26, "Medium"), fill=MUTED)
-    _center(d, 1080, "이번 주 숫자, 한 장씩 넘겨 보세요 →", font(34, "Medium"), WHITE)
+    # 2026-10-24(사용자 지시): '동행복권 집계중'을 당첨번호 바로 밑으로(1등 결과는 공식 발표 뒤 따로 게시)
+    _center(d, 1035, f"1등 당첨자·당첨금  ·  {PENDING_TEXT}", font(32, "Medium"), MUTED)
+    _center(d, 1110, "이번 주 숫자, 한 장씩 넘겨 보세요 →", font(34, "Medium"), WHITE)
     _footer(im, 1)
     return im
 
@@ -187,7 +202,7 @@ def card2(a, rnd):
     _panel(im, (60, 230, W - 60, 640))
     d = ImageDraw.Draw(im)
     rows = [("홀 : 짝", f"{a['odd']} : {a['even']}"), ("저(1~22) : 고(23~45)", f"{a['low']} : {a['high']}"),
-            ("번호 합계", f"{a['sum']}"), ("연속번호", f"{a['runs']}쌍" if a["runs"] else "없음")]
+            ("번호 합계", f"{a['sum']}"), ("연속번호", " · ".join(f"{k}연" for k in a["run_lens"]) or "없음")]
     y = 265
     for k, v in rows:
         d.text((110, y), k, font=font(38, "Medium"), fill=MUTED)
@@ -227,49 +242,7 @@ def card2(a, rnd):
     return im
 
 
-def card3(rnd, ours=None):
-    """2026-10-17: 필터 결과는 앱에서만 공유 → 제목 + 가운데 '동행복권 집계중' 한 줄 + 아래 공식 채널.
-    2026-10-18(승인 2번): ours=(회차, [1등,2등,3등,4등]) 이 있으면 '로또신령 조합 성적'(확정된 지난 회차) 칸을 넣는다
-    — 앱 자동조합 '회차별 당첨번호 배출' 표·홈페이지와 같은 출처(combo_round_stats)."""
-    import social_links
-
-    im = _canvas()
-    d = ImageDraw.Draw(im)
-    _center(d, 120, f"{rnd}회 추첨결과 · 당첨지역", font(60, "Black"), GOLD)
-    if ours:
-        _center(d, 400, PENDING_TEXT, font(44, "Medium"), MUTED)
-        o_rnd, ranks = ours
-        _panel(im, (110, 520, W - 110, 840))
-        d = ImageDraw.Draw(im)
-        _center(d, 560, f"로또신령 조합 {o_rnd}회 성적", font(40, "Bold"), GOLD)
-        cols = list(zip(("1등", "2등", "3등", "4등"), ranks))
-        cw = (W - 220) // 4
-        for i, (lab, v) in enumerate(cols):
-            cx = 110 + cw * i + cw // 2
-            d.text((cx, 660), lab, font=font(30, "Medium"), fill=MUTED, anchor="mm")
-            d.text((cx, 740), f"{v:,}", font=font(56, "Black"), fill=WHITE, anchor="mm")
-        _center(d, 790, "앱이 배포한 조합 중 실제 당첨 개수", font(24, "Regular"), MUTED)
-    else:
-        _center(d, 560, PENDING_TEXT, font(44, "Medium"), MUTED)
-    _center(d, 930, "로또신령 공식 채널", font(34, "Bold"), WHITE)
-    f = font(30, "Bold")
-    chips = social_links.active_channels()
-    widths = [int(d.textlength(c["name"], font=f)) + 74 for c in chips]
-    gap = 14
-    x = (W - (sum(widths) + gap * (len(chips) - 1))) // 2
-    y0, y1 = 1000, 1068
-    for c, w in zip(chips, widths):
-        _panel(im, (x, y0, x + w, y1), radius=34)
-        d = ImageDraw.Draw(im)
-        d.ellipse([x + 22, y0 + 25, x + 40, y0 + 43], fill=_hex(c["color"]))
-        d.text((x + 52, y0 + 15), c["name"], font=f, fill=WHITE)
-        x += w + gap
-    _center(d, 1100, f"{social_links.HANDLE}  ·  blog.naver.com/bandouni", font(28, "Medium"), MUTED)
-    _footer(im, 3)
-    return im
-
-
-def card4(rnd, tarot, foot=(4, 5, "로또신령 주간 리포트")):
+def card4(rnd, tarot, foot=(3, 4, "로또신령 주간 리포트")):
     im = _canvas()
     d = ImageDraw.Draw(im)
     _center(d, 110, f"{rnd + 1}회를 기다리며", font(60, "Black"), GOLD)
@@ -304,7 +277,7 @@ def card4(rnd, tarot, foot=(4, 5, "로또신령 주간 리포트")):
     return im
 
 
-def card5(store_text, foot=(5, 5, "로또신령 주간 리포트")):
+def card5(store_text, foot=(4, 4, "로또신령 주간 리포트")):
     im = _canvas()
     sp = Image.open(SPIRIT_IMG).convert("RGB")
     icon = sp.crop((90, 120, 90 + 600, 120 + 600)).resize((300, 300))
@@ -318,17 +291,19 @@ def card5(store_text, foot=(5, 5, "로또신령 주간 리포트")):
     d = ImageDraw.Draw(im)
     _center(d, 825, store_text, font(38, "Bold"), WHITE)
     _center(d, 895, "에서 ‘로또신령’ 검색", font(34, "Medium"), MUTED)
-    _center(d, 1040, "자세한 사용법은 네이버 블로그 ‘로또신령’", font(32, "Medium"), WHITE)
+    _center(d, 1040, "사용설명서 · 당첨번호 · 번호 통계는 홈페이지에서", font(32, "Medium"), WHITE)
     _center(d, 1100, "매주 토요일 밤, 이번 주 숫자 이야기로 다시 만나요", font(30, "Medium"), MUTED)
     _footer(im, *foot)
     return im
 
 
-def build(draws: dict[int, dict], rnd: int, out_dir: Path, *, date_text: str, ours=None) -> list[Path]:
+def build(draws: dict[int, dict], rnd: int, out_dir: Path, *, date_text: str) -> list[Path]:
+    """2026-10-24(사용자 지시): 4장 — ①당첨번호(+동행복권 집계중) ②숫자 분석 ③다음 회차 타로 ④앱 안내.
+    예전 ③추첨결과·당첨지역 카드는 추첨 직후엔 비어 있어 뺐다(1등 결과는 공식 발표 뒤 '결과 정리' 게시물)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     a = analyze(draws, rnd)
-    imgs = [card1(a, rnd, date_text), card2(a, rnd), card3(rnd, ours),
-            card4(rnd, tarot_for_round(rnd)), card5("구글 플레이 · 앱스토어")]
+    imgs = [card1(a, rnd, date_text), card2(a, rnd), card4(rnd, tarot_for_round(rnd)),
+            card5("구글 플레이 · 앱스토어")]
     paths = []
     for i, im in enumerate(imgs, 1):
         p = out_dir / f"{rnd}_{i}.png"
@@ -338,9 +313,7 @@ def build(draws: dict[int, dict], rnd: int, out_dir: Path, *, date_text: str, ou
 
 
 def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
-    """source = 채널 이름(설치 링크 UTM 구분용, social_links.store_link)."""
-    import social_links
-
+    """source = 채널 이름(instagram/facebook/youtube — 채널별 첫머리·링크 방식이 다름)."""
     from weekly_content import number_story
 
     from weekly_content import sns_copy as sc
@@ -350,8 +323,9 @@ def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
     t = tarot_for_round(rnd)
     h = number_story.headline(draws, rnd)
     # 2026-10-18 채널별 특색: 인스타 = 회차 부적 컬렉션, 페북 = 신령엔터 주간 사건 일지
+    hook = f"🎯 제{rnd}회 1등 번호, 몇 개 맞으셨나요?\n\n"   # 2026-10-24: 첫 줄 훅(정보 나열은 아래로)
     if source == "instagram":
-        opener = f"🧧 제{rnd}회 부적 — 당첨번호로 그린 이번 주 한 장(첫 장). 매주 한 장씩 모아보세요.\n\n"
+        opener = hook + "🧧 첫 장은 이번 주 당첨번호로 그린 부적이에요. 매주 한 장씩 모아보세요.\n\n"
     elif source == "facebook":
         extra = []
         if h["comeback"]:
@@ -359,16 +333,16 @@ def caption(draws: dict[int, dict], rnd: int, source: str = "instagram") -> str:
         if h["streak"]:
             extra.append("연속 무대 " + ", ".join(f"{x['n']}번({x['weeks']}주)" for x in h["streak"]))
         extra.append("가장 긴 공백기 " + ", ".join(f"{x['n']}번({x['gap']}주)" for x in h["hiatus"][:3]))
-        opener = (f"📰 신령엔터 45인조 주간 소식 — {h['title']}\n" + "\n".join(f"· {x}" for x in extra) + "\n"
-                  f"멤버 전체 보기: {social_links.SITE_URL}/members/\n\n")
+        # 2026-10-24: 페북 본문 링크는 1개(회차 페이지)만 — 멤버 페이지 주소는 뺀다.
+        opener = hook + (f"📰 신령엔터 45인조 주간 소식 — {h['title']}\n" + "\n".join(f"· {x}" for x in extra) + "\n\n")
     else:
-        opener = ""
+        opener = hook
     return (opener + f"🔮 로또신령 주간 리포트 | 제{rnd}회 당첨번호\n\n"
             f"{nums} + 보너스 {a['bonus']}\n"
             f"홀짝 {a['odd']}:{a['even']} · 저고 {a['low']}:{a['high']} · 합계 {a['sum']}\n"
             f"최근 10회 자주 나온 번호: {', '.join(str(n) for n, _ in a['hot'])}\n\n"
             f"{rnd + 1}회를 기다리며 뽑은 이번 주 타로: {t['name']}\n“{t['line']}”\n\n"
-            "이번 주 내 번호는 몇 개 맞았나요? 👇 댓글로 개수만 남겨주세요.\n\n"
+            "👇 맞힌 개수만 댓글로 남겨주세요.\n\n"
             # 2026-10-22: 링크·해시태그·고지는 sns_copy 한 곳(목·금·토 게시 공통, 홈페이지 링크로 통일)
             f"{sc.footer(source, f'/round/{rnd}/', f'{rnd}회 번호 구성·1등 명당')}\n"
             f"{sc.hashtags(rnd, sc.KW_DRAW, sc.KW_PRIZE, sc.KW_STATS, ['타로'], channel=source)}")

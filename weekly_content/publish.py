@@ -298,7 +298,7 @@ def publish(out_dir: Path, *, env=os.environ, http: Http | None = None, log: Pos
         raise PublishError(f"kind 는 {KINDS} 중 하나")
     rnd = find_round(out_dir)
     caps = json.loads((out_dir / f"{rnd}_captions.json").read_text(encoding="utf-8"))
-    pngs = [out_dir / f"{rnd}_{i}.png" for i in range(1, 6 if kind == "weekly" else 3)]
+    pngs = [out_dir / f"{rnd}_{i}.png" for i in range(1, 5 if kind == "weekly" else 3)]   # 2026-10-24 주간 4장
     mp4 = out_dir / f"{rnd}_shorts.mp4"
     talis = [p for p in (out_dir / f"{rnd}_talisman.png",) if kind == "weekly" and p.exists()]
     missing = [p.name for p in pngs if not p.exists()]

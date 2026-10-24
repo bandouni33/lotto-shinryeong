@@ -79,26 +79,20 @@ def make_shorts(pngs: list[Path], out: Path, sec: float = 3.2) -> Path | None:
         tag = "out" if i == len(pngs) - 1 else f"x{i}"
         parts.append(f"[{prev}][v{i}]xfade=transition=slideleft:duration=0.4:offset={off:.2f}[{tag}]")
         prev, off = tag, off + durs[i] - 0.4
-    args += ["-filter_complex", chains + ";".join(parts), "-map", "[out]", "-r", "30",
+    # 2026-10-24(사용자 지시 '음악 삽입 필수'): 코드로 만든 배경음악(저작권 문제 없음)을 영상 길이에 맞춰 넣는다.
+    from weekly_content import bgm
+
+    total = sum(durs) - 0.4 * (len(pngs) - 1)
+    wav = bgm.write_wav(out.with_suffix(".bgm.wav"), round(total + 0.5, 2))
+    args += ["-i", str(wav)]
+    args += ["-filter_complex", chains + ";".join(parts), "-map", "[out]", "-map", f"{len(pngs)}:a",
+             "-c:a", "aac", "-b:a", "160k", "-shortest", "-r", "30",
              "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-tune", "stillimage", "-profile:v", "high",
              "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
              "-color_range", "tv", "-movflags", "+faststart", str(out)]
     subprocess.run(args, check=True)
+    wav.unlink(missing_ok=True)
     return out
-
-
-def latest_our_stats(rnd: int):
-    """카드3 '로또신령 조합 성적' — rnd 이하에서 등수가 확정된 가장 최근 회차(앱 배출 표와 같은 출처).
-    DB 문제로 못 읽어도 게시는 계속(None → 예전 카드3)."""
-    try:
-        import marketing_db as mdb
-
-        for s in mdb.get_round_stats_snapshot(limit=5):
-            if s["finalized_at"] and s["draw_round"] <= rnd:
-                return s["draw_round"], [s["rank_1"], s["rank_2"], s["rank_3"], s["rank_4"]]
-    except Exception as exc:  # noqa: BLE001
-        print(f"  (조합 성적 읽기 실패 — 카드3 기본형: {exc})")
-    return None
 
 
 def main() -> int:
@@ -128,7 +122,7 @@ def main() -> int:
             raise SystemExit(f"[중단] DB 최신 {rnd}회 ≠ 날짜상 최신 {exp}회 — 당첨번호 반영 후 다시 실행")
 
     out = Path(a.out)
-    pngs = cards.build(draws, rnd, out, date_text=draw_date_text(rnd), ours=latest_our_stats(rnd))
+    pngs = cards.build(draws, rnd, out, date_text=draw_date_text(rnd))
     (out / f"{rnd}_caption.txt").write_text(cards.caption(draws, rnd), encoding="utf-8")
     (out / f"{rnd}_captions.json").write_text(
         json.dumps(cards.captions_all(draws, rnd), ensure_ascii=False, indent=1), encoding="utf-8")

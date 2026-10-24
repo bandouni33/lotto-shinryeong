@@ -49,6 +49,9 @@ def card_ranks(res: dict) -> "cards.Image.Image":
         y += 130
     if res.get("sales"):
         _center(d, y + 30, f"총 판매액 {eok(res['sales'])}", font(28, "Medium"), MUTED)
+    if res.get("ours"):   # 2026-10-24: 로또신령 배포 조합의 1·2등 배출(이 게시물을 올리는 조건)
+        o = res["ours"]
+        _center(d, y + 72, f"로또신령 조합  1등 {o[0]:,}개 · 2등 {o[1]:,}개 배출", font(34, "Black"), GOLD)
     cards._footer(im, 1, 2, LABEL)
     return im
 
@@ -91,6 +94,10 @@ def captions(res: dict) -> dict:
     head = (f"💰 제{rnd}회 로또 1등 {r1['count']}명, 1명당 {eok(r1['amount'])}.\n"
             f"세금 떼면 손에 쥐는 돈은 약 {eok(net)}이에요.\n\n"
             + (f"1등 구매 방식: {kinds}\n" if kinds else ""))
+    o = res.get("ours")
+    if o:   # 2026-10-24: 로또신령 배포 조합의 1·2등 배출 — 실측치(combo_round_stats)
+        head = (f"🎉 이번 주 로또신령 조합에서 1등 {o[0]:,}개 · 2등 {o[1]:,}개가 나왔어요!\n"
+                "(앱이 배포한 조합 중 당첨번호와 일치한 개수 · 공식 추첨결과 기준)\n\n") + head
     head += f"{lines}\n\n🏆 1등 명당: {regions}\n{shops}\n\n우리 동네 판매점도 있나요? 👇 댓글로 지역을 남겨주세요."
 
     def tail(src):
@@ -99,12 +106,24 @@ def captions(res: dict) -> dict:
 
     tags_ig = sc.hashtags(rnd, sc.KW_PRIZE, sc.KW_DRAW, channel="instagram")
     tags_fb = sc.hashtags(rnd, sc.KW_PRIZE, sc.KW_DRAW, channel="facebook")
-    th = (f"💰 {rnd}회 1등 {r1['count']}명, 1명당 {eok(r1['amount'])}\n세금 떼면 약 {eok(net)}\n"
+    th = ((f"🎉 로또신령 조합 1등 {o[0]:,}개·2등 {o[1]:,}개 배출!\n" if o else "") +
+          f"💰 {rnd}회 1등 {r1['count']}명, 1명당 {eok(r1['amount'])}\n세금 떼면 약 {eok(net)}\n"
           f"1등 명당: {regions}\n\n{sc.footer('threads', f'/round/{rnd}/')}\n#로또")[:cards.THREADS_LIMIT]
     return {"instagram": head + tail("instagram") + "\n" + tags_ig, "facebook": head + tail("facebook") + "\n" + tags_fb,
             "threads": th,
             "youtube_title": f"{rnd}회 로또 1등 {r1['count']}명 · 명당 | 로또신령"[:100],
             "youtube_description": head + tail("youtube")}
+
+
+def our_ranks(rnd: int) -> list[int] | None:
+    """로또신령 배포 조합의 rnd 회차 등수별 개수 [1등, 2등, 3등, 4등, 5등] — 앱 '회차별 당첨번호 배출' 표와 같은 출처
+    (combo_round_stats). 등수 확정 전·행 없음이면 None."""
+    import marketing_db as mdb
+
+    for s in mdb.get_round_stats_snapshot(limit=10):
+        if s["draw_round"] == rnd and s.get("finalized_at"):
+            return [int(s.get(f"rank_{k}") or 0) for k in range(1, 6)]
+    return None
 
 
 def build(res: dict, out: Path) -> list[Path]:
@@ -134,6 +153,15 @@ def main() -> int:
     if not res:
         print(f"[대기] {rnd}회 공식 결과·판매점 아직 없음 — 다음 실행에서 다시")
         return 3
+    # 2026-10-24(사용자 지시): 2차 게시(결과 정리)는 앱(로또신령 배포 조합)에서 1·2등 배출이 확인될 때만.
+    ours = our_ranks(rnd)
+    if ours is None:
+        print(f"[대기] {rnd}회 로또신령 조합 등수 확정 전 — 다음 실행에서 다시")
+        return 3
+    if ours[0] + ours[1] <= 0:
+        print(f"[건너뜀] {rnd}회 로또신령 조합 1·2등 배출 없음 — 결과 정리 게시 안 함(사용자 지시)")
+        return 4
+    res["ours"] = ours
     build(res, Path(a.out))
     print(f"[완료] {rnd}회 결과 정리 카드 2장 → {a.out}")
     return 0

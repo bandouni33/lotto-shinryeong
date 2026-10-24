@@ -73,7 +73,7 @@ def _out(tmp: Path, rnd=1246) -> Path:
     for i in range(1, rnd + 1):
         nums = sorted(r.sample(range(1, 46), 6))
         d[i] = {"nums": nums, "bonus": next(b for b in range(1, 46) if b not in nums)}
-    for i in range(1, 6):
+    for i in range(1, 5):   # 2026-10-24 주간 카드 4장
         Image.new("RGB", (40, 50), (i * 20, 0, 0)).save(tmp / f"{rnd}_{i}.png")
     (tmp / f"{rnd}_shorts.mp4").write_bytes(b"mp4")
     (tmp / f"{rnd}_captions.json").write_text(json.dumps(cards.captions_all(d, rnd), ensure_ascii=False),
@@ -109,7 +109,7 @@ class PublishTest(unittest.TestCase):
         self.assertEqual(set(res["posted"]), {"facebook", "instagram", "threads", "youtube"}, res)
         self.assertEqual(res["failed"], {})
         photos = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/PG/photos")]
-        self.assertEqual(len(photos), 5)
+        self.assertEqual(len(photos), 4)
         self.assertTrue(any(c[1].endswith("/IG/media_publish") for c in s.calls))
         self.assertTrue(any(c[1].endswith("/TH/threads_publish") for c in s.calls))
         self.assertTrue(all(log.done(1246, c) for c in pub.CHANNELS))
@@ -144,11 +144,11 @@ class PublishTest(unittest.TestCase):
         res = pub.publish(self.tmp, env=ALL_ENV, http=pub.Http(s), log=_log(), sleep=lambda *_: None)
         self.assertEqual(res["failed"], {})
         photos = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/PG/photos")]
-        self.assertEqual(len(photos), 6)
+        self.assertEqual(len(photos), 5)
         ig_items = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/IG/media")]
         th_items = [c for c in s.calls if c[0] == "POST" and c[1].endswith("/TH/threads")]
-        self.assertEqual(len(ig_items), 6 + 1)    # 캐러셀 항목 6 + 캐러셀 1
-        self.assertEqual(len(th_items), 5 + 1)
+        self.assertEqual(len(ig_items), 5 + 1)    # 캐러셀 항목 5(부적+카드4) + 캐러셀 1
+        self.assertEqual(len(th_items), 4 + 1)
 
     def test_P9_channel_gap(self):
         """채널 사이 10~30분 무작위 간격: 4채널 게시면 긴 대기 3번, 각각 600~1800초."""

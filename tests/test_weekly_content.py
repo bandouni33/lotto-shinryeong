@@ -57,7 +57,7 @@ class WeeklyContentTest(unittest.TestCase):
         d = _draws()
         with tempfile.TemporaryDirectory() as t:
             ps = cards.build(d, 60, Path(t), date_text="2026.10.10")
-            self.assertEqual(len(ps), 5)
+            self.assertEqual(len(ps), 4)   # 2026-10-24 4장
             from PIL import Image
             for p in ps:
                 self.assertEqual(Image.open(p).size, (1080, 1350))
