@@ -249,14 +249,37 @@ def check_keys(env=os.environ, http: Http | None = None, log: PostLog | None = N
     return out
 
 
+def _threads_ready(http: Http, cid: str, token: str, sleep=time.sleep, tries: int = 20) -> bool:
+    """스레드 컨테이너 처리 완료(FINISHED)까지 대기. ERROR·EXPIRED 면 False.
+    2026-10-24 1247회: 이미지 처리가 끝나기 전에 캐러셀을 만들어 'Invalid Carousel Children'(400)로 실패 → 기다리게 함."""
+    for _ in range(tries):
+        st = http.get(f"{THREADS}/{cid}", params={"fields": "status,error_message", "access_token": token})
+        if st.get("status") == "FINISHED":
+            return True
+        if st.get("status") in ("ERROR", "EXPIRED"):
+            print(f"  (스레드 컨테이너 {cid} {st.get('status')}: {st.get('error_message')})")
+            return False
+        sleep(5)
+    raise PublishError(f"스레드 처리 시간 초과({cid})")
+
+
 def post_threads(http: Http, user_id: str, token: str, urls: list[str], text: str, sleep=time.sleep) -> str:
-    kids = [http.post(f"{THREADS}/{user_id}/threads",
-                      data={"media_type": "IMAGE", "image_url": u, "is_carousel_item": "true",
-                            "access_token": token})["id"] for u in urls]
+    kids = []
+    for u in urls:
+        for attempt in range(2):   # 이미지 처리 실패(ERROR)면 한 번 다시 만든다
+            cid = http.post(f"{THREADS}/{user_id}/threads",
+                            data={"media_type": "IMAGE", "image_url": u, "is_carousel_item": "true",
+                                  "access_token": token})["id"]
+            if _threads_ready(http, cid, token, sleep):
+                kids.append(cid)
+                break
+        else:
+            raise PublishError(f"스레드 이미지 처리 실패: {u}")
     car = http.post(f"{THREADS}/{user_id}/threads",
                     data={"media_type": "CAROUSEL", "children": ",".join(kids), "text": text,
                           "access_token": token})["id"]
-    sleep(30)  # 스레드 권장: 만든 뒤 30초 기다렸다 발행
+    if not _threads_ready(http, car, token, sleep):
+        raise PublishError("스레드 캐러셀 처리 실패")
     return http.post(f"{THREADS}/{user_id}/threads_publish",
                      data={"creation_id": car, "access_token": token})["id"]
 

@@ -49,7 +49,7 @@ class FakeSession:
             return Resp({"access_token": "TNEW"})
         if kw.get("params", {}).get("fields") == "images":
             return Resp({"images": [{"width": 1080, "source": f"https://cdn/{url.rsplit('/', 1)[1]}.jpg"}]})
-        return Resp({"status_code": "FINISHED"})
+        return Resp({"status_code": "FINISHED", "status": "FINISHED"})   # 인스타 status_code · 스레드 status
 
     def post(self, url, **kw):
         self.calls.append(("POST", url))
@@ -184,3 +184,23 @@ class PublishTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ThreadsWaitTest(unittest.TestCase):
+    """2026-10-24 1247회 스레드 실패('Invalid Carousel Children') 재발 방지 — 처리 완료 뒤에만 캐러셀·발행."""
+
+    def test_waits_and_retries_failed_child(self):
+        seq = iter(["IN_PROGRESS", "FINISHED", "ERROR", "FINISHED", "FINISHED", "FINISHED"])
+
+        class S(FakeSession):
+            def get(self, url, **kw):
+                if kw.get("params", {}).get("fields") == "status,error_message":
+                    self.calls.append(("GET", url))
+                    return Resp({"status": next(seq)})
+                return super().get(url, **kw)
+
+        s = S()
+        pid = pub.post_threads(pub.Http(s), "TH", "tok", ["u1", "u2"], "t", sleep=lambda _: None)
+        items = [c for c in s.calls if c == ("POST", f"{pub.THREADS}/TH/threads")]
+        self.assertEqual(len(items), 4)   # 이미지 2 + 실패 1회 재생성 + 캐러셀 1
+        self.assertTrue(pid)
