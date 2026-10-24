@@ -209,7 +209,13 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"  (부적 생성 실패 — 카드만 게시: {exc})")
         talis = None
-    shorts = make_shorts(([talis] if talis else []) + pngs, out / f"{rnd}_shorts.mp4")
+    # 2026-10-24(사용자 지시): 토요일도 목요일과 같은 방식 — 약 1분·PPT 넘김·'슥' 소리·장마다 다른 비트 음악(video_fx).
+    # 장 길이 비중: 부적 9 · 당첨번호 12 · 숫자 분석 16(정보 많음) · 타로 13 · 앱 안내 10. offset=2 → 같은 주 목요일과 다른 연출.
+    from weekly_content import video_fx
+
+    pages = ([talis] if talis else []) + pngs
+    weights = ([9] if talis else []) + [12, 16, 13, 10][: len(pngs)]
+    shorts = make_shorts(pages, out / f"{rnd}_shorts.mp4", plan=video_fx.plan(weights, rnd - 1247, offset=2))
     if shorts:
         from weekly_content import clip_kit
 
